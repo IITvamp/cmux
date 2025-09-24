@@ -1,16 +1,18 @@
-import { describe, expect, test } from "vitest";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
-import { compareRefsForRepo } from "./compareRefs.js";
+import { describe, expect, test } from "vitest";
+import { compareRefsForRepo } from "./compareRefs";
 
 function run(cwd: string, cmd: string) {
   const shell = process.platform === "win32" ? "cmd" : "sh";
   const args = process.platform === "win32" ? ["/C", cmd] : ["-c", cmd];
   const res = spawnSync(shell, args, { cwd, stdio: "pipe", encoding: "utf8" });
   if (res.status !== 0) {
-    throw new Error(`Command failed (${res.status}): ${cmd}\n${res.stdout}\n${res.stderr}`);
+    throw new Error(
+      `Command failed (${res.status}): ${cmd}\n${res.stdout}\n${res.stderr}`
+    );
   }
   return res.stdout.trim();
 }
@@ -60,7 +62,10 @@ describe("compareRefsForRepo (native)", () => {
     run(repo, "git mv a.txt b.txt");
     writeFileSync(join(repo, "b.txt"), "hello world\n");
     run(repo, "git add .");
-    run(repo, "git -c user.email=a@b -c user.name=test commit -m rename_modify");
+    run(
+      repo,
+      "git -c user.email=a@b -c user.name=test commit -m rename_modify"
+    );
 
     const diffs = await compareRefsForRepo({
       ref1: "main",
@@ -69,8 +74,12 @@ describe("compareRefsForRepo (native)", () => {
     });
 
     // With identity-based detection only, this shows added+deleted
-    const added = diffs.find((d) => d.status === "added" && d.filePath === "b.txt");
-    const deleted = diffs.find((d) => d.status === "deleted" && d.filePath === "a.txt");
+    const added = diffs.find(
+      (d) => d.status === "added" && d.filePath === "b.txt"
+    );
+    const deleted = diffs.find(
+      (d) => d.status === "deleted" && d.filePath === "a.txt"
+    );
     expect(added).toBeTruthy();
     expect(deleted).toBeTruthy();
   });
@@ -89,10 +98,11 @@ describe("compareRefsForRepo (native)", () => {
       originPathOverride: repo,
     });
 
-    const mod = diffs.find((d) => d.status === "modified" && d.filePath === "a.txt");
+    const mod = diffs.find(
+      (d) => d.status === "modified" && d.filePath === "a.txt"
+    );
     expect(mod).toBeTruthy();
     expect(mod!.isBinary).toBe(false);
     expect(mod!.additions).toBeGreaterThanOrEqual(1);
   });
 });
-

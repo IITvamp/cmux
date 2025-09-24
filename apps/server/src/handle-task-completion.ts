@@ -1,14 +1,14 @@
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import { type AgentConfig } from "@cmux/shared/agentConfig";
-import { captureGitDiff } from "./captureGitDiff.js";
-import { createPullRequestForWinner, evaluateCrown } from "./crownEvaluator.js";
-import performAutoCommitAndPush from "./performAutoCommitAndPush.js";
-import { getConvex } from "./utils/convexClient.js";
-import { serverLogger } from "./utils/fileLogger.js";
-import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
-import type { VSCodeInstance } from "./vscode/VSCodeInstance.js";
-import { retryOnOptimisticConcurrency } from "./utils/convexRetry.js";
+import { captureGitDiff } from "./captureGitDiff";
+import { createPullRequestForWinner, evaluateCrown } from "./crownEvaluator";
+import performAutoCommitAndPush from "./performAutoCommitAndPush";
+import { getConvex } from "./utils/convexClient";
+import { retryOnOptimisticConcurrency } from "./utils/convexRetry";
+import { serverLogger } from "./utils/fileLogger";
+import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken";
+import type { VSCodeInstance } from "./vscode/VSCodeInstance";
 
 // Handler for completing the task
 export async function handleTaskCompletion({

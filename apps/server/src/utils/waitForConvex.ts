@@ -1,6 +1,6 @@
 import { onConvexReady } from "@cmux/shared/convex-ready";
-import { serverLogger } from "./fileLogger.js";
-import { env } from "./server-env.js";
+import { serverLogger } from "./fileLogger";
+import { env } from "./server-env";
 
 export async function waitForConvex(): Promise<void> {
   serverLogger.info("Waiting for convex to be ready...");

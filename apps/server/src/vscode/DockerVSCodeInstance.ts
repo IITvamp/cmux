@@ -1,19 +1,19 @@
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import Docker from "dockerode";
+import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import * as fs from "node:fs";
-import { getConvex } from "../utils/convexClient.js";
-import { cleanupGitCredentials } from "../utils/dockerGitSetup.js";
-import { dockerLogger } from "../utils/fileLogger.js";
-import { getGitHubTokenFromKeychain } from "../utils/getGitHubToken.js";
-import { getAuthToken, runWithAuthToken } from "../utils/requestContext.js";
+import { getConvex } from "../utils/convexClient";
+import { cleanupGitCredentials } from "../utils/dockerGitSetup";
+import { dockerLogger } from "../utils/fileLogger";
+import { getGitHubTokenFromKeychain } from "../utils/getGitHubToken";
+import { getAuthToken, runWithAuthToken } from "../utils/requestContext";
 import {
   VSCodeInstance,
   type VSCodeInstanceConfig,
   type VSCodeInstanceInfo,
-} from "./VSCodeInstance.js";
+} from "./VSCodeInstance";
 
 // Global port mapping storage
 export interface ContainerMapping {

@@ -4,8 +4,8 @@ import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
-import { RepositoryManager } from "../repositoryManager.js";
-import { serverLogger } from "../utils/fileLogger.js";
+import { RepositoryManager } from "../repositoryManager";
+import { serverLogger } from "../utils/fileLogger";
 
 export interface ParsedDiffOptions {
   worktreePath: string;

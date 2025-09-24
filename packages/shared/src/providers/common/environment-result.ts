@@ -1,4 +1,4 @@
-import type { AuthFile } from "../../worker-schemas.js";
+import type { AuthFile } from "../../worker-schemas";
 
 export interface EnvironmentResult {
   files: AuthFile[];

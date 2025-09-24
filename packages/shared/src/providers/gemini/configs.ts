@@ -1,8 +1,8 @@
-import type { AgentConfig } from "../../agentConfig.js";
-import { GEMINI_API_KEY } from "../../apiKeys.js";
-import { checkGeminiRequirements } from "./check-requirements.js";
-import { startGeminiCompletionDetector } from "./completion-detector.js";
-import { getGeminiEnvironment } from "./environment.js";
+import type { AgentConfig } from "../../agentConfig";
+import { GEMINI_API_KEY } from "../../apiKeys";
+import { checkGeminiRequirements } from "./check-requirements";
+import { startGeminiCompletionDetector } from "./completion-detector";
+import { getGeminiEnvironment } from "./environment";
 
 export const GEMINI_FLASH_CONFIG: AgentConfig = {
   name: "gemini/2.5-flash",

@@ -2,6 +2,7 @@ import { GitHubIcon } from "@/components/icons/github";
 import { ResizableColumns } from "@/components/ResizableColumns";
 import { parseEnvBlock } from "@/lib/parseEnvBlock";
 import { formatEnvVarsContent } from "@cmux/shared/utils/format-env-vars-content";
+import { validateExposedPorts } from "@cmux/shared/utils/validate-exposed-ports";
 import {
   postApiEnvironmentsMutation,
   postApiSandboxesByIdEnvMutation,
@@ -39,6 +40,7 @@ export function EnvironmentConfiguration({
   const [maintenanceScript, setMaintenanceScript] = useState("");
   const [devScript, setDevScript] = useState("");
   const [exposedPorts, setExposedPorts] = useState("3000, 8080");
+  const [portsError, setPortsError] = useState<string | null>(null);
   const keyInputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [pendingFocusIndex, setPendingFocusIndex] = useState<number | null>(
     null
@@ -140,10 +142,25 @@ export function EnvironmentConfiguration({
         .map((r) => ({ name: r.name, value: r.value }))
     );
 
-    const ports = exposedPorts
+    const parsedPorts = exposedPorts
       .split(",")
-      .map((p) => parseInt(p.trim(), 10))
-      .filter((n) => Number.isFinite(n) && n > 0);
+      .map((p) => Number.parseInt(p.trim(), 10))
+      .filter((n) => Number.isFinite(n));
+
+    const validation = validateExposedPorts(parsedPorts);
+    if (validation.reserved.length > 0) {
+      setPortsError(
+        `Reserved ports cannot be exposed: ${validation.reserved.join(", ")}`
+      );
+      return;
+    }
+    if (validation.invalid.length > 0) {
+      setPortsError("Ports must be positive integers.");
+      return;
+    }
+
+    setPortsError(null);
+    const ports = validation.sanitized;
 
     createEnvironmentMutation.mutate(
       {
@@ -489,6 +506,9 @@ etc.`}
                   Comma-separated list of ports that should be exposed from the
                   container for preview URLs.
                 </p>
+                {portsError && (
+                  <p className="text-xs text-red-500">{portsError}</p>
+                )}
               </div>
             </div>
           </AccordionItem>

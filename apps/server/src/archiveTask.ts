@@ -3,10 +3,10 @@ import type { Id } from "@cmux/convex/dataModel";
 import type { FunctionReturnType } from "convex/server";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import { getConvex } from "./utils/convexClient.js";
-import { serverLogger } from "./utils/fileLogger.js";
-import { getAuthHeaderJson, getAuthToken } from "./utils/requestContext.js";
-import { getWwwBaseUrl } from "./utils/server-env.js";
+import { getConvex } from "./utils/convexClient";
+import { serverLogger } from "./utils/fileLogger";
+import { getAuthHeaderJson, getAuthToken } from "./utils/requestContext";
+import { getWwwBaseUrl } from "./utils/server-env";
 
 const execAsync = promisify(exec);
 
@@ -51,7 +51,9 @@ async function stopCmuxSandbox(instanceId: string): Promise<void> {
   }
   const res = await fetch(url, { method: "POST", headers });
   if (!res.ok && res.status !== 204) {
-    throw new Error(`Failed stopping sandbox ${instanceId}: HTTP ${res.status}`);
+    throw new Error(
+      `Failed stopping sandbox ${instanceId}: HTTP ${res.status}`
+    );
   }
 }
 

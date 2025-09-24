@@ -424,6 +424,20 @@ const convexSchema = defineSchema({
     .index("by_team_user", ["teamId", "userId"])
     .index("by_dataVaultKey", ["dataVaultKey"]),
 
+  environmentSnapshotVersions: defineTable({
+    environmentId: v.id("environments"),
+    teamId: v.string(),
+    morphSnapshotId: v.string(),
+    version: v.number(),
+    createdAt: v.number(),
+    createdByUserId: v.string(),
+    label: v.optional(v.string()),
+  })
+    .index("by_environment_version", ["environmentId", "version"])
+    .index("by_environment_createdAt", ["environmentId", "createdAt"])
+    .index("by_team_createdAt", ["teamId", "createdAt"])
+    .index("by_team_snapshot", ["teamId", "morphSnapshotId"]),
+
   // Webhook deliveries for idempotency and auditing
   webhookDeliveries: defineTable({
     provider: v.string(), // e.g. "github"

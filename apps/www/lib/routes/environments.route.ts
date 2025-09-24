@@ -4,11 +4,35 @@ import { stackServerAppJs } from "@/lib/utils/stack";
 import { verifyTeamAccess } from "@/lib/utils/team-verification";
 import { env } from "@/lib/utils/www-env";
 import { api } from "@cmux/convex/api";
+import type { Doc } from "@cmux/convex/dataModel";
+import { typedZid } from "@cmux/shared/utils/typed-zid";
+import { RESERVED_CMUX_PORT_SET } from "@cmux/shared/utils/reserved-cmux-ports";
+import { validateExposedPorts } from "@cmux/shared/utils/validate-exposed-ports";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import { HTTPException } from "hono/http-exception";
 import { MorphCloudClient } from "morphcloud";
 import { randomBytes } from "node:crypto";
 
 export const environmentsRouter = new OpenAPIHono();
+
+const RESERVED_PORT_SET = RESERVED_CMUX_PORT_SET;
+
+const sanitizePortsOrThrow = (ports: readonly number[]): number[] => {
+  const validation = validateExposedPorts(ports);
+  if (validation.reserved.length > 0) {
+    throw new HTTPException(400, {
+      message: `Reserved ports cannot be exposed: ${validation.reserved.join(", ")}`,
+    });
+  }
+  if (validation.invalid.length > 0) {
+    throw new HTTPException(400, {
+      message: `Invalid ports provided: ${validation.invalid.join(", ")}`,
+    });
+  }
+  return validation.sanitized;
+};
+
+const serviceNameForPort = (port: number): string => `port-${port}`;
 
 const CreateEnvironmentBody = z
   .object({
@@ -57,6 +81,74 @@ const GetEnvironmentVarsResponse = z
   })
   .openapi("GetEnvironmentVarsResponse");
 
+const ExposedService = z
+  .object({
+    port: z.number(),
+    url: z.string(),
+  })
+  .openapi("ExposedService");
+
+const UpdateEnvironmentPortsBody = z
+  .object({
+    teamSlugOrId: z.string(),
+    ports: z.array(z.number()),
+    morphInstanceId: z.string().optional(),
+  })
+  .openapi("UpdateEnvironmentPortsBody");
+
+const UpdateEnvironmentPortsResponse = z
+  .object({
+    exposedPorts: z.array(z.number()),
+    services: z.array(ExposedService).optional(),
+  })
+  .openapi("UpdateEnvironmentPortsResponse");
+
+const SnapshotVersionResponse = z
+  .object({
+    id: z.string(),
+    version: z.number(),
+    morphSnapshotId: z.string(),
+    createdAt: z.number(),
+    createdByUserId: z.string(),
+    label: z.string().optional(),
+    isActive: z.boolean(),
+  })
+  .openapi("SnapshotVersionResponse");
+
+const ListSnapshotVersionsResponse = z
+  .array(SnapshotVersionResponse)
+  .openapi("ListSnapshotVersionsResponse");
+
+const CreateSnapshotVersionBody = z
+  .object({
+    teamSlugOrId: z.string(),
+    morphInstanceId: z.string(),
+    label: z.string().optional(),
+    activate: z.boolean().optional(),
+  })
+  .openapi("CreateSnapshotVersionBody");
+
+const CreateSnapshotVersionResponse = z
+  .object({
+    snapshotVersionId: z.string(),
+    snapshotId: z.string(),
+    version: z.number(),
+  })
+  .openapi("CreateSnapshotVersionResponse");
+
+const ActivateSnapshotVersionBody = z
+  .object({
+    teamSlugOrId: z.string(),
+  })
+  .openapi("ActivateSnapshotVersionBody");
+
+const ActivateSnapshotVersionResponse = z
+  .object({
+    morphSnapshotId: z.string(),
+    version: z.number(),
+  })
+  .openapi("ActivateSnapshotVersionResponse");
+
 // Create a new environment
 environmentsRouter.openapi(
   createRoute({
@@ -101,6 +193,11 @@ environmentsRouter.openapi(
         teamSlugOrId: body.teamSlugOrId,
       });
 
+      const sanitizedPorts =
+        body.exposedPorts && body.exposedPorts.length > 0
+          ? sanitizePortsOrThrow(body.exposedPorts)
+          : [];
+
       // Create Morph snapshot from instance
       const client = new MorphCloudClient({ apiKey: env.MORPH_API_KEY });
       const instance = await client.instances.get({
@@ -108,9 +205,7 @@ environmentsRouter.openapi(
       });
 
       // Ensure instance belongs to this team (when metadata exists)
-      const meta = (instance as unknown as { metadata?: { teamId?: string } })
-        .metadata;
-      const instanceTeamId = meta?.teamId;
+      const instanceTeamId = instance.metadata?.teamId;
       if (instanceTeamId && instanceTeamId !== team.uuid) {
         return c.text("Forbidden: Instance does not belong to this team", 403);
       }
@@ -150,7 +245,8 @@ environmentsRouter.openapi(
           description: body.description,
           maintenanceScript: body.maintenanceScript,
           devScript: body.devScript,
-          exposedPorts: body.exposedPorts,
+          exposedPorts:
+            sanitizedPorts.length > 0 ? sanitizedPorts : undefined,
         }
       );
 
@@ -159,6 +255,9 @@ environmentsRouter.openapi(
         snapshotId: snapshot.id,
       });
     } catch (error) {
+      if (error instanceof HTTPException) {
+        throw error;
+      }
       console.error("Failed to create environment:", error);
       return c.text("Failed to create environment", 500);
     }
@@ -205,7 +304,7 @@ environmentsRouter.openapi(
 
       // Map Convex documents to API response shape
       const result = environments.map((env) => ({
-        id: (env as unknown as { _id: string })._id,
+        id: env._id,
         name: env.name,
         morphSnapshotId: env.morphSnapshotId,
         dataVaultKey: env.dataVaultKey,
@@ -265,9 +364,10 @@ environmentsRouter.openapi(
 
     try {
       const convexClient = getConvex({ accessToken });
+      const environmentId = typedZid("environments").parse(id);
       const environment = await convexClient.query(api.environments.get, {
         teamSlugOrId,
-        id: id as string & { __tableName: "environments" },
+        id: environmentId,
       });
 
       if (!environment) {
@@ -275,7 +375,7 @@ environmentsRouter.openapi(
       }
       // Map Convex document to API response shape
       const mapped = {
-        id: (environment as unknown as { _id: string })._id,
+        id: environment._id,
         name: environment.name,
         morphSnapshotId: environment.morphSnapshotId,
         dataVaultKey: environment.dataVaultKey,
@@ -336,9 +436,10 @@ environmentsRouter.openapi(
     try {
       // Get the environment to retrieve the dataVaultKey
       const convexClient = getConvex({ accessToken });
+      const environmentId = typedZid("environments").parse(id);
       const environment = await convexClient.query(api.environments.get, {
         teamSlugOrId,
-        id: id as string & { __tableName: "environments" },
+        id: environmentId,
       });
 
       if (!environment) {
@@ -360,6 +461,431 @@ environmentsRouter.openapi(
     } catch (error) {
       console.error("Failed to get environment variables:", error);
       return c.text("Failed to get environment variables", 500);
+    }
+  }
+);
+
+// Update exposed ports for an environment
+environmentsRouter.openapi(
+  createRoute({
+    method: "patch" as const,
+    path: "/environments/{id}/ports",
+    tags: ["Environments"],
+    summary: "Update exposed ports for an environment",
+    request: {
+      params: z.object({
+        id: z.string(),
+      }),
+      body: {
+        content: {
+          "application/json": {
+            schema: UpdateEnvironmentPortsBody,
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        content: {
+          "application/json": {
+            schema: UpdateEnvironmentPortsResponse,
+          },
+        },
+        description: "Exposed ports updated successfully",
+      },
+      401: { description: "Unauthorized" },
+      403: { description: "Forbidden" },
+      404: { description: "Environment not found" },
+      500: { description: "Failed to update environment ports" },
+    },
+  }),
+  async (c) => {
+    const accessToken = await getAccessTokenFromRequest(c.req.raw);
+    if (!accessToken) return c.text("Unauthorized", 401);
+
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const environmentId = typedZid("environments").parse(id);
+
+    try {
+      const sanitizedPorts = sanitizePortsOrThrow(body.ports);
+      const convexClient = getConvex({ accessToken });
+      const team = await verifyTeamAccess({
+        req: c.req.raw,
+        teamSlugOrId: body.teamSlugOrId,
+      });
+
+      let services:
+        | Array<{
+            port: number;
+            url: string;
+          }>
+        | undefined;
+
+      if (body.morphInstanceId) {
+        const morphClient = new MorphCloudClient({ apiKey: env.MORPH_API_KEY });
+        const instance = await morphClient.instances.get({
+          instanceId: body.morphInstanceId,
+        });
+
+        const metadata = instance.metadata;
+        const instanceTeamId = metadata?.teamId;
+        if (instanceTeamId && instanceTeamId !== team.uuid) {
+          return c.text(
+            "Forbidden: Instance does not belong to this team",
+            403
+          );
+        }
+        const metadataEnvironmentId = metadata?.environmentId;
+        if (metadataEnvironmentId && metadataEnvironmentId !== id) {
+          return c.text(
+            "Forbidden: Instance does not belong to this environment",
+            403
+          );
+        }
+
+        let workingInstance = instance;
+        const reloadInstance = async () => {
+          workingInstance = await morphClient.instances.get({
+            instanceId: instance.id,
+          });
+        };
+
+        await reloadInstance();
+        const desiredPorts = new Set(sanitizedPorts);
+        const serviceUrls = new Map<number, string>();
+
+        for (const service of workingInstance.networking.httpServices) {
+          if (!service.name.startsWith("port-")) {
+            continue;
+          }
+          if (RESERVED_PORT_SET.has(service.port)) {
+            continue;
+          }
+          if (!desiredPorts.has(service.port)) {
+            await workingInstance.hideHttpService(service.name);
+          }
+        }
+
+        await reloadInstance();
+
+        for (const port of sanitizedPorts) {
+          const serviceName = serviceNameForPort(port);
+          const existing = workingInstance.networking.httpServices.find(
+            (service) => service.name === serviceName
+          );
+          if (existing) {
+            serviceUrls.set(existing.port, existing.url);
+            continue;
+          }
+          try {
+            const service = await workingInstance.exposeHttpService(
+              serviceName,
+              port
+            );
+            serviceUrls.set(service.port, service.url);
+          } catch (error) {
+            console.error(
+              `[environments.updatePorts] Failed to expose ${serviceName}`,
+              error
+            );
+            throw new HTTPException(500, {
+              message: `Failed to expose ${serviceName}`,
+            });
+          }
+        }
+
+        await reloadInstance();
+
+        for (const service of workingInstance.networking.httpServices) {
+          if (desiredPorts.has(service.port)) {
+            serviceUrls.set(service.port, service.url);
+          }
+        }
+
+        services = Array.from(serviceUrls.entries())
+          .sort((a, b) => a[0] - b[0])
+          .map(([port, url]) => ({ port, url }));
+      }
+
+      const updatedPorts = await convexClient.mutation(
+        api.environments.updateExposedPorts,
+        {
+          teamSlugOrId: body.teamSlugOrId,
+          id: environmentId,
+          ports: sanitizedPorts,
+        }
+      );
+
+      return c.json({
+        exposedPorts: updatedPorts,
+        ...(services ? { services } : {}),
+      });
+    } catch (error) {
+      if (error instanceof HTTPException) {
+        throw error;
+      }
+      if (error instanceof Error && error.message === "Environment not found") {
+        return c.text("Environment not found", 404);
+      }
+      console.error("Failed to update environment ports:", error);
+      return c.text("Failed to update environment ports", 500);
+    }
+  }
+);
+
+// List snapshot versions for an environment
+environmentsRouter.openapi(
+  createRoute({
+    method: "get" as const,
+    path: "/environments/{id}/snapshots",
+    tags: ["Environments"],
+    summary: "List snapshot versions for an environment",
+    request: {
+      params: z.object({
+        id: z.string(),
+      }),
+      query: z.object({
+        teamSlugOrId: z.string(),
+      }),
+    },
+    responses: { 
+      200: {
+        content: {
+          "application/json": {
+            schema: ListSnapshotVersionsResponse,
+          },
+        },
+        description: "Snapshot versions retrieved successfully",
+      },
+      401: { description: "Unauthorized" },
+      404: { description: "Environment not found" },
+      500: { description: "Failed to list snapshot versions" },
+    },
+  }),
+  async (c) => {
+    const accessToken = await getAccessTokenFromRequest(c.req.raw);
+    if (!accessToken) return c.text("Unauthorized", 401);
+
+    const { id } = c.req.valid("param");
+    const { teamSlugOrId } = c.req.valid("query");
+
+    try {
+      const environmentId = typedZid("environments").parse(id);
+      const convexClient = getConvex({ accessToken });
+      const environment = await convexClient.query(api.environments.get, {
+        teamSlugOrId,
+        id: environmentId,
+      });
+
+      if (!environment) {
+        return c.text("Environment not found", 404);
+      }
+
+      const versions = await convexClient.query(
+        api.environmentSnapshots.list,
+        {
+          teamSlugOrId,
+          environmentId,
+        }
+      );
+
+      const mapped = versions.map(
+        (version: Doc<"environmentSnapshotVersions">) => ({
+          id: String(version._id),
+          version: version.version,
+          morphSnapshotId: version.morphSnapshotId,
+          createdAt: version.createdAt,
+          createdByUserId: version.createdByUserId,
+          label: version.label ?? undefined,
+          isActive: version.morphSnapshotId === environment.morphSnapshotId,
+        })
+      );
+
+      return c.json(mapped);
+    } catch (error) {
+      console.error("Failed to list snapshot versions:", error);
+      return c.text("Failed to list snapshot versions", 500);
+    }
+  }
+);
+
+// Create a new snapshot version from a running instance
+environmentsRouter.openapi(
+  createRoute({
+    method: "post" as const,
+    path: "/environments/{id}/snapshots",
+    tags: ["Environments"],
+    summary: "Create a new snapshot version from a running instance",
+    request: {
+      params: z.object({
+        id: z.string(),
+      }),
+      body: {
+        content: {
+          "application/json": {
+            schema: CreateSnapshotVersionBody,
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        content: {
+          "application/json": {
+            schema: CreateSnapshotVersionResponse,
+          },
+        },
+        description: "Snapshot version created successfully",
+      },
+      401: { description: "Unauthorized" },
+      403: { description: "Forbidden" },
+      404: { description: "Environment not found" },
+      500: { description: "Failed to create snapshot version" },
+    },
+  }),
+  async (c) => {
+    const accessToken = await getAccessTokenFromRequest(c.req.raw);
+    if (!accessToken) return c.text("Unauthorized", 401);
+
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const environmentId = typedZid("environments").parse(id);
+
+    try {
+      const team = await verifyTeamAccess({
+        req: c.req.raw,
+        teamSlugOrId: body.teamSlugOrId,
+      });
+
+      const convexClient = getConvex({ accessToken });
+      const morphClient = new MorphCloudClient({ apiKey: env.MORPH_API_KEY });
+      const instance = await morphClient.instances.get({
+        instanceId: body.morphInstanceId,
+      });
+
+      const metadata = instance.metadata;
+      const instanceTeamId = metadata?.teamId;
+      if (instanceTeamId && instanceTeamId !== team.uuid) {
+        return c.text("Forbidden: Instance does not belong to this team", 403);
+      }
+      const metadataEnvironmentId = metadata?.environmentId;
+      if (metadataEnvironmentId && metadataEnvironmentId !== id) {
+        return c.text(
+          "Forbidden: Instance does not belong to this environment",
+          403
+        );
+      }
+
+      const snapshot = await instance.snapshot();
+
+      const creation = await convexClient.mutation(
+        api.environmentSnapshots.create,
+        {
+          teamSlugOrId: body.teamSlugOrId,
+          environmentId,
+          morphSnapshotId: snapshot.id,
+          label: body.label,
+          activate: body.activate,
+        }
+      );
+
+      return c.json({
+        snapshotVersionId: String(creation.snapshotVersionId),
+        snapshotId: snapshot.id,
+        version: creation.version,
+      });
+    } catch (error) {
+      if (error instanceof HTTPException) {
+        throw error;
+      }
+      if (error instanceof Error && error.message === "Environment not found") {
+        return c.text("Environment not found", 404);
+      }
+      console.error("Failed to create snapshot version:", error);
+      return c.text("Failed to create snapshot version", 500);
+    }
+  }
+);
+
+// Activate a specific snapshot version
+environmentsRouter.openapi(
+  createRoute({
+    method: "post" as const,
+    path: "/environments/{id}/snapshots/{snapshotVersionId}/activate",
+    tags: ["Environments"],
+    summary: "Activate a snapshot version for an environment",
+    request: {
+      params: z.object({
+        id: z.string(),
+        snapshotVersionId: z.string(),
+      }),
+      body: {
+        content: {
+          "application/json": {
+            schema: ActivateSnapshotVersionBody,
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        content: {
+          "application/json": {
+            schema: ActivateSnapshotVersionResponse,
+          },
+        },
+        description: "Snapshot version activated successfully",
+      },
+      401: { description: "Unauthorized" },
+      404: { description: "Snapshot version not found" },
+      500: { description: "Failed to activate snapshot version" },
+    },
+  }),
+  async (c) => {
+    const accessToken = await getAccessTokenFromRequest(c.req.raw);
+    if (!accessToken) return c.text("Unauthorized", 401);
+
+    const { id, snapshotVersionId } = c.req.valid("param");
+    const body = c.req.valid("json");
+
+    try {
+      const environmentId = typedZid("environments").parse(id);
+      const versionId = typedZid("environmentSnapshotVersions").parse(
+        snapshotVersionId
+      );
+      const convexClient = getConvex({ accessToken });
+
+      await verifyTeamAccess({
+        req: c.req.raw,
+        teamSlugOrId: body.teamSlugOrId,
+      });
+
+      const result = await convexClient.mutation(
+        api.environmentSnapshots.activate,
+        {
+          teamSlugOrId: body.teamSlugOrId,
+          environmentId,
+          snapshotVersionId: versionId,
+        }
+      );
+
+      return c.json(result);
+    } catch (error) {
+      if (error instanceof HTTPException) {
+        throw error;
+      }
+      if (error instanceof Error && error.message === "Snapshot version not found") {
+        return c.text("Snapshot version not found", 404);
+      }
+      if (error instanceof Error && error.message === "Environment not found") {
+        return c.text("Environment not found", 404);
+      }
+      console.error("Failed to activate snapshot version:", error);
+      return c.text("Failed to activate snapshot version", 500);
     }
   }
 );
@@ -398,7 +924,7 @@ environmentsRouter.openapi(
       const convexClient = getConvex({ accessToken });
       await convexClient.mutation(api.environments.remove, {
         teamSlugOrId,
-        id: id as string & { __tableName: "environments" },
+        id: typedZid("environments").parse(id),
       });
 
       return c.body(null, 204);

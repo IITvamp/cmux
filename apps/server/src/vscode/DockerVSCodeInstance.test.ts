@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   DockerVSCodeInstance,
   containerMappings,
-} from "./DockerVSCodeInstance.js";
+} from "./DockerVSCodeInstance";
 
 vi.mock("../utils/convexClient.js", () => ({
   convex: {
@@ -158,7 +158,11 @@ describe("DockerVSCodeInstance", () => {
         });
         proc.on("error", (err) => {
           const msg = stderr.trim();
-          reject(new Error(`docker run error${msg ? `: ${msg}` : ""}: ${String(err)}`));
+          reject(
+            new Error(
+              `docker run error${msg ? `: ${msg}` : ""}: ${String(err)}`
+            )
+          );
         });
       });
 
