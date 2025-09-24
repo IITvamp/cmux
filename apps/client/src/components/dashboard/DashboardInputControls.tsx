@@ -335,7 +335,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
               return (
                 <div
                   key={option.value}
-                  className="inline-flex cursor-default items-center rounded-full bg-neutral-200 dark:bg-neutral-800/80 pl-1.5 pr-2 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60 hover:bg-neutral-300 dark:hover:bg-neutral-700/80"
+                  className="inline-flex cursor-default items-center rounded-full bg-neutral-200/70 dark:bg-neutral-800/80 pl-1.5 pr-2 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60 hover:bg-neutral-200 dark:hover:bg-neutral-700/80"
                   role="button"
                   tabIndex={0}
                   onClick={() =>
@@ -356,7 +356,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
                       event.stopPropagation();
                       handleAgentRemove(representativeInstance.id);
                     }}
-                    className="inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-neutral-400/40 dark:hover:bg-neutral-500/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
+                    className="inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-neutral-400/30 dark:hover:bg-neutral-500/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
                   >
                     <X className="h-3 w-3" aria-hidden="true" />
                     <span className="sr-only">Remove all {label}</span>
@@ -369,7 +369,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
                   <span className="max-w-[118px] truncate text-left select-none ml-1.5">
                     {label}
                   </span>
-                  <span className="inline-flex min-w-[1.125rem] items-center justify-center rounded-full bg-neutral-300/80 px-1 text-[10px] font-semibold leading-4 text-neutral-700 dark:bg-neutral-700/70 dark:text-neutral-100 ml-1.5 tabular-nums">
+                  <span className="inline-flex min-w-[1.125rem] items-center justify-center rounded-full bg-neutral-300/80 px-1 text-[10px] font-semibold leading-4 text-neutral-700 dark:bg-neutral-700/70 dark:text-neutral-100 ml-1.5 tabular-nums select-none">
                     {count}
                   </span>
                 </div>
@@ -383,7 +383,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       </div>
     </div>
   ) : (
-    <div className="px-3 py-3 flex items-center text-[12px] text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-900/70">
+    <div className="px-3 flex items-center text-[12px] text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-900/70 h-[40.5px]">
       No agents selected yet.
     </div>
   );
@@ -554,6 +554,9 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           singleSelect={false}
           maxTagCount={1}
           className="rounded-2xl"
+          classNames={{
+            popover: "w-[315px]",
+          }}
           showSearch
           countLabel="agents"
           footer={agentSelectionFooter}
