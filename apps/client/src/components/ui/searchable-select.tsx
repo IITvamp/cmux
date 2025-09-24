@@ -67,6 +67,18 @@ export interface SearchableSelectProps {
   placeholder?: string;
   singleSelect?: boolean;
   className?: string;
+  classNames?: {
+    root?: string;
+    trigger?: string;
+    popover?: string;
+    command?: string;
+    commandInput?: string;
+    commandList?: string;
+    commandEmpty?: string;
+    commandGroup?: string;
+    commandItem?: string;
+    footer?: string;
+  };
   loading?: boolean;
   maxTagCount?: number;
   showSearch?: boolean;
@@ -154,6 +166,7 @@ export interface OptionItemRenderProps {
   onDecrement?: () => void;
   itemComponent: typeof CommandItem;
   itemVariant: "default" | "agent";
+  itemClassName?: string;
 }
 
 function DefaultOptionItem({
@@ -163,6 +176,7 @@ function DefaultOptionItem({
   onWarningAction,
   itemComponent: ItemComponent,
   itemVariant,
+  itemClassName,
 }: OptionItemRenderProps) {
   const handleSelect = () => {
     if (opt.isUnavailable) {
@@ -178,7 +192,8 @@ function DefaultOptionItem({
         "flex items-center justify-between gap-2 text-[13.5px] py-1.5 h-[32px]",
         opt.isUnavailable
           ? "cursor-not-allowed text-neutral-500 dark:text-neutral-500"
-          : null
+          : null,
+        itemClassName
       )}
       onSelect={handleSelect}
     >
@@ -216,6 +231,7 @@ const SearchableSelect = forwardRef<
     placeholder = "Select",
     singleSelect = false,
     className,
+    classNames = {},
     loading = false,
     maxTagCount: _maxTagCount,
     showSearch = true,
@@ -515,15 +531,19 @@ const SearchableSelect = forwardRef<
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
-      <div className="inline-flex items-center">
+      <div className={clsx("inline-flex items-center", classNames.root)}>
         <Popover.Trigger asChild>
           <button
             ref={triggerRef}
             type="button"
             disabled={disabled}
-            className={`relative inline-flex h-7 items-center rounded-md border border-neutral-200 bg-white px-2.5 pr-6 text-sm text-neutral-900 transition-colors outline-none focus:outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 aria-expanded:bg-neutral-50 dark:aria-expanded:bg-neutral-900 w-auto ${className ?? ""}`}
+            className={clsx(
+              `relative inline-flex h-7 items-center rounded-md border border-neutral-200 bg-white px-2.5 pr-6 text-sm text-neutral-900 transition-colors outline-none focus:outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 aria-expanded:bg-neutral-50 dark:aria-expanded:bg-neutral-900 w-auto`,
+              className,
+              classNames.trigger
+            )}
           >
-            <span className="flex-1 min-w-0 text-left text-[13.5px] inline-flex items-center gap-1.5 pr-1">
+            <span className="flex-1 min-w-0 text-left text-[13.5px] inline-flex items-center gap-1.5 pr-1 tabular-nums">
               {leftIcon ? (
                 <span className="shrink-0 inline-flex items-center justify-center">
                   {leftIcon}
@@ -542,10 +562,16 @@ const SearchableSelect = forwardRef<
           sideOffset={2}
           collisionPadding={{ top: 12, bottom: 12 }}
           onOpenAutoFocus={handleOpenAutoFocus}
-          className="z-[var(--z-modal)] rounded-md border overflow-hidden border-neutral-200 bg-white p-0 drop-shadow-xs outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 dark:border-neutral-800 dark:bg-neutral-950"
-          style={{ width: 300 }}
+          className={clsx(
+            "z-[var(--z-modal)] rounded-md border overflow-hidden border-neutral-200 bg-white p-0 drop-shadow-xs outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 dark:border-neutral-800 dark:bg-neutral-950 w-[300px]",
+            classNames.popover
+          )}
         >
-          <Command loop shouldFilter={false} className="text-[13.5px]">
+          <Command
+            loop
+            shouldFilter={false}
+            className={clsx("text-[13.5px]", classNames.command)}
+          >
             {showSearch ? (
               <CommandInput
                 showIcon={false}
@@ -558,7 +584,7 @@ const SearchableSelect = forwardRef<
                     setSearch("");
                   }
                 }}
-                className="text-[13.5px] py-2"
+                className={clsx("text-[13.5px] py-2", classNames.commandInput)}
               />
             ) : null}
             {loading ? (
@@ -568,14 +594,19 @@ const SearchableSelect = forwardRef<
             ) : (
               <CommandList
                 ref={listRef}
-                className="max-h-[18rem] overflow-y-auto"
+                className={clsx(
+                  "max-h-[18rem] overflow-y-auto",
+                  classNames.commandList
+                )}
               >
                 {filteredOptions.length === 0 ? (
-                  <CommandEmpty>
-                    <span className="select-none">No options</span>
+                  <CommandEmpty className={classNames.commandEmpty}>
+                    <div className="px-3 py-4">
+                      <span className="select-none">No options</span>
+                    </div>
                   </CommandEmpty>
                 ) : (
-                  <CommandGroup>
+                  <CommandGroup className={classNames.commandGroup}>
                     {(() => {
                       const vItems = rowVirtualizer.getVirtualItems();
                       if (vItems.length === 0 && filteredOptions.length > 0) {
@@ -616,6 +647,7 @@ const SearchableSelect = forwardRef<
                                   onDecrement={decrement}
                                   itemComponent={ItemComponent}
                                   itemVariant={itemVariant}
+                                  itemClassName={classNames.commandItem}
                                 />
                               );
                             })}
@@ -669,6 +701,7 @@ const SearchableSelect = forwardRef<
                                     onDecrement={decrement}
                                     itemComponent={ItemComponent}
                                     itemVariant={itemVariant}
+                                    itemClassName={classNames.commandItem}
                                   />
                                 )}
                               </div>
@@ -683,7 +716,12 @@ const SearchableSelect = forwardRef<
             )}
           </Command>
           {footer ? (
-            <div className="border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 min-h-11">
+            <div
+              className={clsx(
+                "border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 min-h-[40.5px]",
+                classNames.footer
+              )}
+            >
               {footer}
             </div>
           ) : null}

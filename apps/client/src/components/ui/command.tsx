@@ -1,6 +1,6 @@
 import * as Popover from "@radix-ui/react-popover";
-import { Command as CommandPrimitive } from "cmdk";
 import clsx from "clsx";
+import { Command as CommandPrimitive } from "cmdk";
 import { Search } from "lucide-react";
 import * as React from "react";
 
@@ -33,9 +33,7 @@ const CommandInput = React.forwardRef<
     className="flex items-center border-b border-neutral-200 dark:border-neutral-800 px-3"
     cmdk-input-wrapper=""
   >
-    {showIcon ? (
-      <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-    ) : null}
+    {showIcon ? <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" /> : null}
     <CommandPrimitive.Input
       ref={ref}
       className={clsx(
@@ -54,7 +52,10 @@ const CommandList = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <CommandPrimitive.List
     ref={ref}
-    className={clsx("max-h-[300px] overflow-y-auto overflow-x-hidden", className)}
+    className={clsx(
+      "max-h-[300px] overflow-y-auto overflow-x-hidden",
+      className
+    )}
     {...props}
   />
 ));
