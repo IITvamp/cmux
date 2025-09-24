@@ -1,3 +1,6 @@
+// TODO: eslint mistakenly catches regex errors in the multiline string
+/* eslint-disable no-useless-escape */
+
 // Service worker content
 const SERVICE_WORKER_JS = `console.log('Service worker loaded');
 
@@ -74,15 +77,19 @@ self.addEventListener('fetch', (event) => {
 });`;
 
 // Function to rewrite JavaScript code
-function rewriteJavaScript(code: string, isExternalFile: boolean = false): string {
+function rewriteJavaScript(
+  code: string,
+  isExternalFile: boolean = false
+): string {
   // Skip if it's our injected code
-  if (code.includes('__CMUX_NO_REWRITE__')) {
+  if (code.includes("__CMUX_NO_REWRITE__")) {
     return code;
   }
 
   // For external files, we need to ensure __cmuxLocation exists first
   // since they might load before our injected script
-  const prefix = isExternalFile ? `
+  const prefix = isExternalFile
+    ? `
 // Injected by cmux proxy - ensure __cmuxLocation exists
 (function() {
   if (typeof window === 'undefined') return;
@@ -106,20 +113,21 @@ function rewriteJavaScript(code: string, isExternalFile: boolean = false): strin
     });
   }
 })();
-` : '';
+`
+    : "";
 
   // Replace various patterns of location access - keep it simple
   const modified = code
     // Replace window.location
-    .replace(/\bwindow\.location\b/g, 'window.__cmuxLocation')
+    .replace(/\bwindow\.location\b/g, "window.__cmuxLocation")
     // Replace document.location
-    .replace(/\bdocument\.location\b/g, 'document.__cmuxLocation')
+    .replace(/\bdocument\.location\b/g, "document.__cmuxLocation")
     // Replace bare location (but not if preceded by . or word character)
-    .replace(/(?<![.\w])location\b/g, '__cmuxLocation')
+    .replace(/(?<![.\w])location\b/g, "__cmuxLocation")
     // Fix any double replacements
-    .replace(/window\.__cmux__cmuxLocation/g, 'window.__cmuxLocation')
-    .replace(/document\.__cmux__cmuxLocation/g, 'document.__cmuxLocation')
-    .replace(/__cmux__cmuxLocation/g, '__cmuxLocation');
+    .replace(/window\.__cmux__cmuxLocation/g, "window.__cmuxLocation")
+    .replace(/document\.__cmux__cmuxLocation/g, "document.__cmuxLocation")
+    .replace(/__cmux__cmuxLocation/g, "__cmuxLocation");
 
   return prefix + modified;
 }
@@ -129,7 +137,7 @@ class ScriptRewriter {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   element(element: any) {
     // Check if this is our injected script (has data-cmux-injected attribute)
-    if (element.getAttribute('data-cmux-injected')) {
+    if (element.getAttribute("data-cmux-injected")) {
       return; // Skip our own scripts
     }
   }
@@ -149,7 +157,8 @@ class HeadRewriter {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   element(element: any) {
     // Config script with localhost interceptors
-    element.prepend(`<script data-cmux-injected="true">
+    element.prepend(
+      `<script data-cmux-injected="true">
 // __CMUX_NO_REWRITE__ - This marker prevents this script from being rewritten
 window.cmuxConfig = {
   taskRunId: "foo"
@@ -478,15 +487,20 @@ function startMutationObserver() {
 }
 
 startMutationObserver();
-</script>`, { html: true });
+</script>`,
+      { html: true }
+    );
 
     // Service worker registration script
-    element.prepend(`<script data-cmux-injected="true">
+    element.prepend(
+      `<script data-cmux-injected="true">
 // __CMUX_NO_REWRITE__ - This marker prevents this script from being rewritten
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/proxy-sw.js', { scope: '/' }).catch(console.error);
 }
-</script>`, { html: true });
+</script>`,
+      { html: true }
+    );
   }
 }
 
@@ -585,7 +599,8 @@ export default {
       // Check if subdomain starts with "port-" (hacky heuristic for Morph routing)
       if (sub.startsWith("port-")) {
         // Prevent infinite loops - check if we're already proxying
-        const isAlreadyProxied = request.headers.get("X-Cmux-Proxied") === "true";
+        const isAlreadyProxied =
+          request.headers.get("X-Cmux-Proxied") === "true";
         if (isAlreadyProxied) {
           return new Response("Loop detected in proxy", { status: 508 });
         }
@@ -597,7 +612,10 @@ export default {
           // Insert "morphvm" after the port number
           const morphId = parts.slice(2).join("-");
           const morphSubdomain = `${parts[0]}-${parts[1]}-morphvm-${morphId}`;
-          const target = new URL(url.pathname + url.search, `https://${morphSubdomain}.http.cloud.morph.so`);
+          const target = new URL(
+            url.pathname + url.search,
+            `https://${morphSubdomain}.http.cloud.morph.so`
+          );
 
           // Add header to prevent loops
           const headers = new Headers(request.headers);
@@ -629,13 +647,16 @@ export default {
           }
 
           // Rewrite JavaScript files
-          if (contentType.includes("javascript") || url.pathname.endsWith(".js")) {
+          if (
+            contentType.includes("javascript") ||
+            url.pathname.endsWith(".js")
+          ) {
             const text = await response.text();
             const rewritten = rewriteJavaScript(text, true); // external files
             return new Response(rewritten, {
               status: response.status,
               statusText: response.statusText,
-              headers: response.headers
+              headers: response.headers,
             });
           }
 
@@ -668,7 +689,10 @@ export default {
         return new Response("Invalid port in subdomain", { status: 400 });
       }
 
-      const target = new URL(url.pathname + url.search, `https://${vmSlug}.vm.freestyle.sh`);
+      const target = new URL(
+        url.pathname + url.search,
+        `https://${vmSlug}.vm.freestyle.sh`
+      );
 
       // Copy headers and inject cmux internals, avoid mutating the original
       const headers = new Headers(request.headers);
@@ -710,7 +734,7 @@ export default {
         return new Response(rewritten, {
           status: response.status,
           statusText: response.statusText,
-          headers: response.headers
+          headers: response.headers,
         });
       }
 
