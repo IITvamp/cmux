@@ -62,7 +62,7 @@ export async function spawnAgent(
   teamSlugOrId: string
 ): Promise<AgentSpawnResult> {
   try {
-    // Capture the current auth token and header JSON from AsyncLocalStorage so we can
+    // Capture the current auth token and header JSON from AsyncLocalStorages so we can
     // re-enter the auth context inside async event handlers later.
     const capturedAuthToken = getAuthToken()
     const capturedAuthHeaderJson = getAuthHeaderJson()
@@ -426,28 +426,13 @@ export async function spawnAgent(
     )
     vscodeInstance.startFileWatch(worktreePath)
 
-    // DISABLED: terminal-exit handler - Worker now handles this via crown_http
-    // vscodeInstance.on("terminal-exit", ...) - DISABLED
-
     // Set up file change event handler for real-time diff updates
     vscodeInstance.on('file-changes', async (data) => {
       serverLogger.info(
         `[AgentSpawner] File changes detected for ${agent.name}:`,
         { changeCount: data.changes.length, taskRunId: data.taskRunId }
       )
-
-      // On-demand diffs: no longer persisting incremental diffs to Convex
     })
-
-    // DISABLED: Worker now handles task completion directly via crown_http endpoints
-    // The server no longer needs to listen for these events as the worker
-    // calls crown_http endpoints directly to mark tasks as complete
-
-    // vscodeInstance.on("task-complete", ...) - DISABLED
-    // vscodeInstance.on("terminal-idle", ...) - DISABLED
-
-    // Note: We're keeping terminal-failed handler below since error handling
-    // may still need server intervention
 
     // Set up terminal-failed event handler
     vscodeInstance.on('terminal-failed', async (data: WorkerTerminalFailed) => {
@@ -462,7 +447,6 @@ export async function spawnAgent(
           )
           return
         }
-        // Do not write failure info to Convex logs; rely on status and errorMessage fields.
 
         // Mark the run as failed with error message
         await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () =>

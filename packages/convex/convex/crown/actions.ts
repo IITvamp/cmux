@@ -1,4 +1,4 @@
-"use node";
+'use node'
 
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { generateObject } from 'ai'
