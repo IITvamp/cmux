@@ -285,7 +285,7 @@ export const crownEvaluate = httpAction(async (ctx, req) => {
   }
 
   try {
-    const result = await ctx.runAction(api["crown/actions"].evaluate, {
+    const result = await ctx.runAction(api.crown.actions.evaluate, {
       prompt: validation.data.prompt,
       teamSlugOrId,
     })
@@ -328,7 +328,7 @@ export const crownSummarize = httpAction(async (ctx, req) => {
   }
 
   try {
-    const result = await ctx.runAction(api["crown/actions"].summarize, {
+    const result = await ctx.runAction(api.crown.actions.summarize, {
       prompt: validation.data.prompt,
       teamSlugOrId,
     })
@@ -576,7 +576,7 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
     ['completed', 'failed'].includes(run.status)
   )
   const allWorkersReported = runsForTeam.every(
-    (run) => (run.workerStatus ?? 'pending') === 'complete'
+    (run) => run.status === 'completed'
   )
   const completedRuns = runsForTeam.filter((run) => run.status === 'completed')
 
@@ -603,7 +603,6 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
   const runsPayload = runsForTeam.map((run) => ({
     id: run._id,
     status: run.status,
-    workerStatus: run.workerStatus ?? 'pending',
     agentName: run.agentName ?? null,
     newBranch: run.newBranch ?? null,
     exitCode: run.exitCode ?? null,

@@ -7,13 +7,10 @@ import {
 } from "@cmux/shared/agentConfig";
 import type {
   WorkerCreateTerminal,
-  WorkerTerminalExit,
   WorkerTerminalFailed,
-  WorkerTerminalIdle,
 } from "@cmux/shared/worker-schemas";
 import { getApiEnvironmentsByIdVars } from "@cmux/www-openapi-client";
 import { parse as parseDotenv } from "dotenv";
-import { handleTaskCompletion } from "./handle-task-completion.js";
 import { sanitizeTmuxSessionName } from "./sanitizeTmuxSessionName.js";
 import {
   generateNewBranchName,
@@ -429,35 +426,9 @@ export async function spawnAgent(
     );
     vscodeInstance.startFileWatch(worktreePath);
 
-    // Track if this terminal already failed (to avoid completing later)
-    let hasFailed = false;
 
-    // Set up terminal-exit event handler
-    vscodeInstance.on("terminal-exit", async (data: WorkerTerminalExit) => {
-      serverLogger.info(
-        `[AgentSpawner] Terminal exited for ${agent.name}:`,
-        data
-      );
-
-      if (data.terminalId === terminalId) {
-        if (hasFailed) {
-          serverLogger.warn(
-            `[AgentSpawner] Not completing ${agent.name} (already marked failed)`
-          );
-          return;
-        }
-        await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () =>
-          handleTaskCompletion({
-            taskRunId,
-            agent,
-            exitCode: data.exitCode ?? 0,
-            worktreePath,
-            vscodeInstance,
-            teamSlugOrId,
-          })
-        );
-      }
-    });
+    // DISABLED: terminal-exit handler - Worker now handles this via crown_http
+    // vscodeInstance.on("terminal-exit", ...) - DISABLED
 
     // Set up file change event handler for real-time diff updates
     vscodeInstance.on("file-changes", async (data) => {
@@ -469,92 +440,15 @@ export async function spawnAgent(
       // On-demand diffs: no longer persisting incremental diffs to Convex
     });
 
-    // Set up task-complete event handler (from project file detection)
-    vscodeInstance.on("task-complete", async (data) => {
-      serverLogger.info(
-        `[AgentSpawner] Task complete detected for ${agent.name}:`,
-        data
-      );
-      if (hasFailed) {
-        serverLogger.warn(
-          `[AgentSpawner] Ignoring task completion for ${agent.name} (already marked failed)`
-        );
-        return;
-      }
-
-      // Debug logging to understand what's being compared
-      serverLogger.info(`[AgentSpawner] Task completion comparison:`);
-      serverLogger.info(`[AgentSpawner]   data.taskRunId: "${data.taskRunId}"`);
-      serverLogger.info(`[AgentSpawner]   taskRunId: "${taskRunId}"`);
-      serverLogger.info(
-        `[AgentSpawner]   Match: ${data.taskRunId === taskRunId}`
-      );
-
-      // Update the task run as completed
-      if (data.taskRunId === taskRunId) {
-        serverLogger.info(
-          `[AgentSpawner] Task ID matched! Marking task as complete for ${agent.name}`
-        );
-        await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () =>
-          handleTaskCompletion({
-            taskRunId,
-            agent,
-            exitCode: 0,
-            worktreePath,
-            vscodeInstance,
-            teamSlugOrId,
-          })
-        );
-      } else {
-        serverLogger.warn(
-          `[AgentSpawner] Task ID did not match, ignoring task complete event`
-        );
-      }
-    });
-
-    // Set up terminal-idle event handler (legacy; ignore for deterministic agents like OpenCode)
-    vscodeInstance.on("terminal-idle", async (data: WorkerTerminalIdle) => {
-      serverLogger.info(
-        `[AgentSpawner] Terminal idle detected for ${agent.name}:`,
-        data
-      );
-      if (hasFailed) {
-        serverLogger.warn(
-          `[AgentSpawner] Ignoring idle for ${agent.name} (already marked failed)`
-        );
-        return;
-      }
-
-      // Debug logging to understand what's being compared
-      serverLogger.info(`[AgentSpawner] Terminal idle comparison:`);
-      serverLogger.info(`[AgentSpawner]   data.taskRunId: "${data.taskRunId}"`);
-      serverLogger.info(`[AgentSpawner]   taskRunId: "${taskRunId}"`);
-      serverLogger.info(
-        `[AgentSpawner]   Match: ${data.taskRunId === taskRunId}`
-      );
-
-      // Update the task run as completed
-      if (data.taskRunId === taskRunId) {
-        serverLogger.info(
-          `[AgentSpawner] Task ID matched! Marking task as complete for ${agent.name}`
-        );
-        vscodeInstance.stopFileWatch();
-        await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () =>
-          handleTaskCompletion({
-            taskRunId,
-            agent,
-            exitCode: 0,
-            worktreePath,
-            vscodeInstance,
-            teamSlugOrId,
-          })
-        );
-      } else {
-        serverLogger.warn(
-          `[AgentSpawner] Task ID did not match, ignoring idle event`
-        );
-      }
-    });
+    // DISABLED: Worker now handles task completion directly via crown_http endpoints
+    // The server no longer needs to listen for these events as the worker
+    // calls crown_http endpoints directly to mark tasks as complete
+    
+    // vscodeInstance.on("task-complete", ...) - DISABLED
+    // vscodeInstance.on("terminal-idle", ...) - DISABLED
+    
+    // Note: We're keeping terminal-failed handler below since error handling 
+    // may still need server intervention
 
     // Set up terminal-failed event handler
     vscodeInstance.on("terminal-failed", async (data: WorkerTerminalFailed) => {
@@ -569,8 +463,6 @@ export async function spawnAgent(
           );
           return;
         }
-        hasFailed = true;
-
         // Do not write failure info to Convex logs; rely on status and errorMessage fields.
 
         // Mark the run as failed with error message

@@ -149,6 +149,9 @@ let mainServerSocket: Socket<
 // Track active file watchers by taskRunId
 const activeFileWatchers: Map<string, FileWatcher> = new Map();
 
+// Track process exit codes by taskRunId
+const processExitCodes: Map<string, number> = new Map();
+
 // Queue for pending events when mainServerSocket is not connected
 interface PendingEvent {
   event: string;
@@ -1046,9 +1049,13 @@ async function createTerminal(
             }
           );
 
+          // Retrieve the exit code if the process has already exited
+          const storedExitCode = processExitCodes.get(options.taskRunId!);
+          
           void handleWorkerTaskCompletion(options.taskRunId!, {
             agentModel: options.agentModel,
             elapsedMs: Date.now() - processStartTime,
+            exitCode: storedExitCode ?? 0,
           })
             .then(() => {
               log(
@@ -1059,6 +1066,10 @@ async function createTerminal(
                   agentModel: options.agentModel,
                 }
               );
+              // Clean up stored exit code
+              if (options.taskRunId) {
+                processExitCodes.delete(options.taskRunId);
+              }
             })
             .catch((error) => {
               log(
@@ -1071,6 +1082,10 @@ async function createTerminal(
                   stack: error instanceof Error ? error.stack : undefined,
                 }
               );
+              // Clean up stored exit code even on error
+              if (options.taskRunId) {
+                processExitCodes.delete(options.taskRunId);
+              }
             });
         })
         .catch((e) => {
@@ -1108,6 +1123,8 @@ async function createTerminal(
   // Handle process exit
   childProcess.on("exit", (code, signal) => {
     const runtime = Date.now() - processStartTime;
+    const exitCode = code ?? 0;
+    
     log("INFO", `Process exited for terminal ${terminalId}`, {
       code,
       signal,
@@ -1117,11 +1134,17 @@ async function createTerminal(
       args: spawnArgs.slice(0, 5), // Log first 5 args for debugging
     });
 
-    // Notify via management socket
+    // Store exit code for later use by crown workflow
+    if (options.taskRunId) {
+      processExitCodes.set(options.taskRunId, exitCode);
+      log("INFO", `Stored exit code ${exitCode} for task ${options.taskRunId}`);
+    }
+
+    // Still emit to main server for backwards compatibility/logging
     emitToMainServer("worker:terminal-exit", {
       workerId: WORKER_ID,
       terminalId,
-      exitCode: code ?? 0,
+      exitCode,
     });
   });
 
