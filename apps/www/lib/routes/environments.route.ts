@@ -5,8 +5,8 @@ import { verifyTeamAccess } from "@/lib/utils/team-verification";
 import { env } from "@/lib/utils/www-env";
 import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
-import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { RESERVED_CMUX_PORT_SET } from "@cmux/shared/utils/reserved-cmux-ports";
+import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { validateExposedPorts } from "@cmux/shared/utils/validate-exposed-ports";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
@@ -245,8 +245,7 @@ environmentsRouter.openapi(
           description: body.description,
           maintenanceScript: body.maintenanceScript,
           devScript: body.devScript,
-          exposedPorts:
-            sanitizedPorts.length > 0 ? sanitizedPorts : undefined,
+          exposedPorts: sanitizedPorts.length > 0 ? sanitizedPorts : undefined,
         }
       );
 
@@ -650,7 +649,7 @@ environmentsRouter.openapi(
         teamSlugOrId: z.string(),
       }),
     },
-    responses: { 
+    responses: {
       200: {
         content: {
           "application/json": {
@@ -674,22 +673,20 @@ environmentsRouter.openapi(
     try {
       const environmentId = typedZid("environments").parse(id);
       const convexClient = getConvex({ accessToken });
-      const environment = await convexClient.query(api.environments.get, {
-        teamSlugOrId,
-        id: environmentId,
-      });
+      const [environment, versions] = await Promise.all([
+        convexClient.query(api.environments.get, {
+          teamSlugOrId,
+          id: environmentId,
+        }),
+        convexClient.query(api.environmentSnapshots.list, {
+          teamSlugOrId,
+          environmentId,
+        }),
+      ]);
 
       if (!environment) {
         return c.text("Environment not found", 404);
       }
-
-      const versions = await convexClient.query(
-        api.environmentSnapshots.list,
-        {
-          teamSlugOrId,
-          environmentId,
-        }
-      );
 
       const mapped = versions.map(
         (version: Doc<"environmentSnapshotVersions">) => ({
@@ -878,7 +875,10 @@ environmentsRouter.openapi(
       if (error instanceof HTTPException) {
         throw error;
       }
-      if (error instanceof Error && error.message === "Snapshot version not found") {
+      if (
+        error instanceof Error &&
+        error.message === "Snapshot version not found"
+      ) {
         return c.text("Snapshot version not found", 404);
       }
       if (error instanceof Error && error.message === "Environment not found") {

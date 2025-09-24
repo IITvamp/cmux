@@ -17,9 +17,10 @@ import {
   Calendar,
   Code,
   GitBranch,
+  Loader2,
   Package,
-  Plus,
   Play,
+  Plus,
   Server,
   Terminal,
   Trash2,
@@ -28,11 +29,12 @@ import {
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { queryClient } from "@/query-client";
 import {
   getApiEnvironmentsByIdSnapshotsOptions,
   patchApiEnvironmentsByIdPortsMutation,
   postApiEnvironmentsByIdSnapshotsBySnapshotVersionIdActivateMutation,
-  postApiEnvironmentsByIdSnapshotsMutation,
+  postApiSandboxesStartMutation,
 } from "@cmux/www-openapi-client/react-query";
 
 export const Route = createFileRoute(
@@ -43,10 +45,28 @@ export const Route = createFileRoute(
     environmentId: typedZid("environments").parse(params.environmentId),
   }),
   loader: async ({ params }) => {
-    await convexQueryClient.queryClient.ensureQueryData(
+    void queryClient.ensureQueryData(
       convexQuery(api.environments.get, {
         teamSlugOrId: params.teamSlugOrId,
         id: params.environmentId,
+      })
+    );
+    void queryClient.ensureQueryData(
+      convexQuery(api.environmentSnapshots.list, {
+        teamSlugOrId: params.teamSlugOrId,
+        environmentId: params.environmentId,
+      })
+    );
+    void queryClient.ensureQueryData(
+      convexQuery(api.environments.get, {
+        teamSlugOrId: params.teamSlugOrId,
+        id: params.environmentId,
+      })
+    );
+    void queryClient.ensureQueryData(
+      getApiEnvironmentsByIdSnapshotsOptions({
+        path: { id: String(params.environmentId) },
+        query: { teamSlugOrId: params.teamSlugOrId },
       })
     );
   },
@@ -75,23 +95,16 @@ function EnvironmentDetailsPage() {
   const updatePortsMutation = useRQMutation(
     patchApiEnvironmentsByIdPortsMutation()
   );
-  const createSnapshotMutation = useRQMutation(
-    postApiEnvironmentsByIdSnapshotsMutation()
-  );
   const activateSnapshotMutation = useRQMutation(
     postApiEnvironmentsByIdSnapshotsBySnapshotVersionIdActivateMutation()
   );
+  const startSandboxMutation = useRQMutation(postApiSandboxesStartMutation());
   const [isEditingPorts, setIsEditingPorts] = useState(false);
   const [portsDraft, setPortsDraft] = useState<number[]>(
     environment.exposedPorts ?? []
   );
   const [portInput, setPortInput] = useState("");
   const [portsError, setPortsError] = useState<string | null>(null);
-  const [isCreatingSnapshot, setIsCreatingSnapshot] = useState(false);
-  const [snapshotInstanceId, setSnapshotInstanceId] = useState("");
-  const [snapshotLabel, setSnapshotLabel] = useState("");
-  const [activateSnapshot, setActivateSnapshot] = useState(true);
-  const [snapshotError, setSnapshotError] = useState<string | null>(null);
   const [activatingVersionId, setActivatingVersionId] = useState<string | null>(
     null
   );
@@ -181,48 +194,6 @@ function EnvironmentDetailsPage() {
             error instanceof Error
               ? error.message
               : "Failed to update exposed ports"
-          );
-        },
-      }
-    );
-  };
-
-  const handleCreateSnapshot = () => {
-    if (!snapshotInstanceId.trim()) {
-      setSnapshotError("Morph instance ID is required.");
-      return;
-    }
-
-    setSnapshotError(null);
-    createSnapshotMutation.mutate(
-      {
-        path: { id: String(environmentId) },
-        body: {
-          teamSlugOrId,
-          morphInstanceId: snapshotInstanceId.trim(),
-          label: snapshotLabel.trim() || undefined,
-          activate: activateSnapshot,
-        },
-      },
-      {
-        onSuccess: async () => {
-          await convexQueryClient.queryClient.invalidateQueries({
-            queryKey: environmentQuery.queryKey,
-          });
-          await convexQueryClient.queryClient.invalidateQueries({
-            queryKey: snapshotsQuery.queryKey,
-          });
-          setSnapshotInstanceId("");
-          setSnapshotLabel("");
-          setActivateSnapshot(true);
-          setIsCreatingSnapshot(false);
-          toast.success("Snapshot version created");
-        },
-        onError: (error) => {
-          setSnapshotError(
-            error instanceof Error
-              ? error.message
-              : "Failed to create snapshot version"
           );
         },
       }
@@ -521,7 +492,8 @@ function EnvironmentDetailsPage() {
                   </div>
                 ) : (
                   <div className="flex flex-wrap gap-2">
-                    {environment.exposedPorts && environment.exposedPorts.length > 0 ? (
+                    {environment.exposedPorts &&
+                    environment.exposedPorts.length > 0 ? (
                       environment.exposedPorts.map((port: number) => (
                         <span
                           key={port}
@@ -539,7 +511,6 @@ function EnvironmentDetailsPage() {
                 )}
               </div>
 
-
               {/* Snapshot Versions */}
               <div className="pt-4 border-t border-neutral-200 dark:border-neutral-800">
                 <div className="flex items-center justify-between mb-3">
@@ -548,75 +519,63 @@ function EnvironmentDetailsPage() {
                   </h3>
                   <button
                     type="button"
+                    disabled={startSandboxMutation.isPending}
                     onClick={() => {
-                      setIsCreatingSnapshot((prev) => !prev);
-                      setSnapshotError(null);
+                      if (startSandboxMutation.isPending) {
+                        return;
+                      }
+                      startSandboxMutation.mutate(
+                        {
+                          body: {
+                            teamSlugOrId,
+                            environmentId: String(environmentId),
+                            snapshotId:
+                              environment.morphSnapshotId ?? undefined,
+                          },
+                        },
+                        {
+                          onSuccess: (data) => {
+                            const baseUrl = data.vscodeUrl;
+                            const hasQuery = baseUrl.includes("?");
+                            const vscodeUrlWithFolder = `${baseUrl}${
+                              hasQuery ? "&" : "?"
+                            }folder=/root/workspace`;
+                            navigate({
+                              to: "/$teamSlugOrId/environments/new-version",
+                              params: { teamSlugOrId },
+                              search: {
+                                sourceEnvironmentId: String(environmentId),
+                                selectedRepos: environment.selectedRepos ?? [],
+                                connectionLogin: undefined,
+                                repoSearch: undefined,
+                                instanceId: data.instanceId,
+                                vscodeUrl: vscodeUrlWithFolder,
+                                step: "configure",
+                              },
+                            });
+                          },
+                          onError: (error) => {
+                            const message =
+                              error instanceof Error
+                                ? error.message
+                                : "Failed to launch snapshot environment";
+                            toast.error(message);
+                          },
+                        }
+                      );
                     }}
-                    className="inline-flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
+                    className="inline-flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
                   >
-                    {isCreatingSnapshot ? "Close" : "New snapshot version"}
+                    {startSandboxMutation.isPending ? (
+                      <>
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Launching…
+                      </>
+                    ) : (
+                      "New snapshot version"
+                    )}
                   </button>
                 </div>
-                {isCreatingSnapshot && (
-                  <div className="mb-3 space-y-3 rounded-md border border-neutral-200 p-3 dark:border-neutral-800">
-                    <div className="space-y-1">
-                      <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-300">
-                        Morph instance ID
-                      </label>
-                      <input
-                        type="text"
-                        value={snapshotInstanceId}
-                        onChange={(event) => setSnapshotInstanceId(event.target.value)}
-                        placeholder="instance_xxxxx"
-                        className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:ring-neutral-700"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-300">
-                        Label (optional)
-                      </label>
-                      <input
-                        type="text"
-                        value={snapshotLabel}
-                        onChange={(event) => setSnapshotLabel(event.target.value)}
-                        placeholder="Describe this snapshot"
-                        className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:ring-neutral-700"
-                      />
-                    </div>
-                    <label className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-300">
-                      <input
-                        type="checkbox"
-                        checked={activateSnapshot}
-                        onChange={(event) => setActivateSnapshot(event.target.checked)}
-                        className="h-3 w-3"
-                      />
-                      Activate after creation
-                    </label>
-                    {snapshotError && (
-                      <p className="text-xs text-red-500">{snapshotError}</p>
-                    )}
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={handleCreateSnapshot}
-                        disabled={createSnapshotMutation.isPending}
-                        className="inline-flex items-center rounded-md bg-neutral-900 text-white px-3 py-1 text-xs font-medium hover:bg-neutral-800 disabled:opacity-60 disabled:cursor-not-allowed dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
-                      >
-                        {createSnapshotMutation.isPending ? "Creating..." : "Create"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsCreatingSnapshot(false);
-                          setSnapshotError(null);
-                        }}
-                        className="inline-flex items-center rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
                 <div className="space-y-2">
                   {snapshotVersions.length === 0 ? (
                     <p className="text-sm text-neutral-500 dark:text-neutral-500">
@@ -661,7 +620,7 @@ function EnvironmentDetailsPage() {
                         </div>
                         <div className="mt-2 space-y-1 text-xs text-neutral-500 dark:text-neutral-500">
                           <p>
-                            Created {" "}
+                            Created{" "}
                             {formatDistanceToNow(new Date(version.createdAt), {
                               addSuffix: true,
                             })}
