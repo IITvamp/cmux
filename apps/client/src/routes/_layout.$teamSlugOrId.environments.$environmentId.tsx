@@ -1,6 +1,5 @@
 import { FloatingPane } from "@/components/floating-pane";
 import { TitleBar } from "@/components/TitleBar";
-import { convexQueryClient } from "@/contexts/convex/convex-query-client";
 import { queryClient } from "@/query-client";
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
@@ -175,9 +174,6 @@ function EnvironmentDetailsPage() {
       },
       {
         onSuccess: async () => {
-          await convexQueryClient.queryClient.invalidateQueries({
-            queryKey: environmentQuery.queryKey,
-          });
           setIsEditingPorts(false);
           setPortInput("");
           toast.success("Exposed ports updated");
@@ -208,12 +204,6 @@ function EnvironmentDetailsPage() {
       },
       {
         onSuccess: async () => {
-          await convexQueryClient.queryClient.invalidateQueries({
-            queryKey: environmentQuery.queryKey,
-          });
-          await convexQueryClient.queryClient.invalidateQueries({
-            queryKey: snapshotsQuery.queryKey,
-          });
           setActivatingVersionId(null);
           toast.success("Snapshot version activated");
         },
