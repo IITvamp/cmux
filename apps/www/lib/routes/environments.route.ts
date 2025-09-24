@@ -4,17 +4,15 @@ import { stackServerAppJs } from "@/lib/utils/stack";
 import { verifyTeamAccess } from "@/lib/utils/team-verification";
 import { env } from "@/lib/utils/www-env";
 import { api } from "@cmux/convex/api";
-import { RESERVED_CMUX_PORT_SET } from "@cmux/shared/utils/reserved-cmux-ports";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { validateExposedPorts } from "@cmux/shared/utils/validate-exposed-ports";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { MorphCloudClient } from "morphcloud";
 import { randomBytes } from "node:crypto";
+import { determineHttpServiceUpdates } from "./determine-http-service-updates";
 
 export const environmentsRouter = new OpenAPIHono();
-
-const RESERVED_PORT_SET = RESERVED_CMUX_PORT_SET;
 
 const sanitizePortsOrThrow = (ports: readonly number[]): number[] => {
   const validation = validateExposedPorts(ports);
@@ -543,63 +541,47 @@ environmentsRouter.openapi(
           );
         }
 
-        let workingInstance = instance;
-        const reloadInstance = async () => {
-          workingInstance = await morphClient.instances.get({
-            instanceId: instance.id,
-          });
-        };
+        const workingInstance = instance;
+        const { servicesToHide, portsToExpose, servicesToKeep } =
+          determineHttpServiceUpdates(
+            workingInstance.networking.httpServices,
+            sanitizedPorts
+          );
 
-        await reloadInstance();
-        const desiredPorts = new Set(sanitizedPorts);
+        const hidePromises = servicesToHide.map((service) =>
+          workingInstance.hideHttpService(service.name)
+        );
+
+        const exposePromises = portsToExpose.map((port) => {
+          const serviceName = serviceNameForPort(port);
+          return (async () => {
+            try {
+              return await workingInstance.exposeHttpService(serviceName, port);
+            } catch (error) {
+              console.error(
+                `[environments.updatePorts] Failed to expose ${serviceName}`,
+                error
+              );
+              throw new HTTPException(500, {
+                message: `Failed to expose ${serviceName}`,
+              });
+            }
+          })();
+        });
+
+        const [_, newlyExposedServices] = await Promise.all([
+          Promise.all(hidePromises),
+          Promise.all(exposePromises),
+        ]);
+
         const serviceUrls = new Map<number, string>();
 
-        for (const service of workingInstance.networking.httpServices) {
-          if (!service.name.startsWith("port-")) {
-            continue;
-          }
-          if (RESERVED_PORT_SET.has(service.port)) {
-            continue;
-          }
-          if (!desiredPorts.has(service.port)) {
-            await workingInstance.hideHttpService(service.name);
-          }
+        for (const service of servicesToKeep) {
+          serviceUrls.set(service.port, service.url);
         }
 
-        await reloadInstance();
-
-        for (const port of sanitizedPorts) {
-          const serviceName = serviceNameForPort(port);
-          const existing = workingInstance.networking.httpServices.find(
-            (service) => service.name === serviceName
-          );
-          if (existing) {
-            serviceUrls.set(existing.port, existing.url);
-            continue;
-          }
-          try {
-            const service = await workingInstance.exposeHttpService(
-              serviceName,
-              port
-            );
-            serviceUrls.set(service.port, service.url);
-          } catch (error) {
-            console.error(
-              `[environments.updatePorts] Failed to expose ${serviceName}`,
-              error
-            );
-            throw new HTTPException(500, {
-              message: `Failed to expose ${serviceName}`,
-            });
-          }
-        }
-
-        await reloadInstance();
-
-        for (const service of workingInstance.networking.httpServices) {
-          if (desiredPorts.has(service.port)) {
-            serviceUrls.set(service.port, service.url);
-          }
+        for (const service of newlyExposedServices) {
+          serviceUrls.set(service.port, service.url);
         }
 
         services = Array.from(serviceUrls.entries())
