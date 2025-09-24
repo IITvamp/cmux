@@ -4,10 +4,10 @@ import type { IncomingMessage, Server } from "http";
 import httpProxy from "http-proxy";
 import { Buffer } from "node:buffer";
 import path from "node:path";
-import { getConvex } from "./utils/convexClient.js";
-import { serverLogger } from "./utils/fileLogger.js";
-import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
-import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
+import { getConvex } from "./utils/convexClient";
+import { serverLogger } from "./utils/fileLogger";
+import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance";
+import { VSCodeInstance } from "./vscode/VSCodeInstance";
 
 // Port cache to avoid hammering Docker
 interface PortCacheEntry {

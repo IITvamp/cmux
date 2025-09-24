@@ -1,9 +1,9 @@
-import type { AgentConfig } from "../../agentConfig.js";
-import { OPENAI_API_KEY } from "../../apiKeys.js";
-import { checkOpenAIRequirements } from "./check-requirements.js";
+import type { AgentConfig } from "../../agentConfig";
+import { OPENAI_API_KEY } from "../../apiKeys";
+import { checkOpenAIRequirements } from "./check-requirements";
 // Lazy-load Node-only completion detector to avoid bundling fs in browser
-import { getOpenAIEnvironment } from "./environment.js";
-import { startCodexCompletionDetector } from "./completion-detector.js";
+import { startCodexCompletionDetector } from "./completion-detector";
+import { getOpenAIEnvironment } from "./environment";
 
 export const CODEX_GPT_5_CONFIG: AgentConfig = {
   name: "codex/gpt-5",

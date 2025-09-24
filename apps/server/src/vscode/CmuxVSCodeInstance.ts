@@ -4,13 +4,13 @@ import {
   postApiSandboxesByIdStop,
   postApiSandboxesStart,
 } from "@cmux/www-openapi-client";
-import { dockerLogger } from "../utils/fileLogger.js";
-import { getWwwClient } from "../utils/wwwClient.js";
+import { dockerLogger } from "../utils/fileLogger";
+import { getWwwClient } from "../utils/wwwClient";
 import {
   VSCodeInstance,
   type VSCodeInstanceConfig,
   type VSCodeInstanceInfo,
-} from "./VSCodeInstance.js";
+} from "./VSCodeInstance";
 
 export class CmuxVSCodeInstance extends VSCodeInstance {
   private sandboxId: string | null = null;

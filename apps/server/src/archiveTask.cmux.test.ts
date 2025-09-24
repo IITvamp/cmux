@@ -1,10 +1,10 @@
 import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import type { FunctionReturnType } from "convex/server";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createServer } from "node:http";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { stopContainersForRunsFromTree } from "./archiveTask.js";
+import { stopContainersForRunsFromTree } from "./archiveTask";
 
 describe("stopContainersForRunsFromTree - cmux sandbox path", () => {
   const zidRun = typedZid("taskRuns");
@@ -20,7 +20,11 @@ describe("stopContainersForRunsFromTree - cmux sandbox path", () => {
       const url = req.url || "";
       calls.push({ method, url });
       // Only accept POST /api/sandboxes/:id/stop
-      if (method === "POST" && url.startsWith("/api/sandboxes/") && url.endsWith("/stop")) {
+      if (
+        method === "POST" &&
+        url.startsWith("/api/sandboxes/") &&
+        url.endsWith("/stop")
+      ) {
         res.statusCode = 204;
         res.end();
         return;

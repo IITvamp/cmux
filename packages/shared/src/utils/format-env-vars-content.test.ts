@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { formatEnvVarsContent, type EnvVarEntry } from "./format-env-vars-content.js";
+import {
+  formatEnvVarsContent,
+  type EnvVarEntry,
+} from "./format-env-vars-content";
 
 describe("formatEnvVarsContent", () => {
   it("wraps values in quotes and escapes inner quotes", () => {
@@ -17,7 +20,7 @@ describe("formatEnvVarsContent", () => {
     const entries: EnvVarEntry[] = [
       {
         name: "PRIVATE_KEY",
-        value: '-----BEGIN KEY-----\nline-1\nline-2==\n-----END KEY-----',
+        value: "-----BEGIN KEY-----\nline-1\nline-2==\n-----END KEY-----",
       },
       { name: "NEXT", value: "after" },
     ];

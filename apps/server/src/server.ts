@@ -2,16 +2,16 @@ import { api } from "@cmux/convex/api";
 import { exec } from "node:child_process";
 import { createServer } from "node:http";
 import { promisify } from "node:util";
-import { GitDiffManager } from "./gitDiff.js";
-import { createProxyApp, setupWebSocketProxy } from "./proxyApp.js";
-import { setupSocketHandlers } from "./socket-handlers.js";
-import { createSocketIOTransport } from "./transports/socketio-transport.js";
-import { getConvex } from "./utils/convexClient.js";
-import { dockerLogger, serverLogger } from "./utils/fileLogger.js";
-import { waitForConvex } from "./utils/waitForConvex.js";
-import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
-import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
-import { getRustTime } from "./native/core.js";
+import { GitDiffManager } from "./gitDiff";
+import { getRustTime } from "./native/core";
+import { createProxyApp, setupWebSocketProxy } from "./proxyApp";
+import { setupSocketHandlers } from "./socket-handlers";
+import { createSocketIOTransport } from "./transports/socketio-transport";
+import { getConvex } from "./utils/convexClient";
+import { dockerLogger, serverLogger } from "./utils/fileLogger";
+import { waitForConvex } from "./utils/waitForConvex";
+import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance";
+import { VSCodeInstance } from "./vscode/VSCodeInstance";
 
 const execAsync = promisify(exec);
 

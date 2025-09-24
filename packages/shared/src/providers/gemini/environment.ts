@@ -1,11 +1,16 @@
-import type { EnvironmentContext, EnvironmentResult } from "../common/environment-result.js";
+import type {
+  EnvironmentContext,
+  EnvironmentResult,
+} from "../common/environment-result";
 
 type GeminiSettings = {
   selectedAuthType?: string;
   [key: string]: unknown;
 };
 
-export async function getGeminiEnvironment(_ctx: EnvironmentContext): Promise<EnvironmentResult> {
+export async function getGeminiEnvironment(
+  _ctx: EnvironmentContext
+): Promise<EnvironmentResult> {
   // These must be lazy since configs are imported into the browser
   const { readFile, stat } = await import("node:fs/promises");
   const { homedir } = await import("node:os");
@@ -19,7 +24,7 @@ export async function getGeminiEnvironment(_ctx: EnvironmentContext): Promise<En
   // Ensure .gemini directory exists
   startupCommands.push("mkdir -p ~/.gemini");
   startupCommands.push("mkdir -p ~/.gemini/commands");
-  
+
   // Clean up any old Gemini telemetry files from previous runs
   // The actual telemetry path will be set by the agent spawner with the task ID
   startupCommands.push("rm -f /tmp/gemini-telemetry-*.log 2>/dev/null || true");

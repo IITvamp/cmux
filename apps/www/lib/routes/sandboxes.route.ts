@@ -5,6 +5,7 @@ import { stackServerAppJs } from "@/lib/utils/stack";
 import { verifyTeamAccess } from "@/lib/utils/team-verification";
 import { env } from "@/lib/utils/www-env";
 import { api } from "@cmux/convex/api";
+import { RESERVED_CMUX_PORT_SET } from "@cmux/shared/utils/reserved-cmux-ports";
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { MorphCloudClient } from "morphcloud";
@@ -519,7 +520,7 @@ sandboxesRouter.openapi(
       const client = new MorphCloudClient({ apiKey: env.MORPH_API_KEY });
       const instance = await client.instances.get({ instanceId: id });
 
-      const CMUX_PORTS = new Set([39376, 39377, 39378]);
+      const reservedPorts = RESERVED_CMUX_PORT_SET;
 
       // Attempt to read devcontainer.json for declared forwarded ports
       const devcontainerJson = await instance.exec(
@@ -565,7 +566,7 @@ sandboxesRouter.openapi(
       const addAllowed = (p: number) => {
         if (!Number.isFinite(p)) return;
         const pn = Math.floor(p);
-        if (pn > 0 && !CMUX_PORTS.has(pn)) allowedPorts.add(pn);
+        if (pn > 0 && !reservedPorts.has(pn)) allowedPorts.add(pn);
       };
 
       // Prefer environment.exposedPorts if available; otherwise use devcontainer forwardPorts
@@ -574,19 +575,55 @@ sandboxesRouter.openapi(
         : devcontainerPorts
       ).forEach(addAllowed);
 
-      // Expose each allowed port in Morph (best-effort)
-      await Promise.all(
-        Array.from(allowedPorts).map(async (p) => {
-          try {
-            await instance.exposeHttpService(`port-${p}` as const, p);
-          } catch {
-            // continue exposing other ports
-          }
-        })
+      const desiredPorts = Array.from(allowedPorts.values()).sort(
+        (a, b) => a - b
       );
+      const serviceNameForPort = (port: number) => `port-${port}`;
 
-      // Intersect exposed HTTP services with allowed ports
-      const networking = instance.networking.httpServices
+      let workingInstance = instance;
+      const reloadInstance = async () => {
+        workingInstance = await client.instances.get({
+          instanceId: instance.id,
+        });
+      };
+
+      await reloadInstance();
+
+      for (const service of workingInstance.networking.httpServices) {
+        if (!service.name.startsWith("port-")) {
+          continue;
+        }
+        if (reservedPorts.has(service.port)) {
+          continue;
+        }
+        if (!allowedPorts.has(service.port)) {
+          await workingInstance.hideHttpService(service.name);
+        }
+      }
+
+      await reloadInstance();
+
+      for (const port of desiredPorts) {
+        const serviceName = serviceNameForPort(port);
+        const alreadyExposed = workingInstance.networking.httpServices.some(
+          (service) => service.name === serviceName
+        );
+        if (alreadyExposed) {
+          continue;
+        }
+        try {
+          await workingInstance.exposeHttpService(serviceName, port);
+        } catch (error) {
+          console.error(
+            `[sandboxes.publishNetworking] Failed to expose ${serviceName}`,
+            error
+          );
+        }
+      }
+
+      await reloadInstance();
+
+      const networking = workingInstance.networking.httpServices
         .filter((s) => allowedPorts.has(s.port))
         .map((s) => ({ status: "running" as const, port: s.port, url: s.url }));
 

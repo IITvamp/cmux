@@ -3,8 +3,8 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import { api } from "@cmux/convex/api";
 import { generateText, type LanguageModel } from "ai";
-import { getConvex } from "../utils/convexClient.js";
-import { serverLogger } from "./fileLogger.js";
+import { getConvex } from "../utils/convexClient";
+import { serverLogger } from "./fileLogger";
 
 function getModelAndProvider(
   apiKeys: Record<string, string>

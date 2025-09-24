@@ -1,6 +1,6 @@
 import type { Id } from "@cmux/convex/dataModel";
 import { z } from "zod";
-import { typedZid } from "./utils/typed-zid.js";
+import { typedZid } from "./utils/typed-zid";
 
 // Client to Server Events
 export const CreateTerminalSchema = z.object({

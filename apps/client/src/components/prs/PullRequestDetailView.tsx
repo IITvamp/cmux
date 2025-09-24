@@ -207,7 +207,7 @@ export function PullRequestDetailView({
             <Suspense
               fallback={
                 <div className="flex items-center justify-center h-full">
-                  <div className="text-neutral-500 dark:text-neutral-400 text-sm select-none">
+                  <div className="text-neutral-500 dark:text-neutral-400 text-sm select-none py-4">
                     Loading diffs...
                   </div>
                 </div>
