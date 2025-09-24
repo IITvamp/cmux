@@ -379,6 +379,22 @@ export const updateVSCodeInstance = authMutation({
       workspaceUrl: v.optional(v.string()),
       startedAt: v.optional(v.number()),
       stoppedAt: v.optional(v.number()),
+      containerId: v.optional(v.string()),
+      sessionStatus: v.optional(
+        v.union(
+          v.literal("active"),
+          v.literal("warm"),
+          v.literal("terminated")
+        )
+      ),
+      volumes: v.optional(
+        v.object({
+          workspace: v.string(),
+          vscode: v.string(),
+        })
+      ),
+      lastActivityAt: v.optional(v.number()),
+      warmExpiresAt: v.optional(v.number()),
     }),
   },
   handler: async (ctx, args) => {
@@ -406,6 +422,16 @@ export const updateVSCodeStatus = authMutation({
       v.literal("stopped")
     ),
     stoppedAt: v.optional(v.number()),
+    sessionStatus: v.optional(
+      v.union(
+        v.literal("active"),
+        v.literal("warm"),
+        v.literal("terminated")
+      )
+    ),
+    containerId: v.optional(v.string()),
+    lastActivityAt: v.optional(v.number()),
+    warmExpiresAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
@@ -428,6 +454,14 @@ export const updateVSCodeStatus = authMutation({
         ...vscode,
         status: args.status,
         ...(args.stoppedAt ? { stoppedAt: args.stoppedAt } : {}),
+        ...(args.sessionStatus ? { sessionStatus: args.sessionStatus } : {}),
+        ...(args.containerId ? { containerId: args.containerId } : {}),
+        ...(args.lastActivityAt !== undefined
+          ? { lastActivityAt: args.lastActivityAt }
+          : {}),
+        ...(args.warmExpiresAt !== undefined
+          ? { warmExpiresAt: args.warmExpiresAt }
+          : {}),
       },
       updatedAt: Date.now(),
     });
@@ -582,6 +616,37 @@ export const updateLastAccessed = authMutation({
       vscode: {
         ...run.vscode,
         lastAccessedAt: Date.now(),
+      },
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+export const updateVSCodeActivity = authMutation({
+  args: {
+    teamSlugOrId: v.string(),
+    id: v.id("taskRuns"),
+    lastActivityAt: v.number(),
+    warmExpiresAt: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const userId = ctx.identity.subject;
+    const run = await ctx.db.get(args.id);
+    if (!run || !run.vscode) {
+      throw new Error("Task run or VSCode instance not found");
+    }
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+    if (run.teamId !== teamId || run.userId !== userId) {
+      throw new Error("Unauthorized");
+    }
+
+    await ctx.db.patch(args.id, {
+      vscode: {
+        ...run.vscode,
+        lastActivityAt: args.lastActivityAt,
+        ...(args.warmExpiresAt !== undefined
+          ? { warmExpiresAt: args.warmExpiresAt }
+          : {}),
       },
       updatedAt: Date.now(),
     });
@@ -879,5 +944,24 @@ export const getRunningContainersByCleanupPriority = authQuery({
       prioritizedForCleanup: [...reviewContainers, ...activeContainers],
       protectedCount: containersToKeepIds.size,
     };
+  },
+});
+
+export const getRunsForLifecycleSweep = internalQuery({
+  args: {
+    status: v.union(
+      v.literal("starting"),
+      v.literal("running"),
+      v.literal("stopped")
+    ),
+  },
+  handler: async (ctx, args) => {
+    const runs = await ctx.db
+      .query("taskRuns")
+      .withIndex("by_vscode_status", (q) =>
+        q.eq("vscode.status", args.status)
+      )
+      .collect();
+    return runs.filter((run) => run.vscode !== undefined);
   },
 });
