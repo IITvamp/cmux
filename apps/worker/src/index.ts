@@ -851,6 +851,55 @@ async function createTerminal(
       agentModel: options.agentModel,
       convexUrl,
     });
+
+    // Sanity check: Call crown health endpoint to verify connectivity
+    if (convexUrl) {
+      // Convert .convex.cloud URL to .convex.site for HTTP actions
+      const httpActionUrl = convexUrl.replace('.convex.cloud', '.convex.site');
+      
+      fetch(`${httpActionUrl}/api/crown/health`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+        .then(async response => {
+          const statusCode = response.status;
+          const statusText = response.statusText;
+          
+          // Try to parse response, but handle empty responses gracefully
+          let data = null;
+          const contentLength = response.headers.get('content-length');
+          if (contentLength && contentLength !== '0') {
+            try {
+              data = await response.json();
+            } catch (_e) {
+              // Response body is not JSON or empty
+              data = await response.text();
+            }
+          }
+          
+          if (response.ok) {
+            log("INFO", `[Crown Health Check] Successfully connected to Crown service:`, { 
+              status: statusCode,
+              data 
+            });
+          } else {
+            log("WARN", `[Crown Health Check] Crown service responded with error:`, { 
+              status: statusCode,
+              statusText,
+              data,
+              httpActionUrl 
+            });
+          }
+        })
+        .catch(error => {
+          log("ERROR", `[Crown Health Check] Failed to reach Crown service:`, { 
+            error: error.message,
+            httpActionUrl: convexUrl.replace('.convex.cloud', '.convex.site')
+          });
+        });
+    }
   }
 
   const shell = command || (platform() === "win32" ? "powershell.exe" : "bash");

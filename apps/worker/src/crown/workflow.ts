@@ -84,7 +84,10 @@ function getConvexBaseUrl(override?: string): string | null {
     )
     return null
   }
-  return url.replace(/\/$/, '')
+  // Convert .convex.cloud to .convex.site for HTTP actions
+  // HTTP actions are served from .convex.site, not .convex.cloud
+  const httpActionUrl = url.replace('.convex.cloud', '.convex.site')
+  return httpActionUrl.replace(/\/$/, '')
 }
 
 async function convexRequest<T>(
@@ -96,8 +99,14 @@ async function convexRequest<T>(
   const baseUrl = getConvexBaseUrl(baseUrlOverride)
   if (!baseUrl) return null
 
+  const fullUrl = `${baseUrl}${path}`
+  log('DEBUG', `Making Crown HTTP request`, { 
+    url: fullUrl,
+    path 
+  })
+
   try {
-    const response = await fetch(`${baseUrl}${path}`, {
+    const response = await fetch(fullUrl, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -109,6 +118,7 @@ async function convexRequest<T>(
     if (!response.ok) {
       const errorText = await response.text().catch(() => '<no body>')
       log('ERROR', `Crown request failed (${response.status})`, {
+        url: fullUrl,
         path,
         body,
         errorText,
@@ -118,7 +128,11 @@ async function convexRequest<T>(
 
     return (await response.json()) as T
   } catch (error) {
-    log('ERROR', 'Failed to reach crown endpoint', { path, error })
+    log('ERROR', 'Failed to reach crown endpoint', { 
+      url: fullUrl,
+      path, 
+      error 
+    })
     return null
   }
 }
