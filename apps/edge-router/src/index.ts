@@ -2,7 +2,7 @@
 /* eslint-disable no-useless-escape */
 
 // Service worker content
-const SERVICE_WORKER_JS = `console.log('Service worker loaded');
+const SERVICE_WORKER_JS = `
 
 function isLoopbackHostname(hostname) {
   if (!hostname) {
@@ -21,12 +21,10 @@ function isLoopbackHostname(hostname) {
 }
 
 self.addEventListener('install', (event) => {
-  console.log('Service worker installing');
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  console.log('Service worker activating');
   event.waitUntil(clients.claim());
 });
 
@@ -43,8 +41,6 @@ self.addEventListener('fetch', (event) => {
       const morphId = morphIdMatch[1];
       // Redirect to port-PORT-[morphid].cmux.sh
       const redirectUrl = \`https://port-\${url.port}-\${morphId}.cmux.sh\${url.pathname}\${url.search}\`;
-
-      console.log('Service worker redirecting:', event.request.url, '->', redirectUrl);
 
       // Create new headers, but let the browser handle Host header
       const headers = new Headers(event.request.headers);
@@ -73,7 +69,6 @@ self.addEventListener('fetch', (event) => {
   }
 
   // For all other requests, proceed normally
-  console.log('Service worker fetch:', event.request.url);
 });`;
 
 // Function to rewrite JavaScript code
@@ -130,6 +125,26 @@ function rewriteJavaScript(
     .replace(/__cmux__cmuxLocation/g, "__cmuxLocation");
 
   return prefix + modified;
+}
+
+// Strip headers that no longer match the rewritten body contents.
+const REWRITTEN_RESPONSE_IGNORED_HEADERS = [
+  "content-encoding",
+  "content-length",
+  "transfer-encoding",
+  "content-md5",
+  "content-digest",
+  "etag",
+];
+
+function sanitizeRewrittenResponseHeaders(source: Headers): Headers {
+  const headers = new Headers(source);
+
+  for (const header of REWRITTEN_RESPONSE_IGNORED_HEADERS) {
+    headers.delete(header);
+  }
+
+  return headers;
 }
 
 // HTMLRewriter to replace location in inline script tags
@@ -223,20 +238,17 @@ const __cmuxLocation = new Proxy({}, {
     if (prop === 'assign') {
       return function(url) {
         const newUrl = replaceLocalhostUrl(url);
-        console.log('Intercepted location.assign via proxy:', url, '->', newUrl);
         return __realLocation.assign(newUrl);
       };
     }
     if (prop === 'replace') {
       return function(url) {
         const newUrl = replaceLocalhostUrl(url);
-        console.log('Intercepted location.replace via proxy:', url, '->', newUrl);
         return __realLocation.replace(newUrl);
       };
     }
     if (prop === 'reload') {
       return function() {
-        console.log('Intercepted location.reload via proxy');
         return __realLocation.reload.apply(__realLocation, arguments);
       };
     }
@@ -279,7 +291,6 @@ const __cmuxLocation = new Proxy({}, {
   set(target, prop, value) {
     if (prop === 'href') {
       const newUrl = replaceLocalhostUrl(value);
-      console.log('Intercepted location.href assignment via proxy:', value, '->', newUrl);
       __realLocation.href = newUrl;
       return true;
     }
@@ -367,13 +378,11 @@ try {
     get() { return __cmuxLocation; },
     set(value) {
       const newUrl = replaceLocalhostUrl(value);
-      console.log('Intercepted document.location assignment:', value, '->', newUrl);
       __realLocation.href = newUrl;
     },
     configurable: true
   });
 } catch (e) {
-  console.log('Could not override document.location:', e.message);
 }
 
 // Also set document.__cmuxLocation for compatibility
@@ -386,7 +395,6 @@ try {
     set(value) {
       if (typeof value === 'string') {
         const newUrl = replaceLocalhostUrl(value);
-        console.log('Intercepted direct location assignment:', value, '->', newUrl);
         __realLocation.href = newUrl;
       } else {
         __realLocation = value;
@@ -396,14 +404,12 @@ try {
   });
 } catch (e) {
   // Expected to fail in most browsers
-  console.log('Could not override window.location (expected):', e.message);
 }
 
 // Intercept window.open
 const originalOpen = window.open;
 window.open = function(url, ...args) {
   const newUrl = replaceLocalhostUrl(url);
-  console.log('Intercepted window.open:', url, '->', newUrl);
   return originalOpen.call(this, newUrl, ...args);
 };
 
@@ -415,7 +421,6 @@ document.addEventListener('click', function(e) {
     const newUrl = replaceLocalhostUrl(target.href);
     if (newUrl !== target.href) {
       e.preventDefault();
-      console.log('Intercepted anchor click:', target.href, '->', newUrl);
       window.location.href = newUrl;
     }
   }
@@ -427,7 +432,6 @@ document.addEventListener('submit', function(e) {
   if (form && form.action) {
     const newAction = replaceLocalhostUrl(form.action);
     if (newAction !== form.action) {
-      console.log('Intercepted form submission:', form.action, '->', newAction);
       form.action = newAction;
     }
   }
@@ -438,7 +442,6 @@ const originalPushState = history.pushState;
 history.pushState = function(state, title, url) {
   if (url) {
     const newUrl = replaceLocalhostUrl(url);
-    console.log('Intercepted history.pushState:', url, '->', newUrl);
     return originalPushState.call(this, state, title, newUrl);
   }
   return originalPushState.apply(this, arguments);
@@ -448,7 +451,6 @@ const originalReplaceState = history.replaceState;
 history.replaceState = function(state, title, url) {
   if (url) {
     const newUrl = replaceLocalhostUrl(url);
-    console.log('Intercepted history.replaceState:', url, '->', newUrl);
     return originalReplaceState.call(this, state, title, newUrl);
   }
   return originalReplaceState.apply(this, arguments);
@@ -656,7 +658,7 @@ export default {
             return new Response(rewritten, {
               status: response.status,
               statusText: response.statusText,
-              headers: response.headers,
+              headers: sanitizeRewrittenResponseHeaders(response.headers),
             });
           }
 
@@ -734,7 +736,7 @@ export default {
         return new Response(rewritten, {
           status: response.status,
           statusText: response.statusText,
-          headers: response.headers,
+          headers: sanitizeRewrittenResponseHeaders(response.headers),
         });
       }
 
