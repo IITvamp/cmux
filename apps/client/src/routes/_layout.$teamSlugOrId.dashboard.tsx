@@ -59,7 +59,7 @@ function DashboardComponent() {
     return stored ? JSON.parse(stored) : false;
   });
 
-  const [dockerReady, setDockerReady] = useState<boolean | null>(null);
+  const [, setDockerReady] = useState<boolean | null>(null);
   const [providerStatus, setProviderStatus] =
     useState<ProviderStatusResponse | null>(null);
 
@@ -141,20 +141,30 @@ function DashboardComponent() {
   // Socket-based functions to fetch data from GitHub
   // Removed unused fetchRepos function - functionality is handled by Convex queries
 
-  const checkProviderStatus = useCallback(() => {
-    if (!socket) return;
+  const requestProviderStatus = useCallback(() => {
+    if (!socket) {
+      return Promise.resolve<ProviderStatusResponse | null>(null);
+    }
 
-    socket.emit("check-provider-status", (response) => {
-      if (!response) return;
-      setProviderStatus(response);
-      if (response.success) {
-        const isRunning = response.dockerStatus?.isRunning;
-        if (typeof isRunning === "boolean") {
-          setDockerReady(isRunning);
+    return new Promise<ProviderStatusResponse | null>((resolve) => {
+      socket.emit("check-provider-status", (response) => {
+        if (response) {
+          setProviderStatus(response);
+          if (
+            response.success &&
+            typeof response.dockerStatus?.isRunning === "boolean"
+          ) {
+            setDockerReady(response.dockerStatus.isRunning);
+          }
         }
-      }
+        resolve(response ?? null);
+      });
     });
   }, [socket]);
+
+  const checkProviderStatus = useCallback(() => {
+    void requestProviderStatus();
+  }, [requestProviderStatus]);
 
   // Mutation to create tasks with optimistic update
   const createTask = useMutation(api.tasks.create).withOptimisticUpdate(
@@ -219,21 +229,19 @@ function DashboardComponent() {
   const handleStartTask = useCallback(async () => {
     // For local mode, perform a fresh docker check right before starting
     if (!isEnvSelected && !isCloudMode) {
-      let ready = dockerReady;
-      if (!ready && socket) {
-        ready = await new Promise<boolean>((resolve) => {
-          socket.emit("check-provider-status", (response) => {
-            const isRunning = !!response?.dockerStatus?.isRunning;
-            if (typeof isRunning === "boolean") {
-              setDockerReady(isRunning);
-            }
-            resolve(isRunning);
-          });
-        });
-      }
-      if (!ready) {
-        toast.error("Docker is not running. Start Docker Desktop.");
-        return;
+      const status = await requestProviderStatus();
+      if (status?.success && status.dockerStatus) {
+        const { isInstalled, isRunning } = status.dockerStatus;
+        if (!isInstalled) {
+          toast.error(
+            "Docker is not installed or configured. Install Docker Desktop or enable cloud mode."
+          );
+          return;
+        }
+        if (!isRunning) {
+          toast.error("Docker is not running. Start Docker Desktop.");
+          return;
+        }
       }
     }
 
@@ -361,7 +369,7 @@ function DashboardComponent() {
     selectedAgents,
     isCloudMode,
     isEnvSelected,
-    dockerReady,
+    requestProviderStatus,
     theme,
     generateUploadUrl,
   ]);
