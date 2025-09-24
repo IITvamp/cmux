@@ -2048,7 +2048,9 @@ Please address the issue mentioned in the comment above.`;
 
     socket.on("check-provider-status", async (callback) => {
       try {
-        const status = await checkAllProvidersStatus();
+        const status = await checkAllProvidersStatus({
+          teamSlugOrId: safeTeam,
+        });
         callback({ success: true, ...status });
       } catch (error) {
         serverLogger.error("Error checking provider status:", error);

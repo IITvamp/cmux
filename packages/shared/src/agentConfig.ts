@@ -67,6 +67,11 @@ export type AgentConfigApiKey = {
 };
 export type AgentConfigApiKeys = Array<AgentConfigApiKey>;
 
+export type ProviderRequirementsContext = {
+  apiKeys?: Record<string, string>;
+  teamSlugOrId?: string;
+};
+
 export interface AgentConfig {
   name: string;
   command: string;
@@ -78,7 +83,9 @@ export interface AgentConfig {
   ) => Promise<Partial<EnvironmentResult>> | Partial<EnvironmentResult>; // Optional hook to apply API keys into env/files/startup commands instead of default env var injection
   waitForString?: string;
   enterKeySequence?: string; // Custom enter key sequence, defaults to "\r"
-  checkRequirements?: () => Promise<string[]>; // Returns list of missing requirements
+  checkRequirements?: (
+    context?: ProviderRequirementsContext
+  ) => Promise<string[]>; // Returns list of missing requirements
   completionDetector?: (taskRunId: string) => Promise<void>;
 }
 
