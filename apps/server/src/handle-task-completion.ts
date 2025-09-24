@@ -129,13 +129,25 @@ export async function handleTaskCompletion({
 
     if (containerSettings.autoCleanupEnabled) {
       if (containerSettings.stopImmediatelyOnCompletion) {
-        // Stop container immediately
+        // Delay stop to allow crown evaluation to complete in worker
         serverLogger.info(
-          `[AgentSpawner] Stopping container immediately as per settings`
+          `[AgentSpawner] Scheduling container stop with delay for crown evaluation`
         );
-
-        // Stop the VSCode instance
-        await vscodeInstance.stop();
+        
+        // Give crown evaluation 30 seconds to complete before stopping
+        setTimeout(async () => {
+          serverLogger.info(
+            `[AgentSpawner] Stopping container after crown evaluation delay`
+          );
+          try {
+            await vscodeInstance.stop();
+          } catch (error) {
+            serverLogger.error(
+              `[AgentSpawner] Error stopping container:`,
+              error
+            );
+          }
+        }, 30000);
       } else {
         // Schedule stop after review period
         const reviewPeriodMs =

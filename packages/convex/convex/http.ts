@@ -5,8 +5,9 @@ import {
   crownWorkerCheck,
   crownWorkerFinalize,
   crownWorkerStatus,
+  crownWorkerComplete,
+  crownWorkerScheduleStop,
 } from "./crown_http";
-import { workerComplete, workerScheduleStop } from "./worker_http";
 import { githubSetup } from "./github_setup";
 import { githubWebhook } from "./github_webhook";
 import { stackWebhook } from "./stack_webhook";
@@ -38,33 +39,33 @@ http.route({
 });
 
 http.route({
-  path: "/api/crown/worker/status",
+  path: "/api/crown/status",
   method: "POST",
   handler: crownWorkerStatus,
 });
 
 http.route({
-  path: "/api/crown/worker/check",
+  path: "/api/crown/check",
   method: "POST",
   handler: crownWorkerCheck,
 });
 
 http.route({
-  path: "/api/crown/worker/finalize",
+  path: "/api/crown/finalize",
   method: "POST",
   handler: crownWorkerFinalize,
 });
 
 http.route({
-  path: "/api/worker/task-run/complete",
+  path: "/api/crown/complete",
   method: "POST",
-  handler: workerComplete,
+  handler: crownWorkerComplete,
 });
 
 http.route({
-  path: "/api/worker/task-run/schedule-stop",
+  path: "/api/crown/schedule-stop",
   method: "POST",
-  handler: workerScheduleStop,
+  handler: crownWorkerScheduleStop,
 });
 
 http.route({

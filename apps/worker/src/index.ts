@@ -1036,16 +1036,42 @@ async function createTerminal(
             elapsedMs: Date.now() - processStartTime,
           });
 
+          log(
+            "INFO",
+            `Starting crown evaluation for task ${options.taskRunId}`,
+            {
+              taskRunId: options.taskRunId,
+              agentModel: options.agentModel,
+              elapsedMs: Date.now() - processStartTime,
+            }
+          );
+
           void handleWorkerTaskCompletion(options.taskRunId!, {
             agentModel: options.agentModel,
             elapsedMs: Date.now() - processStartTime,
-          }).catch((error) => {
-            log(
-              "ERROR",
-              `Failed to handle crown workflow for ${options.taskRunId}`,
-              error
-            );
-          });
+          })
+            .then(() => {
+              log(
+                "INFO",
+                `Crown workflow completed for ${options.taskRunId}`,
+                {
+                  taskRunId: options.taskRunId,
+                  agentModel: options.agentModel,
+                }
+              );
+            })
+            .catch((error) => {
+              log(
+                "ERROR",
+                `Failed to handle crown workflow for ${options.taskRunId}`,
+                {
+                  taskRunId: options.taskRunId,
+                  agentModel: options.agentModel,
+                  error: error instanceof Error ? error.message : String(error),
+                  stack: error instanceof Error ? error.stack : undefined,
+                }
+              );
+            });
         })
         .catch((e) => {
           log(
