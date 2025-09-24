@@ -6,6 +6,38 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
 
+function rewriteMorphUrl(url: string): string {
+  // do not rewrite ports 39376 39377 39378
+  if (
+    url.includes("http.cloud.morph.so") &&
+    (url.startsWith("https://port-39376-") ||
+      url.startsWith("https://port-39377-") ||
+      url.startsWith("https://port-39378-"))
+  ) {
+    return url;
+  }
+
+  // Transform morph URLs to cmux.sh format
+  // https://port-8101-morphvm-jrtutqa3.http.cloud.morph.so/handler/sign-in -> https://port-8101-jrtutqa3.cmux.sh/handler/sign-in
+  if (url.includes("http.cloud.morph.so")) {
+    const result = url
+      .replace("morphvm-", "")
+      .replace("http.cloud.morph.so", "cmux.sh");
+    return result;
+  }
+  return url;
+}
+
+function deriveGeneratedBranchName(branch?: string | null): string | undefined {
+  if (!branch) return undefined;
+  const trimmed = branch.trim();
+  if (!trimmed) return undefined;
+  const idx = trimmed.lastIndexOf("-");
+  if (idx <= 0) return trimmed;
+  const candidate = trimmed.slice(0, idx);
+  return candidate || trimmed;
+}
+
 // Create a new task run
 export const create = authMutation({
   args: {
@@ -21,6 +53,10 @@ export const create = authMutation({
     const userId = ctx.identity.subject;
     const now = Date.now();
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+    const task = await ctx.db.get(args.taskId);
+    if (!task || task.teamId !== teamId || task.userId !== userId) {
+      throw new Error("Task not found or unauthorized");
+    }
     if (args.environmentId) {
       const environment = await ctx.db.get(args.environmentId);
       if (!environment || environment.teamId !== teamId) {
@@ -40,6 +76,15 @@ export const create = authMutation({
       teamId,
       environmentId: args.environmentId,
     });
+    const generatedBranchName = deriveGeneratedBranchName(args.newBranch);
+    if (
+      generatedBranchName &&
+      task.generatedBranchName !== generatedBranchName
+    ) {
+      await ctx.db.patch(args.taskId, {
+        generatedBranchName,
+      });
+    }
     const jwt = await new SignJWT({
       taskRunId,
       teamId,
@@ -113,9 +158,16 @@ export const getByTask = authQuery({
     runs.forEach((run) => {
       // Strip heavy/deprecated log field from payload to reduce bandwidth
       // Send empty string to avoid large payloads and keep type compatibility.
+      // Rewrite morph URLs in networking field
+      const networking = run.networking?.map((item) => ({
+        ...item,
+        url: rewriteMorphUrl(item.url),
+      }));
+
       runMap.set(run._id, {
         ...run,
         log: "",
+        networking,
         children: [],
         environment: run.environmentId
           ? (environmentSummaries.get(run.environmentId) ?? null)
@@ -228,6 +280,16 @@ export const get = authQuery({
     if (!doc || doc.teamId !== teamId || doc.userId !== userId) {
       return null;
     }
+    // Rewrite morph URLs in networking field
+    if (doc.networking) {
+      return {
+        ...doc,
+        networking: doc.networking.map((item) => ({
+          ...item,
+          url: rewriteMorphUrl(item.url),
+        })),
+      };
+    }
     return doc;
   },
 });
@@ -241,6 +303,16 @@ export const subscribe = authQuery({
     const doc = await ctx.db.get(args.id);
     if (!doc || doc.teamId !== teamId || doc.userId !== userId) {
       return null;
+    }
+    // Rewrite morph URLs in networking field
+    if (doc.networking) {
+      return {
+        ...doc,
+        networking: doc.networking.map((item) => ({
+          ...item,
+          url: rewriteMorphUrl(item.url),
+        })),
+      };
     }
     return doc;
   },
@@ -477,15 +549,31 @@ export const getByContainerName = authQuery({
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
-    const run = await ctx.db
-      .query("taskRuns")
-      .withIndex("by_vscode_container_name", (q) =>
-        q.eq("vscode.containerName", args.containerName)
-      )
-      .filter((q) => q.eq(q.field("teamId"), teamId))
-      .filter((q) => q.eq(q.field("userId"), userId))
-      .first();
-    return run ?? null;
+    const run =
+      (await ctx.db
+        .query("taskRuns")
+        .withIndex("by_vscode_container_name", (q) =>
+          q.eq("vscode.containerName", args.containerName)
+        )
+        .filter((q) => q.eq(q.field("teamId"), teamId))
+        .filter((q) => q.eq(q.field("userId"), userId))
+        .first()) ?? null;
+
+    if (!run) {
+      return null;
+    }
+
+    if (run.networking) {
+      return {
+        ...run,
+        networking: run.networking.map((item) => ({
+          ...item,
+          url: rewriteMorphUrl(item.url),
+        })),
+      };
+    }
+
+    return run;
   },
 });
 
@@ -551,11 +639,24 @@ export const getActiveVSCodeInstances = authQuery({
         q.eq("teamId", teamId).eq("userId", userId)
       )
       .collect();
-    return runs.filter(
-      (run) =>
-        run.vscode &&
-        (run.vscode.status === "starting" || run.vscode.status === "running")
-    );
+    return runs
+      .filter(
+        (run) =>
+          run.vscode &&
+          (run.vscode.status === "starting" || run.vscode.status === "running")
+      )
+      .map((run) => {
+        if (run.networking) {
+          return {
+            ...run,
+            networking: run.networking.map((item) => ({
+              ...item,
+              url: rewriteMorphUrl(item.url),
+            })),
+          };
+        }
+        return run;
+      });
   },
 });
 
@@ -790,12 +891,25 @@ export const getContainersToStop = authQuery({
     );
 
     // Filter containers that have exceeded their scheduled stop time AND are not in the keep set
-    const containersToStop = runningContainers.filter(
-      (run) =>
-        run.vscode!.scheduledStopAt &&
-        run.vscode!.scheduledStopAt <= now &&
-        !containersToKeepIds.has(run._id)
-    );
+    const containersToStop = runningContainers
+      .filter(
+        (run) =>
+          run.vscode!.scheduledStopAt &&
+          run.vscode!.scheduledStopAt <= now &&
+          !containersToKeepIds.has(run._id)
+      )
+      .map((run) => {
+        if (run.networking) {
+          return {
+            ...run,
+            networking: run.networking.map((item) => ({
+              ...item,
+              url: rewriteMorphUrl(item.url),
+            })),
+          };
+        }
+        return run;
+      });
 
     return containersToStop;
   },
@@ -867,14 +981,43 @@ export const getRunningContainersByCleanupPriority = authQuery({
       return aTime - bTime;
     });
 
+    // Helper to rewrite networking URLs
+    const rewriteContainerNetworking = <
+      T extends (typeof eligibleForCleanup)[number],
+    >(
+      container: T
+    ): T => {
+      if (container.networking) {
+        return {
+          ...container,
+          networking: container.networking.map((item) => ({
+            ...item,
+            url: rewriteMorphUrl(item.url),
+          })),
+        };
+      }
+      return container;
+    };
+
+    // Rewrite networking URLs in all containers
+    const reviewContainersWithRewrittenUrls = reviewContainers.map(
+      rewriteContainerNetworking
+    );
+    const activeContainersWithRewrittenUrls = activeContainers.map(
+      rewriteContainerNetworking
+    );
+
     // Return containers in cleanup priority order:
     // 1. Review period containers (oldest scheduled first)
     // 2. Active containers (only if absolutely necessary)
     return {
       total: runningContainers.length,
-      reviewContainers,
-      activeContainers,
-      prioritizedForCleanup: [...reviewContainers, ...activeContainers],
+      reviewContainers: reviewContainersWithRewrittenUrls,
+      activeContainers: activeContainersWithRewrittenUrls,
+      prioritizedForCleanup: [
+        ...reviewContainersWithRewrittenUrls,
+        ...activeContainersWithRewrittenUrls,
+      ],
       protectedCount: containersToKeepIds.size,
     };
   },
