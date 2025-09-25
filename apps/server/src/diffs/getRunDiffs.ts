@@ -1,10 +1,10 @@
 import type { Id } from "@cmux/convex/dataModel";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
-import { GitDiffManager } from "../gitDiff.js";
-import { loadNativeGit } from "../native/git.js";
-import type { RealtimeServer } from "../realtime.js";
-import { ensureRunWorktreeAndBranch } from "../utils/ensureRunWorktree.js";
-import { serverLogger } from "../utils/fileLogger.js";
+import { GitDiffManager } from "../gitDiff";
+import { loadNativeGit } from "../native/git";
+import type { RealtimeServer } from "../realtime";
+import { ensureRunWorktreeAndBranch } from "../utils/ensureRunWorktree";
+import { serverLogger } from "../utils/fileLogger";
 // Stop using workspace diff; we rely on native ref diff.
 
 export interface GetRunDiffsOptions {

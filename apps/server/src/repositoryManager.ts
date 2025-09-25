@@ -6,8 +6,8 @@ import {
   generatePreCommitHook,
   generatePrePushHook,
   type GitHooksConfig,
-} from "./gitHooks.js";
-import { serverLogger } from "./utils/fileLogger.js";
+} from "./gitHooks";
+import { serverLogger } from "./utils/fileLogger";
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -295,9 +295,12 @@ export class RepositoryManager {
 
   async getGitDir(repoPath: string): Promise<string> {
     try {
-      const { stdout } = await this.executeGitCommand(`git rev-parse --git-dir`, {
-        cwd: repoPath,
-      });
+      const { stdout } = await this.executeGitCommand(
+        `git rev-parse --git-dir`,
+        {
+          cwd: repoPath,
+        }
+      );
       const p = stdout.trim();
       return path.isAbsolute(p) ? p : path.join(repoPath, p);
     } catch {
@@ -320,7 +323,11 @@ export class RepositoryManager {
    * Uses partial clone filter to avoid fetching blobs, and writes commit-graph.
    * Idempotent and rate-limited via a timestamp file under .git.
    */
-  async prewarmCommitHistory(repoPath: string, branch: string, ttlMs = 30 * 60 * 1000): Promise<void> {
+  async prewarmCommitHistory(
+    repoPath: string,
+    branch: string,
+    ttlMs = 30 * 60 * 1000
+  ): Promise<void> {
     const gitDir = await this.getGitDir(repoPath);
     const stamp = path.join(gitDir, "cmux-prewarm.stamp");
     try {
@@ -332,8 +339,13 @@ export class RepositoryManager {
 
     try {
       // Configure partial clone promisor settings (safe if already set)
-      await this.executeGitCommand(`git config core.partialclonefilter blob:none`, { cwd: repoPath });
-      await this.executeGitCommand(`git config remote.origin.promisor true`, { cwd: repoPath });
+      await this.executeGitCommand(
+        `git config core.partialclonefilter blob:none`,
+        { cwd: repoPath }
+      );
+      await this.executeGitCommand(`git config remote.origin.promisor true`, {
+        cwd: repoPath,
+      });
     } catch (e) {
       serverLogger.warn("Failed to set partial clone promisor config:", e);
     }
@@ -359,7 +371,9 @@ export class RepositoryManager {
 
     try {
       // Commit-graph speeds ancestry queries significantly
-      await this.executeGitCommand(`git commit-graph write --reachable`, { cwd: repoPath });
+      await this.executeGitCommand(`git commit-graph write --reachable`, {
+        cwd: repoPath,
+      });
     } catch (e) {
       // Non-fatal
       serverLogger.warn("Commit-graph write failed:", e);

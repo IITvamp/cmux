@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 import { Id } from "@cmux/convex/dataModel";
-import { DockerVSCodeInstance } from "../vscode/DockerVSCodeInstance.js";
+import { DockerVSCodeInstance } from "../vscode/DockerVSCodeInstance";
 
 async function main() {
   console.log("=== Testing Socket Connection ===\n");

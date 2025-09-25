@@ -1,5 +1,5 @@
-import { markPrReady as markPrReadyImpl } from "./markPrReady.js";
-import { getOctokit } from "./octokit.js";
+import { markPrReady as markPrReadyImpl } from "./markPrReady";
+import { getOctokit } from "./octokit";
 
 export type PrBasic = {
   number: number;

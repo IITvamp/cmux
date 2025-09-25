@@ -1,6 +1,28 @@
+import { validateExposedPorts } from "@cmux/shared/utils/validate-exposed-ports";
 import { v } from "convex/values";
 import { resolveTeamIdLoose } from "../_shared/team";
 import { authMutation, authQuery } from "./users/utils";
+
+const normalizeExposedPorts = (
+  ports: readonly number[] | undefined
+): number[] => {
+  if (!ports || ports.length === 0) {
+    return [];
+  }
+
+  const result = validateExposedPorts(ports);
+  if (result.reserved.length > 0) {
+    throw new Error(
+      `Reserved ports cannot be exposed: ${result.reserved.join(", ")}`
+    );
+  }
+  if (result.invalid.length > 0) {
+    throw new Error(
+      `Invalid ports provided: ${result.invalid.join(", ")}`
+    );
+  }
+  return result.sanitized;
+};
 
 export const list = authQuery({
   args: { teamSlugOrId: v.string() },
@@ -45,9 +67,14 @@ export const create = authMutation({
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
+    if (!userId) {
+      throw new Error("Authentication required");
+    }
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
-    
-    return await ctx.db.insert("environments", {
+    const sanitizedPorts = normalizeExposedPorts(args.exposedPorts ?? []);
+    const createdAt = Date.now();
+
+    const environmentId = await ctx.db.insert("environments", {
       name: args.name,
       teamId,
       userId,
@@ -57,10 +84,22 @@ export const create = authMutation({
       description: args.description,
       maintenanceScript: args.maintenanceScript,
       devScript: args.devScript,
-      exposedPorts: args.exposedPorts,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      exposedPorts:
+        sanitizedPorts.length > 0 ? sanitizedPorts : undefined,
+      createdAt,
+      updatedAt: createdAt,
     });
+
+    await ctx.db.insert("environmentSnapshotVersions", {
+      environmentId,
+      teamId,
+      morphSnapshotId: args.morphSnapshotId,
+      version: 1,
+      createdAt,
+      createdByUserId: userId,
+    });
+
+    return environmentId;
   },
 });
 
@@ -79,7 +118,11 @@ export const update = authMutation({
       throw new Error("Environment not found");
     }
     
-    const updates: Record<string, any> = {
+    const updates: {
+      name?: string;
+      description?: string;
+      updatedAt: number;
+    } = {
       updatedAt: Date.now(),
     };
     
@@ -94,6 +137,40 @@ export const update = authMutation({
     await ctx.db.patch(args.id, updates);
     
     return args.id;
+  },
+});
+
+export const updateExposedPorts = authMutation({
+  args: {
+    teamSlugOrId: v.string(),
+    id: v.id("environments"),
+    ports: v.array(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+    const environment = await ctx.db.get(args.id);
+
+    if (!environment || environment.teamId !== teamId) {
+      throw new Error("Environment not found");
+    }
+
+    const sanitizedPorts = normalizeExposedPorts(args.ports);
+    const patch: {
+      exposedPorts?: number[];
+      updatedAt: number;
+    } = {
+      updatedAt: Date.now(),
+    };
+
+    if (sanitizedPorts.length > 0) {
+      patch.exposedPorts = sanitizedPorts;
+    } else {
+      patch.exposedPorts = undefined;
+    }
+
+    await ctx.db.patch(args.id, patch);
+
+    return sanitizedPorts;
   },
 });
 

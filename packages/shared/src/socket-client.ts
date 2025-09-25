@@ -1,12 +1,12 @@
+import { io, type Socket } from "socket.io-client";
 import type {
   ClientToServerEvents,
   ServerToClientEvents,
-} from "./socket-schemas.js";
+} from "./socket-schemas";
 import type {
   ServerToWorkerEvents,
   WorkerToServerEvents,
-} from "./worker-schemas.js";
-import { io, type Socket } from "socket.io-client";
+} from "./worker-schemas";
 export type { Socket } from "socket.io-client";
 
 export interface MainServerClientParams {

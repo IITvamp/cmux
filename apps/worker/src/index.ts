@@ -36,10 +36,6 @@ import { detectTerminalIdle } from './detectTerminalIdle.js'
 import { runWorkerExec } from './execRunner.js'
 import { FileWatcher, computeGitDiff, getFileWithDiff } from './fileWatcher.js'
 import { log } from './logger.js'
-import {
-  handleWorkerTaskCompletion,
-  registerTaskRunContext,
-} from './crown/workflow.js'
 
 const execAsync = promisify(exec)
 

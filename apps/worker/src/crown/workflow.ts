@@ -161,16 +161,47 @@ async function runGitCommand(
 
 async function fetchRemoteRef(ref: string): Promise<boolean> {
   if (!ref) return false
-  const attempts = 5
+  const attempts = 3
   for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const attemptNumber = attempt + 1
+    log('DEBUG', 'Fetching remote ref', {
+      ref,
+      attempt: attemptNumber,
+      attempts,
+    })
+
     const result = await runGitCommand(
       `git fetch --no-tags --prune origin ${ref}`
     )
+
     if (result) {
-      return true
+      // Verify the ref actually exists after fetch
+      const verifyResult = await runGitCommand(
+        `git rev-parse --verify --quiet refs/remotes/origin/${ref}`
+      )
+
+      if (verifyResult?.stdout.trim()) {
+        log('INFO', 'Remote ref verified', {
+          ref,
+          attempt: attemptNumber,
+          commit: verifyResult.stdout.trim(),
+        })
+        return true
+      }
+
+      log('WARN', 'Remote ref still missing after fetch attempt', {
+        ref,
+        attempt: attemptNumber,
+      })
+    } else {
+      log('WARN', 'git fetch failed for ref', {
+        ref,
+        attempt: attemptNumber,
+      })
     }
     await sleep(1000)
   }
+  log('ERROR', 'Failed to fetch remote ref after retries', { ref, attempts })
   return false
 }
 
@@ -193,22 +224,55 @@ async function collectDiffForRun(
 
   const sanitizedBase = baseBranch || 'main'
   try {
-    const baseFetched = await fetchRemoteRef(sanitizedBase)
-    const branchFetched = await fetchRemoteRef(branch)
-    if (!baseFetched) {
-      log('WARNING', 'Failed to fetch base branch; continuing', {
+    // Always fetch both branches to ensure we have latest
+    await runGitCommand(`git fetch origin ${sanitizedBase}:refs/remotes/origin/${sanitizedBase} --force`)
+    await runGitCommand(`git fetch origin ${branch}:refs/remotes/origin/${branch} --force`)
+    
+    // Now verify what we actually have
+    const baseExists = await runGitCommand(
+      `git rev-parse --verify --quiet refs/remotes/origin/${sanitizedBase}`
+    )
+    const branchExists = await runGitCommand(
+      `git rev-parse --verify --quiet refs/remotes/origin/${branch}`
+    )
+    
+    if (!baseExists?.stdout.trim()) {
+      log('ERROR', 'Base branch not available after fetch', {
         baseBranch: sanitizedBase,
       })
-    }
-    const baseRef = `origin/${sanitizedBase}`
-    const diffCommand = branchFetched
-      ? `git diff ${baseRef}..origin/${branch}`
-      : `git diff ${baseRef}`
-    const diffResult = await runGitCommand(diffCommand)
-    if (!diffResult) {
       return 'No changes detected'
     }
-    return truncateDiff(diffResult.stdout)
+    
+    if (!branchExists?.stdout.trim()) {
+      log('ERROR', 'Feature branch not available after fetch', {
+        branch,
+      })
+      return 'No changes detected'
+    }
+    
+    const diffCommand = `git diff origin/${sanitizedBase}...origin/${branch}`
+    log('DEBUG', 'Running git diff command', {
+      diffCommand,
+      baseCommit: baseExists.stdout.trim().substring(0, 8),
+      branchCommit: branchExists.stdout.trim().substring(0, 8),
+    })
+    
+    const diffResult = await runGitCommand(diffCommand)
+    if (!diffResult) {
+      log('ERROR', 'Git diff command failed', { diffCommand })
+      return 'No changes detected'
+    }
+    
+    const diff = diffResult.stdout
+    if (!diff || diff.trim().length === 0) {
+      log('INFO', 'No differences found between branches', {
+        base: sanitizedBase,
+        branch,
+      })
+      return 'No changes detected'
+    }
+    
+    return truncateDiff(diff)
   } catch (error) {
     log('ERROR', 'Failed to collect diff for run', {
       baseBranch: sanitizedBase,
@@ -879,11 +943,17 @@ export async function handleWorkerTaskCompletion(
       }
 
       if (checkResponse.existingEvaluation) {
-        log('INFO', 'Crown evaluation already exists (another worker completed it)', {
-          taskRunId,
-          winnerRunId: checkResponse.existingEvaluation.winnerRunId,
-          evaluatedAt: new Date(checkResponse.existingEvaluation.evaluatedAt).toISOString(),
-        })
+        log(
+          'INFO',
+          'Crown evaluation already exists (another worker completed it)',
+          {
+            taskRunId,
+            winnerRunId: checkResponse.existingEvaluation.winnerRunId,
+            evaluatedAt: new Date(
+              checkResponse.existingEvaluation.evaluatedAt
+            ).toISOString(),
+          }
+        )
         return
       }
 

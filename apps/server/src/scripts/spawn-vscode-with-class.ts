@@ -1,6 +1,6 @@
 import { Id } from "@cmux/convex/dataModel";
 import fs from "node:fs";
-import { DockerVSCodeInstance } from "../vscode/DockerVSCodeInstance.js";
+import { DockerVSCodeInstance } from "../vscode/DockerVSCodeInstance";
 
 async function main() {
   const prompt = process.argv[2];

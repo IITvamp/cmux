@@ -1,8 +1,8 @@
 import { api } from "@cmux/convex/api";
-import { ghApi } from "../ghApi.js";
-import { listRemoteBranches } from "../native/git.js";
-import { getConvex } from "./convexClient.js";
-import { serverLogger } from "./fileLogger.js";
+import { ghApi } from "../ghApi";
+import { listRemoteBranches } from "../native/git";
+import { getConvex } from "./convexClient";
+import { serverLogger } from "./fileLogger";
 
 export async function refreshGitHubData({
   teamSlugOrId,
@@ -92,7 +92,11 @@ export async function refreshBranchesForRepo(
 ) {
   try {
     // Prefer local git via Rust (gitoxide) for branch listing, sorted by recency
-    let branches: { name: string; lastCommitSha?: string; lastActivityAt?: number }[];
+    let branches: {
+      name: string;
+      lastCommitSha?: string;
+      lastActivityAt?: number;
+    }[];
     try {
       branches = await listRemoteBranches({ repoFullName: repo });
     } catch (e) {

@@ -5,7 +5,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { computeEntriesBetweenRefs } from "./parseGitDiff.js";
+import { computeEntriesBetweenRefs } from "./parseGitDiff";
 
 const exec = promisify(execCb);
 
@@ -51,7 +51,9 @@ describe("computeEntriesBetweenRefs", () => {
     await fs.writeFile(path.join(work, "src.txt"), "one\ntwo\n", "utf8");
     await fs.appendFile(path.join(work, "README.md"), "feat\n", "utf8");
     await exec(`git -C "${work}" add .`);
-    await exec(`git -C "${work}" commit -m "feature: add file and edit readme"`);
+    await exec(
+      `git -C "${work}" commit -m "feature: add file and edit readme"`
+    );
 
     const entries = await computeEntriesBetweenRefs({
       repoPath: work,
@@ -103,4 +105,3 @@ describe("computeEntriesBetweenRefs", () => {
     }
   });
 });
-

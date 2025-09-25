@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { getGitImplMode } from "./git.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { getGitImplMode } from "./git";
 
 describe("getGitImplMode", () => {
   const prev = { ...process.env };
@@ -22,4 +22,3 @@ describe("getGitImplMode", () => {
     expect(getGitImplMode()).toBe("js");
   });
 });
-

@@ -2,11 +2,11 @@ import { api } from "@cmux/convex/api";
 import type { Doc, Id } from "@cmux/convex/dataModel";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { RepositoryManager } from "../repositoryManager.js";
-import { getConvex } from "../utils/convexClient.js";
-import { retryOnOptimisticConcurrency } from "../utils/convexRetry.js";
-import { serverLogger } from "../utils/fileLogger.js";
-import { getWorktreePath, setupProjectWorkspace } from "../workspace.js";
+import { RepositoryManager } from "../repositoryManager";
+import { getConvex } from "../utils/convexClient";
+import { retryOnOptimisticConcurrency } from "../utils/convexRetry";
+import { serverLogger } from "../utils/fileLogger";
+import { getWorktreePath, setupProjectWorkspace } from "../workspace";
 
 export type EnsureWorktreeResult = {
   run: Doc<"taskRuns">;

@@ -1,15 +1,15 @@
-import path from "node:path";
-import { tmpdir } from "node:os";
-import * as fs from "node:fs/promises";
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
-import { getConvex } from "./utils/convexClient.js";
-import { serverLogger } from "./utils/fileLogger.js";
-import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
-import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
-import { RepositoryManager } from "./repositoryManager.js";
-import { getProjectPaths } from "./workspace.js";
-import { collectRelevantDiff } from "./utils/collectRelevantDiff.js";
+import * as fs from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { RepositoryManager } from "./repositoryManager";
+import { collectRelevantDiff } from "./utils/collectRelevantDiff";
+import { getConvex } from "./utils/convexClient";
+import { serverLogger } from "./utils/fileLogger";
+import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken";
+import { VSCodeInstance } from "./vscode/VSCodeInstance";
+import { getProjectPaths } from "./workspace";
 
 const UNKNOWN_AGENT_NAME = "unknown agent";
 
