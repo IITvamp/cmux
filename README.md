@@ -44,3 +44,7 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+Code weaves through the night
+Bugs dance in the morning light
+Commit with delight
