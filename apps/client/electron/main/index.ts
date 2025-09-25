@@ -16,6 +16,7 @@ import {
   webFrameMain,
   type BrowserWindowConstructorOptions,
   type MenuItemConstructorOptions,
+  type Session,
 } from "electron";
 import { startEmbeddedServer } from "./embedded-server";
 import { registerWebContentsViewHandlers } from "./web-contents-view";
@@ -37,6 +38,11 @@ import {
   appendLogWithRotation,
   type LogRotationOptions,
 } from "./log-management/log-rotation";
+import {
+  deleteStoredAuthTokens,
+  readStoredAuthTokens,
+  writeStoredAuthTokens,
+} from "./auth-persistence";
 const { autoUpdater } = electronUpdater;
 
 import util from "node:util";
@@ -46,6 +52,50 @@ import { env } from "./electron-main-env";
 // Use a cookieable HTTPS origin intercepted locally instead of a custom scheme.
 const PARTITION = "persist:cmux";
 const APP_HOST = "cmux.local";
+
+const REFRESH_COOKIE_NAME = `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`;
+const ACCESS_COOKIE_NAME = "stack-access";
+
+let cookieBaseUrl = resolveCookieBaseUrl();
+
+function resolveCookieBaseUrl(current?: string): string {
+  if (current) {
+    try {
+      const url = new URL(current);
+      url.hash = "";
+      url.search = "";
+      url.pathname = "/";
+      return url.toString();
+    } catch {
+      // ignore invalid URLs; fall back below
+    }
+  }
+
+  if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
+    try {
+      const url = new URL(process.env["ELECTRON_RENDERER_URL"]!);
+      url.hash = "";
+      url.search = "";
+      url.pathname = "/";
+      return url.toString();
+    } catch {
+      // ignore invalid dev URLs; fall back to default host
+    }
+  }
+
+  const base = new URL(`https://${APP_HOST}`);
+  base.pathname = "/";
+  return base.toString();
+}
+
+function updateCookieBaseUrl(current: string): string {
+  cookieBaseUrl = resolveCookieBaseUrl(current);
+  return cookieBaseUrl;
+}
+
+function shouldUseSecureCookies(url: string): boolean {
+  return !url.startsWith("http://");
+}
 
 function resolveMaxSuspendedWebContents(): number | undefined {
   const raw =
@@ -204,6 +254,90 @@ export function mainError(...args: unknown[]) {
 
   console.error("[MAIN]", line);
   emitToRenderer("error", `[MAIN] ${line}`);
+}
+
+function isAuthCookie(name: string): boolean {
+  return name === REFRESH_COOKIE_NAME || name === ACCESS_COOKIE_NAME;
+}
+
+async function persistCurrentAuthCookies(ses: Session): Promise<void> {
+  const url = cookieBaseUrl;
+  try {
+    const [refreshCookie] = await ses.cookies.get({ url, name: REFRESH_COOKIE_NAME });
+    if (!refreshCookie) {
+      await deleteStoredAuthTokens();
+      return;
+    }
+    const [accessCookie] = await ses.cookies.get({ url, name: ACCESS_COOKIE_NAME });
+    await writeStoredAuthTokens({
+      refreshToken: refreshCookie.value,
+      refreshExpiresAt: refreshCookie.expirationDate ?? null,
+      accessToken: accessCookie?.value ?? null,
+      accessExpiresAt: accessCookie?.expirationDate ?? null,
+    });
+  } catch (error) {
+    mainWarn("Failed to persist auth cookies", error);
+  }
+}
+
+async function restoreAuthCookiesFromStore(
+  ses: Session
+): Promise<void> {
+  const url = cookieBaseUrl;
+  try {
+    const [refreshCookie] = await ses.cookies.get({ url, name: REFRESH_COOKIE_NAME });
+    const [accessCookie] = await ses.cookies.get({ url, name: ACCESS_COOKIE_NAME });
+    if (refreshCookie) {
+      if (!accessCookie) {
+        // Ensure stored access token reflects cookie state.
+        await persistCurrentAuthCookies(ses);
+      }
+      return;
+    }
+
+    const stored = await readStoredAuthTokens();
+    if (!stored) return;
+
+    const now = Math.floor(Date.now() / 1000);
+    if (!stored.refreshToken) {
+      await deleteStoredAuthTokens();
+      return;
+    }
+    if (stored.refreshExpiresAt && stored.refreshExpiresAt <= now) {
+      await deleteStoredAuthTokens();
+      return;
+    }
+
+    const secure = shouldUseSecureCookies(url);
+    await ses.cookies.set({
+      url,
+      name: REFRESH_COOKIE_NAME,
+      value: stored.refreshToken,
+      expirationDate: stored.refreshExpiresAt ?? undefined,
+      sameSite: "no_restriction",
+      secure,
+    });
+
+    if (stored.accessToken && (!stored.accessExpiresAt || stored.accessExpiresAt > now)) {
+      await ses.cookies.set({
+        url,
+        name: ACCESS_COOKIE_NAME,
+        value: stored.accessToken,
+        expirationDate: stored.accessExpiresAt ?? undefined,
+        sameSite: "no_restriction",
+        secure,
+      });
+    }
+  } catch (error) {
+    mainWarn("Failed to restore auth cookies", error);
+  }
+}
+
+function watchAuthCookiesForPersistence(ses: Session): void {
+  ses.cookies.on("changed", (_event, cookie, _cause, _removed) => {
+    if (!isAuthCookie(cookie.name)) return;
+    void persistCurrentAuthCookies(ses);
+  });
 }
 
 function emitAutoUpdateToastIfPossible(): void {
@@ -480,6 +614,11 @@ function createWindow(): void {
   // Once the renderer is loaded, process any queued deep-link
   mainWindow.webContents.on("did-finish-load", () => {
     mainLog("Renderer finished load");
+    try {
+      updateCookieBaseUrl(mainWindow?.webContents.getURL() ?? "");
+    } catch {
+      // ignore URL parsing issues
+    }
     rendererLoaded = true;
     if (pendingProtocolUrl) {
       mainLog("Processing queued protocol URL", { url: pendingProtocolUrl });
@@ -623,6 +762,9 @@ app.whenReady().then(async () => {
   }
 
   const ses = session.fromPartition(PARTITION);
+  await restoreAuthCookiesFromStore(ses);
+  watchAuthCookiesForPersistence(ses);
+  await persistCurrentAuthCookies(ses);
   // Intercept HTTPS for our private host and serve local files; pass-through others.
   ses.protocol.handle("https", async (req) => {
     const u = new URL(req.url);
@@ -803,38 +945,34 @@ async function handleProtocolUrl(url: string): Promise<void> {
       return;
     }
 
-    // Determine a cookieable URL. Prefer our custom cmux:// origin when not
-    // running against an http(s) dev server.
-    const currentUrl = new URL(mainWindow.webContents.getURL());
-    currentUrl.hash = "";
-    const realUrl = currentUrl.toString() + "/";
+    const realUrl = updateCookieBaseUrl(mainWindow.webContents.getURL());
+    const secure = shouldUseSecureCookies(realUrl);
 
     await Promise.all([
-      mainWindow.webContents.session.cookies.remove(
-        realUrl,
-        `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`
-      ),
-      mainWindow.webContents.session.cookies.remove(realUrl, `stack-access`),
+      mainWindow.webContents.session.cookies.remove(realUrl, REFRESH_COOKIE_NAME),
+      mainWindow.webContents.session.cookies.remove(realUrl, ACCESS_COOKIE_NAME),
     ]);
 
     await Promise.all([
       mainWindow.webContents.session.cookies.set({
         url: realUrl,
-        name: `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`,
+        name: REFRESH_COOKIE_NAME,
         value: stackRefresh,
-        expirationDate: refreshPayload?.exp,
+        expirationDate: refreshPayload?.exp ?? undefined,
         sameSite: "no_restriction",
-        secure: true,
+        secure,
       }),
       mainWindow.webContents.session.cookies.set({
         url: realUrl,
-        name: "stack-access",
+        name: ACCESS_COOKIE_NAME,
         value: stackAccess,
-        expirationDate: accessPayload?.exp,
+        expirationDate: accessPayload?.exp ?? undefined,
         sameSite: "no_restriction",
-        secure: true,
+        secure,
       }),
     ]);
+
+    await persistCurrentAuthCookies(mainWindow.webContents.session);
 
     mainWindow.webContents.reload();
     return;
