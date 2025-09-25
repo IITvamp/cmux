@@ -58,7 +58,7 @@ type WorkerTaskRunDescriptor = {
 type WorkerTaskRunResponse = {
   ok: boolean
   taskRun: WorkerTaskRunDescriptor | null
-  task: { id: string; text: string } | null
+  task: { id: string; text: string; projectFullName?: string | null } | null
   containerSettings: {
     autoCleanupEnabled: boolean
     stopImmediatelyOnCompletion: boolean
@@ -74,6 +74,7 @@ type WorkerAllRunsCompleteResponse = {
 }
 
 const taskRunContexts = new Map<string, WorkerRunContext>()
+const branchDiffCache = new Map<string, string>()
 
 function getConvexBaseUrl(override?: string): string | null {
   const url = override ?? process.env.NEXT_PUBLIC_CONVEX_URL
@@ -162,6 +163,9 @@ async function runGitCommand(
 async function fetchRemoteRef(ref: string): Promise<boolean> {
   if (!ref) return false
   const attempts = 3
+  const remoteBranch = ref.replace(/^origin\//, '')
+  const verifyRef = `refs/remotes/origin/${remoteBranch}`
+  const fetchCommand = `git fetch --no-tags --prune origin refs/heads/${remoteBranch}:${verifyRef}`
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const attemptNumber = attempt + 1
     log('DEBUG', 'Fetching remote ref', {
@@ -170,14 +174,19 @@ async function fetchRemoteRef(ref: string): Promise<boolean> {
       attempts,
     })
 
-    const result = await runGitCommand(
-      `git fetch --no-tags --prune origin ${ref}`
-    )
+    const result = await runGitCommand(fetchCommand)
 
     if (result) {
+      const trimmedStdout = result.stdout.trim()
+      if (trimmedStdout.length > 0) {
+        log('DEBUG', 'git fetch output', {
+          ref,
+          output: trimmedStdout.slice(0, 160),
+        })
+      }
       // Verify the ref actually exists after fetch
       const verifyResult = await runGitCommand(
-        `git rev-parse --verify --quiet refs/remotes/origin/${ref}`
+        `git rev-parse --verify --quiet ${verifyRef}`
       )
 
       if (verifyResult?.stdout.trim()) {
@@ -222,56 +231,50 @@ async function collectDiffForRun(
     return 'No changes detected'
   }
 
+  const cachedDiff = branchDiffCache.get(branch)
+  if (cachedDiff) {
+    log('INFO', 'Using cached diff for branch', { branch })
+    return truncateDiff(cachedDiff)
+  }
+
   const sanitizedBase = baseBranch || 'main'
+  log('INFO', 'Collecting diff from remote branches', {
+    baseBranch: sanitizedBase,
+    branch,
+  })
+  await fetchRemoteRef(sanitizedBase)
+  await fetchRemoteRef(branch)
+  const baseRef = sanitizedBase.startsWith('origin/')
+    ? sanitizedBase
+    : `origin/${sanitizedBase}`
+  const branchRef = branch.startsWith('origin/')
+    ? branch
+    : `origin/${branch}`
+
   try {
-    // Always fetch both branches to ensure we have latest
-    await runGitCommand(`git fetch origin ${sanitizedBase}:refs/remotes/origin/${sanitizedBase} --force`)
-    await runGitCommand(`git fetch origin ${branch}:refs/remotes/origin/${branch} --force`)
-    
-    // Now verify what we actually have
-    const baseExists = await runGitCommand(
-      `git rev-parse --verify --quiet refs/remotes/origin/${sanitizedBase}`
+    const { stdout } = await execAsync(
+      '/usr/local/bin/cmux-collect-relevant-diff.sh',
+      {
+        cwd: WORKSPACE_ROOT,
+        maxBuffer: 5 * 1024 * 1024,
+        env: {
+          ...process.env,
+          CMUX_DIFF_BASE: baseRef,
+          CMUX_DIFF_HEAD_REF: branchRef,
+        },
+      }
     )
-    const branchExists = await runGitCommand(
-      `git rev-parse --verify --quiet refs/remotes/origin/${branch}`
-    )
-    
-    if (!baseExists?.stdout.trim()) {
-      log('ERROR', 'Base branch not available after fetch', {
-        baseBranch: sanitizedBase,
-      })
-      return 'No changes detected'
-    }
-    
-    if (!branchExists?.stdout.trim()) {
-      log('ERROR', 'Feature branch not available after fetch', {
-        branch,
-      })
-      return 'No changes detected'
-    }
-    
-    const diffCommand = `git diff origin/${sanitizedBase}...origin/${branch}`
-    log('DEBUG', 'Running git diff command', {
-      diffCommand,
-      baseCommit: baseExists.stdout.trim().substring(0, 8),
-      branchCommit: branchExists.stdout.trim().substring(0, 8),
-    })
-    
-    const diffResult = await runGitCommand(diffCommand)
-    if (!diffResult) {
-      log('ERROR', 'Git diff command failed', { diffCommand })
-      return 'No changes detected'
-    }
-    
-    const diff = diffResult.stdout
-    if (!diff || diff.trim().length === 0) {
+
+    const diff = stdout.trim()
+    if (!diff) {
       log('INFO', 'No differences found between branches', {
-        base: sanitizedBase,
-        branch,
+        base: baseRef,
+        branch: branchRef,
       })
       return 'No changes detected'
     }
-    
+
+    branchDiffCache.set(branch, diff)
     return truncateDiff(diff)
   } catch (error) {
     log('ERROR', 'Failed to collect diff for run', {
@@ -290,11 +293,12 @@ async function ensureBranchesAvailable(
   localFallbackBranches: Set<string> = new Set()
 ): Promise<boolean> {
   const sanitizedBase = baseBranch || 'main'
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+  const attemptLimit = Math.min(maxAttempts, 3)
+  for (let attempt = 0; attempt < attemptLimit; attempt += 1) {
     const baseOk = await fetchRemoteRef(sanitizedBase)
     log('INFO', 'Ensuring branches available', {
       attempt,
-      maxAttempts,
+      maxAttempts: attemptLimit,
       baseBranch: sanitizedBase,
       baseOk,
       completedRunCount: completedRuns.length,
@@ -313,6 +317,11 @@ async function ensureBranchesAvailable(
       })
       if (!branchOk && !localFallbackBranches.has(run.newBranch)) {
         allBranchesOk = false
+      } else if (!branchOk) {
+        log('INFO', 'Using cached diff fallback for branch', {
+          runId: run.id,
+          branch: run.newBranch,
+        })
       }
     }
     if (baseOk && allBranchesOk) {
@@ -323,7 +332,9 @@ async function ensureBranchesAvailable(
       baseOk,
       allBranchesOk,
     })
-    await sleep(3000)
+    if (attempt < attemptLimit - 1) {
+      await sleep(3000)
+    }
   }
   return false
 }
@@ -391,11 +402,39 @@ async function runGitCommandSafe(
           : String(stderrValue ?? '')
     return { stdout, stderr }
   } catch (error) {
+    const execError = error as Error & {
+      stdout?: string | Buffer
+      stderr?: string | Buffer
+      code?: number | string
+      status?: number
+    }
+    const stdout =
+      typeof execError.stdout === 'string'
+        ? execError.stdout
+        : Buffer.isBuffer(execError.stdout)
+          ? execError.stdout.toString('utf8')
+          : undefined
+    const stderr =
+      typeof execError.stderr === 'string'
+        ? execError.stderr
+        : Buffer.isBuffer(execError.stderr)
+          ? execError.stderr.toString('utf8')
+          : undefined
+    const errorPayload = {
+      command,
+      message: execError.message,
+      exitCode:
+        typeof execError.code === 'number'
+          ? execError.code
+          : execError.status,
+      stdout: stdout?.slice(0, 500),
+      stderr: stderr?.slice(0, 500),
+    }
     if (!allowFailure) {
-      log('ERROR', 'Git command failed', { command, error })
+      log('ERROR', 'Git command failed', errorPayload)
       throw error
     }
-    log('WARN', 'Git command failed (ignored)', { command, error })
+    log('WARN', 'Git command failed (ignored)', errorPayload)
     return null
   }
 }
@@ -416,29 +455,91 @@ async function getCurrentBranch(): Promise<string | null> {
 async function autoCommitAndPush({
   branchName,
   commitMessage,
+  remoteUrl,
 }: {
   branchName: string
   commitMessage: string
+  remoteUrl?: string
 }): Promise<void> {
   if (!branchName) {
     log('ERROR', 'Missing branch name for auto-commit')
     return
   }
 
-  log('INFO', 'Worker auto-commit starting', { branchName })
+  log('INFO', 'Worker auto-commit starting', {
+    branchName,
+    remoteOverride: remoteUrl,
+  })
 
-  await runGitCommandSafe(`git add -A`)
+  if (remoteUrl) {
+    const currentRemote = await runGitCommandSafe('git remote get-url origin', true)
+    const trimmed = currentRemote?.stdout.trim()
+    if (!trimmed || trimmed !== remoteUrl) {
+      log('INFO', 'Updating origin remote before push', {
+        branchName,
+        currentRemote: trimmed,
+        remoteUrl,
+      })
+      await runGitCommandSafe(`git remote set-url origin ${remoteUrl}`)
+    }
+    const updatedRemote = await runGitCommandSafe('git remote -v', true)
+    if (updatedRemote) {
+      log('INFO', 'Current git remotes after potential update', {
+        branchName,
+        remotes: updatedRemote.stdout.trim().split('\n'),
+      })
+    }
+  }
 
-  await runGitCommandSafe(`git checkout -B ${branchName}`)
+  const addResult = await runGitCommandSafe(`git add -A`)
+  log('INFO', 'git add completed', {
+    branchName,
+    stdout: addResult?.stdout
+      ? addResult.stdout.trim().slice(0, 200)
+      : undefined,
+    stderr: addResult?.stderr
+      ? addResult.stderr.trim().slice(0, 200)
+      : undefined,
+  })
+
+  const checkoutResult = await runGitCommandSafe(
+    `git checkout -B ${branchName}`
+  )
+  log('INFO', 'git checkout -B completed', {
+    branchName,
+    stdout: checkoutResult?.stdout
+      ? checkoutResult.stdout.trim().slice(0, 200)
+      : undefined,
+    stderr: checkoutResult?.stderr
+      ? checkoutResult.stderr.trim().slice(0, 200)
+      : undefined,
+  })
 
   const status = await runGitCommandSafe(`git status --short`, true)
   const hasChanges = !!status?.stdout.trim()
+  if (status) {
+    const preview = status.stdout.trim().split('\n').slice(0, 10)
+    log('INFO', 'git status before commit', {
+      branchName,
+      entries: preview,
+      totalLines: status.stdout.trim() === '' ? 0 : status.stdout.trim().split('\n').length,
+    })
+  }
 
   if (hasChanges) {
-    await runGitCommandSafe(
+    const commitResult = await runGitCommandSafe(
       `git commit -m ${JSON.stringify(commitMessage)}`,
       true
     )
+    if (commitResult) {
+      log('INFO', 'Created commit before push', {
+        branchName,
+        stdout: commitResult.stdout.trim().slice(0, 200),
+        stderr: commitResult.stderr.trim().slice(0, 200),
+      })
+    } else {
+      log('WARN', 'Commit command did not produce output', { branchName })
+    }
   } else {
     log('INFO', 'No changes detected before commit', { branchName })
   }
@@ -449,10 +550,34 @@ async function autoCommitAndPush({
   )
 
   if (remoteExists?.stdout.trim()) {
-    await runGitCommandSafe(`git pull --rebase origin ${branchName}`, true)
+    log('INFO', 'Remote branch exists before push', {
+      branchName,
+      remoteHead: remoteExists.stdout.trim().slice(0, 120),
+    })
+    const pullResult = await runGitCommandSafe(
+      `git pull --rebase origin ${branchName}`
+    )
+    if (pullResult) {
+      log('INFO', 'Rebased branch onto remote', {
+        branchName,
+        stdout: pullResult.stdout.trim().slice(0, 200),
+        stderr: pullResult.stderr.trim().slice(0, 200),
+      })
+    }
+  } else {
+    log('INFO', 'Remote branch missing before push; creating new remote ref', {
+      branchName,
+    })
   }
 
-  await runGitCommandSafe(`git push -u origin ${branchName}`, true)
+  const pushResult = await runGitCommandSafe(`git push -u origin ${branchName}`)
+  if (pushResult) {
+    log('INFO', 'git push output', {
+      branchName,
+      stdout: pushResult.stdout.trim().slice(0, 200),
+      stderr: pushResult.stderr.trim().slice(0, 200),
+    })
+  }
 
   log('INFO', 'Worker auto-commit finished', { branchName })
 }
@@ -774,10 +899,28 @@ export async function handleWorkerTaskCompletion(
       info?.taskRun?.newBranch ?? (await getCurrentBranch())
 
     if (branchForCommit) {
+      branchDiffCache.set(branchForCommit, diffForCommit)
+      log('INFO', 'Cached diff for branch after auto-commit', {
+        branch: branchForCommit,
+        diffLength: diffForCommit.length,
+      })
+    }
+
+    if (branchForCommit) {
+      const remoteUrl = info?.task?.projectFullName
+        ? `https://github.com/${info.task.projectFullName}.git`
+        : undefined
+      if (!remoteUrl) {
+        log('WARN', 'Task missing projectFullName; using existing git remote', {
+          taskRunId,
+          branch: branchForCommit,
+        })
+      }
       try {
         await autoCommitAndPush({
           branchName: branchForCommit,
           commitMessage,
+          remoteUrl,
         })
       } catch (error) {
         log('ERROR', 'Worker auto-commit failed', {
@@ -1022,14 +1165,17 @@ export async function handleWorkerTaskCompletion(
         const branchesReady = await ensureBranchesAvailable(
           [{ id: candidate.runId, newBranch: candidate.newBranch }],
           baseBranch,
-          10,
-          new Set(candidate.newBranch ? [candidate.newBranch] : [])
+          3,
+          new Set(
+            candidate.newBranch && branchDiffCache.has(candidate.newBranch)
+              ? [candidate.newBranch]
+              : []
+          )
         )
         if (!branchesReady) {
-          log('ERROR', 'Branches not ready for single-run crown', {
+          log('WARN', 'Branches not ready for single-run crown; continuing', {
             taskRunId,
           })
-          return
         }
 
         if (!runContext.teamId) {
