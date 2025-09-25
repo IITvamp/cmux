@@ -209,7 +209,7 @@ function TaskTreeInner({
   if (task.projectFullName) {
     taskSecondaryParts.push(task.projectFullName);
   }
-  const taskSecondary = taskSecondaryParts.join(" • ");
+  const taskSecondary = taskSecondaryParts.join(" ");
 
   const canExpand = true;
 
