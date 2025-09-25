@@ -479,6 +479,16 @@ function DashboardComponent() {
 
   const branchOptions = branches || [];
 
+  const selectedEnvironment = useMemo(() => {
+    if (!isEnvSelected) return null;
+    const rawId = selectedProject[0]?.replace(/^env:/, "");
+    if (!rawId) return null;
+    const envId = rawId as Id<"environments">;
+    return (
+      environmentsQuery.data?.find((env) => env._id === envId) ?? null
+    );
+  }, [isEnvSelected, selectedProject, environmentsQuery.data]);
+
   // Cloud mode toggle handler
   const handleCloudModeToggle = useCallback(() => {
     if (isEnvSelected) return; // environment forces cloud mode
@@ -620,9 +630,15 @@ function DashboardComponent() {
   // Memoized computed values for editor props
   const lexicalRepoUrl = useMemo(() => {
     if (!selectedProject[0]) return undefined;
-    if (isEnvSelected) return undefined;
+    if (isEnvSelected) {
+      const repoFullName = selectedEnvironment?.selectedRepos?.[0];
+      if (repoFullName) {
+        return `https://github.com/${repoFullName}.git`;
+      }
+      return undefined;
+    }
     return `https://github.com/${selectedProject[0]}.git`;
-  }, [selectedProject, isEnvSelected]);
+  }, [selectedProject, isEnvSelected, selectedEnvironment]);
 
   const lexicalBranch = useMemo(
     () => effectiveSelectedBranch[0],
