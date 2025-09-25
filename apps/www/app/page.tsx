@@ -146,6 +146,24 @@ export default function LandingPage() {
                 Universal AI coding agent manager for 10x engineers
               </h1>
 
+              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-neutral-800 bg-neutral-900 px-3 py-1 text-sm text-neutral-300">
+                <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-blue-300">
+                  Update
+                </span>
+                <span>
+                  I&apos;m now working on{" "}
+                  <a
+                    href="https://cmux.dev"
+                    className="text-sky-400 hover:text-sky-300 underline decoration-dotted underline-offset-4"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    cmux.dev
+                  </a>
+                  .
+                </span>
+              </div>
+
               <p className="text-lg text-neutral-300 mb-4 leading-relaxed">
                 cmux is a universal AI coding agent manager that supports Claude Code, Codex, Gemini CLI, Amp,
                 Opencode, and other coding CLIs. We give 10x engineers an interface to manage AI coding tasks in
