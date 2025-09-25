@@ -1,6 +1,6 @@
 import type { ServerToWorkerEvents, WorkerToServerEvents } from "@cmux/shared";
 import type { Socket } from "@cmux/shared/socket";
-import { serverLogger } from "./fileLogger.js";
+import { serverLogger } from "./fileLogger";
 import { workerExec } from "./workerExec";
 
 const DEFAULT_WORKER_CWD = "/root/workspace";
@@ -19,24 +19,24 @@ export async function resolveWorkerRepoPath({
   const detectionScript = [
     "set -euo pipefail",
     "",
-    "current_dir=\"$(pwd)\"",
+    'current_dir="$(pwd)"',
     "",
     "if git rev-parse --show-toplevel >/dev/null 2>&1; then",
     "  git rev-parse --show-toplevel",
     "  exit 0",
     "fi",
     "",
-    "git_dirs=$(find \"$current_dir\" -mindepth 1 -maxdepth 4 -type d -name .git 2>/dev/null | sort)",
-    "if [ -n \"$git_dirs\" ]; then",
+    'git_dirs=$(find "$current_dir" -mindepth 1 -maxdepth 4 -type d -name .git 2>/dev/null | sort)',
+    'if [ -n "$git_dirs" ]; then',
     "  first_git_dir=$(printf '%s\n' \"$git_dirs\" | head -n 1)",
-    "  repo_dir=\"$(dirname \"$first_git_dir\")\"",
-    "  if git -C \"$repo_dir\" rev-parse --show-toplevel >/dev/null 2>&1; then",
-    "    git -C \"$repo_dir\" rev-parse --show-toplevel",
+    '  repo_dir="$(dirname "$first_git_dir")"',
+    '  if git -C "$repo_dir" rev-parse --show-toplevel >/dev/null 2>&1; then',
+    '    git -C "$repo_dir" rev-parse --show-toplevel',
     "    exit 0",
     "  fi",
     "fi",
     "",
-    "echo \"$current_dir\"",
+    'echo "$current_dir"',
   ].join("\n");
 
   try {

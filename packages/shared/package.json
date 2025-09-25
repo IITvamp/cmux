@@ -54,6 +54,14 @@
       "import": "./src/utils/typed-zid.ts",
       "types": "./src/utils/typed-zid.ts"
     },
+    "./utils/reserved-cmux-ports": {
+      "import": "./src/utils/reserved-cmux-ports.ts",
+      "types": "./src/utils/reserved-cmux-ports.ts"
+    },
+    "./utils/validate-exposed-ports": {
+      "import": "./src/utils/validate-exposed-ports.ts",
+      "types": "./src/utils/validate-exposed-ports.ts"
+    },
     "./node/convex-cache": {
       "import": "./src/node/convex-cache.ts",
       "types": "./src/node/convex-cache.ts"

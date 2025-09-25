@@ -1,8 +1,7 @@
 import { Id } from "@cmux/convex/dataModel";
-import type { ServerToWorkerEvents, WorkerToServerEvents } from "@cmux/shared";
-import { EventEmitter } from "node:events";
 import { connectToWorkerManagement } from "@cmux/shared/socket";
-import { dockerLogger } from "../utils/fileLogger.js";
+import { EventEmitter } from "node:events";
+import { dockerLogger } from "../utils/fileLogger";
 
 export interface VSCodeInstanceConfig {
   workspacePath?: string;
@@ -36,7 +35,8 @@ export abstract class VSCodeInstance extends EventEmitter {
   protected instanceId: Id<"taskRuns">;
   protected taskRunId: Id<"taskRuns">;
   protected taskId: Id<"tasks">;
-  protected workerSocket: ReturnType<typeof connectToWorkerManagement> | null = null;
+  protected workerSocket: ReturnType<typeof connectToWorkerManagement> | null =
+    null;
   protected workerConnected: boolean = false;
   protected teamSlugOrId: string;
 

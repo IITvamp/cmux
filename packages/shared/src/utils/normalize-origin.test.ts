@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { normalizeOrigin } from "./normalize-origin.js";
+import { normalizeOrigin } from "./normalize-origin";
 
 describe("normalizeOrigin", () => {
   it("upgrades non-local http origins to https", () => {
@@ -11,11 +11,15 @@ describe("normalizeOrigin", () => {
   });
 
   it("preserves localhost http origins", () => {
-    expect(normalizeOrigin("http://localhost:9779")).toBe("http://localhost:9779");
+    expect(normalizeOrigin("http://localhost:9779")).toBe(
+      "http://localhost:9779"
+    );
   });
 
   it("preserves numeric loopback hosts", () => {
-    expect(normalizeOrigin("http://127.0.0.1:4000")).toBe("http://127.0.0.1:4000");
+    expect(normalizeOrigin("http://127.0.0.1:4000")).toBe(
+      "http://127.0.0.1:4000"
+    );
   });
 
   it("returns trimmed origin when parsing fails", () => {

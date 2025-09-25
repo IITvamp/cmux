@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { execSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { collectRelevantDiff } from "./collectRelevantDiff.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { collectRelevantDiff } from "./collectRelevantDiff";
 
 const run = (command: string, cwd: string) => {
   execSync(command, { cwd, stdio: "pipe" });
@@ -36,7 +36,10 @@ describe("collectRelevantDiff", () => {
 
     writeFileSync(path.join(repoDir, "pnpm-lock.yaml"), "lock\n");
     mkdirSync(path.join(repoDir, "node_modules/pkg"), { recursive: true });
-    writeFileSync(path.join(repoDir, "node_modules/pkg/index.js"), "module.exports = 1;\n");
+    writeFileSync(
+      path.join(repoDir, "node_modules/pkg/index.js"),
+      "module.exports = 1;\n"
+    );
     mkdirSync(path.join(repoDir, "dist"));
     writeFileSync(path.join(repoDir, "dist/bundle.js"), "// built\n");
     writeFileSync(path.join(repoDir, "image.png"), Buffer.alloc(10));
@@ -53,13 +56,19 @@ describe("collectRelevantDiff", () => {
 
   it("diffs against the provided base ref when repository is clean", async () => {
     mkdirSync(path.join(repoDir, "src"), { recursive: true });
-    writeFileSync(path.join(repoDir, "src/app.ts"), "console.log('initial');\n");
+    writeFileSync(
+      path.join(repoDir, "src/app.ts"),
+      "console.log('initial');\n"
+    );
     run("git add src/app.ts", repoDir);
     run("git commit -m base", repoDir);
     run("git branch -M main", repoDir);
 
     run("git checkout -b feature", repoDir);
-    writeFileSync(path.join(repoDir, "src/app.ts"), "console.log('feature');\n");
+    writeFileSync(
+      path.join(repoDir, "src/app.ts"),
+      "console.log('feature');\n"
+    );
     run("git commit -am update", repoDir);
 
     const diff = await collectRelevantDiff({

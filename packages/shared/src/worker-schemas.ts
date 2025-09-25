@@ -1,7 +1,7 @@
 import type { Id } from "@cmux/convex/dataModel";
 import { z } from "zod";
-import { AGENT_CONFIGS } from "./agentConfig.js";
-import { typedZid } from "./utils/typed-zid.js";
+import { AGENT_CONFIGS } from "./agentConfig";
+import { typedZid } from "./utils/typed-zid";
 
 // Auth file schema for file uploads and environment setup
 export const AuthFileSchema = z.object({
@@ -160,9 +160,7 @@ export const WorkerUploadFilesSchema = z.object({
 // Git configuration schema
 export const WorkerConfigureGitSchema = z.object({
   githubToken: z.string().optional(),
-  gitConfig: z
-    .record(z.string(), z.string())
-    .optional(), // Key-value pairs for git config
+  gitConfig: z.record(z.string(), z.string()).optional(), // Key-value pairs for git config
   sshKeys: z
     .object({
       privateKey: z.string().optional(), // Base64 encoded

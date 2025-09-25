@@ -1,5 +1,5 @@
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
-import { loadNativeGit } from "../native/git.js";
+import { loadNativeGit } from "../native/git";
 
 export interface CompareRefsArgs {
   ref1: string;

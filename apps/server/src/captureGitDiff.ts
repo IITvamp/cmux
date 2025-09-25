@@ -1,7 +1,7 @@
-import { serverLogger } from "./utils/fileLogger.js";
-import { workerExec } from "./utils/workerExec.js";
-import { resolveWorkerRepoPath } from "./utils/resolveWorkerRepoPath.js";
-import type { VSCodeInstance } from "./vscode/VSCodeInstance.js";
+import { serverLogger } from "./utils/fileLogger";
+import { resolveWorkerRepoPath } from "./utils/resolveWorkerRepoPath";
+import { workerExec } from "./utils/workerExec";
+import type { VSCodeInstance } from "./vscode/VSCodeInstance";
 
 export async function captureGitDiff(
   vscodeInstance: VSCodeInstance,
@@ -27,9 +27,7 @@ export async function captureGitDiff(
       initialCwd: "/root/workspace",
       fallbackCwd: "/root/workspace",
     });
-    serverLogger.info(
-      `[AgentSpawner] Running diff script from ${repoCwd}`
-    );
+    serverLogger.info(`[AgentSpawner] Running diff script from ${repoCwd}`);
 
     const { stdout, stderr, exitCode } = await workerExec({
       workerSocket,

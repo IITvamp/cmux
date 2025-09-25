@@ -13,26 +13,26 @@ import type {
 } from "@cmux/shared/worker-schemas";
 import { getApiEnvironmentsByIdVars } from "@cmux/www-openapi-client";
 import { parse as parseDotenv } from "dotenv";
-import { handleTaskCompletion } from "./handle-task-completion.js";
-import { sanitizeTmuxSessionName } from "./sanitizeTmuxSessionName.js";
+import { handleTaskCompletion } from "./handle-task-completion";
+import { sanitizeTmuxSessionName } from "./sanitizeTmuxSessionName";
 import {
   generateNewBranchName,
   generateUniqueBranchNames,
   generateUniqueBranchNamesFromTitle,
-} from "./utils/branchNameGenerator.js";
-import { getConvex } from "./utils/convexClient.js";
-import { retryOnOptimisticConcurrency } from "./utils/convexRetry.js";
-import { serverLogger } from "./utils/fileLogger.js";
+} from "./utils/branchNameGenerator";
+import { getConvex } from "./utils/convexClient";
+import { retryOnOptimisticConcurrency } from "./utils/convexRetry";
+import { serverLogger } from "./utils/fileLogger";
 import {
   getAuthHeaderJson,
   getAuthToken,
   runWithAuth,
-} from "./utils/requestContext.js";
-import { getWwwClient } from "./utils/wwwClient.js";
-import { CmuxVSCodeInstance } from "./vscode/CmuxVSCodeInstance.js";
-import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
-import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
-import { getWorktreePath, setupProjectWorkspace } from "./workspace.js";
+} from "./utils/requestContext";
+import { getWwwClient } from "./utils/wwwClient";
+import { CmuxVSCodeInstance } from "./vscode/CmuxVSCodeInstance";
+import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance";
+import { VSCodeInstance } from "./vscode/VSCodeInstance";
+import { getWorktreePath, setupProjectWorkspace } from "./workspace";
 
 export interface AgentSpawnResult {
   agentName: string;

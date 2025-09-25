@@ -4,9 +4,9 @@ import { StackAdminApp } from "@stackframe/js";
 import {
   getRunDiffs,
   type GetRunDiffsPerf,
-} from "../../apps/server/src/diffs/getRunDiffs.js";
-import { GitDiffManager } from "../../apps/server/src/gitDiff.js";
-import { runWithAuthToken } from "../../apps/server/src/utils/requestContext.js";
+} from "../../apps/server/src/diffs/getRunDiffs";
+import { GitDiffManager } from "../../apps/server/src/gitDiff";
+import { runWithAuthToken } from "../../apps/server/src/utils/requestContext";
 
 type CliArgs = {
   run?: string;

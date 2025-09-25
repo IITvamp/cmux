@@ -4,10 +4,20 @@ import { RepositoryPicker } from "@/components/RepositoryPicker";
 import { TitleBar } from "@/components/TitleBar";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo } from "react";
+import { z } from "zod";
+
+const searchSchema = z.object({
+  step: z.enum(["select", "configure"]).default("select"),
+  selectedRepos: z.array(z.string()).default([]),
+  instanceId: z.string().optional(),
+  connectionLogin: z.string().optional(),
+  repoSearch: z.string().optional(),
+});
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId/environments/new")(
   {
     component: EnvironmentsPage,
+    validateSearch: searchSchema,
   }
 );
 
