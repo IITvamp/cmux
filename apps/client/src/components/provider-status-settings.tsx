@@ -3,7 +3,11 @@ import type { ProviderStatus, ProviderStatusResponse } from "@cmux/shared";
 import { AlertCircle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
-export function ProviderStatusSettings() {
+export function ProviderStatusSettings({
+  teamSlugOrId,
+}: {
+  teamSlugOrId: string;
+}) {
   const { socket } = useSocket();
   const [status, setStatus] = useState<ProviderStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -12,7 +16,7 @@ export function ProviderStatusSettings() {
     if (!socket) return;
 
     setLoading(true);
-    socket.emit("check-provider-status", (response) => {
+    socket.emit("check-provider-status", { teamSlugOrId }, (response) => {
       setLoading(false);
       if (response.success) {
         setStatus(response);
@@ -20,7 +24,7 @@ export function ProviderStatusSettings() {
         console.error("Failed to check provider status:", response.error);
       }
     });
-  }, [socket]);
+  }, [socket, teamSlugOrId]);
 
   // Check status on mount and every 5 seconds
   useEffect(() => {

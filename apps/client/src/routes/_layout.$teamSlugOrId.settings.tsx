@@ -973,7 +973,7 @@ function SettingsComponent() {
                 </h2>
               </div>
               <div className="p-4">
-                <ProviderStatusSettings />
+                <ProviderStatusSettings teamSlugOrId={teamSlugOrId} />
               </div>
             </div>
 

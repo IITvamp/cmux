@@ -2046,20 +2046,51 @@ Please address the issue mentioned in the comment above.`;
       }
     });
 
-    socket.on("check-provider-status", async (callback) => {
-      try {
-        const status = await checkAllProvidersStatus({
-          teamSlugOrId: safeTeam,
-        });
-        callback({ success: true, ...status });
-      } catch (error) {
-        serverLogger.error("Error checking provider status:", error);
-        callback({
-          success: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
+    socket.on(
+      "check-provider-status",
+      async (dataOrCallback, maybeCallback) => {
+        const callback =
+          typeof dataOrCallback === "function"
+            ? dataOrCallback
+            : maybeCallback;
+
+        if (!callback) {
+          serverLogger.error(
+            "Missing callback for check-provider-status socket event"
+          );
+          return;
+        }
+
+        const requestedTeam =
+          typeof dataOrCallback === "object" && dataOrCallback
+            ? dataOrCallback.teamSlugOrId
+            : undefined;
+
+        if (requestedTeam && requestedTeam !== safeTeam) {
+          serverLogger.warn(
+            `Ignoring mismatched team ${requestedTeam} in provider status request; using ${safeTeam}`
+          );
+        }
+
+        const teamSlugForStatus =
+          requestedTeam && requestedTeam === safeTeam
+            ? requestedTeam
+            : safeTeam;
+
+        try {
+          const status = await checkAllProvidersStatus({
+            teamSlugOrId: teamSlugForStatus,
+          });
+          callback({ success: true, ...status });
+        } catch (error) {
+          serverLogger.error("Error checking provider status:", error);
+          callback({
+            success: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
+        }
       }
-    });
+    );
 
     socket.on("archive-task", async (data, callback) => {
       try {

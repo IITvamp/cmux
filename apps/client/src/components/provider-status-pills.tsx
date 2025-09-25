@@ -15,14 +15,14 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
   const checkProviderStatus = useCallback(() => {
     if (!socket) return;
 
-    socket.emit("check-provider-status", (response) => {
+    socket.emit("check-provider-status", { teamSlugOrId }, (response) => {
       if (response.success) {
         setStatus(response);
         // Delay visibility to create fade-in effect
         setTimeout(() => setIsVisible(true), 100);
       }
     });
-  }, [socket]);
+  }, [socket, teamSlugOrId]);
 
   // Check status on mount and every 5 seconds so UI updates quickly
   useEffect(() => {

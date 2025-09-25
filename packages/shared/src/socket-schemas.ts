@@ -567,7 +567,10 @@ export interface ClientToServerEvents {
     ) => void
   ) => void;
   "check-provider-status": (
-    callback: (response: ProviderStatusResponse) => void
+    dataOrCallback:
+      | { teamSlugOrId?: string }
+      | ((response: ProviderStatusResponse) => void),
+    maybeCallback?: (response: ProviderStatusResponse) => void
   ) => void;
   "archive-task": (
     data: ArchiveTask,

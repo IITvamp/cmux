@@ -144,7 +144,7 @@ function DashboardComponent() {
   const checkProviderStatus = useCallback(() => {
     if (!socket) return;
 
-    socket.emit("check-provider-status", (response) => {
+    socket.emit("check-provider-status", { teamSlugOrId }, (response) => {
       if (!response) return;
       setProviderStatus(response);
       if (response.success) {
@@ -154,7 +154,7 @@ function DashboardComponent() {
         }
       }
     });
-  }, [socket]);
+  }, [socket, teamSlugOrId]);
 
   // Mutation to create tasks with optimistic update
   const createTask = useMutation(api.tasks.create).withOptimisticUpdate(
@@ -222,13 +222,17 @@ function DashboardComponent() {
       // Always check Docker status when in local mode, regardless of current state
       if (socket) {
         const ready = await new Promise<boolean>((resolve) => {
-          socket.emit("check-provider-status", (response) => {
-            const isRunning = !!response?.dockerStatus?.isRunning;
-            if (typeof isRunning === "boolean") {
-              setDockerReady(isRunning);
+          socket.emit(
+            "check-provider-status",
+            { teamSlugOrId },
+            (response) => {
+              const isRunning = !!response?.dockerStatus?.isRunning;
+              if (typeof isRunning === "boolean") {
+                setDockerReady(isRunning);
+              }
+              resolve(isRunning);
             }
-            resolve(isRunning);
-          });
+          );
         });
 
         // Only show the alert if Docker is actually not running after checking
