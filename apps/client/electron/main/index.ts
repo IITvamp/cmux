@@ -37,6 +37,7 @@ import {
   appendLogWithRotation,
   type LogRotationOptions,
 } from "./log-management/log-rotation";
+import { storeAuthTokens, getAuthTokens, clearAuthTokens } from "./secure-storage";
 const { autoUpdater } = electronUpdater;
 
 import util from "node:util";
@@ -288,6 +289,50 @@ function registerAutoUpdateIpcHandlers(): void {
       return { ok: true } as const;
     } catch (error) {
       mainWarn("Failed to trigger quitAndInstall", error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      throw err;
+    }
+  });
+}
+
+function registerAuthIpcHandlers(): void {
+  ipcMain.handle("cmux:auth:get-tokens", async () => {
+    try {
+      const tokens = await getAuthTokens();
+      return tokens ? {
+        refreshToken: tokens.refreshToken,
+        accessToken: tokens.accessToken,
+        refreshTokenExpiresAt: tokens.refreshTokenExpiresAt,
+        accessTokenExpiresAt: tokens.accessTokenExpiresAt,
+      } : null;
+    } catch (error) {
+      mainWarn("Failed to get auth tokens", error);
+      return null;
+    }
+  });
+
+  ipcMain.handle("cmux:auth:set-tokens", async (_event, tokens: { refreshToken: string; accessToken: string; refreshExp: number; accessExp: number }) => {
+    try {
+      await storeAuthTokens({
+        refreshToken: tokens.refreshToken,
+        accessToken: tokens.accessToken,
+        refreshTokenExpiresAt: new Date(tokens.refreshExp * 1000),
+        accessTokenExpiresAt: new Date(tokens.accessExp * 1000),
+      });
+      return { ok: true };
+    } catch (error) {
+      mainWarn("Failed to set auth tokens", error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      throw err;
+    }
+  });
+
+  ipcMain.handle("cmux:auth:clear-tokens", async () => {
+    try {
+      await clearAuthTokens();
+      return { ok: true };
+    } catch (error) {
+      mainWarn("Failed to clear auth tokens", error);
       const err = error instanceof Error ? error : new Error(String(error));
       throw err;
     }
@@ -560,6 +605,7 @@ app.whenReady().then(async () => {
   setupConsoleFileMirrors();
   registerLogIpcHandlers();
   registerAutoUpdateIpcHandlers();
+  registerAuthIpcHandlers();
   initCmdK({
     getMainWindow: () => mainWindow,
     logger: {
@@ -803,38 +849,13 @@ async function handleProtocolUrl(url: string): Promise<void> {
       return;
     }
 
-    // Determine a cookieable URL. Prefer our custom cmux:// origin when not
-    // running against an http(s) dev server.
-    const currentUrl = new URL(mainWindow.webContents.getURL());
-    currentUrl.hash = "";
-    const realUrl = currentUrl.toString() + "/";
-
-    await Promise.all([
-      mainWindow.webContents.session.cookies.remove(
-        realUrl,
-        `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`
-      ),
-      mainWindow.webContents.session.cookies.remove(realUrl, `stack-access`),
-    ]);
-
-    await Promise.all([
-      mainWindow.webContents.session.cookies.set({
-        url: realUrl,
-        name: `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`,
-        value: stackRefresh,
-        expirationDate: refreshPayload?.exp,
-        sameSite: "no_restriction",
-        secure: true,
-      }),
-      mainWindow.webContents.session.cookies.set({
-        url: realUrl,
-        name: "stack-access",
-        value: stackAccess,
-        expirationDate: accessPayload?.exp,
-        sameSite: "no_restriction",
-        secure: true,
-      }),
-    ]);
+    // Store auth tokens securely instead of in cookies
+    await storeAuthTokens({
+      refreshToken: rawStackRefresh,
+      accessToken: rawStackAccess,
+      refreshTokenExpiresAt: new Date(refreshPayload.exp! * 1000),
+      accessTokenExpiresAt: new Date(accessPayload.exp! * 1000),
+    });
 
     mainWindow.webContents.reload();
     return;

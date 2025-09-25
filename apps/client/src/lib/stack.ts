@@ -10,7 +10,7 @@ import { WWW_ORIGIN } from "./wwwOrigin";
 export const stackClientApp = new StackClientApp({
   projectId: env.NEXT_PUBLIC_STACK_PROJECT_ID,
   publishableClientKey: env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY,
-  tokenStore: "cookie",
+  tokenStore: "memory",
   redirectMethod: {
     useNavigate() {
       const navigate = useTanstackNavigate();
@@ -20,6 +20,19 @@ export const stackClientApp = new StackClientApp({
     },
   },
 });
+
+// Load tokens from secure storage on app start
+if (typeof window !== "undefined") {
+  // @ts-ignore - cmux API
+  window.cmux?.auth?.getTokens().then((tokens) => {
+    if (tokens) {
+      // @ts-ignore - internal method
+      stackClientApp._tokenStore?.set?.(tokens);
+    }
+  }).catch((error) => {
+    console.warn("[StackAuth] Failed to load tokens from secure storage:", error);
+  });
+}
 
 cachedGetUser(stackClientApp).then(async (user) => {
   if (!user) {
@@ -50,6 +63,20 @@ cachedGetUser(stackClientApp).then(async (user) => {
         const accessToken = authJson.accessToken;
         if (!accessToken) {
           throw new Error("No access token");
+        }
+        // Save updated tokens to secure storage
+        // @ts-ignore - internal method
+        const tokens = stackClientApp._tokenStore?.get?.();
+        if (tokens && typeof window !== "undefined") {
+          // @ts-ignore - cmux API
+          window.cmux?.auth?.setTokens({
+            refreshToken: tokens.refreshToken,
+            accessToken: tokens.accessToken,
+            refreshExp: tokens.refreshTokenExpiresAt ? Math.floor(tokens.refreshTokenExpiresAt.getTime() / 1000) : 0,
+            accessExp: tokens.accessTokenExpiresAt ? Math.floor(tokens.accessTokenExpiresAt.getTime() / 1000) : 0,
+          }).catch((error) => {
+            console.warn("[StackAuth] Failed to save tokens to secure storage:", error);
+          });
         }
         return accessToken;
       }

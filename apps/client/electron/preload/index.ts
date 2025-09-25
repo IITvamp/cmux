@@ -139,6 +139,17 @@ const cmuxAPI = {
         reason?: string;
       }>,
   },
+  auth: {
+    getTokens: () =>
+      ipcRenderer.invoke("cmux:auth:get-tokens") as Promise<{
+        refreshToken: string;
+        accessToken: string;
+      } | null>,
+    setTokens: (tokens: { refreshToken: string; accessToken: string; refreshExp: number; accessExp: number }) =>
+      ipcRenderer.invoke("cmux:auth:set-tokens", tokens) as Promise<{ ok: boolean }>,
+    clearTokens: () =>
+      ipcRenderer.invoke("cmux:auth:clear-tokens") as Promise<{ ok: boolean }>,
+  },
   webContentsView: {
     create: (options: {
       url: string;

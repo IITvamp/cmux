@@ -105,6 +105,21 @@ interface CmuxAPI {
   autoUpdate: {
     install: () => Promise<{ ok: boolean; reason?: string }>;
   };
+  auth: {
+    getTokens: () => Promise<{
+      refreshToken: string;
+      accessToken: string;
+      refreshTokenExpiresAt: Date;
+      accessTokenExpiresAt: Date;
+    } | null>;
+    setTokens: (tokens: {
+      refreshToken: string;
+      accessToken: string;
+      refreshExp: number;
+      accessExp: number;
+    }) => Promise<{ ok: boolean }>;
+    clearTokens: () => Promise<{ ok: boolean }>;
+  };
 }
 
 declare global {
