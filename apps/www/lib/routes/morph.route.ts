@@ -1,7 +1,3 @@
-import {
-  generateGitHubInstallationToken,
-  getInstallationForRepo,
-} from "@/lib/utils/github-app-token";
 import { DEFAULT_MORPH_SNAPSHOT_ID } from "@/lib/utils/morph-defaults";
 import { verifyTeamAccess } from "@/lib/utils/team-verification";
 import { env } from "@/lib/utils/www-env";
@@ -186,6 +182,7 @@ morphRouter.openapi(
       // Handle repository management if repos are specified
       const removedRepos: string[] = [];
       const clonedRepos: string[] = [];
+      const failedClones: { repo: string; error: string; isAuth: boolean }[] = [];
 
       if (selectedRepos && selectedRepos.length > 0) {
         // Validate repo format and check for duplicates
@@ -265,50 +262,76 @@ morphRouter.openapi(
         }
 
         // For each owner group, mint a token and clone that owner's repos
-        for (const [owner, repos] of reposByOwner) {
-          // Resolve installation for this owner via any repo under it
-          const firstRepoForOwner = repos[0];
-          const installationId =
-            await getInstallationForRepo(firstRepoForOwner);
-          if (!installationId) {
-            return c.text(
-              `No GitHub App installation found for ${owner}. Please install the GitHub App for this organization/user.`,
-              400
-            );
-          }
-
-          console.log(
-            `Generating GitHub App token for installation ${installationId} with repos: ${repos.join(", ")}`
-          );
-
-          const githubToken = await generateGitHubInstallationToken({
-            installationId,
-            repositories: repos,
-          });
-
-          // Clone new repos for this owner
-          for (const repo of repos) {
+        for (const [, repos] of reposByOwner) {
+          // Clone new repos for this owner in parallel with retries
+          const clonePromises = repos.map(async (repo) => {
             const repoName = repo.split("/").pop()!;
             if (!existingRepos.has(repoName)) {
               console.log(`Cloning repository: ${repo}`);
 
-              // Ensure workspace directory exists
-              await instance.exec("mkdir -p /root/workspace");
+              const maxRetries = 3;
+              let lastError: string | undefined;
+              let isAuthError = false;
 
-              const cloneCmd = await instance.exec(
-                `cd /root/workspace && git clone https://${githubToken}@github.com/${repo}.git ${repoName} && cd ${repoName} && git remote set-url origin https://github.com/${repo}.git`
-              );
+              for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                const cloneCmd = await instance.exec(
+                  `mkdir -p /root/workspace && cd /root/workspace && git clone https://github.com/${repo}.git ${repoName} 2>&1`
+                );
 
-              if (cloneCmd.exit_code === 0) {
-                clonedRepos.push(repo);
-              } else {
-                console.error(`Failed to clone ${repo}: ${cloneCmd.stderr}`);
-                // Continue with other repos instead of failing entire request
+                if (cloneCmd.exit_code === 0) {
+                  return { success: true as const, repo };
+                } else {
+                  lastError = cloneCmd.stderr || cloneCmd.stdout;
+
+                  // Check for authentication errors
+                  isAuthError =
+                    lastError.includes("Authentication failed") ||
+                    lastError.includes("could not read Username") ||
+                    lastError.includes("could not read Password") ||
+                    lastError.includes("Invalid username or password") ||
+                    lastError.includes("Permission denied") ||
+                    lastError.includes("Repository not found") ||
+                    lastError.includes("403");
+
+                  // Don't retry authentication errors
+                  if (isAuthError) {
+                    console.error(`Authentication failed for ${repo}: ${lastError}`);
+                    break;
+                  }
+
+                  if (attempt < maxRetries) {
+                    console.log(`Clone attempt ${attempt} failed for ${repo}, retrying...`);
+                    // Clean up partial clone if it exists
+                    await instance.exec(`rm -rf /root/workspace/${repoName}`);
+                    // Wait before retry with exponential backoff
+                    await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+                  }
+                }
               }
+
+              const errorMsg = isAuthError
+                ? `Authentication failed - check repository access permissions`
+                : `Failed after ${maxRetries} attempts`;
+
+              console.error(`Failed to clone ${repo}: ${errorMsg}\nDetails: ${lastError}`);
+              return { success: false as const, repo, error: lastError || "Unknown error", isAuth: isAuthError };
             } else {
               console.log(
                 `Repository ${repo} already exists with correct remote, skipping clone`
               );
+              return null;
+            }
+          });
+
+          const results = await Promise.all(clonePromises);
+
+          for (const result of results) {
+            if (result && 'success' in result) {
+              if (result.success) {
+                clonedRepos.push(result.repo);
+              } else {
+                failedClones.push({ repo: result.repo, error: result.error, isAuth: result.isAuth });
+              }
             }
           }
         }
@@ -321,6 +344,7 @@ morphRouter.openapi(
         vscodeUrl: url,
         clonedRepos,
         removedRepos,
+        failedClones,
       });
     } catch (error) {
       console.error("Failed to setup Morph instance:", error);
