@@ -35,7 +35,10 @@ export function Providers({ children }: ProvidersProps) {
 }
 
 // Minimal error boundary to log render errors and show a friendly message.
-class RootErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+class RootErrorBoundary extends Component<
+  { children: ReactNode },
+  { error: Error | null }
+> {
   state = { error: null as Error | null };
 
   static getDerivedStateFromError(error: Error) {
