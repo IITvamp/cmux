@@ -262,27 +262,46 @@ morphRouter.openapi(
 
         // For each owner group, mint a token and clone that owner's repos
         for (const [, repos] of reposByOwner) {
-          // Clone new repos for this owner
-          for (const repo of repos) {
+          // Clone new repos for this owner in parallel with retries
+          const clonePromises = repos.map(async (repo) => {
             const repoName = repo.split("/").pop()!;
             if (!existingRepos.has(repoName)) {
               console.log(`Cloning repository: ${repo}`);
 
-              const cloneCmd = await instance.exec(
-                `mkdir -p /root/workspace && cd /root/workspace && git clone https://github.com/${repo}.git ${repoName}`
-              );
+              const maxRetries = 3;
+              let lastError: string | undefined;
 
-              if (cloneCmd.exit_code === 0) {
-                clonedRepos.push(repo);
-              } else {
-                console.error(`Failed to clone ${repo}: ${cloneCmd.stderr}`);
+              for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                const cloneCmd = await instance.exec(
+                  `mkdir -p /root/workspace && cd /root/workspace && git clone https://github.com/${repo}.git ${repoName}`
+                );
+
+                if (cloneCmd.exit_code === 0) {
+                  return repo;
+                } else {
+                  lastError = cloneCmd.stderr;
+                  if (attempt < maxRetries) {
+                    console.log(`Clone attempt ${attempt} failed for ${repo}, retrying...`);
+                    // Clean up partial clone if it exists
+                    await instance.exec(`rm -rf /root/workspace/${repoName}`);
+                    // Wait before retry with exponential backoff
+                    await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+                  }
+                }
               }
+
+              console.error(`Failed to clone ${repo} after ${maxRetries} attempts: ${lastError}`);
+              return null;
             } else {
               console.log(
                 `Repository ${repo} already exists with correct remote, skipping clone`
               );
+              return null;
             }
-          }
+          });
+
+          const results = await Promise.all(clonePromises);
+          clonedRepos.push(...results.filter((r): r is string => r !== null));
         }
       }
 
