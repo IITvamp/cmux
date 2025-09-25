@@ -7,10 +7,15 @@ import { convexQueryClient } from "../contexts/convex/convex-query-client";
 import { cachedGetUser } from "./cachedGetUser";
 import { WWW_ORIGIN } from "./wwwOrigin";
 
+const tokenStore: "cookie" | "memory" =
+  typeof window !== "undefined" && window.cmux?.stackAuth
+    ? "memory"
+    : "cookie";
+
 export const stackClientApp = new StackClientApp({
   projectId: env.NEXT_PUBLIC_STACK_PROJECT_ID,
   publishableClientKey: env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY,
-  tokenStore: "cookie",
+  tokenStore,
   redirectMethod: {
     useNavigate() {
       const navigate = useTanstackNavigate();

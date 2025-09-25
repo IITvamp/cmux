@@ -31,6 +31,20 @@ interface CmuxLogsAPI {
   copyAll: () => Promise<{ ok: boolean }>;
 }
 
+interface CmuxStackTokens {
+  refreshToken: string;
+  accessToken: string;
+}
+
+interface CmuxStackAuthAPI {
+  get: () => Promise<CmuxStackTokens | null>;
+  set: (tokens: CmuxStackTokens | null) => Promise<{ ok: boolean }>;
+  clear: () => Promise<{ ok: boolean }>;
+  onTokensUpdated: (
+    listener: (tokens: CmuxStackTokens | null) => void
+  ) => () => void;
+}
+
 interface CmuxRectangle {
   x: number;
   y: number;
@@ -105,6 +119,7 @@ interface CmuxAPI {
   autoUpdate: {
     install: () => Promise<{ ok: boolean; reason?: string }>;
   };
+  stackAuth: CmuxStackAuthAPI;
 }
 
 declare global {

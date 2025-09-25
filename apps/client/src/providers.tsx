@@ -6,6 +6,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Component, type ErrorInfo, type ReactNode, Suspense } from "react";
 import { AntdProvider } from "./components/antd-provider";
 import { stackClientApp } from "./lib/stack";
+import { StackAuthBridge } from "./lib/stack-auth-bridge";
 import { queryClient } from "./query-client";
 
 interface ProvidersProps {
@@ -18,6 +19,7 @@ export function Providers({ children }: ProvidersProps) {
       <StackTheme>
         <Suspense fallback={<div>Loading stack...</div>}>
           <StackProvider app={stackClientApp}>
+            <StackAuthBridge />
             <QueryClientProvider client={queryClient}>
               <TooltipProvider delayDuration={700} skipDelayDuration={300}>
                 <HeroUIProvider>

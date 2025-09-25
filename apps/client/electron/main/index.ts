@@ -17,6 +17,7 @@ import {
   type BrowserWindowConstructorOptions,
   type MenuItemConstructorOptions,
 } from "electron";
+import keytar from "keytar";
 import { startEmbeddedServer } from "./embedded-server";
 import { registerWebContentsViewHandlers } from "./web-contents-view";
 // Auto-updater
@@ -46,6 +47,16 @@ import { env } from "./electron-main-env";
 // Use a cookieable HTTPS origin intercepted locally instead of a custom scheme.
 const PARTITION = "persist:cmux";
 const APP_HOST = "cmux.local";
+
+const STACK_AUTH_SERVICE = `cmux-stack-auth-${
+  env.NEXT_PUBLIC_STACK_PROJECT_ID ?? "default"
+}`;
+const STACK_AUTH_ACCOUNT = "tokens";
+
+type StackTokens = {
+  refreshToken: string;
+  accessToken: string;
+};
 
 function resolveMaxSuspendedWebContents(): number | undefined {
   const raw =
@@ -160,6 +171,79 @@ function resolveResourcePath(rel: string) {
   // Prod: packaged resources directory; Dev: look under client/assets
   if (app.isPackaged) return path.join(process.resourcesPath, rel);
   return path.join(app.getAppPath(), "assets", rel);
+}
+
+let cachedStackTokens: StackTokens | null = null;
+
+async function readSecureStackTokens(): Promise<StackTokens | null> {
+  try {
+    const serialized = await keytar.getPassword(
+      STACK_AUTH_SERVICE,
+      STACK_AUTH_ACCOUNT
+    );
+    if (!serialized) return null;
+    const parsed = JSON.parse(serialized) as Partial<StackTokens>;
+    if (
+      !parsed ||
+      typeof parsed.refreshToken !== "string" ||
+      typeof parsed.accessToken !== "string"
+    ) {
+      return null;
+    }
+    return {
+      refreshToken: parsed.refreshToken,
+      accessToken: parsed.accessToken,
+    };
+  } catch (error) {
+    mainWarn("Failed to read Stack tokens from secure storage", error);
+    return null;
+  }
+}
+
+function emitStackTokensToRenderer(tokens: StackTokens | null): void {
+  if (!mainWindow || mainWindow.isDestroyed() || !rendererLoaded) return;
+  try {
+    mainWindow.webContents.send("cmux:stack-auth:tokens-updated", tokens);
+  } catch (error) {
+    mainWarn("Failed to emit Stack tokens to renderer", error);
+  }
+}
+
+function rememberAndEmitStackTokens(tokens: StackTokens | null): void {
+  cachedStackTokens = tokens;
+  emitStackTokensToRenderer(tokens);
+}
+
+async function persistSecureStackTokens(tokens: StackTokens): Promise<void> {
+  try {
+    await keytar.setPassword(
+      STACK_AUTH_SERVICE,
+      STACK_AUTH_ACCOUNT,
+      JSON.stringify(tokens)
+    );
+    rememberAndEmitStackTokens(tokens);
+    mainLog("Stored Stack tokens in secure storage");
+  } catch (error) {
+    mainWarn("Failed to persist Stack tokens to secure storage", error);
+  }
+}
+
+async function deleteSecureStackTokens(): Promise<void> {
+  try {
+    await keytar.deletePassword(STACK_AUTH_SERVICE, STACK_AUTH_ACCOUNT);
+    mainLog("Cleared Stack tokens from secure storage");
+  } catch (error) {
+    mainWarn("Failed to delete Stack tokens from secure storage", error);
+  } finally {
+    rememberAndEmitStackTokens(null);
+  }
+}
+
+async function getCachedOrSecureStackTokens(): Promise<StackTokens | null> {
+  if (cachedStackTokens) return cachedStackTokens;
+  const tokens = await readSecureStackTokens();
+  cachedStackTokens = tokens;
+  return tokens;
 }
 
 // Lightweight logger that prints to the main process stdout and mirrors
@@ -291,6 +375,36 @@ function registerAutoUpdateIpcHandlers(): void {
       const err = error instanceof Error ? error : new Error(String(error));
       throw err;
     }
+  });
+}
+
+function registerStackAuthHandlers(): void {
+  ipcMain.handle("cmux:stack-auth:get", async () => {
+    const tokens = await getCachedOrSecureStackTokens();
+    return tokens;
+  });
+
+  ipcMain.handle(
+    "cmux:stack-auth:set",
+    async (_event, tokens: StackTokens | null) => {
+      if (!tokens || !tokens.refreshToken || !tokens.accessToken) {
+        await deleteSecureStackTokens();
+        return { ok: true } as const;
+      }
+      if (
+        typeof tokens.refreshToken !== "string" ||
+        typeof tokens.accessToken !== "string"
+      ) {
+        throw new Error("Invalid Stack token payload");
+      }
+      await persistSecureStackTokens(tokens);
+      return { ok: true } as const;
+    }
+  );
+
+  ipcMain.handle("cmux:stack-auth:clear", async () => {
+    await deleteSecureStackTokens();
+    return { ok: true } as const;
   });
 }
 
@@ -487,6 +601,7 @@ function createWindow(): void {
       pendingProtocolUrl = null;
     }
     emitAutoUpdateToastIfPossible();
+    emitStackTokensToRenderer(cachedStackTokens);
   });
 
   mainWindow.webContents.on(
@@ -560,6 +675,9 @@ app.whenReady().then(async () => {
   setupConsoleFileMirrors();
   registerLogIpcHandlers();
   registerAutoUpdateIpcHandlers();
+  registerStackAuthHandlers();
+  const existingTokens = await readSecureStackTokens();
+  rememberAndEmitStackTokens(existingTokens);
   initCmdK({
     getMainWindow: () => mainWindow,
     logger: {
@@ -784,22 +902,21 @@ async function handleProtocolUrl(url: string): Promise<void> {
     const rawStackAccess = urlObj.searchParams.get("stack_access");
 
     if (!rawStackRefresh || !rawStackAccess) {
-      mainWarn("Aborting cookie set due to missing tokens");
+      mainWarn("Aborting Stack token persistence due to missing tokens");
       return;
     }
 
-    // Check for the full URL parameter
-    const stackRefresh = encodeURIComponent(rawStackRefresh);
-    const stackAccess = encodeURIComponent(rawStackAccess);
+    const stackRefresh = rawStackRefresh;
+    const stackAccess = rawStackAccess;
 
-    // Verify tokens with Stack JWKS and extract exp for cookie expiry.
+    // Verify tokens with Stack JWKS and ensure they carry an expiry.
     const [refreshPayload, accessPayload] = await Promise.all([
       verifyJwtAndGetPayload(stackRefresh),
       verifyJwtAndGetPayload(stackAccess),
     ]);
 
     if (refreshPayload?.exp === null || accessPayload?.exp === null) {
-      mainWarn("Aborting cookie set due to invalid tokens");
+      mainWarn("Aborting Stack token persistence due to invalid tokens");
       return;
     }
 
@@ -815,28 +932,15 @@ async function handleProtocolUrl(url: string): Promise<void> {
         `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`
       ),
       mainWindow.webContents.session.cookies.remove(realUrl, `stack-access`),
-    ]);
+    ]).catch((error) => {
+      mainWarn("Failed to clear legacy Stack cookies", error);
+    });
 
-    await Promise.all([
-      mainWindow.webContents.session.cookies.set({
-        url: realUrl,
-        name: `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`,
-        value: stackRefresh,
-        expirationDate: refreshPayload?.exp,
-        sameSite: "no_restriction",
-        secure: true,
-      }),
-      mainWindow.webContents.session.cookies.set({
-        url: realUrl,
-        name: "stack-access",
-        value: stackAccess,
-        expirationDate: accessPayload?.exp,
-        sameSite: "no_restriction",
-        secure: true,
-      }),
-    ]);
+    await persistSecureStackTokens({
+      refreshToken: stackRefresh,
+      accessToken: stackAccess,
+    });
 
-    mainWindow.webContents.reload();
     return;
   }
 

@@ -22,6 +22,13 @@ type RectanglePayload = {
 type LogListener = (entry: ElectronMainLogMessage) => void;
 const mainLogListeners = new Set<LogListener>();
 
+type StackTokens = {
+  refreshToken: string;
+  accessToken: string;
+};
+
+type StackAuthListener = (tokens: StackTokens | null) => void;
+
 // Cmux IPC API for Electron server communication
 const cmuxAPI = {
   // Register with the server (like socket connection)
@@ -138,6 +145,27 @@ const cmuxAPI = {
         ok: boolean;
         reason?: string;
       }>,
+  },
+  stackAuth: {
+    get: () =>
+      ipcRenderer.invoke("cmux:stack-auth:get") as Promise<StackTokens | null>,
+    set: (tokens: StackTokens | null) =>
+      ipcRenderer.invoke("cmux:stack-auth:set", tokens) as Promise<{ ok: boolean }>,
+    clear: () =>
+      ipcRenderer.invoke("cmux:stack-auth:clear") as Promise<{ ok: boolean }>,
+    onTokensUpdated: (listener: StackAuthListener) => {
+      const channel = "cmux:stack-auth:tokens-updated";
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        tokens: StackTokens | null
+      ) => {
+        listener(tokens ?? null);
+      };
+      ipcRenderer.on(channel, handler);
+      return () => {
+        ipcRenderer.removeListener(channel, handler);
+      };
+    },
   },
   webContentsView: {
     create: (options: {
