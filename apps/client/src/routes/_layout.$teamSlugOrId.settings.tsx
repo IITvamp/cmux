@@ -12,6 +12,7 @@ import { Switch } from "@heroui/react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useConvex } from "convex/react";
+import { ThumbsUp } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -396,7 +397,11 @@ function SettingsComponent() {
         <div className="p-6 max-w-3xl">
           {/* Header */}
           <div className="mb-6">
-            <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
+            <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 flex items-center gap-2">
+              <ThumbsUp
+                aria-hidden="true"
+                className="h-5 w-5 text-neutral-900 dark:text-neutral-100"
+              />
               Settings
             </h1>
             <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
