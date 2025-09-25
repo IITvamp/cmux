@@ -7,7 +7,7 @@ import { diffSmartQueryOptions } from "@/queries/diff-smart";
 import type { Doc, Id } from "@cmux/convex/dataModel";
 import { Skeleton } from "@heroui/react";
 import { useClipboard } from "@mantine/hooks";
-import { useQuery as useRQ } from "@tanstack/react-query";
+import { useQueries, useQuery as useRQ } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import {
@@ -421,10 +421,32 @@ function SocketActions({
   ref2: string;
 }) {
   const { socket } = useSocketSuspense();
-  const diffsQuery = useRQ(
-    diffSmartQueryOptions({ repoFullName, baseRef: ref1, headRef: ref2 })
-  );
-  const hasChanges = (diffsQuery.data || []).length > 0;
+
+  // For environments, use the selected repos from the environment
+  const environmentRepos = useMemo(() => {
+    const repos = selectedRun?.environment?.selectedRepos ?? [];
+    const trimmed = repos
+      .map((repo) => repo?.trim())
+      .filter((repo): repo is string => Boolean(repo));
+    return Array.from(new Set(trimmed));
+  }, [selectedRun?.environment?.selectedRepos]);
+
+  const repoFullNames = useMemo(() => {
+    if (repoFullName) {
+      return [repoFullName];
+    }
+    return environmentRepos;
+  }, [repoFullName, environmentRepos]);
+
+  const diffsQueries = useQueries({
+    queries: repoFullNames.map((repo) =>
+      repo && ref1 && ref2
+        ? diffSmartQueryOptions({ repoFullName: repo, baseRef: ref1, headRef: ref2 })
+        : { queryKey: ["diff-smart-disabled"], queryFn: async () => [] }
+    ),
+  });
+
+  const hasChanges = diffsQueries.some((query) => (query.data || []).length > 0);
 
   const handleMerge = async (method: MergeMethod) => {
     if (!socket || !taskRunId) return;
