@@ -30,6 +30,7 @@ import { CmuxVSCodeInstance } from './vscode/CmuxVSCodeInstance'
 import { DockerVSCodeInstance } from './vscode/DockerVSCodeInstance'
 import { VSCodeInstance } from './vscode/VSCodeInstance'
 import { getWorktreePath, setupProjectWorkspace } from './workspace'
+import { env } from './utils/server-env'
 
 export interface AgentSpawnResult {
   agentName: string
@@ -214,7 +215,7 @@ export async function spawnAgent(
       CMUX_TASK_RUN_ID: taskRunId,
       CMUX_TASK_RUN_JWT: taskRunJwt,
       PROMPT: processedTaskDescription,
-      NEXT_PUBLIC_CONVEX_URL: serverEnv.NEXT_PUBLIC_CONVEX_URL,
+      NEXT_PUBLIC_CONVEX_URL: env.NEXT_PUBLIC_CONVEX_URL,
     }
 
     if (options.environmentId) {

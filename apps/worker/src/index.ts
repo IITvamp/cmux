@@ -14,7 +14,12 @@ import {
 } from '@cmux/shared'
 import { AGENT_CONFIGS } from '@cmux/shared/agentConfig'
 
+import { getWorkerServerSocketOptions } from '@cmux/shared/node/socket'
 import { startAmpProxy } from '@cmux/shared/src/providers/amp/start-amp-proxy.ts'
+import {
+  registerTaskRunContext,
+  handleWorkerTaskCompletion,
+} from './crown/workflow'
 import { SerializeAddon } from '@xterm/addon-serialize'
 import * as xtermHeadless from '@xterm/headless'
 import express from 'express'
@@ -30,7 +35,6 @@ import { cpus, platform, totalmem } from 'node:os'
 import * as path from 'node:path'
 import { promisify } from 'node:util'
 import { Server, type Namespace, type Socket } from 'socket.io'
-import { getWorkerServerSocketOptions } from '@cmux/shared/node/socket'
 import { checkDockerReadiness } from './checkDockerReadiness.js'
 import { detectTerminalIdle } from './detectTerminalIdle.js'
 import { runWorkerExec } from './execRunner.js'
