@@ -409,18 +409,6 @@ export async function spawnAgent(
       `VSCode instance spawned for agent ${agent.name}: ${vscodeUrl}`
     );
 
-    if (options.isCloudMode && vscodeInstance instanceof CmuxVSCodeInstance) {
-      console.log("[AgentSpawner] [isCloudMode] Setting up devcontainer");
-      void vscodeInstance
-        .setupDevcontainer()
-        .catch((err) =>
-          serverLogger.error(
-            "[AgentSpawner] setupDevcontainer encountered an error",
-            err
-          )
-        );
-    }
-
     // Start file watching for real-time diff updates
     serverLogger.info(
       `[AgentSpawner] Starting file watch for ${agent.name} at ${worktreePath}`
@@ -628,6 +616,19 @@ export async function spawnAgent(
         },
       })
     );
+
+    if (options.isCloudMode && vscodeInstance instanceof CmuxVSCodeInstance) {
+      // Run devcontainer networking publish only after metadata is stored to avoid OCC churn
+      console.log("[AgentSpawner] [isCloudMode] Setting up devcontainer");
+      void vscodeInstance
+        .setupDevcontainer()
+        .catch((err) =>
+          serverLogger.error(
+            "[AgentSpawner] setupDevcontainer encountered an error",
+            err
+          )
+        );
+    }
 
     // Use taskRunId as terminal ID for compatibility
     const terminalId = taskRunId;

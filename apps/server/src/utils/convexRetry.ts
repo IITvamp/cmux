@@ -6,14 +6,16 @@ export async function retryOnOptimisticConcurrency<T>(
   fn: () => Promise<T>,
   options?: { retries?: number; baseDelayMs?: number; maxDelayMs?: number }
 ): Promise<T> {
-  const retries = options?.retries ?? 5;
+  const retries = options?.retries ?? 8;
   const baseDelay = options?.baseDelayMs ?? 50;
   const maxDelay = options?.maxDelayMs ?? 1000;
+  let lastError: unknown;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       return await fn();
     } catch (err) {
+      lastError = err;
       if (!isOptimisticConcurrencyError(err) || attempt === retries) {
         throw err;
       }
@@ -24,11 +26,27 @@ export async function retryOnOptimisticConcurrency<T>(
     }
   }
   // Should be unreachable
-  throw { message: "retryOnOptimisticConcurrency exhausted unexpectedly" };
+  const detail = extractErrorMessage(lastError);
+  throw new Error(
+    detail
+      ? `retryOnOptimisticConcurrency exhausted unexpectedly: ${detail}`
+      : "retryOnOptimisticConcurrency exhausted unexpectedly"
+  );
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function extractErrorMessage(err: unknown): string | undefined {
+  if (!err) return undefined;
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
 }
 
 function isOptimisticConcurrencyError(err: unknown): boolean {
