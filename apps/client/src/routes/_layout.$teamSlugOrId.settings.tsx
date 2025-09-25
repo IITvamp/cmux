@@ -13,6 +13,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useConvex } from "convex/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ThumbsUp } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId/settings")({
@@ -396,8 +397,12 @@ function SettingsComponent() {
         <div className="p-6 max-w-3xl">
           {/* Header */}
           <div className="mb-6">
-            <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
-              Settings
+            <h1 className="flex items-center gap-2 text-xl font-semibold text-neutral-900 dark:text-neutral-100">
+              <ThumbsUp
+                aria-hidden
+                className="h-5 w-5 text-neutral-500 dark:text-neutral-400"
+              />
+              <span>Settings</span>
             </h1>
             <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
               Manage your workspace preferences and configuration
