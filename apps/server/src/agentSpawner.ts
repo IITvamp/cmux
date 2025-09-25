@@ -31,6 +31,7 @@ import {
 import { getWwwClient } from "./utils/wwwClient";
 import { CmuxVSCodeInstance } from "./vscode/CmuxVSCodeInstance";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance";
+import { LocalVSCodeInstance } from "./vscode/LocalVSCodeInstance";
 import { VSCodeInstance } from "./vscode/VSCodeInstance";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace";
 
@@ -52,6 +53,7 @@ export async function spawnAgent(
     branch?: string;
     taskDescription: string;
     isCloudMode?: boolean;
+    isLocalMode?: boolean;
     environmentId?: Id<"environments">;
     images?: Array<{
       src: string;
@@ -327,8 +329,51 @@ export async function spawnAgent(
     let worktreePath: string;
 
     console.log("[AgentSpawner] [isCloudMode]", options.isCloudMode);
+    console.log("[AgentSpawner] [isLocalMode]", options.isLocalMode);
 
-    if (options.isCloudMode) {
+    if (options.isLocalMode) {
+      // For local mode, set up worktree and launch VSCode directly
+      const worktreeInfo = await getWorktreePath(
+        {
+          repoUrl: options.repoUrl!,
+          branch: newBranch,
+        },
+        teamSlugOrId
+      );
+
+      // Setup workspace
+      const workspaceResult = await setupProjectWorkspace({
+        repoUrl: options.repoUrl!,
+        // If not provided, setupProjectWorkspace detects default from origin
+        branch: options.branch,
+        worktreeInfo,
+      });
+
+      if (!workspaceResult.success || !workspaceResult.worktreePath) {
+        return {
+          agentName: agent.name,
+          terminalId: "",
+          taskRunId,
+          worktreePath: "",
+          success: false,
+          error: workspaceResult.error || "Failed to setup workspace",
+        };
+      }
+
+      worktreePath = workspaceResult.worktreePath;
+
+      serverLogger.info(
+        `[AgentSpawner] Creating LocalVSCodeInstance for ${agent.name}`
+      );
+      vscodeInstance = new LocalVSCodeInstance({
+        workspacePath: worktreePath,
+        agentName: agent.name,
+        taskRunId,
+        taskId,
+        theme: options.theme,
+        teamSlugOrId,
+      });
+    } else if (options.isCloudMode) {
       // For remote sandboxes (Morph-backed via www API)
       vscodeInstance = new CmuxVSCodeInstance({
         agentName: agent.name,
@@ -939,6 +984,7 @@ export async function spawnAllAgents(
     prTitle?: string;
     selectedAgents?: string[];
     isCloudMode?: boolean;
+    isLocalMode?: boolean;
     environmentId?: Id<"environments">;
     images?: Array<{
       src: string;

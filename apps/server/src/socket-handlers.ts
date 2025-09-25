@@ -444,6 +444,7 @@ export function setupSocketHandlers(
             prTitle: generatedTitle ?? undefined,
             selectedAgents: taskData.selectedAgents,
             isCloudMode: taskData.isCloudMode,
+            isLocalMode: taskData.isLocalMode,
             images: taskData.images,
             theme: taskData.theme,
             environmentId: taskData.environmentId,

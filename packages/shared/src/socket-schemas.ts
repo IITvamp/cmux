@@ -32,6 +32,7 @@ export const StartTaskSchema = z.object({
   taskId: typedZid("tasks"),
   selectedAgents: z.array(z.string()).optional(),
   isCloudMode: z.boolean().optional().default(false),
+  isLocalMode: z.boolean().optional().default(false),
   images: z
     .array(
       z.object({
