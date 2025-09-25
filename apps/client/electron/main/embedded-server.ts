@@ -32,6 +32,12 @@ function createIPCRealtimeServer(): RealtimeServer {
   const webContentsToSocketId = new Map<number, string>();
   const connectionHandlers: Array<(socket: RealtimeSocket) => void> = [];
 
+  const DEFAULT_RPC_TIMEOUT_MS = 30_000;
+  const RPC_TIMEOUT_OVERRIDES: Record<string, number> = {
+    // Cloud sandboxes can take longer than the default IPC ack timeout to boot
+    "start-task": 5 * 60_000,
+  };
+
   interface IPCSocket {
     id: string;
     webContents: Electron.WebContents;
@@ -304,7 +310,8 @@ function createIPCRealtimeServer(): RealtimeServer {
         };
 
         // Safety timeout so invoke doesn't hang forever if ack is never called
-        const timeoutMs = 30_000;
+        const timeoutMs =
+          RPC_TIMEOUT_OVERRIDES[eventName] ?? DEFAULT_RPC_TIMEOUT_MS;
         const timer = setTimeout(() => {
           rejectOnce(new Error(`RPC '${eventName}' timed out waiting for ack`));
         }, timeoutMs);

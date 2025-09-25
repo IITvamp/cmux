@@ -2,6 +2,42 @@ import type { ClientToServerEvents, ServerToClientEvents } from "@cmux/shared";
 
 type EventHandler = (...args: unknown[]) => void;
 
+type ErrorLike = {
+  message?: unknown;
+  cause?: unknown;
+};
+
+const extractErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) {
+    if (
+      typeof error.message === "string" &&
+      error.message.length > 0 &&
+      !error.message.includes("[object Object]")
+    ) {
+      return error.message;
+    }
+    const cause = (error as ErrorLike).cause;
+    if (cause && cause !== error) {
+      return extractErrorMessage(cause);
+    }
+  }
+  if (typeof error === "string" && error.length > 0) {
+    return error;
+  }
+  if (error && typeof error === "object") {
+    const message = (error as ErrorLike).message;
+    if (typeof message === "string" && message.length > 0) {
+      return message;
+    }
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return String(error);
+    }
+  }
+  return String(error);
+};
+
 export class CmuxIpcSocketClient {
   private handlers = new Map<string, Set<EventHandler>>();
   public connected = false;
@@ -80,7 +116,9 @@ export class CmuxIpcSocketClient {
       window.cmux
         .rpc(key, ...data)
         .then((res: unknown) => cb(res))
-        .catch((err: unknown) => cb({ error: String(err) }));
+        .catch((err: unknown) =>
+          cb({ error: extractErrorMessage(err) })
+        );
     } else {
       void window.cmux.rpc(key, ...args);
     }
