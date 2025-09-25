@@ -292,11 +292,20 @@ export const GitHubSyncPrStateSchema = z.object({
   taskRunId: typedZid("taskRuns"),
 });
 
-// Merge PR
-export const GitHubMergePrSchema = z.object({
-  taskRunId: typedZid("taskRuns"),
-  method: z.enum(["squash", "rebase", "merge"]),
-});
+// Merge PR (either via task run or directly by repo/PR number)
+export const GitHubMergePrSchema = z.union([
+  z.object({
+    taskRunId: typedZid("taskRuns"),
+    method: z.enum(["squash", "rebase", "merge"]),
+  }),
+  z.object({
+    repoFullName: z
+      .string()
+      .regex(/^[^\/]+\/[^\/]+$/u, "Invalid repo format"),
+    number: z.number().int().positive(),
+    method: z.enum(["squash", "rebase", "merge"]),
+  }),
+]);
 
 // Merge branch directly
 export const GitHubMergeBranchSchema = z.object({
