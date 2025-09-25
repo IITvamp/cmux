@@ -35,11 +35,23 @@ cachedGetUser(stackClientApp).then(async (user) => {
   }
   let isFirstTime = true;
   convexQueryClient.convexClient.setAuth(
-    async () => {
+    async ({ forceRefreshToken }) => {
       // First time we get the auth token, we use the cached one. In subsequent calls, we call stack to get the latest auth token.
       if (isFirstTime) {
         isFirstTime = false;
         return authJson.accessToken;
+      }
+      if (forceRefreshToken) {
+        const user = await stackClientApp.getUser();
+        if (!user) {
+          throw new Error("User not found");
+        }
+        const authJson = await user.getAuthJson();
+        const accessToken = authJson.accessToken;
+        if (!accessToken) {
+          throw new Error("No access token");
+        }
+        return accessToken;
       }
       const newAuthJson = await user.getAuthJson();
       if (!newAuthJson.accessToken) {

@@ -43,15 +43,32 @@ function useAuthFromStack() {
     () => Boolean(user && accessToken),
     [user, accessToken]
   );
+
   // Important: keep this function identity stable unless auth context truly changes.
   const fetchAccessToken = useCallback(
-    async (_opts: { forceRefreshToken: boolean }) => {
+    async ({ forceRefreshToken }: { forceRefreshToken: boolean }) => {
+      if (forceRefreshToken) {
+        const user = await stackClientApp.getUser();
+        if (!user) {
+          throw new Error("User not found");
+        }
+        const authJson = await user.getAuthJson();
+        if (!authJson) {
+          throw new Error("Auth JSON not found");
+        }
+        const accessToken = authJson.accessToken;
+        if (!accessToken) {
+          throw new Error("No access token");
+        }
+        return accessToken;
+      }
       const cached = authJsonQuery.data;
       if (cached?.accessToken) {
         return cached.accessToken;
       }
       // Fallback: directly ask Stack for a fresh token in case the cache is stale
       const u = await cachedGetUser(stackClientApp);
+
       const fresh = await u?.getAuthJson();
       return fresh?.accessToken ?? null;
     },
