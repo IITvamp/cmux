@@ -182,6 +182,7 @@ morphRouter.openapi(
       // Handle repository management if repos are specified
       const removedRepos: string[] = [];
       const clonedRepos: string[] = [];
+      const failedClones: { repo: string; error: string; isAuth: boolean }[] = [];
 
       if (selectedRepos && selectedRepos.length > 0) {
         // Validate repo format and check for duplicates
@@ -270,16 +271,34 @@ morphRouter.openapi(
 
               const maxRetries = 3;
               let lastError: string | undefined;
+              let isAuthError = false;
 
               for (let attempt = 1; attempt <= maxRetries; attempt++) {
                 const cloneCmd = await instance.exec(
-                  `mkdir -p /root/workspace && cd /root/workspace && git clone https://github.com/${repo}.git ${repoName}`
+                  `mkdir -p /root/workspace && cd /root/workspace && git clone https://github.com/${repo}.git ${repoName} 2>&1`
                 );
 
                 if (cloneCmd.exit_code === 0) {
-                  return repo;
+                  return { success: true as const, repo };
                 } else {
-                  lastError = cloneCmd.stderr;
+                  lastError = cloneCmd.stderr || cloneCmd.stdout;
+
+                  // Check for authentication errors
+                  isAuthError =
+                    lastError.includes("Authentication failed") ||
+                    lastError.includes("could not read Username") ||
+                    lastError.includes("could not read Password") ||
+                    lastError.includes("Invalid username or password") ||
+                    lastError.includes("Permission denied") ||
+                    lastError.includes("Repository not found") ||
+                    lastError.includes("403");
+
+                  // Don't retry authentication errors
+                  if (isAuthError) {
+                    console.error(`Authentication failed for ${repo}: ${lastError}`);
+                    break;
+                  }
+
                   if (attempt < maxRetries) {
                     console.log(`Clone attempt ${attempt} failed for ${repo}, retrying...`);
                     // Clean up partial clone if it exists
@@ -290,8 +309,12 @@ morphRouter.openapi(
                 }
               }
 
-              console.error(`Failed to clone ${repo} after ${maxRetries} attempts: ${lastError}`);
-              return null;
+              const errorMsg = isAuthError
+                ? `Authentication failed - check repository access permissions`
+                : `Failed after ${maxRetries} attempts`;
+
+              console.error(`Failed to clone ${repo}: ${errorMsg}\nDetails: ${lastError}`);
+              return { success: false as const, repo, error: lastError || "Unknown error", isAuth: isAuthError };
             } else {
               console.log(
                 `Repository ${repo} already exists with correct remote, skipping clone`
@@ -301,7 +324,16 @@ morphRouter.openapi(
           });
 
           const results = await Promise.all(clonePromises);
-          clonedRepos.push(...results.filter((r): r is string => r !== null));
+
+          for (const result of results) {
+            if (result && 'success' in result) {
+              if (result.success) {
+                clonedRepos.push(result.repo);
+              } else {
+                failedClones.push({ repo: result.repo, error: result.error, isAuth: result.isAuth });
+              }
+            }
+          }
         }
       }
 
@@ -312,6 +344,7 @@ morphRouter.openapi(
         vscodeUrl: url,
         clonedRepos,
         removedRepos,
+        failedClones,
       });
     } catch (error) {
       console.error("Failed to setup Morph instance:", error);
