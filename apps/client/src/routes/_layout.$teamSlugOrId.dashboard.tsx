@@ -59,7 +59,7 @@ function DashboardComponent() {
     return stored ? JSON.parse(stored) : false;
   });
 
-  const [dockerReady, setDockerReady] = useState<boolean | null>(null);
+  const [, setDockerReady] = useState<boolean | null>(null);
   const [providerStatus, setProviderStatus] =
     useState<ProviderStatusResponse | null>(null);
 
@@ -368,7 +368,6 @@ function DashboardComponent() {
     selectedAgents,
     isCloudMode,
     isEnvSelected,
-    dockerReady,
     theme,
     generateUploadUrl,
   ]);
