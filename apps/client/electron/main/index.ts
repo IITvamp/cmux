@@ -809,30 +809,37 @@ async function handleProtocolUrl(url: string): Promise<void> {
     currentUrl.hash = "";
     const realUrl = currentUrl.toString() + "/";
 
+    // Get the persistent session to ensure cookies survive app updates
+    const ses = session.fromPartition(PARTITION);
+
+    // Clear old cookies first
     await Promise.all([
-      mainWindow.webContents.session.cookies.remove(
+      ses.cookies.remove(
         realUrl,
         `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`
       ),
-      mainWindow.webContents.session.cookies.remove(realUrl, `stack-access`),
+      ses.cookies.remove(realUrl, `stack-access`),
     ]);
 
+    // Set new cookies with proper persistence settings
     await Promise.all([
-      mainWindow.webContents.session.cookies.set({
+      ses.cookies.set({
         url: realUrl,
         name: `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`,
         value: stackRefresh,
         expirationDate: refreshPayload?.exp,
         sameSite: "no_restriction",
         secure: true,
+        httpOnly: false, // Allow JS access for Stack Auth client
       }),
-      mainWindow.webContents.session.cookies.set({
+      ses.cookies.set({
         url: realUrl,
         name: "stack-access",
         value: stackAccess,
         expirationDate: accessPayload?.exp,
         sameSite: "no_restriction",
         secure: true,
+        httpOnly: false, // Allow JS access for Stack Auth client
       }),
     ]);
 
