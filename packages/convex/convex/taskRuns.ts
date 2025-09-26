@@ -199,6 +199,45 @@ export const getByTask = authQuery({
   },
 });
 
+export const getByPullRequestNumber = authQuery({
+  args: {
+    teamSlugOrId: v.string(),
+    repoFullName: v.string(),
+    number: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const userId = ctx.identity.subject;
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+
+    if (!args.repoFullName || args.number <= 0) {
+      return null;
+    }
+
+    const rows = await ctx.db
+      .query("taskRuns")
+      .withIndex("by_team_pullRequestNumber", (q) =>
+        q.eq("teamId", teamId).eq("pullRequestNumber", args.number)
+      )
+      .filter((q) => q.eq(q.field("userId"), userId))
+      .collect();
+
+    const sorted = rows.sort((a, b) => b.createdAt - a.createdAt);
+
+    for (const run of sorted) {
+      const task = await ctx.db.get(run.taskId);
+      if (!task || task.teamId !== teamId) {
+        continue;
+      }
+      if (task.projectFullName && task.projectFullName !== args.repoFullName) {
+        continue;
+      }
+      return run;
+    }
+
+    return null;
+  },
+});
+
 // Update task run status
 export const updateStatus = internalMutation({
   args: {
