@@ -5,6 +5,7 @@ import { SIDEBAR_PRS_DEFAULT_LIMIT } from "@/components/sidebar/const";
 import { convexQueryClient } from "@/contexts/convex/convex-query-client";
 import { ExpandTasksProvider } from "@/contexts/expand-tasks/ExpandTasksProvider";
 import { setLastTeamSlugOrId } from "@/lib/lastTeam";
+import { stackClientApp } from "@/lib/stack";
 import { api } from "@cmux/convex/api";
 import { convexQuery } from "@convex-dev/react-query";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
@@ -13,7 +14,17 @@ import { Suspense, useEffect, useMemo } from "react";
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId")({
   component: LayoutComponentWrapper,
-  beforeLoad: async ({ params }) => {
+  beforeLoad: async ({ params, location }) => {
+    const user = await stackClientApp.getUser();
+    if (!user) {
+      throw redirect({
+        to: "/handler/$",
+        params: { _splat: "sign-in" },
+        search: {
+          after_auth_return_to: location.pathname,
+        },
+      });
+    }
     const { teamSlugOrId } = params;
     const teamMemberships = await convexQueryClient.convexClient.query(
       api.teams.listTeamMemberships
@@ -65,10 +76,7 @@ function LayoutComponent() {
 
       <ExpandTasksProvider>
         <div className="flex flex-row grow min-h-0 bg-white dark:bg-black">
-          <Sidebar
-            tasks={displayTasks}
-            teamSlugOrId={teamSlugOrId}
-          />
+          <Sidebar tasks={displayTasks} teamSlugOrId={teamSlugOrId} />
 
           {/* <div className="flex flex-col grow overflow-hidden bg-white dark:bg-neutral-950"> */}
           <Suspense fallback={<div>Loading...</div>}>

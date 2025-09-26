@@ -306,6 +306,7 @@ export interface WorkerToServerEvents {
   // Error reporting
   "worker:error": (data: { workerId: string; error: string }) => void;
 }
+export type WorkerToServerEventNames = keyof WorkerToServerEvents;
 
 // For worker's internal socket server (client connections)
 export interface WorkerSocketData {
