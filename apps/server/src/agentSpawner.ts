@@ -339,6 +339,7 @@ export async function spawnAgent(
         branch: options.branch,
         newBranch,
         environmentId: options.environmentId,
+        taskRunJwt, // Pass the JWT token for crown workflow
       });
 
       worktreePath = "/root/workspace";
