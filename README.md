@@ -44,3 +44,9 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+---
+
+*Parallel agents dance,*
+*Code flows through containers bright—*
+*CLI harmony.*
