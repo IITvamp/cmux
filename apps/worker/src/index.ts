@@ -1028,62 +1028,7 @@ async function createTerminal(
     return;
   }
 
-  const completionDetector = agentConfig.completionDetector;
-  const shouldAwaitCompletionDetector = Boolean(
-    options.taskRunId && crownContext && completionDetector
-  );
-
-  let crownFinalized = false;
-  let recordedExitCode: number | undefined;
-
-  const finalizeCrownWorkflow = async (
-    reason: "completion" | "exit"
-  ): Promise<void> => {
-    if (!options.taskRunId || !crownContext) {
-      log("DEBUG", "Skipping crown finalization", {
-        reason,
-        hasTaskRunId: Boolean(options.taskRunId),
-        hasContext: Boolean(crownContext),
-      });
-      return;
-    }
-
-    if (crownFinalized) {
-      return;
-    }
-
-    crownFinalized = true;
-    const elapsedMs = Date.now() - processStartTime;
-    const exitCode = recordedExitCode ?? 0;
-
-    log("INFO", `Finalizing crown workflow (${reason})`, {
-      taskRunId: options.taskRunId,
-      exitCode,
-      elapsedMs,
-      reason,
-    });
-
-    try {
-      await handleWorkerTaskCompletion(options.taskRunId, crownContext, {
-        agentModel: options.agentModel,
-        elapsedMs,
-        exitCode,
-      });
-      log("INFO", `Crown workflow completed for ${options.taskRunId}`, {
-        taskRunId: options.taskRunId,
-        agentModel: options.agentModel,
-      });
-    } catch (error) {
-      log("ERROR", `Failed to handle crown workflow for ${options.taskRunId}`, {
-        taskRunId: options.taskRunId,
-        agentModel: options.agentModel,
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-      });
-    }
-  };
-
-  if (shouldAwaitCompletionDetector && completionDetector && options.taskRunId) {
+  if (options.taskRunId && agentConfig?.completionDetector) {
     try {
       log(
         "INFO",
@@ -1091,11 +1036,12 @@ async function createTerminal(
         {
           taskRunId: options.taskRunId,
           agentModel: options.agentModel,
-          hasDetector: true,
+          hasDetector: !!agentConfig.completionDetector,
         }
       );
 
-      completionDetector(options.taskRunId)
+      agentConfig
+        .completionDetector(options.taskRunId)
         .then(async () => {
           log(
             "INFO",
@@ -1105,25 +1051,63 @@ async function createTerminal(
           emitToMainServer("worker:task-complete", {
             workerId: WORKER_ID,
             terminalId,
-            taskRunId: options.taskRunId,
+            taskRunId: options.taskRunId!,
             agentModel: options.agentModel,
             elapsedMs: Date.now() - processStartTime,
           });
-          await finalizeCrownWorkflow("completion");
+
+          log(
+            "INFO",
+            `Starting crown evaluation for task ${options.taskRunId}`,
+            {
+              taskRunId: options.taskRunId,
+              agentModel: options.agentModel,
+              elapsedMs: Date.now() - processStartTime,
+            }
+          );
+
+          // Await the crown workflow directly
+          try {
+            if (!options.taskRunId) {
+              throw new Error("Task run ID is required");
+            }
+            if (!crownContext) {
+              throw new Error("Crown context is required");
+            }
+
+            await handleWorkerTaskCompletion(options.taskRunId, crownContext, {
+              agentModel: options.agentModel,
+              elapsedMs: Date.now() - processStartTime,
+            });
+
+            log("INFO", `Crown workflow completed for ${options.taskRunId}`, {
+              taskRunId: options.taskRunId,
+              agentModel: options.agentModel,
+            });
+          } catch (error) {
+            log(
+              "ERROR",
+              `Failed to handle crown workflow for ${options.taskRunId}`,
+              {
+                taskRunId: options.taskRunId,
+                agentModel: options.agentModel,
+                error: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : undefined,
+              }
+            );
+          }
         })
         .catch((e) => {
           log(
             "ERROR",
             `Completion detector error for ${options.agentModel}: ${String(e)}`
           );
-          void finalizeCrownWorkflow("completion");
         });
     } catch (e) {
       log(
         "ERROR",
         `Failed to start completion detector for ${options.agentModel}: ${String(e)}`
       );
-      void finalizeCrownWorkflow("completion");
     }
   }
   childProcess.stderr.on("data", (data: Buffer) => {
@@ -1148,7 +1132,6 @@ async function createTerminal(
   // Handle process exit
   childProcess.on("exit", (code, signal) => {
     const runtime = Date.now() - processStartTime;
-    const exitCode = code ?? 0;
 
     log("INFO", `Process exited for terminal ${terminalId}`, {
       code,
@@ -1158,11 +1141,6 @@ async function createTerminal(
       command: spawnCommand,
       args: spawnArgs.slice(0, 5), // Log first 5 args for debugging
     });
-
-    recordedExitCode = exitCode;
-    if (!shouldAwaitCompletionDetector) {
-      void finalizeCrownWorkflow("exit");
-    }
   });
 
   childProcess.on("error", (error) => {

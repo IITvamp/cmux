@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { log } from "../logger";
-import { WORKSPACE_ROOT } from "./constants";
+import { WORKSPACE_ROOT } from "./workspace-root";
 import { execAsync, type ExecError } from "./shell";
 import { toUtf8String } from "./utils";
 

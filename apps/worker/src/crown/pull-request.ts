@@ -6,7 +6,7 @@ import type {
 } from "@cmux/shared/crown/types";
 import { z } from "zod";
 import { log } from "../logger";
-import { WORKSPACE_ROOT } from "./constants";
+import { WORKSPACE_ROOT } from "./workspace-root";
 import { execAsync } from "./shell";
 
 function buildPullRequestTitle(taskText: string): string {
@@ -65,21 +65,16 @@ function mapGhState(
 const GhPrCreateResponseSchema = z.object({
   url: z.string().min(1),
   number: z
-    .preprocess((value) => {
-      if (value === null || value === undefined) {
-        return undefined;
-      }
-      if (typeof value === "number") {
-        return value;
-      }
-      if (typeof value === "string") {
-        const numeric = Number(value);
-        if (Number.isFinite(numeric)) {
-          return numeric;
-        }
-      }
-      return undefined;
-    }, z.number().optional())
+    .number()
+    .int()
+    .nonnegative()
+    .or(
+      z
+        .string()
+        .trim()
+        .regex(/^\d+$/)
+        .transform((value) => Number.parseInt(value, 10))
+    )
     .optional(),
   state: z.string().optional(),
   isDraft: z.boolean().optional(),
@@ -146,18 +141,23 @@ rm -f "$BODY_FILE"
       return null;
     }
 
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(trimmed);
-    } catch (error) {
-      log("ERROR", "Failed to parse gh pr create output", {
-        stdout: trimmed,
-        error,
-      });
-      return null;
-    }
-
-    const parsedResult = GhPrCreateResponseSchema.safeParse(parsed);
+    const parsedResult = z
+      .string()
+      .transform((str) => {
+        try {
+          return JSON.parse(str);
+        } catch {
+          throw new z.ZodError([
+            {
+              code: "custom",
+              message: "Invalid JSON",
+              path: [],
+            },
+          ]);
+        }
+      })
+      .pipe(GhPrCreateResponseSchema)
+      .safeParse(trimmed);
     if (!parsedResult.success) {
       log("ERROR", "Invalid gh pr create response", {
         stdout: trimmed,
