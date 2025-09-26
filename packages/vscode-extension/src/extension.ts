@@ -51,6 +51,69 @@ function log(message: string, ...args: unknown[]) {
   }
 }
 
+function createFocusRestorer() {
+  const tabGroups = vscode.window.tabGroups;
+  const activeTabGroup = tabGroups?.activeTabGroup;
+  const activeTab = activeTabGroup?.activeTab;
+  const activeTerminal = vscode.window.activeTerminal;
+  const activeEditor = vscode.window.activeTextEditor;
+
+  if (activeTab && activeTab.input instanceof vscode.TabInputText) {
+    const input = activeTab.input as vscode.TabInputText;
+    const uri = input.uri;
+    const viewColumn = activeTab.group.viewColumn;
+    const preview = activeTab.isPreview;
+    const previousSelections =
+      activeEditor &&
+      activeEditor.document.uri.toString() === uri.toString()
+        ? activeEditor.selections.map(
+            (selection) =>
+              new vscode.Selection(selection.start, selection.end)
+          )
+        : undefined;
+
+    return async () => {
+      try {
+        const editor = await vscode.window.showTextDocument(uri, {
+          viewColumn,
+          preserveFocus: false,
+          preview,
+        });
+        if (previousSelections && previousSelections.length > 0) {
+          editor.selections = previousSelections;
+        }
+      } catch (error) {
+        log("Failed to restore text editor focus", error);
+      }
+    };
+  }
+
+  if (activeTab && activeTab.input instanceof vscode.TabInputTerminal) {
+    if (activeTerminal) {
+      return async () => {
+        try {
+          activeTerminal.show();
+        } catch (error) {
+          log("Failed to restore terminal focus", error);
+        }
+      };
+    }
+    return async () => {};
+  }
+
+  if (!activeTab && activeTerminal) {
+    return async () => {
+      try {
+        activeTerminal.show();
+      } catch (error) {
+        log("Failed to restore terminal focus", error);
+      }
+    };
+  }
+
+  return async () => {};
+}
+
 async function resolveDefaultBaseRef(repositoryPath: string): Promise<string> {
   try {
     const out = execSync(
@@ -120,148 +183,163 @@ let _currentMultiDiffUri: string | null = null;
 
 async function openMultiDiffEditor(
   baseRef?: string,
-  useMergeBase: boolean = true
+  useMergeBase: boolean = true,
+  options: { preserveFocus?: boolean } = {}
 ) {
   log("=== openMultiDiffEditor called ===");
   log("baseRef:", baseRef);
   log("useMergeBase:", useMergeBase);
 
-  // Get the Git extension
-  const gitExtension = vscode.extensions.getExtension("vscode.git");
-  if (!gitExtension) {
-    vscode.window.showErrorMessage("Git extension not found");
-    return;
-  }
+  const restoreFocus = options.preserveFocus ? createFocusRestorer() : null;
 
-  const git = gitExtension.exports;
-  const api = git.getAPI(1);
-
-  // Get the first repository (or you can select a specific one)
-  const repository = api.repositories[0];
-  if (!repository) {
-    vscode.window.showErrorMessage("No Git repository found");
-    return;
-  }
-
-  const repoPath = repository.rootUri.fsPath;
-  log("Repository path:", repoPath);
-
-  const resolvedDefaultBase =
-    baseRef || (await resolveDefaultBaseRef(repoPath));
-  log("Resolved default base:", resolvedDefaultBase);
-
-  const resolvedMergeBase = useMergeBase
-    ? await resolveMergeBase(repoPath, resolvedDefaultBase)
-    : null;
-  log("Resolved merge base:", resolvedMergeBase);
-
-  const effectiveBase = resolvedMergeBase || resolvedDefaultBase;
-  log("Effective base:", effectiveBase);
-
-  // Get all changed files between base and current working tree
   try {
-    // Get ALL changes - use git diff to compare base with working tree
-    const cmd = `git diff --name-only ${effectiveBase}`;
-    log("Running git diff command:", cmd);
-    const diffOutput = execSync(cmd, { cwd: repoPath, encoding: "utf8" });
-    log("Git diff output:", diffOutput);
+    // Get the Git extension
+    const gitExtension = vscode.extensions.getExtension("vscode.git");
+    if (!gitExtension) {
+      vscode.window.showErrorMessage("Git extension not found");
+      return;
+    }
 
-    const files = diffOutput
-      .trim()
-      .split("\n")
-      .filter((f) => f);
-    log("Changed files:", files);
+    const git = gitExtension.exports;
+    const api = git.getAPI(1);
 
-    // Always create resources - even if empty, still open the view
-    const resources =
-      files.length > 0
-        ? files.map((file) => {
-            const fileUri = vscode.Uri.file(`${repoPath}/${file}`);
-            const baseUri = api.toGitUri(fileUri, effectiveBase);
+    // Get the first repository (or you can select a specific one)
+    const repository = api.repositories[0];
+    if (!repository) {
+      vscode.window.showErrorMessage("No Git repository found");
+      return;
+    }
 
-            // Match the exact structure used by VS Code's git extension
-            return {
-              originalUri: baseUri,
-              modifiedUri: fileUri,
-            };
-          })
-        : [];
+    const repoPath = repository.rootUri.fsPath;
+    log("Repository path:", repoPath);
 
-    log(
-      "Resources for multi-diff:",
-      resources.map((r) => ({
-        originalUri: r.originalUri.toString(),
-        modifiedUri: r.modifiedUri.toString(),
-      }))
-    );
+    const resolvedDefaultBase =
+      baseRef || (await resolveDefaultBaseRef(repoPath));
+    log("Resolved default base:", resolvedDefaultBase);
 
-    // Extract base branch name for title (e.g., "main" from "origin/main" or "refs/remotes/origin/main")
-    const baseBranchName = resolvedDefaultBase
-      .replace(/^refs\/remotes\//, "")
-      .replace(/^origin\//, "");
+    const resolvedMergeBase = useMergeBase
+      ? await resolveMergeBase(repoPath, resolvedDefaultBase)
+      : null;
+    log("Resolved merge base:", resolvedMergeBase);
 
-    const title = `All Changes vs ${baseBranchName}`;
+    const effectiveBase = resolvedMergeBase || resolvedDefaultBase;
+    log("Effective base:", effectiveBase);
 
-    // Create a consistent multiDiffSourceUri that will reuse the same editor
-    // Using a fixed scheme and path ensures VS Code reuses the existing tab
-    const multiDiffSourceUri = vscode.Uri.from({
-      scheme: "cmux-all-changes",
-      path: `${repoPath}/all-changes-vs-base`,
-    });
+    // Get all changed files between base and current working tree
+    try {
+      // Get ALL changes - use git diff to compare base with working tree
+      const cmd = `git diff --name-only ${effectiveBase}`;
+      log("Running git diff command:", cmd);
+      const diffOutput = execSync(cmd, { cwd: repoPath, encoding: "utf8" });
+      log("Git diff output:", diffOutput);
 
-    // Check if we have an existing multi-diff editor open
-    const multiDiffUriString = multiDiffSourceUri.toString();
-    const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs);
-    const existingTab = tabs.find(
-      (tab) => tab.label && tab.label.includes("All Changes vs")
-    );
+      const files = diffOutput
+        .trim()
+        .split("\n")
+        .filter((f) => f);
+      log("Changed files:", files);
 
-    if (existingTab) {
-      // Try to activate the existing tab first to preserve position
-      // This helps maintain scroll position and user context
-      const tabGroup = vscode.window.tabGroups.all.find((g) =>
-        g.tabs.includes(existingTab)
+      // Always create resources - even if empty, still open the view
+      const resources =
+        files.length > 0
+          ? files.map((file) => {
+              const fileUri = vscode.Uri.file(`${repoPath}/${file}`);
+              const baseUri = api.toGitUri(fileUri, effectiveBase);
+
+              // Match the exact structure used by VS Code's git extension
+              return {
+                originalUri: baseUri,
+                modifiedUri: fileUri,
+              };
+            })
+          : [];
+
+      log(
+        "Resources for multi-diff:",
+        resources.map((r) => ({
+          originalUri: r.originalUri.toString(),
+          modifiedUri: r.modifiedUri.toString(),
+        }))
       );
-      if (tabGroup) {
-        // Make sure the tab is active before updating
-        await vscode.commands.executeCommand(
-          "workbench.action.focusActiveEditorGroup"
+
+      // Extract base branch name for title (e.g., "main" from "origin/main" or "refs/remotes/origin/main")
+      const baseBranchName = resolvedDefaultBase
+        .replace(/^refs\/remotes\//, "")
+        .replace(/^origin\//, "");
+
+      const title = `All Changes vs ${baseBranchName}`;
+
+      // Create a consistent multiDiffSourceUri that will reuse the same editor
+      // Using a fixed scheme and path ensures VS Code reuses the existing tab
+      const multiDiffSourceUri = vscode.Uri.from({
+        scheme: "cmux-all-changes",
+        path: `${repoPath}/all-changes-vs-base`,
+      });
+
+      // Check if we have an existing multi-diff editor open
+      const multiDiffUriString = multiDiffSourceUri.toString();
+      const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs);
+      const existingTab = tabs.find(
+        (tab) => tab.label && tab.label.includes("All Changes vs")
+      );
+
+      if (existingTab) {
+        // Try to activate the existing tab first to preserve position
+        // This helps maintain scroll position and user context
+        const tabGroup = vscode.window.tabGroups.all.find((g) =>
+          g.tabs.includes(existingTab)
+        );
+        if (tabGroup) {
+          // Make sure the tab is active before updating
+          await vscode.commands.executeCommand(
+            "workbench.action.focusActiveEditorGroup"
+          );
+        }
+      }
+
+      // Store the current URI
+      _currentMultiDiffUri = multiDiffUriString;
+
+      // Execute the command - VS Code will try to update the existing view if possible
+      // The multiDiffSourceUri acts as the key - same URI should update the same editor
+      await vscode.commands.executeCommand("_workbench.openMultiDiffEditor", {
+        multiDiffSourceUri,
+        title,
+        resources,
+      });
+
+      log("Multi-diff editor opened successfully");
+      if (files.length > 0) {
+        vscode.window.showInformationMessage(
+          `Showing ${files.length} file(s) changed vs ${baseBranchName}`
         );
       }
+    } catch (error: unknown) {
+      log("Error opening diff:", error);
+      if (error instanceof Error) {
+        log("Error stack:", error.stack);
+        vscode.window.showErrorMessage(
+          `Failed to open changes: ${error.message}`
+        );
+      } else {
+        vscode.window.showErrorMessage("Failed to open changes");
+      }
     }
-
-    // Store the current URI
-    _currentMultiDiffUri = multiDiffUriString;
-
-    // Execute the command - VS Code will try to update the existing view if possible
-    // The multiDiffSourceUri acts as the key - same URI should update the same editor
-    await vscode.commands.executeCommand("_workbench.openMultiDiffEditor", {
-      multiDiffSourceUri,
-      title,
-      resources,
-    });
-
-    log("Multi-diff editor opened successfully");
-    if (files.length > 0) {
-      vscode.window.showInformationMessage(
-        `Showing ${files.length} file(s) changed vs ${baseBranchName}`
-      );
-    }
-  } catch (error: unknown) {
-    log("Error opening diff:", error);
-    if (error instanceof Error) {
-      log("Error stack:", error.stack);
-      vscode.window.showErrorMessage(
-        `Failed to open changes: ${error.message}`
-      );
-    } else {
-      vscode.window.showErrorMessage("Failed to open changes");
+  } finally {
+    if (restoreFocus) {
+      try {
+        await restoreFocus();
+      } catch (error) {
+        log("Failed to restore focus after opening diff", error);
+      }
     }
   }
 }
 
 async function setupDefaultTerminal() {
   log("Setting up default terminal");
+
+  const restoreFocus = createFocusRestorer();
 
   // Prevent duplicate setup
   if (isSetupComplete) {
@@ -290,10 +368,11 @@ async function setupDefaultTerminal() {
   // Open Source Control view
   log("Opening SCM view...");
   await vscode.commands.executeCommand("workbench.view.scm");
+  await restoreFocus();
 
   // Open git changes view
   log("Opening git changes view...");
-  await openMultiDiffEditor();
+  await openMultiDiffEditor(undefined, true, { preserveFocus: true });
 
   // Create terminal for default tmux session
   log("Creating terminal for default tmux session");
@@ -305,7 +384,7 @@ async function setupDefaultTerminal() {
     env: process.env,
   });
 
-  terminal.show();
+  terminal.show(true);
 
   // Store terminal reference
   activeTerminals.set("default", terminal);
@@ -321,7 +400,7 @@ async function setupDefaultTerminal() {
   // After terminal is created, ensure the terminal is active and move to right group
   setTimeout(async () => {
     // Focus on the terminal tab
-    terminal.show();
+    terminal.show(true);
 
     // Move the active editor (terminal) to the right group
     log("Moving terminal editor to right group");
@@ -333,6 +412,12 @@ async function setupDefaultTerminal() {
     // await vscode.commands.executeCommand("workbench.action.terminal.focus");
 
     log("Terminal setup complete");
+
+    try {
+      await restoreFocus();
+    } catch (error) {
+      log("Failed to restore focus after terminal setup", error);
+    }
   }, 100);
 }
 
@@ -507,7 +592,7 @@ export function activate(context: vscode.ExtensionContext) {
   const openAllChangesVsBase = vscode.commands.registerCommand(
     "cmux.git.openAllChangesAgainstBase",
     async () => {
-      await openMultiDiffEditor(undefined, true);
+      await openMultiDiffEditor(undefined, true, { preserveFocus: false });
 
       // Set up file watcher for auto-refresh if not already set up
       if (!fileWatcher && vscode.workspace.workspaceFolders) {
@@ -535,7 +620,9 @@ export function activate(context: vscode.ExtensionContext) {
               // Set new timer to refresh after 500ms of no changes
               refreshDebounceTimer = setTimeout(async () => {
                 log("Auto-refreshing diff view due to file changes");
-                await openMultiDiffEditor(undefined, true);
+                await openMultiDiffEditor(undefined, true, {
+                  preserveFocus: true,
+                });
               }, 500);
             };
 
