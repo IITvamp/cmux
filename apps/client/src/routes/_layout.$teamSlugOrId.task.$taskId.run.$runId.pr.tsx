@@ -1,12 +1,15 @@
 import { FloatingPane } from "@/components/floating-pane";
 import { PersistentWebView } from "@/components/persistent-webview";
+import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
+import { useSocket } from "@/contexts/socket/use-socket";
 import { getTaskRunPullRequestPersistKey } from "@/lib/persistent-webview-keys";
 import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { toast } from "sonner";
 import z from "zod";
 
 const paramsSchema = z.object({
@@ -47,6 +50,7 @@ export const Route = createFileRoute(
 
 function RunPullRequestPage() {
   const { taskId, teamSlugOrId, runId } = Route.useParams();
+  const { socket } = useSocket();
 
   const task = useQuery(api.tasks.getById, {
     teamSlugOrId,
@@ -70,6 +74,88 @@ function RunPullRequestPage() {
     return getTaskRunPullRequestPersistKey(runId);
   }, [runId]);
   const paneBorderRadius = 6;
+  const taskRunId = selectedRun?._id ?? runId;
+  const prIsOpen = selectedRun?.pullRequestState === "open";
+  const prIsMerged = selectedRun?.pullRequestState === "merged";
+  const [isMerging, setIsMerging] = useState(false);
+  const [isOpeningPr, setIsOpeningPr] = useState(false);
+
+  const handleMerge = useCallback(
+    async (method: MergeMethod) => {
+      if (!socket || !taskRunId) {
+        toast.error("Socket not connected. Refresh or try again later.");
+        return;
+      }
+
+      setIsMerging(true);
+      const toastId = toast.loading(`Merging PR (${method})...`);
+
+      await new Promise<void>((resolve) => {
+        socket.emit(
+          "github-merge-pr",
+          { taskRunId, method },
+          (resp: {
+            success: boolean;
+            merged?: boolean;
+            state?: string;
+            url?: string;
+            error?: string;
+          }) => {
+            setIsMerging(false);
+            if (resp.success) {
+              toast.success("PR merged", {
+                id: toastId,
+                description: resp.url,
+              });
+            } else {
+              toast.error("Failed to merge PR", {
+                id: toastId,
+                description: resp.error,
+              });
+            }
+            resolve();
+          }
+        );
+      });
+    },
+    [socket, taskRunId]
+  );
+
+  const handleOpenPr = useCallback(() => {
+    if (!socket || !taskRunId) {
+      toast.error("Socket not connected. Refresh or try again later.");
+      return;
+    }
+
+    setIsOpeningPr(true);
+    const toastId = toast.loading("Opening PR...");
+
+    socket.emit("github-open-pr", { taskRunId }, (resp) => {
+      setIsOpeningPr(false);
+      if (resp.success) {
+        toast.success("PR opened", {
+          id: toastId,
+          description: resp.url,
+          ...(resp.url
+            ? {
+                action: {
+                  label: "View PR",
+                  onClick: () =>
+                    window.open(resp.url, "_blank", "noopener,noreferrer"),
+                },
+              }
+            : {}),
+        });
+      } else {
+        toast.error("Failed to open PR", {
+          id: toastId,
+          description: resp.error,
+        });
+      }
+    });
+  }, [socket, taskRunId]);
+
+  const mergeDisabled = !socket || isMerging || isOpeningPr;
 
   return (
     <FloatingPane>
@@ -81,35 +167,50 @@ function RunPullRequestPage() {
               <h2 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
                 Pull Request
               </h2>
+            </div>
+            <div className="flex items-center gap-2">
               {selectedRun?.pullRequestState && (
                 <span className="text-xs px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400">
                   {selectedRun.pullRequestState}
                 </span>
               )}
-            </div>
-            {hasUrl && (
-              <a
-                href={pullRequestUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
-              >
-                Open in GitHub
-                <svg
-                  className="w-3 h-3"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+              {selectedRun && !isPending && !prIsMerged && (
+                <MergeButton
+                  onMerge={(method) => {
+                    if (prIsOpen) {
+                      void handleMerge(method);
+                    } else {
+                      handleOpenPr();
+                    }
+                  }}
+                  isOpen={prIsOpen}
+                  disabled={mergeDisabled}
+                />
+              )}
+              {hasUrl && (
+                <a
+                  href={pullRequestUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                  />
-                </svg>
-              </a>
-            )}
+                  Open in GitHub
+                  <svg
+                    className="w-3 h-3"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                    />
+                  </svg>
+                </a>
+              )}
+            </div>
           </div>
 
           {/* Task description */}
