@@ -143,17 +143,17 @@ export default function LandingPage() {
             <div className="bg-blue-500 rounded-sm" aria-hidden="true"></div>
             <div>
               <h1 className="text-4xl sm:text-4xl md:text-4xl font-semibold mb-6">
-                Universal AI coding agent manager for 10x engineers
+                AI Workflow Builder for Businesses
               </h1>
 
               <p className="text-lg text-neutral-300 mb-4 leading-relaxed">
-                cmux is a universal AI coding agent manager that supports Claude Code, Codex, Gemini CLI, Amp,
-                Opencode, and other coding CLIs. We give 10x engineers an interface to manage AI coding tasks in
-                parallel, context switch fast, and verify AI-generated code to stay actually productive with AI.
+                cmux is an AI workflow builder that empowers businesses to deploy Claude Code, Codex, Gemini CLI, Amp,
+                Opencode, and other AI coding agents in parallel. We provide enterprise teams with a powerful interface to
+                orchestrate AI-driven development workflows, scale code generation, and maintain quality control across multiple projects.
               </p>
               <p className="text-lg text-neutral-300 mb-4 leading-relaxed">
-                Every run spins up an isolated VS Code instances via Docker with the git diff UI and terminal so parallel
-                agent work stays verifiable, fast, and ready to ship.
+                Every workflow runs in isolated VS Code environments via Docker with integrated git diff UI and terminals,
+                ensuring parallel AI work stays organized, verifiable, and production-ready for business delivery.
               </p>
               <p className="text-lg text-neutral-300 leading-relaxed">
                 Learn more about the{" "}
@@ -243,18 +243,18 @@ export default function LandingPage() {
       <section id="about" className="pt-8 px-4 sm:px-6 lg:px-12">
         <div className="container max-w-5xl mx-auto">
           <h2 className="text-2xl font-semibold text-center mb-8">
-            Rethinking the developer interface
+            Scaling AI development workflows for business
           </h2>
 
           <div className="space-y-8 text-neutral-400 mb-12">
             <div className="space-y-2">
               <p>
                 <span className="text-white font-semibold">
-                  The interface is the bottleneck.
+                  Enterprise teams need scalable AI workflows.
                 </span>{" "}
-                We&apos;ve spent years making AI agents better at coding, but almost
-                no time making it easier to verify their work. The result?
-                Developers spend 80% of their time reviewing and 20% prompting.
+                While AI coding agents have become powerful, businesses struggle to
+                deploy them effectively at scale. The result? Development teams spend
+                most of their time managing agent outputs rather than delivering business value.
               </p>
               <blockquote className="border-l-2 border-neutral-800 pl-4 text-neutral-300">
                 <p>
@@ -269,12 +269,12 @@ export default function LandingPage() {
             <div className="space-y-2">
               <p>
                 <span className="text-white font-semibold">
-                  Isolation enables scale.
+                  Isolation enables business scale.
                 </span>{" "}
-                When each agent runs in its own container with its own VS Code
-                instance, you eliminate the confusion of shared state. Every
-                diff is clean. Every terminal output is separate. Every
-                verification is independent.
+                When each AI workflow runs in its own container with dedicated VS Code
+                instances, enterprises can confidently deploy multiple agents across
+                projects. Every change is tracked separately. Every output is verifiable.
+                Every workflow maintains business-grade quality controls.
               </p>
               <blockquote className="border-l-2 border-neutral-800 pl-4 text-neutral-300">
                 <p>
