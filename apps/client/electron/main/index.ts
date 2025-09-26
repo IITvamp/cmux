@@ -1,5 +1,6 @@
 import path, { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import os from "node:os";
 
 import { is } from "@electron-toolkit/utils";
 import {
@@ -13,8 +14,10 @@ import {
   net,
   session,
   shell,
+  safeStorage,
   webFrameMain,
   type BrowserWindowConstructorOptions,
+  type Session,
   type MenuItemConstructorOptions,
 } from "electron";
 import { startEmbeddedServer } from "./embedded-server";
@@ -78,6 +81,15 @@ const LOG_ROTATION: LogRotationOptions = {
   maxBytes: 5 * 1024 * 1024,
   maxBackups: 3,
 };
+
+const AUTH_STATE_DIR_NAME = "auth";
+const AUTH_STATE_FILE_NAME = "stack-cookies.bin";
+const AUTH_STATE_VERSION = 1;
+
+const AUTH_COOKIE_NAMES = new Set<string>([
+  `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`,
+  "stack-access",
+]);
 
 function getTimestamp(): string {
   return new Date().toISOString();
@@ -204,6 +216,158 @@ export function mainError(...args: unknown[]) {
 
   console.error("[MAIN]", line);
   emitToRenderer("error", `[MAIN] ${line}`);
+}
+
+type StoredAuthCookie = {
+  name: string;
+  value: string;
+  expirationDate?: number;
+  url: string;
+  secure?: boolean;
+};
+
+type StoredAuthState = {
+  version: number;
+  cookies: StoredAuthCookie[];
+};
+
+function authStateDir(): string {
+  try {
+    return path.join(app.getPath("userData"), AUTH_STATE_DIR_NAME);
+  } catch {
+    return path.join(os.tmpdir(), "cmux-user-data", AUTH_STATE_DIR_NAME);
+  }
+}
+
+function authStateFilePath(): string {
+  return path.join(authStateDir(), AUTH_STATE_FILE_NAME);
+}
+
+async function ensureAuthStateDir(): Promise<string> {
+  const dir = authStateDir();
+  try {
+    await fs.mkdir(dir, { recursive: true });
+  } catch {
+    // ignore mkdir failures; subsequent fs ops will surface errors
+  }
+  return dir;
+}
+
+async function persistAuthCookieState(cookies: StoredAuthCookie[]): Promise<void> {
+  try {
+    const dir = await ensureAuthStateDir();
+    const file = path.join(dir, AUTH_STATE_FILE_NAME);
+    const payload: StoredAuthState = {
+      version: AUTH_STATE_VERSION,
+      cookies,
+    };
+    const serialized = JSON.stringify(payload);
+    const buffer = safeStorage.isEncryptionAvailable()
+      ? safeStorage.encryptString(serialized)
+      : Buffer.from(serialized, "utf8");
+    await fs.writeFile(file, buffer);
+    mainLog("Persisted auth cookie state", {
+      names: cookies.map((cookie) => cookie.name),
+    });
+  } catch (error) {
+    mainWarn("Failed to persist auth cookie state", error);
+  }
+}
+
+async function loadStoredAuthState(): Promise<StoredAuthState | null> {
+  const file = authStateFilePath();
+  try {
+    const data = await fs.readFile(file);
+    let serialized: string;
+    if (safeStorage.isEncryptionAvailable()) {
+      try {
+        serialized = safeStorage.decryptString(data);
+      } catch (error) {
+        mainWarn("Failed to decrypt auth cookie state; clearing persisted copy", error);
+        await fs.unlink(file).catch(() => {});
+        return null;
+      }
+    } else {
+      serialized = data.toString("utf8");
+    }
+    const parsed = JSON.parse(serialized) as StoredAuthState;
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      parsed.version !== AUTH_STATE_VERSION ||
+      !Array.isArray(parsed.cookies)
+    ) {
+      await fs.unlink(file).catch(() => {});
+      return null;
+    }
+    return parsed;
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err.code === "ENOENT") {
+      return null;
+    }
+    mainWarn("Failed to read auth cookie state", error);
+    return null;
+  }
+}
+
+async function clearStoredAuthState(): Promise<void> {
+  const file = authStateFilePath();
+  try {
+    await fs.unlink(file);
+    mainLog("Cleared persisted auth cookie state");
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err.code !== "ENOENT") {
+      mainWarn("Failed to clear persisted auth cookie state", error);
+    }
+  }
+}
+
+async function restoreAuthCookiesFromStorage(ses: Session): Promise<boolean> {
+  const stored = await loadStoredAuthState();
+  if (!stored) return false;
+
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const cookiesToRestore = stored.cookies.filter((cookie) => {
+    if (!AUTH_COOKIE_NAMES.has(cookie.name)) return false;
+    if (
+      typeof cookie.expirationDate === "number" &&
+      cookie.expirationDate <= nowSeconds
+    ) {
+      return false;
+    }
+    return true;
+  });
+
+  if (cookiesToRestore.length === 0) {
+    mainLog("Persisted auth cookie state is empty or expired; clearing");
+    await clearStoredAuthState();
+    return false;
+  }
+
+  try {
+    await Promise.all(
+      cookiesToRestore.map((cookie) =>
+        ses.cookies.set({
+          url: cookie.url,
+          name: cookie.name,
+          value: cookie.value,
+          expirationDate: cookie.expirationDate,
+          sameSite: "no_restriction",
+          secure: cookie.secure ?? cookie.url.startsWith("https://"),
+          path: "/",
+        })
+      )
+    );
+    mainLog("Restored auth cookies from persisted state", {
+      names: cookiesToRestore.map((cookie) => cookie.name),
+    });
+    return true;
+  } catch (error) {
+    mainWarn("Failed to restore auth cookies from persisted state", error);
+    return false;
+  }
 }
 
 function emitAutoUpdateToastIfPossible(): void {
@@ -623,6 +787,19 @@ app.whenReady().then(async () => {
   }
 
   const ses = session.fromPartition(PARTITION);
+
+  ses.cookies.on("changed", (_event, cookie, cause, removed) => {
+    if (!removed) return;
+    if (cause === "overwrite") return;
+    if (!AUTH_COOKIE_NAMES.has(cookie.name)) return;
+    mainLog("Auth cookie removed from session; clearing persisted state", {
+      name: cookie.name,
+      cause,
+    });
+    void clearStoredAuthState();
+  });
+
+  await restoreAuthCookiesFromStorage(ses);
   // Intercept HTTPS for our private host and serve local files; pass-through others.
   ses.protocol.handle("https", async (req) => {
     const u = new URL(req.url);
@@ -803,38 +980,77 @@ async function handleProtocolUrl(url: string): Promise<void> {
       return;
     }
 
-    // Determine a cookieable URL. Prefer our custom cmux:// origin when not
-    // running against an http(s) dev server.
-    const currentUrl = new URL(mainWindow.webContents.getURL());
-    currentUrl.hash = "";
-    const realUrl = currentUrl.toString() + "/";
+    let cookieUrl = `https://${APP_HOST}/`;
+    try {
+      const currentUrl = new URL(mainWindow.webContents.getURL());
+      currentUrl.hash = "";
+      if (currentUrl.origin && currentUrl.origin !== "null") {
+        cookieUrl = `${currentUrl.origin}/`;
+      }
+    } catch {
+      // Fall back to APP_HOST when the current URL cannot be parsed (e.g. before initial load).
+    }
 
-    await Promise.all([
-      mainWindow.webContents.session.cookies.remove(
-        realUrl,
-        `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`
-      ),
-      mainWindow.webContents.session.cookies.remove(realUrl, `stack-access`),
-    ]);
+    try {
+      await Promise.all([
+        mainWindow.webContents.session.cookies.remove(
+          cookieUrl,
+          `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`
+        ),
+        mainWindow.webContents.session.cookies.remove(cookieUrl, "stack-access"),
+      ]);
+    } catch (error) {
+      mainWarn("Failed to clear existing auth cookies before setting new ones", error);
+    }
 
-    await Promise.all([
-      mainWindow.webContents.session.cookies.set({
-        url: realUrl,
+    const secure = cookieUrl.startsWith("https://");
+    const cookiesToPersist: StoredAuthCookie[] = [
+      {
+        url: cookieUrl,
         name: `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`,
         value: stackRefresh,
-        expirationDate: refreshPayload?.exp,
-        sameSite: "no_restriction",
-        secure: true,
-      }),
-      mainWindow.webContents.session.cookies.set({
-        url: realUrl,
+        expirationDate: refreshPayload?.exp ?? undefined,
+        secure,
+      },
+      {
+        url: cookieUrl,
         name: "stack-access",
         value: stackAccess,
-        expirationDate: accessPayload?.exp,
-        sameSite: "no_restriction",
-        secure: true,
-      }),
-    ]);
+        expirationDate: accessPayload?.exp ?? undefined,
+        secure,
+      },
+    ];
+
+    const [refreshCookie, accessCookie] = cookiesToPersist;
+
+    try {
+      await Promise.all([
+        mainWindow.webContents.session.cookies.set({
+          url: refreshCookie.url,
+          name: refreshCookie.name,
+          value: refreshCookie.value,
+          expirationDate: refreshCookie.expirationDate,
+          sameSite: "no_restriction",
+          secure: refreshCookie.secure ?? secure,
+          path: "/",
+        }),
+        mainWindow.webContents.session.cookies.set({
+          url: accessCookie.url,
+          name: accessCookie.name,
+          value: accessCookie.value,
+          expirationDate: accessCookie.expirationDate,
+          sameSite: "no_restriction",
+          secure: accessCookie.secure ?? secure,
+          path: "/",
+        }),
+      ]);
+    } catch (error) {
+      mainWarn("Failed to set auth cookies", error);
+      await clearStoredAuthState();
+      return;
+    }
+
+    await persistAuthCookieState(cookiesToPersist);
 
     mainWindow.webContents.reload();
     return;
