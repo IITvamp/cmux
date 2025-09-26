@@ -11,7 +11,7 @@ export const Route = createFileRoute("/sign-in")({
     const user = await stackClientApp.getUser();
     if (user) {
       const after_auth_redirect_to = search.after_auth_return_to || "/";
-      return redirect({ to: after_auth_redirect_to });
+      throw redirect({ to: after_auth_redirect_to });
     }
   },
   component: SignInComponent,
