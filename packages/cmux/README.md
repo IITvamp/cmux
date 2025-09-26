@@ -51,3 +51,10 @@ cmux is part of the cmux project. See the main repository for development instru
 ## License
 
 MIT
+
+
+---
+
+Code weaves through the night
+Bugs dance in the moonlight
+Dawn brings clarity

@@ -44,3 +44,10 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+
+---
+
+Code weaves through the night
+Bugs dance in the moonlight
+Dawn brings clarity

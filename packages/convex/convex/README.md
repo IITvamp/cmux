@@ -88,3 +88,10 @@ function handleButtonPress() {
 Use the Convex CLI to push your functions to a deployment. See everything
 the Convex CLI can do by running `npx convex -h` in your project root
 directory. To learn more, launch the docs with `npx convex docs`.
+
+
+---
+
+Code weaves through the night
+Bugs dance in the moonlight
+Dawn brings clarity
