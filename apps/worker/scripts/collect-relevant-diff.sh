@@ -72,16 +72,7 @@ determine_base_ref() {
     return 0
   fi
 
-  # # Fallbacks
-  # if git rev-parse --verify --quiet origin/main >/dev/null; then
-  #   echo "origin/main"
-  #   return 0
-  # fi
-  # if git rev-parse --verify --quiet origin/master >/dev/null; then
-  #   echo "origin/master"
-  #   return 0
-  # fi
-
+  # No remote default found
   echo ""
 }
 

@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { log } from "../logger.js";
+import { log } from "../logger";
 
 const execAsync = promisify(childExec);
 
