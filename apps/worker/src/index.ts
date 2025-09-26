@@ -842,7 +842,7 @@ async function createTerminal(
 
   const taskRunToken = env?.CMUX_TASK_RUN_JWT;
   const convexUrl = env?.NEXT_PUBLIC_CONVEX_URL;
-  const runContext: WorkerRunContext | undefined =
+  const crownContext: WorkerRunContext | null =
     options.taskRunId && taskRunToken
       ? {
           token: taskRunToken,
@@ -850,7 +850,7 @@ async function createTerminal(
           agentModel: options.agentModel,
           convexUrl,
         }
-      : undefined;
+      : null;
 
   const shell = command || (platform() === "win32" ? "powershell.exe" : "bash");
 
@@ -1028,52 +1028,32 @@ async function createTerminal(
     return;
   }
 
-  let completionReady = !agentConfig.completionDetector;
-  let completionElapsedMs: number | undefined;
-  let exitReady = false;
-  let recordedExitCode: number | undefined;
-  let finalizing = false;
-  let finalized = false;
+  const completionDetector = agentConfig.completionDetector;
+  const shouldAwaitCompletionDetector = Boolean(
+    options.taskRunId && crownContext && completionDetector
+  );
 
-  const finalizeIfPossible = async (reason: "completion" | "exit") => {
-    if (finalized || finalizing) {
-      return;
-    }
-    if (!options.taskRunId) {
-      return;
-    }
-    if (!runContext) {
-      log("ERROR", "Missing run context for crown finalization", {
-        taskRunId: options.taskRunId,
+  let crownFinalized = false;
+  let recordedExitCode: number | undefined;
+
+  const finalizeCrownWorkflow = async (
+    reason: "completion" | "exit"
+  ): Promise<void> => {
+    if (!options.taskRunId || !crownContext) {
+      log("DEBUG", "Skipping crown finalization", {
         reason,
+        hasTaskRunId: Boolean(options.taskRunId),
+        hasContext: Boolean(crownContext),
       });
       return;
     }
-    if (!completionReady) {
+
+    if (crownFinalized) {
       return;
     }
 
-    if (!exitReady) {
-      if (reason === "exit") {
-        return;
-      }
-
-      log(
-        "INFO",
-        "Completion detected while process still running; continuing finalization",
-        {
-          taskRunId: options.taskRunId,
-          agentModel: options.agentModel,
-        }
-      );
-    }
-
-    if (finalized || finalizing) {
-      return;
-    }
-
-    finalizing = true;
-    const elapsedMs = completionElapsedMs ?? Date.now() - processStartTime;
+    crownFinalized = true;
+    const elapsedMs = Date.now() - processStartTime;
     const exitCode = recordedExitCode ?? 0;
 
     log("INFO", `Finalizing crown workflow (${reason})`, {
@@ -1084,12 +1064,11 @@ async function createTerminal(
     });
 
     try {
-      await handleWorkerTaskCompletion(options.taskRunId, runContext, {
+      await handleWorkerTaskCompletion(options.taskRunId, crownContext, {
         agentModel: options.agentModel,
         elapsedMs,
         exitCode,
       });
-      finalized = true;
       log("INFO", `Crown workflow completed for ${options.taskRunId}`, {
         taskRunId: options.taskRunId,
         agentModel: options.agentModel,
@@ -1101,12 +1080,10 @@ async function createTerminal(
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
       });
-    } finally {
-      finalizing = false;
     }
   };
 
-  if (options.taskRunId && agentConfig?.completionDetector) {
+  if (shouldAwaitCompletionDetector && completionDetector && options.taskRunId) {
     try {
       log(
         "INFO",
@@ -1114,12 +1091,11 @@ async function createTerminal(
         {
           taskRunId: options.taskRunId,
           agentModel: options.agentModel,
-          hasDetector: !!agentConfig.completionDetector,
+          hasDetector: true,
         }
       );
 
-      agentConfig
-        .completionDetector(options.taskRunId)
+      completionDetector(options.taskRunId)
         .then(async () => {
           log(
             "INFO",
@@ -1133,28 +1109,21 @@ async function createTerminal(
             agentModel: options.agentModel,
             elapsedMs: Date.now() - processStartTime,
           });
-
-          completionReady = true;
-          completionElapsedMs = Date.now() - processStartTime;
-          await finalizeIfPossible("completion");
+          await finalizeCrownWorkflow("completion");
         })
         .catch((e) => {
           log(
             "ERROR",
             `Completion detector error for ${options.agentModel}: ${String(e)}`
           );
-          completionReady = true;
-          completionElapsedMs = Date.now() - processStartTime;
-          void finalizeIfPossible("completion");
+          void finalizeCrownWorkflow("completion");
         });
     } catch (e) {
       log(
         "ERROR",
         `Failed to start completion detector for ${options.agentModel}: ${String(e)}`
       );
-      completionReady = true;
-      completionElapsedMs = Date.now() - processStartTime;
-      void finalizeIfPossible("completion");
+      void finalizeCrownWorkflow("completion");
     }
   }
   childProcess.stderr.on("data", (data: Buffer) => {
@@ -1190,9 +1159,10 @@ async function createTerminal(
       args: spawnArgs.slice(0, 5), // Log first 5 args for debugging
     });
 
-    exitReady = true;
     recordedExitCode = exitCode;
-    void finalizeIfPossible("exit");
+    if (!shouldAwaitCompletionDetector) {
+      void finalizeCrownWorkflow("exit");
+    }
   });
 
   childProcess.on("error", (error) => {
