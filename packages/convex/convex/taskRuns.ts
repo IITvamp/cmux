@@ -627,24 +627,6 @@ export const fail = authMutation({
   },
 });
 
-// Deprecated: Worker status no longer tracked separately
-// export const setWorkerStatusInternal = internalMutation({
-//   args: {
-//     taskRunId: v.id('taskRuns'),
-//     status: v.union(v.literal('pending'), v.literal('complete')),
-//   },
-//   handler: async (ctx, args) => {
-//     const run = await ctx.db.get(args.taskRunId)
-//     if (!run) {
-//       throw new Error('Task run not found')
-//     }
-//     await ctx.db.patch(args.taskRunId, {
-//       updatedAt: Date.now(),
-//     })
-//     return run
-//   },
-// })
-
 export const listByTaskInternal = internalQuery({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) => {
