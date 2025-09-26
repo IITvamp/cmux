@@ -3,7 +3,12 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { generateObject } from "ai";
 import { ConvexError, v } from "convex/values";
-import { z } from "zod";
+import type {
+  CrownEvaluationLLMResponse,
+  CrownEvaluationResponse,
+  CrownSummarizationLLMResponse,
+  CrownSummarizationResponse,
+} from "@cmux/shared/crown/types";
 import { env } from "../../_shared/convex-env";
 import { action } from "../_generated/server";
 import {
@@ -11,36 +16,23 @@ import {
   buildEvaluationPrompt,
   buildSummarizationPrompt,
 } from "./prompts";
+import {
+  CrownEvaluationLLMResponseSchema,
+  CrownSummarizationLLMResponseSchema,
+} from "@cmux/shared/crown/types";
 
 const MODEL_NAME = "claude-3-5-sonnet-20241022";
-
-export const CrownEvaluationResponseSchema = z.object({
-  winner: z.number().int().min(0),
-  reason: z.string(),
-});
-
-export type CrownEvaluationResponse = z.infer<
-  typeof CrownEvaluationResponseSchema
->;
-
-export const CrownSummarizationResponseSchema = z.object({
-  summary: z.string(),
-});
-
-export type CrownSummarizationResponse = z.infer<
-  typeof CrownSummarizationResponseSchema
->;
 
 export async function performCrownEvaluation(
   apiKey: string,
   prompt: string
-): Promise<CrownEvaluationResponse> {
+): Promise<CrownEvaluationLLMResponse> {
   const anthropic = createAnthropic({ apiKey });
 
   try {
     const { object } = await generateObject({
       model: anthropic(MODEL_NAME),
-      schema: CrownEvaluationResponseSchema,
+      schema: CrownEvaluationLLMResponseSchema,
       system:
         "You select the best implementation from structured diff inputs and explain briefly why.",
       prompt,
@@ -48,7 +40,8 @@ export async function performCrownEvaluation(
       maxRetries: 2,
     });
 
-    return CrownEvaluationResponseSchema.parse(object);
+    const parsed = CrownEvaluationLLMResponseSchema.parse(object);
+    return parsed;
   } catch (error) {
     console.error("[convex.crown] Evaluation error", error);
     throw new ConvexError("Evaluation failed");
@@ -58,13 +51,13 @@ export async function performCrownEvaluation(
 export async function performCrownSummarization(
   apiKey: string,
   prompt: string
-): Promise<CrownSummarizationResponse> {
+): Promise<CrownSummarizationLLMResponse> {
   const anthropic = createAnthropic({ apiKey });
 
   try {
     const { object } = await generateObject({
       model: anthropic(MODEL_NAME),
-      schema: CrownSummarizationResponseSchema,
+      schema: CrownSummarizationLLMResponseSchema,
       system:
         "You are an expert reviewer summarizing pull requests. Provide a clear, concise summary following the requested format.",
       prompt,
@@ -72,7 +65,8 @@ export async function performCrownSummarization(
       maxRetries: 2,
     });
 
-    return CrownSummarizationResponseSchema.parse(object);
+    const parsed = CrownSummarizationLLMResponseSchema.parse(object);
+    return parsed;
   } catch (error) {
     console.error("[convex.crown] Summarization error", error);
     throw new ConvexError("Summarization failed");
@@ -101,10 +95,12 @@ export const evaluate = action({
 
     const result = await performCrownEvaluation(apiKey, prompt);
 
-    return {
+    const response = {
       ...result,
       prompt,
-    };
+    } satisfies CrownEvaluationResponse;
+
+    return response;
   },
 });
 
@@ -120,9 +116,11 @@ export const summarize = action({
 
     const result = await performCrownSummarization(apiKey, prompt);
 
-    return {
+    const response = {
       ...result,
       prompt,
-    };
+    } satisfies CrownSummarizationResponse;
+
+    return response;
   },
 });

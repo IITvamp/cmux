@@ -24,10 +24,9 @@ import type {
   WorkerAllRunsCompleteResponse,
   WorkerRunContext,
   WorkerTaskRunResponse,
-} from "./types";
-import { sleep } from "./utils";
+} from "@cmux/shared/crown/types";
 
-export type { WorkerRunContext } from "./types";
+export type { WorkerRunContext } from "@cmux/shared/crown/types";
 
 export async function handleWorkerTaskCompletion(
   taskRunId: string,
@@ -49,8 +48,6 @@ export async function handleWorkerTaskCompletion(
     exitCode,
     convexUrl: runContext.convexUrl ?? process.env.NEXT_PUBLIC_CONVEX_URL,
   });
-
-  await sleep(2000);
 
   const baseUrlOverride = runContext.convexUrl;
 
@@ -85,11 +82,6 @@ export async function handleWorkerTaskCompletion(
         hasTaskRun: info?.taskRun,
       });
       return;
-    }
-
-    if (info?.taskRun) {
-      runContext.taskId = runContext.taskId ?? info.taskRun.taskId;
-      runContext.teamId = runContext.teamId ?? info.taskRun.teamId;
     }
 
     // Check if we should perform git operations
@@ -459,7 +451,6 @@ export async function handleWorkerTaskCompletion(
           summary,
           context: runContext,
         });
-
         await convexRequest(
           "/api/crown/finalize",
           runContext.token,

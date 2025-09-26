@@ -53,14 +53,30 @@ export type WorkerAllRunsCompleteResponse = {
   statuses: Array<{ id: string; status: string }>;
 };
 
-export type CrownEvaluationResponse = {
-  winner: number;
-  reason: string;
+import { z } from "zod";
+
+export const CrownEvaluationLLMResponseSchema = z.object({
+  winner: z.number().int().min(0),
+  reason: z.string(),
+});
+
+export type CrownEvaluationLLMResponse = z.infer<
+  typeof CrownEvaluationLLMResponseSchema
+>;
+
+export const CrownSummarizationLLMResponseSchema = z.object({
+  summary: z.string(),
+});
+
+export type CrownSummarizationLLMResponse = z.infer<
+  typeof CrownSummarizationLLMResponseSchema
+>;
+
+export type CrownEvaluationResponse = CrownEvaluationLLMResponse & {
   prompt: string;
 };
 
-export type CrownSummarizationResponse = {
-  summary: string;
+export type CrownSummarizationResponse = CrownSummarizationLLMResponse & {
   prompt: string;
 };
 

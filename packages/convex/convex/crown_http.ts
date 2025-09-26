@@ -41,7 +41,7 @@ const WorkerFinalizeSchema = z.object({
   summary: z.string().optional(),
   pullRequest: z
     .object({
-      url: z.string().url(),
+      url: z.url(),
       isDraft: z.boolean().optional(),
       state: z
         .union([
@@ -102,11 +102,11 @@ type WorkerAuthContext = {
 
 async function ensureWorkerAuth(
   req: Request
-): Promise<Response | WorkerAuthContext> {
+): Promise<WorkerAuthContext> {
   const token = req.headers.get("x-cmux-token");
   if (!token) {
     console.warn("[convex.crown] Missing x-cmux-token header");
-    return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
+    throw new Error("Missing x-cmux-token header");
   }
 
   try {
@@ -117,7 +117,7 @@ async function ensureWorkerAuth(
     return { token, payload };
   } catch (error) {
     console.error("[convex.crown] Failed to verify task run token", error);
-    return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
+    throw new Error("Invalid authentication token");
   }
 }
 
@@ -125,7 +125,7 @@ async function loadTaskRunForWorker(
   ctx: ActionCtx,
   auth: WorkerAuthContext,
   runId?: string
-): Promise<Response | Doc<"taskRuns">> {
+): Promise<Doc<"taskRuns">> {
   const taskRunId = (runId ?? auth.payload.taskRunId) as Id<"taskRuns">;
   const taskRun = await ctx.runQuery(internal.taskRuns.getById, {
     id: taskRunId,
@@ -134,7 +134,7 @@ async function loadTaskRunForWorker(
     console.warn("[convex.crown] Task run not found for worker", {
       taskRunId,
     });
-    return jsonResponse({ code: 404, message: "Task run not found" }, 404);
+    throw new Error("Task run not found");
   }
 
   if (
@@ -149,15 +149,20 @@ async function loadTaskRunForWorker(
         taskRunTeamId: taskRun.teamId,
       }
     );
-    return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
+    throw new Error("Unauthorized access to task run");
   }
 
   return taskRun;
 }
 
 export const crownEvaluate = httpAction(async (ctx, req) => {
-  const workerAuth = await ensureWorkerAuth(req);
-  if (workerAuth instanceof Response) return workerAuth;
+  let workerAuth: WorkerAuthContext;
+  try {
+    workerAuth = await ensureWorkerAuth(req);
+  } catch (error) {
+    console.warn("[convex.crown] Auth failed", error);
+    return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
+  }
 
   const parsed = await ensureJsonRequest(req);
   if (parsed instanceof Response) return parsed;
@@ -238,8 +243,13 @@ export const crownEvaluate = httpAction(async (ctx, req) => {
 });
 
 export const crownSummarize = httpAction(async (ctx, req) => {
-  const workerAuth = await ensureWorkerAuth(req);
-  if (workerAuth instanceof Response) return workerAuth;
+  let workerAuth: WorkerAuthContext;
+  try {
+    workerAuth = await ensureWorkerAuth(req);
+  } catch (error) {
+    console.warn("[convex.crown] Auth failed", error);
+    return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
+  }
 
   const parsed = await ensureJsonRequest(req);
   if (parsed instanceof Response) return parsed;
@@ -275,8 +285,13 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
     hasToken: !!req.headers.get("x-cmux-token"),
   });
 
-  const workerAuth = await ensureWorkerAuth(req);
-  if (workerAuth instanceof Response) return workerAuth;
+  let workerAuth: WorkerAuthContext;
+  try {
+    workerAuth = await ensureWorkerAuth(req);
+  } catch (error) {
+    console.warn("[convex.crown] Auth failed", error);
+    return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
+  }
 
   const parsed = await ensureJsonRequest(req);
   if (parsed instanceof Response) return parsed;
@@ -411,12 +426,20 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
   }
 
   // Default crown check logic
-  const taskRun = await loadTaskRunForWorker(
-    ctx,
-    workerAuth,
-    validation.data.taskRunId
-  );
-  if (taskRun instanceof Response) return taskRun;
+  let taskRun: Doc<"taskRuns">;
+  try {
+    taskRun = await loadTaskRunForWorker(
+      ctx,
+      workerAuth,
+      validation.data.taskRunId
+    );
+  } catch (error) {
+    console.error("[convex.crown] Failed to load task run", error);
+    if (error instanceof Error && error.message === "Task run not found") {
+      return jsonResponse({ code: 404, message: "Task run not found" }, 404);
+    }
+    return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
+  }
 
   const taskId = (validation.data.taskId ?? taskRun.taskId) as Id<"tasks">;
   if (taskId !== taskRun.taskId) {
@@ -527,8 +550,13 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
 });
 
 export const crownWorkerFinalize = httpAction(async (ctx, req) => {
-  const workerAuth = await ensureWorkerAuth(req);
-  if (workerAuth instanceof Response) return workerAuth;
+  let workerAuth: WorkerAuthContext;
+  try {
+    workerAuth = await ensureWorkerAuth(req);
+  } catch (error) {
+    console.warn("[convex.crown] Auth failed", error);
+    return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
+  }
 
   const parsed = await ensureJsonRequest(req);
   if (parsed instanceof Response) return parsed;
@@ -610,10 +638,12 @@ export const crownWorkerComplete = httpAction(async (ctx, req) => {
     hasToken: !!req.headers.get("x-cmux-token"),
   });
 
-  const auth = await ensureWorkerAuth(req);
-  if (auth instanceof Response) {
-    console.error("[convex.crown] Auth failed for worker complete");
-    return auth;
+  let auth: WorkerAuthContext;
+  try {
+    auth = await ensureWorkerAuth(req);
+  } catch (error) {
+    console.error("[convex.crown] Auth failed for worker complete", error);
+    return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
   }
 
   const parsed = await ensureJsonRequest(req);
@@ -631,10 +661,14 @@ export const crownWorkerComplete = httpAction(async (ctx, req) => {
   const taskRunId = validation.data.taskRunId as Id<"taskRuns">;
   console.log("[convex.crown] Loading task run for completion", { taskRunId });
 
-  const existingRun = await loadTaskRunForWorker(ctx, auth, taskRunId);
-  if (existingRun instanceof Response) {
-    console.error("[convex.crown] Failed to load task run", { taskRunId });
-    return existingRun;
+  try {
+    await loadTaskRunForWorker(ctx, auth, taskRunId);
+  } catch (error) {
+    console.error("[convex.crown] Failed to load task run", { taskRunId, error });
+    if (error instanceof Error && error.message === "Task run not found") {
+      return jsonResponse({ code: 404, message: "Task run not found" }, 404);
+    }
+    return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
   }
 
   console.log("[convex.crown] Marking task run as complete", {
@@ -698,8 +732,13 @@ export const crownWorkerComplete = httpAction(async (ctx, req) => {
 });
 
 export const crownWorkerScheduleStop = httpAction(async (ctx, req) => {
-  const auth = await ensureWorkerAuth(req);
-  if (auth instanceof Response) return auth;
+  let auth: WorkerAuthContext;
+  try {
+    auth = await ensureWorkerAuth(req);
+  } catch (error) {
+    console.warn("[convex.crown] Auth failed", error);
+    return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
+  }
 
   const parsed = await ensureJsonRequest(req);
   if (parsed instanceof Response) return parsed;
@@ -714,8 +753,15 @@ export const crownWorkerScheduleStop = httpAction(async (ctx, req) => {
   }
 
   const taskRunId = validation.data.taskRunId as Id<"taskRuns">;
-  const existingRun = await loadTaskRunForWorker(ctx, auth, taskRunId);
-  if (existingRun instanceof Response) return existingRun;
+  try {
+    await loadTaskRunForWorker(ctx, auth, taskRunId);
+  } catch (error) {
+    console.error("[convex.crown] Failed to load task run for schedule", { taskRunId, error });
+    if (error instanceof Error && error.message === "Task run not found") {
+      return jsonResponse({ code: 404, message: "Task run not found" }, 404);
+    }
+    return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
+  }
 
   await ctx.runMutation(internal.taskRuns.updateScheduledStopInternal, {
     taskRunId,

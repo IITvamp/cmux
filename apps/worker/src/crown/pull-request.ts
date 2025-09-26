@@ -1,11 +1,12 @@
-import { log } from "../logger";
-import { WORKSPACE_ROOT } from "./constants";
 import type {
   CandidateData,
   CrownWorkerCheckResponse,
   PullRequestMetadata,
   WorkerRunContext,
-} from "./types";
+} from "@cmux/shared/crown/types";
+import { z } from "zod";
+import { log } from "../logger";
+import { WORKSPACE_ROOT } from "./constants";
 import { execAsync } from "./shell";
 
 function buildPullRequestTitle(taskText: string): string {
@@ -60,6 +61,29 @@ function mapGhState(
   }
   return "unknown";
 }
+
+const GhPrCreateResponseSchema = z.object({
+  url: z.string().min(1),
+  number: z
+    .preprocess((value) => {
+      if (value === null || value === undefined) {
+        return undefined;
+      }
+      if (typeof value === "number") {
+        return value;
+      }
+      if (typeof value === "string") {
+        const numeric = Number(value);
+        if (Number.isFinite(numeric)) {
+          return numeric;
+        }
+      }
+      return undefined;
+    }, z.number().optional())
+    .optional(),
+  state: z.string().optional(),
+  isDraft: z.boolean().optional(),
+});
 
 export async function createPullRequestIfEnabled(options: {
   check: CrownWorkerCheckResponse;
@@ -122,8 +146,7 @@ rm -f "$BODY_FILE"
       return null;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let parsed: any;
+    let parsed: unknown;
     try {
       parsed = JSON.parse(trimmed);
     } catch (error) {
@@ -134,28 +157,23 @@ rm -f "$BODY_FILE"
       return null;
     }
 
-    const prUrl = typeof parsed.url === "string" ? parsed.url : undefined;
-    if (!prUrl) {
-      log("ERROR", "gh pr create response missing URL", { parsed });
+    const parsedResult = GhPrCreateResponseSchema.safeParse(parsed);
+    if (!parsedResult.success) {
+      log("ERROR", "Invalid gh pr create response", {
+        stdout: trimmed,
+        issues: parsedResult.error.issues,
+      });
       return null;
     }
 
-    const prNumber = (() => {
-      if (typeof parsed.number === "number") return parsed.number;
-      if (typeof parsed.number === "string") {
-        const numeric = Number(parsed.number);
-        return Number.isFinite(numeric) ? numeric : undefined;
-      }
-      return undefined;
-    })();
+    const { url: prUrl, number: prNumber, state, isDraft } = parsedResult.data;
 
     const metadata: PullRequestMetadata = {
       pullRequest: {
         url: prUrl,
         number: prNumber,
-        state: mapGhState(parsed.state),
-        isDraft:
-          typeof parsed.isDraft === "boolean" ? parsed.isDraft : undefined,
+        state: mapGhState(state),
+        isDraft,
       },
       title: prTitle,
       description: prBody,

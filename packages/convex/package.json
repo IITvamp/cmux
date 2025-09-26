@@ -22,10 +22,6 @@
     "./dataModel": {
       "import": "./convex/_generated/dataModel.d.ts",
       "types": "./convex/_generated/dataModel.d.ts"
-    },
-    "./crown/prompts": {
-      "import": "./convex/crown/prompts.ts",
-      "types": "./convex/crown/prompts.ts"
     }
   },
   "dependencies": {

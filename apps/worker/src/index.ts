@@ -1184,13 +1184,6 @@ async function createTerminal(
     exitReady = true;
     recordedExitCode = exitCode;
     void finalizeIfPossible("exit");
-
-    // Still emit to main server for backwards compatibility/logging
-    emitToMainServer("worker:terminal-exit", {
-      workerId: WORKER_ID,
-      terminalId,
-      exitCode,
-    });
   });
 
   childProcess.on("error", (error) => {

@@ -182,7 +182,8 @@ morphRouter.openapi(
       // Handle repository management if repos are specified
       const removedRepos: string[] = [];
       const clonedRepos: string[] = [];
-      const failedClones: { repo: string; error: string; isAuth: boolean }[] = [];
+      const failedClones: { repo: string; error: string; isAuth: boolean }[] =
+        [];
 
       if (selectedRepos && selectedRepos.length > 0) {
         // Validate repo format and check for duplicates
@@ -295,7 +296,9 @@ morphRouter.openapi(
 
                   // Don't retry authentication errors
                   if (isAuthError) {
-                    console.error(`Authentication failed for ${repo}: ${lastError}`);
+                    console.error(
+                      `Authentication failed for ${repo}: ${lastError}`
+                    );
                     break;
                   }
 
@@ -317,8 +320,15 @@ morphRouter.openapi(
                 ? `Authentication failed - check repository access permissions`
                 : `Failed after ${maxRetries} attempts`;
 
-              console.error(`Failed to clone ${repo}: ${errorMsg}\nDetails: ${lastError}`);
-              return { success: false as const, repo, error: lastError || "Unknown error", isAuth: isAuthError };
+              console.error(
+                `Failed to clone ${repo}: ${errorMsg}\nDetails: ${lastError}`
+              );
+              return {
+                success: false as const,
+                repo,
+                error: lastError || "Unknown error",
+                isAuth: isAuthError,
+              };
             } else {
               console.log(
                 `Repository ${repo} already exists with correct remote, skipping clone`
@@ -330,11 +340,15 @@ morphRouter.openapi(
           const results = await Promise.all(clonePromises);
 
           for (const result of results) {
-            if (result && 'success' in result) {
+            if (result && "success" in result) {
               if (result.success) {
                 clonedRepos.push(result.repo);
               } else {
-                failedClones.push({ repo: result.repo, error: result.error, isAuth: result.isAuth });
+                failedClones.push({
+                  repo: result.repo,
+                  error: result.error,
+                  isAuth: result.isAuth,
+                });
               }
             }
           }

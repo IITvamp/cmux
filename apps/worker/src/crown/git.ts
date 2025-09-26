@@ -11,7 +11,8 @@ const branchDiffCache = new Map<string, string>();
 
 const COLLECT_RELEVANT_DIFF_SCRIPT =
   "/usr/local/bin/cmux-collect-relevant-diff.sh";
-const COLLECT_CROWN_DIFF_SCRIPT = "/usr/local/bin/cmux-collect-crown-diff.sh";
+const COLLECT_CROWN_DIFF_SCRIPT =
+  "/usr/local/bin/cmux-collect-crown-diff.sh";
 
 export function getCachedBranchDiff(branch: string): string | undefined {
   return branchDiffCache.get(branch);
@@ -28,9 +29,7 @@ export async function detectGitRepoPath(): Promise<string> {
 
   if (existsSync(join(WORKSPACE_ROOT, ".git"))) {
     gitRepoPath = WORKSPACE_ROOT;
-    log("INFO", "Git repository found at workspace root", {
-      path: gitRepoPath,
-    });
+    log("INFO", "Git repository found at workspace root", { path: gitRepoPath });
     return gitRepoPath;
   }
 
@@ -66,9 +65,7 @@ export async function detectGitRepoPath(): Promise<string> {
     if (stdout && stdout.trim()) {
       const gitDir = stdout.trim();
       gitRepoPath = gitDir.replace(/\/.git$/, "");
-      log("INFO", "Git repository found via find command", {
-        path: gitRepoPath,
-      });
+      log("INFO", "Git repository found via find command", { path: gitRepoPath });
       return gitRepoPath;
     }
   } catch (error) {
@@ -82,23 +79,6 @@ export async function detectGitRepoPath(): Promise<string> {
   });
   gitRepoPath = WORKSPACE_ROOT;
   return gitRepoPath;
-}
-
-export async function runGitCommand(
-  command: string
-): Promise<{ stdout: string } | null> {
-  try {
-    const repoPath = await detectGitRepoPath();
-    const result = await execAsync(command, {
-      cwd: repoPath,
-      maxBuffer: 20 * 1024 * 1024,
-    });
-    const stdout = toUtf8String(result.stdout);
-    return { stdout };
-  } catch (error) {
-    log("ERROR", "Git command failed", { command, error });
-    return null;
-  }
 }
 
 export async function runGitCommandSafe(
@@ -155,26 +135,27 @@ export async function fetchRemoteRef(ref: string): Promise<boolean> {
   const fetchCommand = `git fetch --no-tags --prune origin refs/heads/${remoteBranch}:${verifyRef}`;
 
   log("DEBUG", "Fetching remote ref", { ref });
-  const result = await runGitCommand(fetchCommand);
+  const result = await runGitCommandSafe(fetchCommand, true);
 
   if (!result) {
     log("WARN", "git fetch failed for ref", { ref });
     return false;
   }
 
-  const trimmedStdout = result.stdout.trim();
-  if (trimmedStdout.length > 0) {
+  const trimmedStdout = result.stdout?.trim();
+  if (trimmedStdout && trimmedStdout.length > 0) {
     log("DEBUG", "git fetch output", {
       ref,
       output: trimmedStdout.slice(0, 160),
     });
   }
 
-  const verifyResult = await runGitCommand(
-    `git rev-parse --verify --quiet ${verifyRef}`
+  const verifyResult = await runGitCommandSafe(
+    `git rev-parse --verify --quiet ${verifyRef}`,
+    true
   );
 
-  if (verifyResult?.stdout.trim()) {
+  if (verifyResult?.stdout?.trim()) {
     log("INFO", "Remote ref verified", {
       ref,
       commit: verifyResult.stdout.trim(),
@@ -222,15 +203,18 @@ export async function collectDiffForRun(
   const branchRef = branch.startsWith("origin/") ? branch : `origin/${branch}`;
 
   try {
-    const { stdout } = await execAsync(COLLECT_CROWN_DIFF_SCRIPT, {
-      cwd: WORKSPACE_ROOT,
-      maxBuffer: 5 * 1024 * 1024,
-      env: {
-        ...process.env,
-        CMUX_DIFF_BASE: baseRef,
-        CMUX_DIFF_HEAD_REF: branchRef,
-      },
-    });
+    const { stdout } = await execAsync(
+      COLLECT_CROWN_DIFF_SCRIPT,
+      {
+        cwd: WORKSPACE_ROOT,
+        maxBuffer: 5 * 1024 * 1024,
+        env: {
+          ...process.env,
+          CMUX_DIFF_BASE: baseRef,
+          CMUX_DIFF_HEAD_REF: branchRef,
+        },
+      }
+    );
 
     const diff = stdout.trim();
     if (!diff) {
@@ -302,10 +286,13 @@ export async function ensureBranchesAvailable(
 export async function captureRelevantDiff(): Promise<string> {
   try {
     const repoPath = await detectGitRepoPath();
-    const { stdout } = await execAsync(COLLECT_RELEVANT_DIFF_SCRIPT, {
-      cwd: repoPath,
-      maxBuffer: 5 * 1024 * 1024,
-    });
+    const { stdout } = await execAsync(
+      COLLECT_RELEVANT_DIFF_SCRIPT,
+      {
+        cwd: repoPath,
+        maxBuffer: 5 * 1024 * 1024,
+      }
+    );
     const diff = stdout ? stdout.trim() : "";
     return diff.length > 0 ? diff : "No changes detected";
   } catch (error) {

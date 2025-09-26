@@ -188,13 +188,13 @@ sandboxesRouter.openapi(
       // Extract task-related fields
       const taskRunId = body.taskRunId;
       const taskRunJwt = body.taskRunJwt;
-      
+
       // Get environment variables from the environment if configured
       const environmentEnvVarsContent = await environmentEnvVarsPromise;
-      
+
       // Prepare environment variables including task JWT if present
       let envVarsToApply = environmentEnvVarsContent || "";
-      
+
       // Add CMUX task-related env vars if present
       if (taskRunId) {
         envVarsToApply += `\nCMUX_TASK_RUN_ID="${taskRunId}"`;
@@ -202,7 +202,7 @@ sandboxesRouter.openapi(
       if (taskRunJwt) {
         envVarsToApply += `\nCMUX_TASK_RUN_JWT="${taskRunJwt}"`;
       }
-      
+
       // Apply all environment variables if any
       if (envVarsToApply.trim().length > 0) {
         try {
