@@ -5,7 +5,14 @@ import { isElectron } from "@/lib/electron";
 import { type Doc } from "@cmux/convex/dataModel";
 import type { LinkProps } from "@tanstack/react-router";
 import { Link } from "@tanstack/react-router";
-import { Home, Plus, Server, Settings } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Home,
+  Plus,
+  Server,
+  Settings,
+} from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -59,20 +66,49 @@ const navItems: SidebarNavItem[] = [
   },
 ];
 
+function clampWidth(value: number, minWidth: number, maxWidth: number) {
+  return Math.min(Math.max(value, minWidth), maxWidth);
+}
+
+function readStoredSidebarWidth(
+  defaultWidth: number,
+  minWidth: number,
+  maxWidth: number
+) {
+  if (typeof window === "undefined") {
+    return defaultWidth;
+  }
+  const stored = window.localStorage.getItem("sidebarWidth");
+  const parsed = stored ? Number.parseInt(stored, 10) : defaultWidth;
+  if (Number.isNaN(parsed)) {
+    return defaultWidth;
+  }
+  return clampWidth(parsed, minWidth, maxWidth);
+}
+
+function readStoredSidebarCollapsed() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return window.localStorage.getItem("sidebarCollapsed") === "true";
+}
+
 export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
   const DEFAULT_WIDTH = 256;
   const MIN_WIDTH = 240;
   const MAX_WIDTH = 600;
+  const COLLAPSED_WIDTH = 20;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const containerLeftRef = useRef<number>(0);
   const rafIdRef = useRef<number | null>(null);
-  const [width, setWidth] = useState<number>(() => {
-    const stored = localStorage.getItem("sidebarWidth");
-    const parsed = stored ? Number.parseInt(stored, 10) : DEFAULT_WIDTH;
-    if (Number.isNaN(parsed)) return DEFAULT_WIDTH;
-    return Math.min(Math.max(parsed, MIN_WIDTH), MAX_WIDTH);
-  });
+  const [width, setWidth] = useState<number>(() =>
+    readStoredSidebarWidth(DEFAULT_WIDTH, MIN_WIDTH, MAX_WIDTH)
+  );
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(
+    readStoredSidebarCollapsed
+  );
+  const lastExpandedWidthRef = useRef(width);
   const [isResizing, setIsResizing] = useState(false);
 
   const { expandTaskIds } = useExpandTasks();
@@ -81,6 +117,10 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
     localStorage.setItem("sidebarWidth", String(width));
   }, [width]);
 
+  useEffect(() => {
+    localStorage.setItem("sidebarCollapsed", String(isCollapsed));
+  }, [isCollapsed]);
+
   const onMouseMove = useCallback((e: MouseEvent) => {
     // Batch width updates to once per animation frame to reduce layout thrash
     if (rafIdRef.current != null) return;
@@ -88,10 +128,7 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
       rafIdRef.current = null;
       const containerLeft = containerLeftRef.current;
       const clientX = e.clientX;
-      const newWidth = Math.min(
-        Math.max(clientX - containerLeft, MIN_WIDTH),
-        MAX_WIDTH
-      );
+      const newWidth = clampWidth(clientX - containerLeft, MIN_WIDTH, MAX_WIDTH);
       setWidth(newWidth);
     });
   }, []);
@@ -129,6 +166,9 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
 
   const startResizing = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
+      if (isCollapsed) {
+        return;
+      }
       e.preventDefault();
       setIsResizing(true);
       document.body.style.cursor = "col-resize";
@@ -151,7 +191,7 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
       window.addEventListener("mousemove", onMouseMove);
       window.addEventListener("mouseup", stopResizing);
     },
-    [onMouseMove, stopResizing]
+    [isCollapsed, onMouseMove, stopResizing]
   );
 
   useEffect(() => {
@@ -163,130 +203,173 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
 
   const resetWidth = useCallback(() => setWidth(DEFAULT_WIDTH), []);
 
+  const handleCollapse = useCallback(() => {
+    lastExpandedWidthRef.current = width;
+    stopResizing();
+    setIsCollapsed(true);
+  }, [stopResizing, width]);
+
+  const handleExpand = useCallback(() => {
+    const targetWidth = lastExpandedWidthRef.current ?? DEFAULT_WIDTH;
+    const clamped = clampWidth(targetWidth, MIN_WIDTH, MAX_WIDTH);
+    setWidth(clamped);
+    setIsCollapsed(false);
+  }, [MAX_WIDTH, MIN_WIDTH]);
+
+  useEffect(() => {
+    if (!isCollapsed) {
+      lastExpandedWidthRef.current = width;
+    }
+  }, [isCollapsed, width]);
+
+  const computedWidth = isCollapsed ? COLLAPSED_WIDTH : width;
+
   return (
     <div
       ref={containerRef}
-      className="relative bg-neutral-50 dark:bg-black flex flex-col shrink-0 h-dvh grow"
+      className={`relative bg-neutral-50 dark:bg-black flex flex-col shrink-0 h-dvh grow group`}
       style={{
-        width: `${width}px`,
-        minWidth: `${width}px`,
-        maxWidth: `${width}px`,
+        width: `${computedWidth}px`,
+        minWidth: `${computedWidth}px`,
+        maxWidth: `${computedWidth}px`,
         userSelect: isResizing ? ("none" as const) : undefined,
       }}
     >
-      <div
-        className={`h-[38px] flex items-center pr-1.5 shrink-0 ${isElectron ? "" : "pl-3"}`}
-        style={{ WebkitAppRegion: "drag" } as CSSProperties}
-      >
-        {isElectron && <div className="w-[80px]"></div>}
-        <Link
-          to="/$teamSlugOrId/dashboard"
-          params={{ teamSlugOrId }}
-          activeOptions={{ exact: true }}
-          className="flex items-center gap-2 select-none cursor-pointer"
-          style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
-        >
-          {/* <Terminals */}
-          <CmuxLogo height={32} />
-        </Link>
-        <div className="grow"></div>
-        <Link
-          to="/$teamSlugOrId/dashboard"
-          params={{ teamSlugOrId }}
-          activeOptions={{ exact: true }}
-          className="w-[25px] h-[25px] border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-900 rounded-lg flex items-center justify-center transition-colors cursor-default"
-          title="New task"
-          style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
-        >
-          <Plus
-            className="w-4 h-4 text-neutral-700 dark:text-neutral-300"
-            aria-hidden="true"
-          />
-        </Link>
-      </div>
-      <nav className="grow flex flex-col overflow-hidden">
-        <div className="flex-1 overflow-y-auto pb-8">
-          <ul className="flex flex-col gap-px">
-            {navItems.map((item) => (
-              <li key={item.label}>
-                <SidebarNavLink
-                  to={item.to}
+      {!isCollapsed && (
+        <>
+          <div
+            className={`h-[38px] flex items-center pr-1.5 shrink-0 ${isElectron ? "" : "pl-3"}`}
+            style={{ WebkitAppRegion: "drag" } as CSSProperties}
+          >
+            {isElectron && <div className="w-[80px]"></div>}
+            <Link
+              to="/$teamSlugOrId/dashboard"
+              params={{ teamSlugOrId }}
+              activeOptions={{ exact: true }}
+              className="flex items-center gap-2 select-none cursor-pointer"
+              style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+            >
+              {/* <Terminals */}
+              <CmuxLogo height={32} />
+            </Link>
+            <div className="grow"></div>
+            <Link
+              to="/$teamSlugOrId/dashboard"
+              params={{ teamSlugOrId }}
+              activeOptions={{ exact: true }}
+              className="w-[25px] h-[25px] border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-900 rounded-lg flex items-center justify-center transition-colors cursor-default"
+              title="New task"
+              style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+            >
+              <Plus
+                className="w-4 h-4 text-neutral-700 dark:text-neutral-300"
+                aria-hidden="true"
+              />
+            </Link>
+          </div>
+          <nav className="grow flex flex-col overflow-hidden">
+            <div className="flex-1 overflow-y-auto pb-8">
+              <ul className="flex flex-col gap-px">
+                {navItems.map((item) => (
+                  <li key={item.label}>
+                    <SidebarNavLink
+                      to={item.to}
+                      params={{ teamSlugOrId }}
+                      search={item.search}
+                      icon={item.icon}
+                      exact={item.exact}
+                      label={item.label}
+                    />
+                  </li>
+                ))}
+              </ul>
+
+              <div className="mt-4 flex flex-col">
+                <SidebarSectionLink
+                  to="/$teamSlugOrId/prs"
                   params={{ teamSlugOrId }}
-                  search={item.search}
-                  icon={item.icon}
-                  exact={item.exact}
-                  label={item.label}
-                />
-              </li>
-            ))}
-          </ul>
+                  exact
+                >
+                  Pull requests
+                </SidebarSectionLink>
+                <div className="ml-2 pt-px">
+                  <SidebarPullRequestList teamSlugOrId={teamSlugOrId} />
+                </div>
+              </div>
 
-          <div className="mt-4 flex flex-col">
-            <SidebarSectionLink
-              to="/$teamSlugOrId/prs"
-              params={{ teamSlugOrId }}
-              exact
-            >
-              Pull requests
-            </SidebarSectionLink>
-            <div className="ml-2 pt-px">
-              <SidebarPullRequestList teamSlugOrId={teamSlugOrId} />
+              <div className="mt-2 flex flex-col gap-0.5">
+                <SidebarSectionLink
+                  to="/$teamSlugOrId/workspaces"
+                  params={{ teamSlugOrId }}
+                  exact
+                >
+                  Workspaces
+                </SidebarSectionLink>
+              </div>
+
+              <div className="ml-2 pt-px">
+                <div className="space-y-px">
+                  {tasks === undefined ? (
+                    <TaskTreeSkeleton count={5} />
+                  ) : tasks && tasks.length > 0 ? (
+                    tasks.map((task) => (
+                      <TaskTree
+                        key={task._id}
+                        task={task}
+                        defaultExpanded={
+                          expandTaskIds?.includes(task._id) ?? false
+                        }
+                        teamSlugOrId={teamSlugOrId}
+                      />
+                    ))
+                  ) : (
+                    <p className="px-2 py-1.5 text-xs text-center text-neutral-500 dark:text-neutral-400 select-none">
+                      No recent tasks
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
+          </nav>
 
-          <div className="mt-2 flex flex-col gap-0.5">
-            <SidebarSectionLink
-              to="/$teamSlugOrId/workspaces"
-              params={{ teamSlugOrId }}
-              exact
-            >
-              Workspaces
-            </SidebarSectionLink>
-          </div>
+          {/* Resize handle */}
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            title="Drag to resize"
+            onMouseDown={startResizing}
+            onDoubleClick={resetWidth}
+            className="absolute top-0 right-0 h-full cursor-col-resize"
+            style={
+              {
+                // Invisible, but with a comfortable hit area
+                width: "14px",
+                transform: "translateX(13px)",
+                background: "transparent",
+                zIndex: "var(--z-sidebar-resize-handle)",
+              } as CSSProperties
+            }
+          />
+        </>
+      )}
 
-          <div className="ml-2 pt-px">
-            <div className="space-y-px">
-              {tasks === undefined ? (
-                <TaskTreeSkeleton count={5} />
-              ) : tasks && tasks.length > 0 ? (
-                tasks.map((task) => (
-                  <TaskTree
-                    key={task._id}
-                    task={task}
-                    defaultExpanded={expandTaskIds?.includes(task._id) ?? false}
-                    teamSlugOrId={teamSlugOrId}
-                  />
-                ))
-              ) : (
-                <p className="px-2 py-1.5 text-xs text-center text-neutral-500 dark:text-neutral-400 select-none">
-                  No recent tasks
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      {/* Resize handle */}
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        title="Drag to resize"
-        onMouseDown={startResizing}
-        onDoubleClick={resetWidth}
-        className="absolute top-0 right-0 h-full cursor-col-resize"
-        style={
-          {
-            // Invisible, but with a comfortable hit area
-            width: "14px",
-            transform: "translateX(13px)",
-            // marginRight: "-5px",
-            background: "transparent",
-            // background: "red",
-            zIndex: "var(--z-sidebar-resize-handle)",
-          } as CSSProperties
-        }
-      />
+      <button
+        type="button"
+        onClick={isCollapsed ? handleExpand : handleCollapse}
+        aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        className={`absolute top-1/2 left-full -translate-x-1/2 -translate-y-1/2 flex h-10 w-6 items-center justify-center rounded-md border border-neutral-200 bg-neutral-50 text-neutral-600 shadow-sm transition-opacity transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-400 dark:hover:bg-neutral-900 dark:hover:text-neutral-100 ${
+          isCollapsed
+            ? "opacity-0 pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100"
+            : "opacity-100"
+        }`}
+        style={{ zIndex: "var(--z-sidebar-resize-handle)" } as CSSProperties}
+      >
+        {isCollapsed ? (
+          <ChevronRight className="h-4 w-4" aria-hidden="true" />
+        ) : (
+          <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+        )}
+      </button>
     </div>
   );
 }
