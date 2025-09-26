@@ -44,3 +44,7 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+Branches whisper code
+Commits bloom in quiet merge
+Stars align through tests
