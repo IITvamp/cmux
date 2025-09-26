@@ -9,8 +9,6 @@ import { toUtf8String } from "./utils";
 let gitRepoPath: string | null = null;
 export const branchDiffCache = new Map<string, string>();
 
-const COLLECT_RELEVANT_DIFF_SCRIPT =
-  "/usr/local/bin/cmux-collect-relevant-diff.sh";
 const COLLECT_CROWN_DIFF_SCRIPT = "/usr/local/bin/cmux-collect-crown-diff.sh";
 
 export async function detectGitRepoPath(): Promise<string> {
@@ -275,7 +273,7 @@ export async function ensureBranchesAvailable(
 export async function captureRelevantDiff(): Promise<string> {
   try {
     const repoPath = await detectGitRepoPath();
-    const { stdout } = await execAsync(COLLECT_RELEVANT_DIFF_SCRIPT, {
+    const { stdout } = await execAsync(COLLECT_CROWN_DIFF_SCRIPT, {
       cwd: repoPath,
       maxBuffer: 5 * 1024 * 1024,
     });
