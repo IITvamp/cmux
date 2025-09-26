@@ -1,6 +1,5 @@
 export * from "./agentConfig";
 export * from "./convex-ready";
-export * from "./crown/prompts";
 export * from "./diff-types";
 export * from "./getShortId";
 export * from "./socket-schemas";

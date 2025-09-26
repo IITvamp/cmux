@@ -10,7 +10,7 @@ import {
   CrownEvaluationCandidateSchema,
   buildEvaluationPrompt,
   buildSummarizationPrompt,
-} from "@cmux/shared/crown/prompts";
+} from "./prompts";
 
 const MODEL_NAME = "claude-3-5-sonnet-20241022";
 

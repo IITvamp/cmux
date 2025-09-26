@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { resolveTeamIdLoose } from "../_shared/team";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { internalQuery } from "./_generated/server";
+import { internalMutation, internalQuery } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
 
 export const get = authQuery({
@@ -314,6 +314,54 @@ export const tryBeginCrownEvaluation = authMutation({
     }
     await ctx.db.patch(args.id, {
       crownEvaluationError: "in_progress",
+      updatedAt: Date.now(),
+    });
+    return true;
+  },
+});
+
+export const tryBeginCrownEvaluationInternal = internalMutation({
+  args: {
+    taskId: v.id("tasks"),
+    teamId: v.string(),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.taskId);
+    if (!task) {
+      return false;
+    }
+    if (task.teamId !== args.teamId || task.userId !== args.userId) {
+      return false;
+    }
+    if (task.crownEvaluationError === "in_progress") {
+      return false;
+    }
+    await ctx.db.patch(args.taskId, {
+      crownEvaluationError: "in_progress",
+      updatedAt: Date.now(),
+    });
+    return true;
+  },
+});
+
+export const resetCrownEvaluationInternal = internalMutation({
+  args: {
+    taskId: v.id("tasks"),
+    teamId: v.string(),
+    userId: v.string(),
+    crownEvaluationError: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.taskId);
+    if (!task) {
+      return false;
+    }
+    if (task.teamId !== args.teamId || task.userId !== args.userId) {
+      return false;
+    }
+    await ctx.db.patch(args.taskId, {
+      crownEvaluationError: args.crownEvaluationError,
       updatedAt: Date.now(),
     });
     return true;

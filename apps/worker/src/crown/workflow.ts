@@ -29,7 +29,6 @@ import { sleep } from "./utils";
 
 export type { WorkerRunContext } from "./types";
 
-
 export async function handleWorkerTaskCompletion(
   taskRunId: string,
   runContext: WorkerRunContext,
@@ -102,7 +101,8 @@ export async function handleWorkerTaskCompletion(
       : null;
     const remoteOriginUrl = gitRemoteCheck?.stdout.trim() ?? "";
     const hasRemoteOrigin = Boolean(remoteOriginUrl);
-    const shouldPerformGitOps = hasGitRepo && (hasProjectInfo || hasRemoteOrigin);
+    const shouldPerformGitOps =
+      hasGitRepo && (hasProjectInfo || hasRemoteOrigin);
 
     if (!shouldPerformGitOps) {
       log("INFO", "Skipping git operations", {
@@ -114,8 +114,8 @@ export async function handleWorkerTaskCompletion(
         reason: !hasGitRepo
           ? "no-git-repo"
           : hasProjectInfo
-          ? "missing-remote"
-          : "insufficient-repo-context",
+            ? "missing-remote"
+            : "insufficient-repo-context",
       });
     } else {
       // Only perform git operations if we have a repository
@@ -280,15 +280,16 @@ export async function handleWorkerTaskCompletion(
         baseUrlOverride
       );
 
-      const completionState = await convexRequest<WorkerAllRunsCompleteResponse>(
-        "/api/crown/check",
-        runContext.token,
-        {
-          taskId: currentTaskId,
-          checkType: "all-complete",
-        },
-        baseUrlOverride
-      );
+      const completionState =
+        await convexRequest<WorkerAllRunsCompleteResponse>(
+          "/api/crown/check",
+          runContext.token,
+          {
+            taskId: currentTaskId,
+            checkType: "all-complete",
+          },
+          baseUrlOverride
+        );
 
       if (!completionState?.ok) {
         log("ERROR", "Failed to verify task run completion state", {
@@ -309,15 +310,11 @@ export async function handleWorkerTaskCompletion(
       });
 
       if (!completionState.allComplete) {
-        log(
-          "INFO",
-          "Task runs still pending; deferring crown evaluation",
-          {
-            taskRunId,
-            taskId: currentTaskId,
-            statuses: completionState?.statuses || [],
-          }
-        );
+        log("INFO", "Task runs still pending; deferring crown evaluation", {
+          taskRunId,
+          taskId: currentTaskId,
+          statuses: completionState?.statuses || [],
+        });
         return;
       }
 
@@ -559,6 +556,7 @@ export async function handleWorkerTaskCompletion(
         "/api/crown/evaluate",
         runContext.token,
         {
+          taskId: checkResponse.taskId,
           taskText: checkResponse.task.text,
           candidates: candidates.map((candidate) => ({
             runId: candidate.runId,
@@ -602,6 +600,7 @@ export async function handleWorkerTaskCompletion(
         "/api/crown/summarize",
         runContext.token,
         {
+          taskId: checkResponse.taskId,
           taskText: checkResponse.task.text,
           gitDiff: winnerCandidate.gitDiff,
           teamSlugOrId: runContext.teamId,
