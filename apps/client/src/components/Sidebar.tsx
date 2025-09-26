@@ -5,7 +5,7 @@ import { isElectron } from "@/lib/electron";
 import { type Doc } from "@cmux/convex/dataModel";
 import type { LinkProps } from "@tanstack/react-router";
 import { Link } from "@tanstack/react-router";
-import { Home, Plus, Server, Settings } from "lucide-react";
+import { ChevronLeft, ChevronRight, Home, Plus, Server, Settings } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -22,6 +22,8 @@ import { SidebarSectionLink } from "./sidebar/SidebarSectionLink";
 interface SidebarProps {
   tasks: Doc<"tasks">[] | undefined;
   teamSlugOrId: string;
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
 }
 
 interface SidebarNavItem {
@@ -59,7 +61,7 @@ const navItems: SidebarNavItem[] = [
   },
 ];
 
-export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
+export function Sidebar({ tasks, teamSlugOrId, collapsed = false, onToggleCollapsed }: SidebarProps) {
   const DEFAULT_WIDTH = 256;
   const MIN_WIDTH = 240;
   const MAX_WIDTH = 600;
@@ -163,15 +165,18 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
 
   const resetWidth = useCallback(() => setWidth(DEFAULT_WIDTH), []);
 
+  const effectiveWidth = collapsed ? 0 : width;
+
   return (
     <div
       ref={containerRef}
       className="relative bg-neutral-50 dark:bg-black flex flex-col shrink-0 h-dvh grow"
       style={{
-        width: `${width}px`,
-        minWidth: `${width}px`,
-        maxWidth: `${width}px`,
+        width: `${effectiveWidth}px`,
+        minWidth: `${effectiveWidth}px`,
+        maxWidth: `${effectiveWidth}px`,
         userSelect: isResizing ? ("none" as const) : undefined,
+        overflow: "visible",
       }}
     >
       <div
@@ -204,6 +209,7 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
           />
         </Link>
       </div>
+      {!collapsed && (
       <nav className="grow flex flex-col overflow-hidden">
         <div className="flex-1 overflow-y-auto pb-8">
           <ul className="flex flex-col gap-px">
@@ -266,27 +272,51 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
           </div>
         </div>
       </nav>
+      )}
 
       {/* Resize handle */}
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        title="Drag to resize"
-        onMouseDown={startResizing}
-        onDoubleClick={resetWidth}
-        className="absolute top-0 right-0 h-full cursor-col-resize"
-        style={
-          {
-            // Invisible, but with a comfortable hit area
-            width: "14px",
-            transform: "translateX(13px)",
-            // marginRight: "-5px",
-            background: "transparent",
-            // background: "red",
-            zIndex: "var(--z-sidebar-resize-handle)",
-          } as CSSProperties
+      {!collapsed && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          title="Drag to resize"
+          onMouseDown={startResizing}
+          onDoubleClick={resetWidth}
+          className="absolute top-0 right-0 h-full cursor-col-resize"
+          style={
+            {
+              // Invisible, but with a comfortable hit area
+              width: "14px",
+              transform: "translateX(13px)",
+              background: "transparent",
+              zIndex: "var(--z-sidebar-resize-handle)",
+            } as CSSProperties
+          }
+        />
+      )}
+
+      {/* Collapse / Expand toggle */}
+      <button
+        type="button"
+        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        onClick={() => onToggleCollapsed?.()}
+        className={
+          (
+            collapsed
+              ? "opacity-50 hover:opacity-100"
+              : "opacity-90 hover:opacity-100"
+          ) +
+          " absolute top-1/2 -translate-y-1/2 -right-3 z-[var(--z-overlay)] w-6 h-10 rounded-md shadow-sm border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-200 flex items-center justify-center transition-opacity"
         }
-      />
+        style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+      >
+        {collapsed ? (
+          <ChevronRight className="w-4 h-4" aria-hidden="true" />
+        ) : (
+          <ChevronLeft className="w-4 h-4" aria-hidden="true" />
+        )}
+      </button>
     </div>
   );
 }

@@ -9,7 +9,7 @@ import { api } from "@cmux/convex/api";
 import { convexQuery } from "@convex-dev/react-query";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { Suspense, useEffect, useMemo } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId")({
   component: LayoutComponentWrapper,
@@ -47,6 +47,19 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId")({
 function LayoutComponent() {
   const { teamSlugOrId } = Route.useParams();
   const tasks = useQuery(api.tasks.get, { teamSlugOrId });
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      const raw = localStorage.getItem("sidebarCollapsed");
+      return raw === "true";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("sidebarCollapsed", String(sidebarCollapsed));
+    } catch {}
+  }, [sidebarCollapsed]);
 
   // Sort tasks by creation date (newest first) and take the latest 5
   const recentTasks = useMemo(() => {
@@ -64,10 +77,12 @@ function LayoutComponent() {
       <CommandBar teamSlugOrId={teamSlugOrId} />
 
       <ExpandTasksProvider>
-        <div className="flex flex-row grow min-h-0 bg-white dark:bg-black">
+        <div className="flex flex-row grow min-h-0 bg-white dark:bg-black relative">
           <Sidebar
             tasks={displayTasks}
             teamSlugOrId={teamSlugOrId}
+            collapsed={sidebarCollapsed}
+            onToggleCollapsed={() => setSidebarCollapsed((v) => !v)}
           />
 
           {/* <div className="flex flex-col grow overflow-hidden bg-white dark:bg-neutral-950"> */}
