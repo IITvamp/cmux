@@ -44,3 +44,9 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+## Haiku
+
+Cluster breeze hums soft
+Dashboards glowing past midnight
+Deployments breathe calm
