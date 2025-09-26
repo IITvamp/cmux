@@ -1141,6 +1141,13 @@ async function createTerminal(
       command: spawnCommand,
       args: spawnArgs.slice(0, 5), // Log first 5 args for debugging
     });
+
+    // Notify via management socket
+    emitToMainServer("worker:terminal-exit", {
+      workerId: WORKER_ID,
+      terminalId,
+      exitCode: code ?? 0,
+    });
   });
 
   childProcess.on("error", (error) => {
