@@ -8,8 +8,6 @@ import { execAsync, type ExecError } from "./shell";
 let gitRepoPath: string | null = null;
 export const branchDiffCache = new Map<string, string>();
 
-const COLLECT_CROWN_DIFF_SCRIPT = "/usr/local/bin/cmux-collect-crown-diff.sh";
-
 export async function detectGitRepoPath(): Promise<string> {
   if (gitRepoPath) {
     return gitRepoPath;
@@ -81,7 +79,10 @@ export async function runGitCommand(
     if (typeof value === "string") {
       return value;
     }
-    if (value && typeof (value as { toString(): string }).toString === "function") {
+    if (
+      value &&
+      typeof (value as { toString(): string }).toString === "function"
+    ) {
       try {
         return (value as { toString(): string }).toString();
       } catch {
@@ -206,15 +207,18 @@ export async function collectDiffForRun(
   const branchRef = branch.startsWith("origin/") ? branch : `origin/${branch}`;
 
   try {
-    const { stdout } = await execAsync(COLLECT_CROWN_DIFF_SCRIPT, {
-      cwd: WORKSPACE_ROOT,
-      maxBuffer: 5 * 1024 * 1024,
-      env: {
-        ...process.env,
-        CMUX_DIFF_BASE: baseRef,
-        CMUX_DIFF_HEAD_REF: branchRef,
-      },
-    });
+    const { stdout } = await execAsync(
+      "/usr/local/bin/cmux-collect-crown-diff.sh",
+      {
+        cwd: WORKSPACE_ROOT,
+        maxBuffer: 5 * 1024 * 1024,
+        env: {
+          ...process.env,
+          CMUX_DIFF_BASE: baseRef,
+          CMUX_DIFF_HEAD_REF: branchRef,
+        },
+      }
+    );
 
     const diff = stdout.trim();
     if (!diff) {
@@ -286,10 +290,13 @@ export async function ensureBranchesAvailable(
 export async function captureRelevantDiff(): Promise<string> {
   try {
     const repoPath = await detectGitRepoPath();
-    const { stdout } = await execAsync(COLLECT_CROWN_DIFF_SCRIPT, {
-      cwd: repoPath,
-      maxBuffer: 5 * 1024 * 1024,
-    });
+    const { stdout } = await execAsync(
+      "/usr/local/bin/cmux-collect-crown-diff.sh",
+      {
+        cwd: repoPath,
+        maxBuffer: 5 * 1024 * 1024,
+      }
+    );
     const diff = stdout ? stdout.trim() : "";
     return diff.length > 0 ? diff : "No changes detected";
   } catch (error) {
