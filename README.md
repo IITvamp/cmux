@@ -44,3 +44,7 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+Code flows like a stream
+Branches merge in harmony
+Bugs hide in the shadows
