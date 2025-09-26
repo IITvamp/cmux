@@ -1,12 +1,15 @@
 import { RunDiffSection } from "@/components/RunDiffSection";
+import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { Dropdown } from "@/components/ui/dropdown";
 import { refWithOrigin } from "@/lib/refWithOrigin";
 import { diffSmartQueryOptions } from "@/queries/diff-smart";
 import { api } from "@cmux/convex/api";
+import { client as wwwOpenAPIClient } from "@cmux/www-openapi-client/client.gen";
 import { useQuery as useRQ } from "@tanstack/react-query";
 import { useQuery as useConvexQuery } from "convex/react";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, GitMerge } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 type PullRequestDetailViewProps = {
   teamSlugOrId: string;
@@ -93,6 +96,54 @@ export function PullRequestDetailView({
   }, [prs, owner, repo, number]);
 
   const [diffControls, setDiffControls] = useState<DiffControls | null>(null);
+  const [isMerging, setIsMerging] = useState(false);
+  const doMerge = async (
+    args: { team: string; owner: string; repo: string; number: number; method: MergeMethod }
+  ) => {
+    const res = (await wwwOpenAPIClient.post({
+      url: "/api/integrations/github/prs/merge",
+      headers: new Headers({ "content-type": "application/json" }),
+      body: args,
+    })) as unknown as { data?: unknown; response: Response };
+    if (res && res.response && res.response.ok) {
+      const data = res.data as { merged?: boolean; html_url?: string } | undefined;
+      return { merged: !!data?.merged, html_url: data?.html_url };
+    }
+    throw new Error("Merge request failed");
+  };
+
+  const canMerge =
+    !!currentPR && !currentPR.merged && currentPR.state === "open" && !currentPR.draft;
+
+  const handleMerge = (method: MergeMethod): void => {
+    if (!currentPR) return;
+    const [ownerParam, repoParam] = currentPR.repoFullName.split("/");
+    const owner = ownerParam || ownerParam;
+    const repo = repoParam || repoParam;
+    const toastId = toast.loading(`Merging PR (${method})...`);
+    setIsMerging(true);
+    doMerge({
+      team: teamSlugOrId,
+      owner,
+      repo,
+      number: currentPR.number,
+      method,
+    })
+      .then((data) => {
+        toast.success("PR merged", {
+          id: toastId,
+          description: data?.html_url,
+        });
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        toast.error("Failed to merge PR", {
+          id: toastId,
+          description: message,
+        });
+      })
+      .finally(() => setIsMerging(false));
+  };
 
   if (!currentPR) {
     return (
@@ -151,6 +202,21 @@ export function PullRequestDetailView({
                     Open
                   </span>
                 )}
+                {currentPR.merged ? (
+                  <div
+                    className="flex items-center gap-1.5 px-3 py-1 bg-[#8250df] text-white rounded font-medium text-xs select-none whitespace-nowrap border border-[#6e40cc] dark:bg-[#8250df] dark:border-[#6e40cc] cursor-not-allowed"
+                    title="Pull request has been merged"
+                  >
+                    <GitMerge className="w-3.5 h-3.5" />
+                    Merged
+                  </div>
+                ) : currentPR.state === "open" ? (
+                  <MergeButton
+                    onMerge={handleMerge}
+                    isOpen={canMerge}
+                    disabled={!canMerge || isMerging}
+                  />
+                ) : null}
                 {currentPR.htmlUrl ? (
                   <a
                     className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none whitespace-nowrap"
