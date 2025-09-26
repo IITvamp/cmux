@@ -51,6 +51,56 @@ function log(message: string, ...args: unknown[]) {
   }
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function restoreTabFocus(previousTab?: vscode.Tab) {
+  if (!previousTab) {
+    return;
+  }
+
+  try {
+    const { input, label, group, isPreview } = previousTab;
+
+    if (input instanceof vscode.TabInputText) {
+      await vscode.window.showTextDocument(input.uri, {
+        viewColumn: group.viewColumn,
+        preserveFocus: false,
+        preview: isPreview,
+      });
+      return;
+    }
+
+    if (input instanceof vscode.TabInputTextDiff) {
+      await vscode.commands.executeCommand(
+        "vscode.diff",
+        input.original,
+        input.modified,
+        label,
+        {
+          viewColumn: group.viewColumn,
+          preserveFocus: false,
+          preview: isPreview,
+        }
+      );
+      return;
+    }
+
+    if (input instanceof vscode.TabInputTerminal) {
+      const terminal =
+        vscode.window.terminals.find((term) => term.name === label) ||
+        Array.from(activeTerminals.values()).find(
+          (term) => term.name === label
+        );
+      terminal?.show();
+      return;
+    }
+  } catch (error: unknown) {
+    log("Failed to restore previous VS Code focus", error);
+  }
+}
+
 async function resolveDefaultBaseRef(repositoryPath: string): Promise<string> {
   try {
     const out = execSync(
@@ -216,6 +266,16 @@ async function openMultiDiffEditor(
       (tab) => tab.label && tab.label.includes("All Changes vs")
     );
 
+    const shouldRestoreFocus =
+      existingTab && (!existingTab.isActive || !existingTab.group.isActive);
+    const previousActiveTabCandidate = shouldRestoreFocus
+      ? vscode.window.tabGroups.activeTabGroup?.activeTab
+      : undefined;
+    const previousActiveTab =
+      previousActiveTabCandidate && previousActiveTabCandidate !== existingTab
+        ? previousActiveTabCandidate
+        : undefined;
+
     if (existingTab) {
       // Try to activate the existing tab first to preserve position
       // This helps maintain scroll position and user context
@@ -246,6 +306,11 @@ async function openMultiDiffEditor(
       vscode.window.showInformationMessage(
         `Showing ${files.length} file(s) changed vs ${baseBranchName}`
       );
+    }
+
+    if (shouldRestoreFocus && previousActiveTab) {
+      await delay(10);
+      await restoreTabFocus(previousActiveTab);
     }
   } catch (error: unknown) {
     log("Error opening diff:", error);
