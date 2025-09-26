@@ -7,6 +7,7 @@ export * from "./terminal-config";
 export * from "./utils/normalize-origin";
 export * from "./utils/reserved-cmux-ports";
 export * from "./utils/validate-exposed-ports";
+export * from "./task-run-token";
 export * from "./vscode-schemas";
 export * from "./worker-schemas";
 // Do NOT export Node-only utilities here; browser builds import this index.

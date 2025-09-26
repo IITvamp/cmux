@@ -46,6 +46,10 @@
       "import": "./src/diff-types.ts",
       "types": "./src/diff-types.ts"
     },
+    "./task-run-token": {
+      "import": "./src/task-run-token.ts",
+      "types": "./src/task-run-token.ts"
+    },
     "./convex-ready": {
       "import": "./src/convex-ready.ts",
       "types": "./src/convex-ready.ts"

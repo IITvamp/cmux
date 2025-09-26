@@ -388,6 +388,8 @@ export type StartSandboxBody = {
     environmentId?: string;
     snapshotId?: string;
     ttlSeconds?: number;
+    taskRunId?: string;
+    taskRunJwt?: string;
     metadata?: {
         [key: string]: string;
     };

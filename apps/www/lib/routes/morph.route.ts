@@ -269,11 +269,11 @@ morphRouter.openapi(
             if (!existingRepos.has(repoName)) {
               console.log(`Cloning repository: ${repo}`);
 
-            const maxRetries = 3;
+              const maxRetries = 3;
               let lastError: string | undefined;
               let isAuthError = false;
 
-              for (let attempt = 1; attempt <= maxRetries; attempt++) {
+              for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
                 const cloneCmd = await instance.exec(
                   `mkdir -p /root/workspace && cd /root/workspace && git clone https://github.com/${repo}.git ${repoName} 2>&1`
                 );
@@ -300,11 +300,15 @@ morphRouter.openapi(
                   }
 
                   if (attempt < maxRetries) {
-                    console.log(`Clone attempt ${attempt} failed for ${repo}, retrying...`);
+                    console.log(
+                      `Clone attempt ${attempt} failed for ${repo}, retrying...`
+                    );
                     // Clean up partial clone if it exists
                     await instance.exec(`rm -rf /root/workspace/${repoName}`);
                     // Wait before retry with exponential backoff
-                    await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+                    await new Promise((resolve) =>
+                      setTimeout(resolve, attempt * 1000)
+                    );
                   }
                 }
               }

@@ -34,6 +34,8 @@ const StartSandboxBody = z
       .number()
       .optional()
       .default(20 * 60),
+    taskRunId: z.string().optional(),
+    taskRunJwt: z.string().optional(),
     metadata: z.record(z.string(), z.string()).optional(),
     // Optional hydration parameters to clone a repo into the sandbox on start
     repoUrl: z.string().optional(),
@@ -183,9 +185,9 @@ sandboxesRouter.openapi(
         return c.text("VSCode or worker service not found", 500);
       }
 
-      // Extract task-related metadata
-      const taskRunId = body.metadata?.taskRunId;
-      const taskRunJwt = body.metadata?.taskRunJwt;
+      // Extract task-related fields
+      const taskRunId = body.taskRunId;
+      const taskRunJwt = body.taskRunJwt;
       
       // Get environment variables from the environment if configured
       const environmentEnvVarsContent = await environmentEnvVarsPromise;

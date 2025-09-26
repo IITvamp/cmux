@@ -17,9 +17,8 @@ import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { getWorkerServerSocketOptions } from "@cmux/shared/node/socket";
 import { startAmpProxy } from "@cmux/shared/src/providers/amp/start-amp-proxy.ts";
 import {
-  registerTaskRunContext,
   handleWorkerTaskCompletion,
-  hasTaskRunContext,
+  type WorkerRunContext,
 } from "./crown/workflow";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import * as xtermHeadless from "@xterm/headless";
@@ -149,9 +148,6 @@ let mainServerSocket: Socket<
 
 // Track active file watchers by taskRunId
 const activeFileWatchers: Map<string, FileWatcher> = new Map();
-
-// Track process exit codes by taskRunId
-const processExitCodes: Map<string, number> = new Map();
 
 // Queue for pending events when mainServerSocket is not connected
 interface PendingEvent {
@@ -835,23 +831,17 @@ async function createTerminal(
     startupCommands = [],
   } = options;
 
-  const envRecord = env as Record<string, string>;
-  const taskRunToken = envRecord["CMUX_TASK_RUN_JWT"];
-  const convexUrl = envRecord["NEXT_PUBLIC_CONVEX_URL"];
-
-  if (convexUrl) {
-    process.env.NEXT_PUBLIC_CONVEX_URL = convexUrl;
-  }
-
-  if (options.taskRunId && taskRunToken) {
-    const promptValue = envRecord["CMUX_PROMPT"] ?? envRecord["PROMPT"] ?? "";
-    registerTaskRunContext(options.taskRunId, {
-      token: taskRunToken,
-      prompt: promptValue,
-      agentModel: options.agentModel,
-      convexUrl,
-    });
-  }
+  const taskRunToken = env?.CMUX_TASK_RUN_JWT;
+  const convexUrl = env?.NEXT_PUBLIC_CONVEX_URL;
+  const runContext: WorkerRunContext | undefined =
+    options.taskRunId && taskRunToken
+      ? {
+          token: taskRunToken,
+          prompt: env?.CMUX_PROMPT ?? env?.PROMPT ?? "",
+          agentModel: options.agentModel,
+          convexUrl,
+        }
+      : undefined;
 
   const shell = command || (platform() === "win32" ? "powershell.exe" : "bash");
 
@@ -1029,6 +1019,84 @@ async function createTerminal(
     return;
   }
 
+  let completionReady = !agentConfig.completionDetector;
+  let completionElapsedMs: number | undefined;
+  let exitReady = false;
+  let recordedExitCode: number | undefined;
+  let finalizing = false;
+  let finalized = false;
+
+  const finalizeIfPossible = async (reason: "completion" | "exit") => {
+    if (finalized || finalizing) {
+      return;
+    }
+    if (!options.taskRunId) {
+      return;
+    }
+    if (!runContext) {
+      log("ERROR", "Missing run context for crown finalization", {
+        taskRunId: options.taskRunId,
+        reason,
+      });
+      return;
+    }
+    if (!completionReady) {
+      return;
+    }
+
+    if (!exitReady) {
+      if (reason === "exit") {
+        return;
+      }
+
+      log(
+        "INFO",
+        "Completion detected while process still running; continuing finalization",
+        {
+          taskRunId: options.taskRunId,
+          agentModel: options.agentModel,
+        }
+      );
+    }
+
+    if (finalized || finalizing) {
+      return;
+    }
+
+    finalizing = true;
+    const elapsedMs = completionElapsedMs ?? Date.now() - processStartTime;
+    const exitCode = recordedExitCode ?? 0;
+
+    log("INFO", `Finalizing crown workflow (${reason})`, {
+      taskRunId: options.taskRunId,
+      exitCode,
+      elapsedMs,
+      reason,
+    });
+
+    try {
+      await handleWorkerTaskCompletion(options.taskRunId, runContext, {
+        agentModel: options.agentModel,
+        elapsedMs,
+        exitCode,
+      });
+      finalized = true;
+      log("INFO", `Crown workflow completed for ${options.taskRunId}`, {
+        taskRunId: options.taskRunId,
+        agentModel: options.agentModel,
+      });
+    } catch (error) {
+      log("ERROR", `Failed to handle crown workflow for ${options.taskRunId}`, {
+        taskRunId: options.taskRunId,
+        agentModel: options.agentModel,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+    } finally {
+      finalizing = false;
+    }
+  };
+
   if (options.taskRunId && agentConfig?.completionDetector) {
     try {
       log(
@@ -1057,64 +1125,27 @@ async function createTerminal(
             elapsedMs: Date.now() - processStartTime,
           });
 
-          log(
-            "INFO",
-            `Starting crown evaluation for task ${options.taskRunId}`,
-            {
-              taskRunId: options.taskRunId,
-              agentModel: options.agentModel,
-              elapsedMs: Date.now() - processStartTime,
-            }
-          );
-
-          // Retrieve the exit code if the process has already exited
-          const storedExitCode = processExitCodes.get(options.taskRunId!);
-
-          // Await the crown workflow directly
-          try {
-            await handleWorkerTaskCompletion(options.taskRunId!, {
-              agentModel: options.agentModel,
-              elapsedMs: Date.now() - processStartTime,
-              exitCode: storedExitCode ?? 0,
-            });
-
-            log("INFO", `Crown workflow completed for ${options.taskRunId}`, {
-              taskRunId: options.taskRunId,
-              agentModel: options.agentModel,
-            });
-
-            // Clean up stored exit code
-            if (options.taskRunId) {
-              processExitCodes.delete(options.taskRunId);
-            }
-          } catch (error) {
-            log(
-              "ERROR",
-              `Failed to handle crown workflow for ${options.taskRunId}`,
-              {
-                taskRunId: options.taskRunId,
-                agentModel: options.agentModel,
-                error: error instanceof Error ? error.message : String(error),
-                stack: error instanceof Error ? error.stack : undefined,
-              }
-            );
-            // Clean up stored exit code even on error
-            if (options.taskRunId) {
-              processExitCodes.delete(options.taskRunId);
-            }
-          }
+          completionReady = true;
+          completionElapsedMs = Date.now() - processStartTime;
+          await finalizeIfPossible("completion");
         })
         .catch((e) => {
           log(
             "ERROR",
             `Completion detector error for ${options.agentModel}: ${String(e)}`
           );
+          completionReady = true;
+          completionElapsedMs = Date.now() - processStartTime;
+          void finalizeIfPossible("completion");
         });
     } catch (e) {
       log(
         "ERROR",
         `Failed to start completion detector for ${options.agentModel}: ${String(e)}`
       );
+      completionReady = true;
+      completionElapsedMs = Date.now() - processStartTime;
+      void finalizeIfPossible("completion");
     }
   }
   childProcess.stderr.on("data", (data: Buffer) => {
@@ -1150,17 +1181,9 @@ async function createTerminal(
       args: spawnArgs.slice(0, 5), // Log first 5 args for debugging
     });
 
-    if (options.taskRunId) {
-      if (hasTaskRunContext(options.taskRunId)) {
-        processExitCodes.set(options.taskRunId, exitCode);
-        log("INFO", `Stored exit code ${exitCode} for task ${options.taskRunId}`);
-      } else if (processExitCodes.delete(options.taskRunId)) {
-        log(
-          "INFO",
-          `Discarded exit code ${exitCode} for task ${options.taskRunId} after workflow cleanup`
-        );
-      }
-    }
+    exitReady = true;
+    recordedExitCode = exitCode;
+    void finalizeIfPossible("exit");
 
     // Still emit to main server for backwards compatibility/logging
     emitToMainServer("worker:terminal-exit", {

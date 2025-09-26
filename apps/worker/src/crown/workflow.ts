@@ -1,961 +1,39 @@
-import { Buffer } from "node:buffer";
-import { exec as childExec } from "node:child_process";
-import { promisify } from "node:util";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { log } from "../logger";
+import { WORKSPACE_ROOT } from "./constants";
+import { convexRequest, scheduleContainerStop } from "./convex";
+import {
+  autoCommitAndPush,
+  buildCommitMessage,
+  cacheBranchDiff,
+  captureRelevantDiff,
+  collectDiffForRun,
+  detectGitRepoPath,
+  ensureBranchesAvailable,
+  getCurrentBranch,
+  runGitCommandSafe,
+} from "./git";
+import { createPullRequestIfEnabled } from "./pull-request";
+import { buildEvaluationPrompt, buildSummarizationPrompt } from "./prompts";
+import type {
+  CandidateData,
+  CrownEvaluationResponse,
+  CrownSummarizationResponse,
+  CrownWorkerCheckResponse,
+  WorkerAllRunsCompleteResponse,
+  WorkerRunContext,
+  WorkerTaskRunResponse,
+} from "./types";
+import { sleep } from "./utils";
+
+export type { WorkerRunContext } from "./types";
 
-const execAsync = promisify(childExec);
-
-const WORKSPACE_ROOT = process.env.CMUX_WORKSPACE_PATH || "/root/workspace";
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// Track the actual git repository path (may be different from WORKSPACE_ROOT)
-let GIT_REPO_PATH: string | null = null;
-
-type ExecError = Error & {
-  stdout?: string | Buffer;
-  stderr?: string | Buffer;
-  code?: number | string;
-  status?: number;
-};
-
-type WorkerRunContext = {
-  token: string;
-  prompt: string;
-  agentModel?: string;
-  teamId?: string;
-  taskId?: string;
-  convexUrl?: string;
-};
-
-type CrownWorkerCheckResponse = {
-  ok: true;
-  taskId: string;
-  allRunsFinished: boolean;
-  allWorkersReported: boolean;
-  shouldEvaluate: boolean;
-  singleRunWinnerId: string | null;
-  existingEvaluation: null | {
-    winnerRunId: string;
-    evaluatedAt: number;
-  };
-  task: {
-    text: string;
-    crownEvaluationError: string | null;
-    isCompleted: boolean;
-    baseBranch: string | null;
-    projectFullName: string | null;
-    autoPrEnabled: boolean;
-  };
-  runs: Array<{
-    id: string;
-    status: "pending" | "running" | "completed" | "failed";
-    agentName: string | null;
-    newBranch: string | null;
-    exitCode: number | null;
-    completedAt: number | null;
-  }>;
-};
-
-type WorkerTaskRunDescriptor = {
-  id: string;
-  taskId: string;
-  teamId: string;
-  newBranch: string | null;
-  agentName: string | null;
-};
-
-type WorkerTaskRunResponse = {
-  ok: boolean;
-  taskRun: WorkerTaskRunDescriptor | null;
-  task: { id: string; text: string; projectFullName?: string | null } | null;
-  containerSettings: {
-    autoCleanupEnabled: boolean;
-    stopImmediatelyOnCompletion: boolean;
-    reviewPeriodMinutes: number;
-  } | null;
-};
-
-type WorkerAllRunsCompleteResponse = {
-  ok: boolean;
-  taskId: string;
-  allComplete: boolean;
-  statuses: Array<{ id: string; status: string }>;
-};
-
-const taskRunContexts = new Map<string, WorkerRunContext>();
-const branchDiffCache = new Map<string, string>();
-
-function toUtf8String(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-  if (Buffer.isBuffer(value)) {
-    return value.toString("utf8");
-  }
-  if (value === undefined || value === null) {
-    return "";
-  }
-  return String(value);
-}
-
-function getConvexBaseUrl(override?: string): string | null {
-  const url = override ?? process.env.NEXT_PUBLIC_CONVEX_URL;
-  if (!url) {
-    log(
-      "ERROR",
-      "NEXT_PUBLIC_CONVEX_URL is not configured; cannot call crown endpoints"
-    );
-    return null;
-  }
-  // Convert .convex.cloud to .convex.site for HTTP actions
-  // HTTP actions are served from .convex.site, not .convex.cloud
-  const httpActionUrl = url.replace(".convex.cloud", ".convex.site");
-  return httpActionUrl.replace(/\/$/, "");
-}
-
-async function convexRequest<T>(
-  path: string,
-  token: string,
-  body: Record<string, unknown>,
-  baseUrlOverride?: string
-): Promise<T | null> {
-  const baseUrl = getConvexBaseUrl(baseUrlOverride);
-  if (!baseUrl) return null;
-
-  const fullUrl = `${baseUrl}${path}`;
-  log("DEBUG", `Making Crown HTTP request`, {
-    url: fullUrl,
-    path,
-  });
-
-  try {
-    const response = await fetch(fullUrl, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-cmux-token": token,
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => "<no body>");
-      log("ERROR", `Crown request failed (${response.status})`, {
-        url: fullUrl,
-        path,
-        body,
-        errorText,
-      });
-      return null;
-    }
-
-    return await response.json();
-  } catch (error) {
-    log("ERROR", "Failed to reach crown endpoint", {
-      url: fullUrl,
-      path,
-      error,
-    });
-    return null;
-  }
-}
-
-async function detectGitRepoPath(): Promise<string> {
-  // If we've already detected the path, return it
-  if (GIT_REPO_PATH) {
-    return GIT_REPO_PATH;
-  }
-
-  // First check if WORKSPACE_ROOT itself is a git repository
-  if (existsSync(join(WORKSPACE_ROOT, ".git"))) {
-    GIT_REPO_PATH = WORKSPACE_ROOT;
-    log("INFO", "Git repository found at workspace root", {
-      path: GIT_REPO_PATH,
-    });
-    return GIT_REPO_PATH;
-  }
-
-  // In cloud mode, check for subdirectories (like /root/workspace/cmux)
-  try {
-    // First check if any immediate subdirectories contain .git
-    const { stdout: dirs } = await execAsync(
-      `ls -d ${WORKSPACE_ROOT}/*/ 2>/dev/null || true`,
-      {
-        cwd: WORKSPACE_ROOT,
-      }
-    );
-
-    if (dirs && dirs.trim()) {
-      const dirList = dirs.trim().split("\n");
-      for (const dir of dirList) {
-        const trimmedDir = dir.replace(/\/$/, "");
-        if (existsSync(join(trimmedDir, ".git"))) {
-          GIT_REPO_PATH = trimmedDir;
-          log("INFO", "Git repository found in subdirectory", {
-            path: GIT_REPO_PATH,
-          });
-          return GIT_REPO_PATH;
-        }
-      }
-    }
-
-    // Fallback to find command if ls doesn't work
-    const { stdout } = await execAsync(
-      `find ${WORKSPACE_ROOT} -maxdepth 2 -type d -name .git 2>/dev/null | head -1`,
-      {
-        cwd: WORKSPACE_ROOT,
-      }
-    );
-
-    if (stdout && stdout.trim()) {
-      const gitDir = stdout.trim();
-      // Get parent directory of .git
-      GIT_REPO_PATH = gitDir.replace(/\/.git$/, "");
-      log("INFO", "Git repository found via find command", {
-        path: GIT_REPO_PATH,
-      });
-      return GIT_REPO_PATH;
-    }
-  } catch (error) {
-    log("WARN", "Failed to search for git repositories", {
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
-  }
-
-  // Fallback to workspace root (even if no git repo)
-  log("WARN", "No git repository found, using workspace root", {
-    path: WORKSPACE_ROOT,
-  });
-  GIT_REPO_PATH = WORKSPACE_ROOT;
-  return GIT_REPO_PATH;
-}
-
-async function runGitCommand(
-  command: string
-): Promise<{ stdout: string } | null> {
-  try {
-    const gitPath = await detectGitRepoPath();
-    const result = await execAsync(command, {
-      cwd: gitPath,
-      maxBuffer: 20 * 1024 * 1024,
-    });
-    const stdout = toUtf8String(result.stdout);
-    return { stdout };
-  } catch (error) {
-    log("ERROR", "Git command failed", { command, error });
-    return null;
-  }
-}
-
-async function fetchRemoteRef(ref: string): Promise<boolean> {
-  if (!ref) return false;
-  const attempts = 3;
-  const remoteBranch = ref.replace(/^origin\//, "");
-  const verifyRef = `refs/remotes/origin/${remoteBranch}`;
-  const fetchCommand = `git fetch --no-tags --prune origin refs/heads/${remoteBranch}:${verifyRef}`;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const attemptNumber = attempt + 1;
-    log("DEBUG", "Fetching remote ref", {
-      ref,
-      attempt: attemptNumber,
-      attempts,
-    });
-
-    const result = await runGitCommand(fetchCommand);
-
-    if (result) {
-      const trimmedStdout = result.stdout.trim();
-      if (trimmedStdout.length > 0) {
-        log("DEBUG", "git fetch output", {
-          ref,
-          output: trimmedStdout.slice(0, 160),
-        });
-      }
-      // Verify the ref actually exists after fetch
-      const verifyResult = await runGitCommand(
-        `git rev-parse --verify --quiet ${verifyRef}`
-      );
-
-      if (verifyResult?.stdout.trim()) {
-        log("INFO", "Remote ref verified", {
-          ref,
-          attempt: attemptNumber,
-          commit: verifyResult.stdout.trim(),
-        });
-        return true;
-      }
-
-      log("WARN", "Remote ref still missing after fetch attempt", {
-        ref,
-        attempt: attemptNumber,
-      });
-    } else {
-      log("WARN", "git fetch failed for ref", {
-        ref,
-        attempt: attemptNumber,
-      });
-    }
-    await sleep(1000);
-  }
-  log("ERROR", "Failed to fetch remote ref after retries", { ref, attempts });
-  return false;
-}
-
-function truncateDiff(diff: string): string {
-  if (!diff) return "No changes detected";
-  const trimmed = diff.trim();
-  if (trimmed.length === 0) return "No changes detected";
-  const limit = 5000;
-  if (trimmed.length <= limit) return trimmed;
-  return `${trimmed.slice(0, limit)}\n... (truncated)`;
-}
-
-async function collectDiffForRun(
-  baseBranch: string,
-  branch: string | null
-): Promise<string> {
-  if (!branch) {
-    return "No changes detected";
-  }
-
-  const cachedDiff = branchDiffCache.get(branch);
-  if (cachedDiff) {
-    log("INFO", "Using cached diff for branch", { branch });
-    return truncateDiff(cachedDiff);
-  }
-
-  const sanitizedBase = baseBranch || "main";
-  log("INFO", "Collecting diff from remote branches", {
-    baseBranch: sanitizedBase,
-    branch,
-  });
-  await fetchRemoteRef(sanitizedBase);
-  await fetchRemoteRef(branch);
-  const baseRef = sanitizedBase.startsWith("origin/")
-    ? sanitizedBase
-    : `origin/${sanitizedBase}`;
-  const branchRef = branch.startsWith("origin/") ? branch : `origin/${branch}`;
-
-  try {
-    const { stdout } = await execAsync(
-      "/usr/local/bin/cmux-collect-relevant-diff.sh",
-      {
-        cwd: WORKSPACE_ROOT,
-        maxBuffer: 5 * 1024 * 1024,
-        env: {
-          ...process.env,
-          CMUX_DIFF_BASE: baseRef,
-          CMUX_DIFF_HEAD_REF: branchRef,
-        },
-      }
-    );
-
-    const diff = stdout.trim();
-    if (!diff) {
-      log("INFO", "No differences found between branches", {
-        base: baseRef,
-        branch: branchRef,
-      });
-      return "No changes detected";
-    }
-
-    branchDiffCache.set(branch, diff);
-    return truncateDiff(diff);
-  } catch (error) {
-    log("ERROR", "Failed to collect diff for run", {
-      baseBranch: sanitizedBase,
-      branch,
-      error,
-    });
-    return "No changes detected";
-  }
-}
-
-async function ensureBranchesAvailable(
-  completedRuns: Array<{ id: string; newBranch: string | null }>,
-  baseBranch: string,
-  localFallbackBranches: Set<string> = new Set()
-): Promise<boolean> {
-  const sanitizedBase = baseBranch || "main";
-  const attemptLimit = 3;
-  for (let attempt = 0; attempt < attemptLimit; attempt += 1) {
-    const baseOk = await fetchRemoteRef(sanitizedBase);
-    log("INFO", "Ensuring branches available", {
-      attempt,
-      maxAttempts: attemptLimit,
-      baseBranch: sanitizedBase,
-      baseOk,
-      completedRunCount: completedRuns.length,
-    });
-    let allBranchesOk = true;
-    for (const run of completedRuns) {
-      if (!run.newBranch) {
-        log("ERROR", "Run missing branch name", { runId: run.id });
-        return false;
-      }
-      const branchOk = await fetchRemoteRef(run.newBranch);
-      log("INFO", "Checked branch availability", {
-        runId: run.id,
-        branch: run.newBranch,
-        branchOk,
-      });
-      if (!branchOk && !localFallbackBranches.has(run.newBranch)) {
-        allBranchesOk = false;
-      } else if (!branchOk) {
-        log("INFO", "Using cached diff fallback for branch", {
-          runId: run.id,
-          branch: run.newBranch,
-        });
-      }
-    }
-    if (baseOk && allBranchesOk) {
-      return true;
-    }
-    log("INFO", "Branch check failed; retrying", {
-      attempt,
-      baseOk,
-      allBranchesOk,
-    });
-    if (attempt < attemptLimit - 1) {
-      await sleep(3000);
-    }
-  }
-  return false;
-}
-
-type CandidateData = {
-  runId: string;
-  agentName: string;
-  gitDiff: string;
-  newBranch: string | null;
-};
-
-async function captureRelevantDiff(): Promise<string> {
-  try {
-    const gitPath = await detectGitRepoPath();
-    const { stdout } = await execAsync(
-      "/usr/local/bin/cmux-collect-relevant-diff.sh",
-      {
-        cwd: gitPath,
-        maxBuffer: 5 * 1024 * 1024,
-      }
-    );
-    const diff = stdout ? stdout.trim() : "";
-    return diff.length > 0 ? diff : "No changes detected";
-  } catch (error) {
-    log("ERROR", "Failed to collect relevant diff", { error });
-    return "No changes detected";
-  }
-}
-
-function buildCommitMessage({
-  taskText,
-  agentName,
-}: {
-  taskText: string;
-  agentName: string;
-}): string {
-  const baseLine = taskText.trim().split("\n")[0] ?? "task";
-  const subject =
-    baseLine.length > 60 ? `${baseLine.slice(0, 57)}...` : baseLine;
-  const sanitizedAgent = agentName.replace(/[^a-zA-Z0-9_-]/g, "-");
-  return `chore(${sanitizedAgent}): ${subject}`;
-}
-
-async function runGitCommandSafe(
-  command: string,
-  allowFailure = false
-): Promise<{ stdout: string; stderr: string; exitCode: number } | null> {
-  try {
-    const gitPath = await detectGitRepoPath();
-    const result = await execAsync(command, {
-      cwd: gitPath,
-      maxBuffer: 10 * 1024 * 1024,
-    });
-    const stdout = toUtf8String(result.stdout);
-    const stderr = toUtf8String(result.stderr);
-    return { stdout, stderr, exitCode: 0 };
-  } catch (error) {
-    const execError: ExecError =
-      error instanceof Error
-        ? error
-        : new Error(
-            typeof error === "string" ? error : "Unknown git command error"
-          );
-    const stdout = toUtf8String(execError.stdout);
-    const stderr = toUtf8String(execError.stderr);
-    const exitCode =
-      typeof execError.code === "number"
-        ? execError.code
-        : typeof execError.status === "number"
-          ? execError.status
-          : 1;
-    const errorPayload = {
-      command,
-      message: execError.message,
-      exitCode,
-      stdout: stdout?.slice(0, 500),
-      stderr: stderr?.slice(0, 500),
-    };
-    if (!allowFailure) {
-      log("ERROR", "Git command failed", errorPayload);
-      throw error;
-    }
-    log("WARN", "Git command failed (ignored)", errorPayload);
-    return { stdout, stderr, exitCode };
-  }
-}
-
-async function getCurrentBranch(): Promise<string | null> {
-  const result = await runGitCommandSafe(
-    "git rev-parse --abbrev-ref HEAD",
-    true
-  );
-  const branch = result?.stdout.trim();
-  if (!branch) {
-    log("WARN", "Unable to determine current git branch");
-    return null;
-  }
-  return branch;
-}
-
-async function autoCommitAndPush({
-  branchName,
-  commitMessage,
-  remoteUrl,
-}: {
-  branchName: string;
-  commitMessage: string;
-  remoteUrl?: string;
-}): Promise<void> {
-  if (!branchName) {
-    log("ERROR", "Missing branch name for auto-commit");
-    return;
-  }
-
-  const gitPath = await detectGitRepoPath();
-
-  log("INFO", "Worker auto-commit starting", {
-    branchName,
-    remoteOverride: remoteUrl,
-    workspacePath: WORKSPACE_ROOT,
-    gitRepoPath: gitPath,
-  });
-
-  // First verify we're in a git repository
-  const gitCheck = await runGitCommandSafe("git rev-parse --git-dir", true);
-  if (!gitCheck || gitCheck.exitCode !== 0) {
-    log("ERROR", "Not in a git repository", {
-      branchName,
-      workspacePath: WORKSPACE_ROOT,
-      gitRepoPath: gitPath,
-      gitCheckError: gitCheck?.stderr,
-    });
-    // Try to initialize git if needed (for cloud mode edge cases)
-    const initResult = await runGitCommandSafe("git init", true);
-    if (!initResult || initResult.exitCode !== 0) {
-      log("ERROR", "Failed to initialize git repository", {
-        branchName,
-        gitRepoPath: gitPath,
-        error: initResult?.stderr,
-      });
-      return;
-    }
-    log("INFO", "Initialized git repository", {
-      branchName,
-      gitRepoPath: gitPath,
-    });
-  }
-
-  if (remoteUrl) {
-    const currentRemote = await runGitCommandSafe(
-      "git remote get-url origin",
-      true
-    );
-    const trimmed = currentRemote?.stdout.trim();
-    if (!trimmed) {
-      // No remote exists, add it
-      log("INFO", "Adding origin remote", {
-        branchName,
-        remoteUrl,
-      });
-      await runGitCommandSafe(`git remote add origin ${remoteUrl}`);
-    } else if (trimmed !== remoteUrl) {
-      log("INFO", "Updating origin remote before push", {
-        branchName,
-        currentRemote: trimmed,
-        remoteUrl,
-      });
-      await runGitCommandSafe(`git remote set-url origin ${remoteUrl}`);
-    }
-    const updatedRemote = await runGitCommandSafe("git remote -v", true);
-    if (updatedRemote) {
-      log("INFO", "Current git remotes after potential update", {
-        branchName,
-        remotes: updatedRemote.stdout.trim().split("\n"),
-      });
-    }
-  }
-
-  const addResult = await runGitCommandSafe(`git add -A`);
-  log("INFO", "git add completed", {
-    branchName,
-    stdout: addResult?.stdout
-      ? addResult.stdout.trim().slice(0, 200)
-      : undefined,
-    stderr: addResult?.stderr
-      ? addResult.stderr.trim().slice(0, 200)
-      : undefined,
-  });
-
-  const checkoutResult = await runGitCommandSafe(
-    `git checkout -B ${branchName}`
-  );
-  log("INFO", "git checkout -B completed", {
-    branchName,
-    stdout: checkoutResult?.stdout
-      ? checkoutResult.stdout.trim().slice(0, 200)
-      : undefined,
-    stderr: checkoutResult?.stderr
-      ? checkoutResult.stderr.trim().slice(0, 200)
-      : undefined,
-  });
-
-  const status = await runGitCommandSafe(`git status --short`, true);
-  const hasChanges = !!status?.stdout.trim();
-  if (status) {
-    const preview = status.stdout.trim().split("\n").slice(0, 10);
-    log("INFO", "git status before commit", {
-      branchName,
-      entries: preview,
-      totalLines:
-        status.stdout.trim() === ""
-          ? 0
-          : status.stdout.trim().split("\n").length,
-    });
-  }
-
-  if (hasChanges) {
-    const commitResult = await runGitCommandSafe(
-      `git commit -m ${JSON.stringify(commitMessage)}`,
-      true
-    );
-    if (commitResult) {
-      log("INFO", "Created commit before push", {
-        branchName,
-        stdout: commitResult.stdout.trim().slice(0, 200),
-        stderr: commitResult.stderr.trim().slice(0, 200),
-      });
-    } else {
-      log("WARN", "Commit command did not produce output", { branchName });
-    }
-  } else {
-    log("INFO", "No changes detected before commit", { branchName });
-  }
-
-  const remoteExists = await runGitCommandSafe(
-    `git ls-remote --heads origin ${branchName}`,
-    true
-  );
-
-  if (remoteExists?.stdout.trim()) {
-    log("INFO", "Remote branch exists before push", {
-      branchName,
-      remoteHead: remoteExists.stdout.trim().slice(0, 120),
-    });
-    const pullResult = await runGitCommandSafe(
-      `git pull --rebase origin ${branchName}`
-    );
-    if (pullResult) {
-      log("INFO", "Rebased branch onto remote", {
-        branchName,
-        stdout: pullResult.stdout.trim().slice(0, 200),
-        stderr: pullResult.stderr.trim().slice(0, 200),
-      });
-    }
-  } else {
-    log("INFO", "Remote branch missing before push; creating new remote ref", {
-      branchName,
-    });
-  }
-
-  const pushResult = await runGitCommandSafe(
-    `git push -u origin ${branchName}`
-  );
-  if (pushResult) {
-    log("INFO", "git push output", {
-      branchName,
-      stdout: pushResult.stdout.trim().slice(0, 200),
-      stderr: pushResult.stderr.trim().slice(0, 200),
-    });
-  }
-
-  log("INFO", "Worker auto-commit finished", { branchName });
-}
-
-async function scheduleContainerStop(
-  token: string,
-  taskRunId: string,
-  scheduledStopAt?: number,
-  baseUrlOverride?: string
-): Promise<void> {
-  await convexRequest(
-    `/api/crown/schedule-stop`,
-    token,
-    {
-      taskRunId,
-      scheduledStopAt,
-    },
-    baseUrlOverride
-  );
-}
-
-function buildEvaluationPrompt(
-  taskText: string,
-  candidates: CandidateData[]
-): string {
-  const evaluationData = {
-    task: taskText,
-    implementations: candidates.map((candidate, index) => ({
-      modelName: candidate.agentName,
-      gitDiff: candidate.gitDiff,
-      index,
-    })),
-  };
-
-  return `You are evaluating code implementations from different AI models.\n\nHere are the implementations to evaluate:\n${JSON.stringify(
-    evaluationData,
-    null,
-    2
-  )}\n\nNOTE: The git diffs shown contain only actual code changes. Lock files, build artifacts, and other non-essential files have been filtered out.\n\nAnalyze these implementations and select the best one based on:\n1. Code quality and correctness\n2. Completeness of the solution\n3. Following best practices\n4. Actually having meaningful code changes (if one has no changes, prefer the one with changes)\n\nRespond with a JSON object containing:\n- "winner": the index (0-based) of the best implementation\n- "reason": a brief explanation of why this implementation was chosen\n\nExample response:\n{"winner": 0, "reason": "Model claude/sonnet-4 provided a more complete implementation with better error handling and cleaner code structure."}\n\nIMPORTANT: Respond ONLY with the JSON object, no other text.`;
-}
-
-function buildSummarizationPrompt(taskText: string, gitDiff: string): string {
-  return `You are an expert reviewer summarizing a pull request.\n\nGOAL\n- Explain succinctly what changed and why.\n- Call out areas the user should review carefully.\n- Provide a quick test plan to validate the changes.\n\nCONTEXT\n- User's original request:\n${taskText}\n- Relevant diffs (unified):\n${gitDiff || "<no code changes captured>"}\n\nINSTRUCTIONS\n- Base your summary strictly on the provided diffs and request.\n- Be specific about files and functions when possible.\n- Prefer clear bullet points over prose. Keep it under ~300 words.\n- If there are no code changes, say so explicitly and suggest next steps.\n\nOUTPUT FORMAT (Markdown)\n## PR Review Summary\n- What Changed: bullet list\n- Review Focus: bullet list (risks/edge cases)\n- Test Plan: bullet list of practical steps\n- Follow-ups: optional bullets if applicable\n`;
-}
-
-type CrownEvaluationResponse = {
-  winner: number;
-  reason: string;
-};
-
-type CrownSummarizationResponse = {
-  summary: string;
-};
-
-type PullRequestMetadata = {
-  pullRequest?: {
-    url: string;
-    isDraft?: boolean;
-    state?: "none" | "draft" | "open" | "merged" | "closed" | "unknown";
-    number?: number;
-  };
-  title?: string;
-  description?: string;
-};
-
-function buildPullRequestTitle(taskText: string): string {
-  const base = taskText.trim() || "cmux changes";
-  const title = `[Crown] ${base}`;
-  return title.length > 72 ? `${title.slice(0, 69)}...` : title;
-}
-
-function buildPullRequestBody({
-  summary,
-  taskText,
-  agentName,
-  branch,
-  taskId,
-  runId,
-}: {
-  summary?: string;
-  taskText: string;
-  agentName: string;
-  branch: string;
-  taskId: string;
-  runId: string;
-}): string {
-  const bodySummary = summary?.trim() || "Summary not available.";
-  return `## 🏆 Crown Winner: ${agentName}
-
-### Task Description
-${taskText}
-
-### Summary
-${bodySummary}
-
-### Implementation Details
-- **Agent**: ${agentName}
-- **Task ID**: ${taskId}
-- **Run ID**: ${runId}
-- **Branch**: ${branch}
-- **Created**: ${new Date().toISOString()}`;
-}
-
-function mapGhState(
-  state: string | undefined
-): "none" | "draft" | "open" | "merged" | "closed" | "unknown" {
-  if (!state) return "unknown";
-  const normalized = state.toLowerCase();
-  if (
-    normalized === "open" ||
-    normalized === "closed" ||
-    normalized === "merged"
-  ) {
-    return normalized;
-  }
-  return "unknown";
-}
-
-async function createPullRequestIfEnabled(options: {
-  check: CrownWorkerCheckResponse;
-  winner: CandidateData;
-  summary?: string;
-  context: WorkerRunContext;
-}): Promise<PullRequestMetadata | null> {
-  const { check, winner, summary, context } = options;
-  if (!check.task.autoPrEnabled) {
-    return null;
-  }
-
-  const branch = winner.newBranch;
-  if (!branch) {
-    log("WARNING", "Skipping PR creation - winner branch missing", {
-      taskId: check.taskId,
-      runId: winner.runId,
-    });
-    return null;
-  }
-
-  const baseBranch = check.task.baseBranch || "main";
-  const prTitle = buildPullRequestTitle(check.task.text);
-  const prBody = buildPullRequestBody({
-    summary,
-    taskText: check.task.text,
-    agentName: winner.agentName,
-    branch,
-    taskId: context.taskId ?? check.taskId,
-    runId: winner.runId,
-  });
-
-  const script = `set -e
-BODY_FILE=$(mktemp /tmp/cmux-pr-XXXXXX.md)
-cat <<'CMUX_EOF' > "$BODY_FILE"
-${prBody}
-CMUX_EOF
-gh pr create --base "$PR_BASE" --head "$PR_HEAD" --title "$PR_TITLE" --body-file "$BODY_FILE" --json url,number,state,isDraft
-rm -f "$BODY_FILE"
-`;
-
-  try {
-    const { stdout } = await execAsync(script, {
-      cwd: WORKSPACE_ROOT,
-      env: {
-        ...process.env,
-        PR_TITLE: prTitle,
-        PR_BASE: baseBranch,
-        PR_HEAD: branch,
-      },
-      maxBuffer: 5 * 1024 * 1024,
-    });
-
-    const trimmed = stdout.trim();
-    if (!trimmed) {
-      log("ERROR", "gh pr create returned empty output", {
-        taskId: check.taskId,
-        runId: winner.runId,
-      });
-      return null;
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let parsed: any;
-    try {
-      parsed = JSON.parse(trimmed);
-    } catch (error) {
-      log("ERROR", "Failed to parse gh pr create output", {
-        stdout: trimmed,
-        error,
-      });
-      return null;
-    }
-
-    const prUrl = typeof parsed.url === "string" ? parsed.url : undefined;
-    if (!prUrl) {
-      log("ERROR", "gh pr create response missing URL", { parsed });
-      return null;
-    }
-
-    const prNumber = (() => {
-      if (typeof parsed.number === "number") return parsed.number;
-      if (typeof parsed.number === "string") {
-        const numeric = Number(parsed.number);
-        return Number.isFinite(numeric) ? numeric : undefined;
-      }
-      return undefined;
-    })();
-
-    const metadata: PullRequestMetadata = {
-      pullRequest: {
-        url: prUrl,
-        number: prNumber,
-        state: mapGhState(parsed.state),
-        isDraft:
-          typeof parsed.isDraft === "boolean" ? parsed.isDraft : undefined,
-      },
-      title: prTitle,
-      description: prBody,
-    };
-
-    log("INFO", "Created pull request", {
-      taskId: check.taskId,
-      runId: winner.runId,
-      url: prUrl,
-    });
-
-    return metadata;
-  } catch (error) {
-    log("ERROR", "Failed to create pull request", {
-      taskId: check.taskId,
-      runId: winner.runId,
-      error,
-    });
-    return null;
-  }
-}
-
-export function registerTaskRunContext(
-  taskRunId: string,
-  context: WorkerRunContext
-) {
-  taskRunContexts.set(taskRunId, context);
-  log("INFO", "Registered task run context for crown workflow", {
-    taskRunId,
-    hasToken: !!context.token,
-    hasPrompt: !!context.prompt,
-    agentModel: context.agentModel,
-    convexUrl: context.convexUrl,
-    totalRegistered: taskRunContexts.size,
-  });
-}
-
-export function hasTaskRunContext(taskRunId: string): boolean {
-  return taskRunContexts.has(taskRunId);
-}
-
-export function clearTaskRunContext(taskRunId: string) {
-  taskRunContexts.delete(taskRunId);
-  log("INFO", "Cleared task run context", {
-    taskRunId,
-    remainingContexts: taskRunContexts.size,
-  });
-}
 
 export async function handleWorkerTaskCompletion(
   taskRunId: string,
+  runContext: WorkerRunContext,
   opts: { agentModel?: string; elapsedMs?: number; exitCode?: number }
 ): Promise<void> {
   const { agentModel, elapsedMs, exitCode = 0 } = opts;
@@ -971,23 +49,8 @@ export async function handleWorkerTaskCompletion(
     agentModel,
     elapsedMs,
     exitCode,
-    convexUrl: process.env.NEXT_PUBLIC_CONVEX_URL,
+    convexUrl: runContext.convexUrl ?? process.env.NEXT_PUBLIC_CONVEX_URL,
   });
-
-  const context = taskRunContexts.get(taskRunId);
-  if (!context) {
-    log(
-      "ERROR",
-      "No worker context found for completed task run - crown workflow cannot proceed",
-      {
-        taskRunId,
-        registeredContexts: Array.from(taskRunContexts.keys()),
-      }
-    );
-    return;
-  }
-
-  const runContext = context;
 
   await sleep(2000);
 
@@ -1032,10 +95,15 @@ export async function handleWorkerTaskCompletion(
     }
 
     // Check if we should perform git operations
-    // Skip if: 1) No projectFullName (environment mode), or 2) No git repo detected
+    // Skip if: 1) No git repo detected, or 2) neither projectFullName nor origin remote available
     const hasGitRepo = existsSync(join(detectedGitPath, ".git"));
     const hasProjectInfo = !!info?.task?.projectFullName;
-    const shouldPerformGitOps = hasProjectInfo && hasGitRepo;
+    const gitRemoteCheck = hasGitRepo
+      ? await runGitCommandSafe("git remote get-url origin", true)
+      : null;
+    const remoteOriginUrl = gitRemoteCheck?.stdout.trim() ?? "";
+    const hasRemoteOrigin = Boolean(remoteOriginUrl);
+    const shouldPerformGitOps = hasGitRepo && (hasProjectInfo || hasRemoteOrigin);
 
     if (!shouldPerformGitOps) {
       log("INFO", "Skipping git operations", {
@@ -1043,7 +111,12 @@ export async function handleWorkerTaskCompletion(
         hasProjectFullName: hasProjectInfo,
         hasGitRepo,
         gitPath: detectedGitPath,
-        reason: !hasProjectInfo ? "environment-mode" : "no-git-repo",
+        hasRemoteOrigin,
+        reason: !hasGitRepo
+          ? "no-git-repo"
+          : hasProjectInfo
+          ? "missing-remote"
+          : "insufficient-repo-context",
       });
     } else {
       // Only perform git operations if we have a repository
@@ -1097,15 +170,17 @@ export async function handleWorkerTaskCompletion(
       }
 
       if (branchForCommit) {
-        branchDiffCache.set(branchForCommit, diffForCommit);
+        cacheBranchDiff(branchForCommit, diffForCommit);
         log("INFO", "Cached diff for branch after auto-commit", {
           branch: branchForCommit,
           diffLength: diffForCommit.length,
         });
       }
 
-      if (branchForCommit && info?.task?.projectFullName) {
-        const remoteUrl = `https://github.com/${info.task.projectFullName}.git`;
+      if (branchForCommit) {
+        const remoteUrl = info?.task?.projectFullName
+          ? `https://github.com/${info.task.projectFullName}.git`
+          : undefined;
         try {
           await autoCommitAndPush({
             branchName: branchForCommit,
@@ -1116,6 +191,10 @@ export async function handleWorkerTaskCompletion(
           log("ERROR", "Worker auto-commit failed", {
             taskRunId,
             branch: branchForCommit,
+            hasProjectInfo,
+            hasRemoteOrigin,
+            remoteOriginUrl,
+            remoteUrl,
             error,
           });
         }
@@ -1127,6 +206,11 @@ export async function handleWorkerTaskCompletion(
             newBranch: info?.taskRun?.newBranch,
             hasTask: !!info?.task,
             projectFullName: info?.task?.projectFullName,
+          },
+          gitContext: {
+            hasGitRepo,
+            hasRemoteOrigin,
+            remoteOriginUrl,
           },
         });
       }
@@ -1358,6 +442,8 @@ export async function handleWorkerTaskCompletion(
             agentName: singleRun.agentName ?? "unknown agent",
             gitDiff,
             newBranch: singleRun.newBranch,
+            status: singleRun.status,
+            exitCode: singleRun.exitCode ?? null,
           } satisfies CandidateData;
         })();
 
@@ -1474,6 +560,8 @@ export async function handleWorkerTaskCompletion(
           agentName: run.agentName ?? "unknown agent",
           gitDiff,
           newBranch: run.newBranch,
+          status: run.status,
+          exitCode: run.exitCode ?? null,
         };
       };
 
@@ -1605,6 +693,6 @@ export async function handleWorkerTaskCompletion(
 
     await attemptCrownEvaluation(taskId);
   } finally {
-    clearTaskRunContext(taskRunId);
+    // Nothing to cleanup here; caller is responsible for lifecycle management.
   }
 }

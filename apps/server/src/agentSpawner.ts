@@ -62,7 +62,7 @@ export async function spawnAgent(
   teamSlugOrId: string
 ): Promise<AgentSpawnResult> {
   try {
-    // Capture the current auth token and header JSON from AsyncLocalStorages so we can
+    // Capture the current auth token and header JSON from AsyncLocalStorage so we can
     // re-enter the auth context inside async event handlers later.
     const capturedAuthToken = getAuthToken();
     const capturedAuthHeaderJson = getAuthHeaderJson();

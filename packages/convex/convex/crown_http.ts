@@ -1,12 +1,13 @@
-import { z } from "zod";
 import {
   verifyTaskRunToken,
   type TaskRunTokenPayload,
-} from "../_shared/taskRunToken";
+} from "@cmux/shared/task-run-token";
+import { z } from "zod";
+import { env } from "../_shared/convex-env";
 import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { httpAction } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
+import { httpAction } from "./_generated/server";
 
 const JSON_HEADERS = { "content-type": "application/json" } as const;
 
@@ -197,7 +198,10 @@ async function ensureWorkerAuth(
   }
 
   try {
-    const payload = await verifyTaskRunToken(token);
+    const payload = await verifyTaskRunToken(
+      token,
+      env.CMUX_TASK_RUN_JWT_SECRET
+    );
     return { token, payload };
   } catch (error) {
     console.error("[convex.crown] Failed to verify task run token", error);
