@@ -480,7 +480,10 @@ managementIO.on("connection", (socket) => {
                 if (!configSections.has(currentSection)) {
                   configSections.set(currentSection, new Map());
                 }
-                configSections.get(currentSection)!.set(key, value);
+                const section = configSections.get(currentSection);
+                if (section) {
+                  section.set(key, value);
+                }
               }
             }
           }
@@ -493,7 +496,10 @@ managementIO.on("connection", (socket) => {
       if (!configSections.has("credential")) {
         configSections.set("credential", new Map());
       }
-      configSections.get("credential")!.set("helper", "store");
+      const credentialSection = configSections.get("credential");
+      if (credentialSection) {
+        credentialSection.set("helper", "store");
+      }
 
       // Create .git-credentials file if GitHub token is provided
       if (validated.githubToken) {
@@ -514,7 +520,10 @@ managementIO.on("connection", (socket) => {
             if (!configSections.has(section)) {
               configSections.set(section, new Map());
             }
-            configSections.get(section)!.set(configKey, value);
+            const sectionMap = configSections.get(section);
+            if (sectionMap) {
+              sectionMap.set(configKey, value);
+            }
           }
         }
       }
@@ -1120,7 +1129,7 @@ async function createTerminal(
           emitToMainServer("worker:task-complete", {
             workerId: WORKER_ID,
             terminalId,
-            taskRunId: options.taskRunId!,
+            taskRunId: options.taskRunId,
             agentModel: options.agentModel,
             elapsedMs: Date.now() - processStartTime,
           });
