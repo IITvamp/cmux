@@ -148,10 +148,10 @@ export const crownEvaluate = httpAction(async (ctx, req) => {
     return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
   }
 
-  const parsed = await ensureJsonRequest(req);
-  if (parsed instanceof Response) return parsed;
+  const jsonResult = await ensureJsonRequest(req);
+  if (jsonResult instanceof Response) return jsonResult;
 
-  const validation = CrownEvaluationRequestSchema.safeParse(parsed.json);
+  const validation = CrownEvaluationRequestSchema.safeParse(jsonResult.json);
   if (!validation.success) {
     console.warn("[convex.crown] Invalid evaluation payload", validation.error);
     return jsonResponse({ code: 400, message: "Invalid input" }, 400);
@@ -238,10 +238,12 @@ export const crownSummarize = httpAction(async (ctx, req) => {
     return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
   }
 
-  const parsed = await ensureJsonRequest(req);
-  if (parsed instanceof Response) return parsed;
+  const jsonResult = await ensureJsonRequest(req);
+  if (jsonResult instanceof Response) return jsonResult;
 
-  const validation = CrownSummarizationRequestSchema.safeParse(parsed.json);
+  const validation = CrownSummarizationRequestSchema.safeParse(
+    jsonResult.json
+  );
   if (!validation.success) {
     console.warn(
       "[convex.crown] Invalid summarization payload",
@@ -280,10 +282,10 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
     return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
   }
 
-  const parsed = await ensureJsonRequest(req);
-  if (parsed instanceof Response) return parsed;
+  const jsonResult = await ensureJsonRequest(req);
+  if (jsonResult instanceof Response) return jsonResult;
 
-  const validation = WorkerCheckSchema.safeParse(parsed.json ?? {});
+  const validation = WorkerCheckSchema.safeParse(jsonResult.json ?? {});
   if (!validation.success) {
     console.warn(
       "[convex.crown] Invalid worker check payload",
@@ -560,10 +562,10 @@ export const crownWorkerFinalize = httpAction(async (ctx, req) => {
     return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
   }
 
-  const parsed = await ensureJsonRequest(req);
-  if (parsed instanceof Response) return parsed;
+  const jsonResult = await ensureJsonRequest(req);
+  if (jsonResult instanceof Response) return jsonResult;
 
-  const validation = WorkerFinalizeSchema.safeParse(parsed.json);
+  const validation = WorkerFinalizeSchema.safeParse(jsonResult.json);
   if (!validation.success) {
     console.warn(
       "[convex.crown] Invalid worker finalize payload",
@@ -646,10 +648,10 @@ export const crownWorkerComplete = httpAction(async (ctx, req) => {
     return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
   }
 
-  const parsed = await ensureJsonRequest(req);
-  if (parsed instanceof Response) return parsed;
+  const jsonResult = await ensureJsonRequest(req);
+  if (jsonResult instanceof Response) return jsonResult;
 
-  const validation = WorkerCompleteRequestSchema.safeParse(parsed.json);
+  const validation = WorkerCompleteRequestSchema.safeParse(jsonResult.json);
   if (!validation.success) {
     console.warn(
       "[convex.crown] Invalid worker complete payload",
