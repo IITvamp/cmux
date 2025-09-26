@@ -320,7 +320,9 @@ export const tryBeginCrownEvaluation = authMutation({
   },
 });
 
-export const tryBeginCrownEvaluationInternal = internalMutation({
+// Acquire the crown evaluation lock by marking the evaluation as in progress.
+// Returns false when the task doesn't exist, belongs to someone else, or is already locked.
+export const acquireCrownEvaluationLockInternal = internalMutation({
   args: {
     taskId: v.id("tasks"),
     teamId: v.string(),
@@ -345,7 +347,9 @@ export const tryBeginCrownEvaluationInternal = internalMutation({
   },
 });
 
-export const resetCrownEvaluationInternal = internalMutation({
+// Release the crown evaluation lock and optionally persist a follow-up error state.
+// Returns false when the task doesn't exist or the caller lacks ownership.
+export const releaseCrownEvaluationLockInternal = internalMutation({
   args: {
     taskId: v.id("tasks"),
     teamId: v.string(),

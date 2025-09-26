@@ -52,13 +52,12 @@ export async function handleWorkerTaskCompletion(
   const baseUrlOverride = runContext.convexUrl;
 
   try {
-    // Use the crown endpoint with checkType="info" to get task run info
+    // Ask the crown API for task run info before finishing up
     const info = await convexRequest<WorkerTaskRunResponse>(
-      "/api/crown/check",
+      "/api/crown/task-run",
       runContext.token,
       {
         taskRunId,
-        checkType: "info",
       },
       baseUrlOverride
     );
@@ -248,11 +247,10 @@ export async function handleWorkerTaskCompletion(
 
       const completionState =
         await convexRequest<WorkerAllRunsCompleteResponse>(
-          "/api/crown/check",
+          "/api/crown/task-completion",
           runContext.token,
           {
             taskId: currentTaskId,
-            checkType: "all-complete",
           },
           baseUrlOverride
         );

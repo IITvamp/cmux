@@ -3,6 +3,8 @@ import {
   crownEvaluate,
   crownSummarize,
   crownWorkerCheck,
+  crownWorkerTaskRunInfo,
+  crownWorkerRunsComplete,
   crownWorkerFinalize,
   crownWorkerComplete,
 } from "./crown_http";
@@ -40,6 +42,18 @@ http.route({
   path: "/api/crown/check",
   method: "POST",
   handler: crownWorkerCheck,
+});
+
+http.route({
+  path: "/api/crown/task-run",
+  method: "POST",
+  handler: crownWorkerTaskRunInfo,
+});
+
+http.route({
+  path: "/api/crown/task-completion",
+  method: "POST",
+  handler: crownWorkerRunsComplete,
 });
 
 http.route({

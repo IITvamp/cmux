@@ -24,7 +24,14 @@ export const CrownSummarizationRequestSchema = z.object({
 export const WorkerCheckRequestSchema = z.object({
   taskId: z.string().optional(),
   taskRunId: z.string().optional(),
-  checkType: z.enum(["info", "all-complete", "crown"]).optional(),
+});
+
+export const WorkerTaskRunInfoRequestSchema = z.object({
+  taskRunId: z.string(),
+});
+
+export const WorkerAllRunsCompleteRequestSchema = z.object({
+  taskId: z.string(),
 });
 
 export const WorkerFinalizeRequestSchema = z.object({
@@ -68,5 +75,11 @@ export const WorkerCompleteRequestSchema = z.object({
 export type CrownEvaluationRequest = z.infer<typeof CrownEvaluationRequestSchema>;
 export type CrownSummarizationRequest = z.infer<typeof CrownSummarizationRequestSchema>;
 export type WorkerCheckRequest = z.infer<typeof WorkerCheckRequestSchema>;
+export type WorkerTaskRunInfoRequest = z.infer<
+  typeof WorkerTaskRunInfoRequestSchema
+>;
+export type WorkerAllRunsCompleteRequest = z.infer<
+  typeof WorkerAllRunsCompleteRequestSchema
+>;
 export type WorkerFinalizeRequest = z.infer<typeof WorkerFinalizeRequestSchema>;
 export type WorkerCompleteRequest = z.infer<typeof WorkerCompleteRequestSchema>;
