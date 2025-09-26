@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { log } from "../logger";
 import { WORKSPACE_ROOT } from "./constants";
-import { convexRequest, scheduleContainerStop } from "./convex";
+import { convexRequest } from "./convex";
 import {
   autoCommitAndPush,
   buildCommitMessage,
@@ -13,7 +13,7 @@ import {
   detectGitRepoPath,
   ensureBranchesAvailable,
   getCurrentBranch,
-  runGitCommandSafe,
+  runGitCommand,
 } from "./git";
 import { createPullRequestIfEnabled } from "./pull-request";
 import type {
@@ -89,7 +89,7 @@ export async function handleWorkerTaskCompletion(
     const hasGitRepo = existsSync(join(detectedGitPath, ".git"));
     const hasProjectInfo = !!info?.task?.projectFullName;
     const gitRemoteCheck = hasGitRepo
-      ? await runGitCommandSafe("git remote get-url origin", true)
+      ? await runGitCommand("git remote get-url origin", true)
       : null;
     const remoteOriginUrl = gitRemoteCheck?.stdout.trim() ?? "";
     const hasRemoteOrigin = Boolean(remoteOriginUrl);
@@ -132,7 +132,7 @@ export async function handleWorkerTaskCompletion(
         if (!branchForCommit) {
           // Last resort: if we can't detect the branch, check if we're in a detached HEAD state
           // This can happen in cloud mode if the git setup is incomplete
-          const headCheck = await runGitCommandSafe(
+          const headCheck = await runGitCommand(
             "git symbolic-ref -q HEAD",
             true
           );
@@ -144,7 +144,7 @@ export async function handleWorkerTaskCompletion(
             // Try to get the branch name from environment or task context
             if (info?.taskRun?.newBranch) {
               // Create the branch if we have the name
-              const createBranch = await runGitCommandSafe(
+              const createBranch = await runGitCommand(
                 `git checkout -b ${info.taskRun.newBranch}`,
                 true
               );
@@ -239,22 +239,6 @@ export async function handleWorkerTaskCompletion(
       return;
     }
     runContext.taskId = taskId;
-
-    const containerSettings =
-      completion.containerSettings ?? info?.containerSettings;
-
-    if (containerSettings?.autoCleanupEnabled) {
-      const reviewMinutes = containerSettings.reviewPeriodMinutes ?? 60;
-      const stopAt = containerSettings.stopImmediatelyOnCompletion
-        ? Date.now()
-        : Date.now() + reviewMinutes * 60 * 1000;
-      await scheduleContainerStop(
-        runContext.token,
-        taskRunId,
-        stopAt,
-        baseUrlOverride
-      );
-    }
 
     async function attemptCrownEvaluation(currentTaskId: string) {
       log("INFO", "Starting crown evaluation", {

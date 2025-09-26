@@ -81,7 +81,7 @@ export async function detectGitRepoPath(): Promise<string> {
   return gitRepoPath;
 }
 
-export async function runGitCommandSafe(
+export async function runGitCommand(
   command: string,
   allowFailure = false
 ): Promise<{ stdout: string; stderr: string; exitCode: number } | null> {
@@ -135,7 +135,7 @@ export async function fetchRemoteRef(ref: string): Promise<boolean> {
   const fetchCommand = `git fetch --no-tags --prune origin refs/heads/${remoteBranch}:${verifyRef}`;
 
   log("DEBUG", "Fetching remote ref", { ref });
-  const result = await runGitCommandSafe(fetchCommand, true);
+  const result = await runGitCommand(fetchCommand, true);
 
   if (!result) {
     log("WARN", "git fetch failed for ref", { ref });
@@ -150,7 +150,7 @@ export async function fetchRemoteRef(ref: string): Promise<boolean> {
     });
   }
 
-  const verifyResult = await runGitCommandSafe(
+  const verifyResult = await runGitCommand(
     `git rev-parse --verify --quiet ${verifyRef}`,
     true
   );
@@ -316,7 +316,7 @@ export function buildCommitMessage({
 }
 
 export async function getCurrentBranch(): Promise<string | null> {
-  const result = await runGitCommandSafe(
+  const result = await runGitCommand(
     "git rev-parse --abbrev-ref HEAD",
     true
   );
@@ -351,7 +351,7 @@ export async function autoCommitAndPush({
     gitRepoPath: repoPath,
   });
 
-  const gitCheck = await runGitCommandSafe("git rev-parse --git-dir", true);
+  const gitCheck = await runGitCommand("git rev-parse --git-dir", true);
   if (!gitCheck || gitCheck.exitCode !== 0) {
     log("ERROR", "Not in a git repository", {
       branchName,
@@ -359,7 +359,7 @@ export async function autoCommitAndPush({
       gitRepoPath: repoPath,
       gitCheckError: gitCheck?.stderr,
     });
-    const initResult = await runGitCommandSafe("git init", true);
+    const initResult = await runGitCommand("git init", true);
     if (!initResult || initResult.exitCode !== 0) {
       log("ERROR", "Failed to initialize git repository", {
         branchName,
@@ -375,7 +375,7 @@ export async function autoCommitAndPush({
   }
 
   if (remoteUrl) {
-    const currentRemote = await runGitCommandSafe(
+    const currentRemote = await runGitCommand(
       "git remote get-url origin",
       true
     );
@@ -385,16 +385,16 @@ export async function autoCommitAndPush({
         branchName,
         remoteUrl,
       });
-      await runGitCommandSafe(`git remote add origin ${remoteUrl}`);
+      await runGitCommand(`git remote add origin ${remoteUrl}`);
     } else if (trimmed !== remoteUrl) {
       log("INFO", "Updating origin remote before push", {
         branchName,
         currentRemote: trimmed,
         remoteUrl,
       });
-      await runGitCommandSafe(`git remote set-url origin ${remoteUrl}`);
+      await runGitCommand(`git remote set-url origin ${remoteUrl}`);
     }
-    const updatedRemote = await runGitCommandSafe("git remote -v", true);
+    const updatedRemote = await runGitCommand("git remote -v", true);
     if (updatedRemote) {
       log("INFO", "Current git remotes after potential update", {
         branchName,
@@ -403,7 +403,7 @@ export async function autoCommitAndPush({
     }
   }
 
-  const addResult = await runGitCommandSafe(`git add -A`);
+  const addResult = await runGitCommand(`git add -A`);
   log("INFO", "git add completed", {
     branchName,
     stdout: addResult?.stdout
@@ -414,7 +414,7 @@ export async function autoCommitAndPush({
       : undefined,
   });
 
-  const checkoutResult = await runGitCommandSafe(
+  const checkoutResult = await runGitCommand(
     `git checkout -B ${branchName}`
   );
   log("INFO", "git checkout -B completed", {
@@ -427,7 +427,7 @@ export async function autoCommitAndPush({
       : undefined,
   });
 
-  const status = await runGitCommandSafe(`git status --short`, true);
+  const status = await runGitCommand(`git status --short`, true);
   const hasChanges = !!status?.stdout.trim();
   if (status) {
     const preview = status.stdout.trim().split("\n").slice(0, 10);
@@ -442,7 +442,7 @@ export async function autoCommitAndPush({
   }
 
   if (hasChanges) {
-    const commitResult = await runGitCommandSafe(
+    const commitResult = await runGitCommand(
       `git commit -m ${JSON.stringify(commitMessage)}`,
       true
     );
@@ -459,7 +459,7 @@ export async function autoCommitAndPush({
     log("INFO", "No changes detected before commit", { branchName });
   }
 
-  const remoteExists = await runGitCommandSafe(
+  const remoteExists = await runGitCommand(
     `git ls-remote --heads origin ${branchName}`,
     true
   );
@@ -469,7 +469,7 @@ export async function autoCommitAndPush({
       branchName,
       remoteHead: remoteExists.stdout.trim().slice(0, 120),
     });
-    const pullResult = await runGitCommandSafe(
+    const pullResult = await runGitCommand(
       `git pull --rebase origin ${branchName}`
     );
     if (pullResult) {
@@ -485,7 +485,7 @@ export async function autoCommitAndPush({
     });
   }
 
-  const pushResult = await runGitCommandSafe(
+  const pushResult = await runGitCommand(
     `git push -u origin ${branchName}`
   );
   if (pushResult) {

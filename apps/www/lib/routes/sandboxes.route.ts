@@ -25,6 +25,8 @@ import {
 
 export const sandboxesRouter = new OpenAPIHono();
 
+const PROHIBITED_METADATA_KEYS = new Set(["taskRunId", "taskRunJwt"]);
+
 const StartSandboxBody = z
   .object({
     teamSlugOrId: z.string(),
@@ -36,7 +38,21 @@ const StartSandboxBody = z
       .default(20 * 60),
     taskRunId: z.string().optional(),
     taskRunJwt: z.string().optional(),
-    metadata: z.record(z.string(), z.string()).optional(),
+    metadata: z
+      .record(z.string(), z.string())
+      .optional()
+      .superRefine((metadata, ctx) => {
+        if (!metadata) return;
+        for (const key of Object.keys(metadata)) {
+          if (PROHIBITED_METADATA_KEYS.has(key)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `metadata.${key} is not allowed. Use the top-level field instead.`,
+              path: [key],
+            });
+          }
+        }
+      }),
     // Optional hydration parameters to clone a repo into the sandbox on start
     repoUrl: z.string().optional(),
     branch: z.string().optional(),
@@ -173,7 +189,7 @@ sandboxesRouter.openapi(
           app: "cmux",
           teamId: team.uuid,
           ...(body.environmentId ? { environmentId: body.environmentId } : {}),
-          ...(body.metadata || {}),
+          ...(body.metadata ?? {}),
         },
       });
 

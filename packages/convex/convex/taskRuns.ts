@@ -638,6 +638,23 @@ export const listByTaskInternal = internalQuery({
   },
 });
 
+export const listByTaskForTeamInternal = internalQuery({
+  args: {
+    taskId: v.id("tasks"),
+    teamId: v.string(),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const runs = await ctx.db
+      .query("taskRuns")
+      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .filter((q) => q.eq(q.field("teamId"), args.teamId))
+      .filter((q) => q.eq(q.field("userId"), args.userId))
+      .collect();
+    return runs;
+  },
+});
+
 export const workerComplete = internalMutation({
   args: {
     taskRunId: v.id("taskRuns"),

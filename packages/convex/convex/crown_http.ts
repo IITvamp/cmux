@@ -2,7 +2,13 @@ import {
   verifyTaskRunToken,
   type TaskRunTokenPayload,
 } from "@cmux/shared/task-run-token";
-import { CrownEvaluationCandidateSchema } from "./crown/prompts";
+import {
+  CrownEvaluationRequestSchema as BaseEvaluationSchema,
+  CrownSummarizationRequestSchema as BaseSummarizationSchema,
+  WorkerCheckRequestSchema as BaseCheckSchema,
+  WorkerFinalizeRequestSchema as BaseFinalizeSchema,
+  WorkerCompleteRequestSchema as BaseCompleteSchema,
+} from "@cmux/shared/crown/schemas";
 import { z } from "zod";
 import { env } from "../_shared/convex-env";
 import { api, internal } from "./_generated/api";
@@ -12,64 +18,34 @@ import { httpAction } from "./_generated/server";
 
 const JSON_HEADERS = { "content-type": "application/json" } as const;
 
-const CrownEvaluationRequestSchema = z.object({
-  taskId: z.string(),
-  taskText: z.string(),
-  candidates: z.array(CrownEvaluationCandidateSchema).min(1),
-  teamSlugOrId: z.string().optional(),
+// Extend the shared schemas to add Convex ID transformations
+const CrownEvaluationRequestSchema = BaseEvaluationSchema.extend({
+  taskId: z.string().transform((val) => val as Id<"tasks">),
 });
 
-const CrownSummarizationRequestSchema = z.object({
-  taskText: z.string(),
-  gitDiff: z.string(),
-  teamSlugOrId: z.string().optional(),
-});
+const CrownSummarizationRequestSchema = BaseSummarizationSchema;
 
-const WorkerCheckSchema = z.object({
-  taskId: z.string().optional(),
-  taskRunId: z.string().optional(),
-  checkType: z.enum(["info", "all-complete", "crown"]).optional(),
-});
-
-const WorkerFinalizeSchema = z.object({
-  taskId: z.string(),
-  winnerRunId: z.string(),
-  reason: z.string(),
-  evaluationPrompt: z.string(),
-  evaluationResponse: z.string(),
-  candidateRunIds: z.array(z.string()).min(1),
-  summary: z.string().optional(),
-  pullRequest: z
-    .object({
-      url: z.url(),
-      isDraft: z.boolean().optional(),
-      state: z
-        .union([
-          z.literal("none"),
-          z.literal("draft"),
-          z.literal("open"),
-          z.literal("merged"),
-          z.literal("closed"),
-          z.literal("unknown"),
-        ])
-        .optional(),
-      number: z.number().int().optional(),
-    })
+const WorkerCheckSchema = BaseCheckSchema.extend({
+  taskId: z
+    .string()
+    .transform((val) => val as Id<"tasks">)
     .optional(),
-  pullRequestTitle: z.string().optional(),
-  pullRequestDescription: z.string().optional(),
-  summarizationPrompt: z.string().optional(),
-  summarizationResponse: z.string().optional(),
+  taskRunId: z
+    .string()
+    .transform((val) => val as Id<"taskRuns">)
+    .optional(),
 });
 
-const WorkerCompleteRequestSchema = z.object({
-  taskRunId: z.string(),
-  exitCode: z.number().optional(),
+const WorkerFinalizeSchema = BaseFinalizeSchema.extend({
+  taskId: z.string().transform((val) => val as Id<"tasks">),
+  winnerRunId: z.string().transform((val) => val as Id<"taskRuns">),
+  candidateRunIds: z
+    .array(z.string().transform((val) => val as Id<"taskRuns">))
+    .min(1),
 });
 
-const WorkerScheduleRequestSchema = z.object({
-  taskRunId: z.string(),
-  scheduledStopAt: z.number().optional(),
+const WorkerCompleteRequestSchema = BaseCompleteSchema.extend({
+  taskRunId: z.string().transform((val) => val as Id<"taskRuns">),
 });
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -100,9 +76,7 @@ type WorkerAuthContext = {
   payload: TaskRunTokenPayload;
 };
 
-async function ensureWorkerAuth(
-  req: Request
-): Promise<WorkerAuthContext> {
+async function ensureWorkerAuth(req: Request): Promise<WorkerAuthContext> {
   const token = req.headers.get("x-cmux-token");
   if (!token) {
     console.warn("[convex.crown] Missing x-cmux-token header");
@@ -124,9 +98,9 @@ async function ensureWorkerAuth(
 async function loadTaskRunForWorker(
   ctx: ActionCtx,
   auth: WorkerAuthContext,
-  runId?: string
+  runId?: Id<"taskRuns">
 ): Promise<Doc<"taskRuns">> {
-  const taskRunId = (runId ?? auth.payload.taskRunId) as Id<"taskRuns">;
+  const taskRunId = runId ?? (auth.payload.taskRunId as Id<"taskRuns">);
   const taskRun = await ctx.runQuery(internal.taskRuns.getById, {
     id: taskRunId,
   });
@@ -173,7 +147,7 @@ export const crownEvaluate = httpAction(async (ctx, req) => {
     return jsonResponse({ code: 400, message: "Invalid input" }, 400);
   }
 
-  const taskId = validation.data.taskId as Id<"tasks">;
+  const taskId = validation.data.taskId;
 
   const teamSlugOrId = workerAuth.payload.teamId;
 
@@ -316,7 +290,7 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
 
   // For "info" check, just return task run info without updating status
   if (checkType === "info" && validation.data.taskRunId) {
-    const taskRunId = validation.data.taskRunId as Id<"taskRuns">;
+    const taskRunId = validation.data.taskRunId;
     console.log("[convex.crown] Fetching task run info", { taskRunId });
     const taskRun = await ctx.runQuery(internal.taskRuns.getById, {
       id: taskRunId,
@@ -336,14 +310,6 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
       id: taskRun.taskId,
     });
 
-    const containerSettings = await ctx.runQuery(
-      internal.containerSettings.getEffectiveInternal,
-      {
-        teamId: workerAuth.payload.teamId,
-        userId: workerAuth.payload.userId,
-      }
-    );
-
     return jsonResponse({
       ok: true,
       taskRun: {
@@ -359,20 +325,12 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
             text: task.text,
           }
         : null,
-      containerSettings: containerSettings
-        ? {
-            autoCleanupEnabled: containerSettings.autoCleanupEnabled,
-            stopImmediatelyOnCompletion:
-              containerSettings.stopImmediatelyOnCompletion,
-            reviewPeriodMinutes: containerSettings.reviewPeriodMinutes,
-          }
-        : null,
     });
   }
 
   // For "all-complete" check, check if all runs for a task are complete
   if (checkType === "all-complete" && validation.data.taskId) {
-    const taskId = validation.data.taskId as Id<"tasks">;
+    const taskId = validation.data.taskId;
     console.log("[convex.crown] Checking all-complete status", { taskId });
     const task = await ctx.runQuery(internal.tasks.getByIdInternal, {
       id: taskId,
@@ -390,14 +348,13 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
       return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
     }
 
-    const runs = await ctx.runQuery(internal.taskRuns.listByTaskInternal, {
-      taskId,
-    });
-
-    const runsForTeam = runs.filter(
-      (run): run is Doc<"taskRuns"> =>
-        run.teamId === workerAuth.payload.teamId &&
-        run.userId === workerAuth.payload.userId
+    const runsForTeam = await ctx.runQuery(
+      internal.taskRuns.listByTaskForTeamInternal,
+      {
+        taskId,
+        teamId: workerAuth.payload.teamId,
+        userId: workerAuth.payload.userId,
+      }
     );
 
     const statuses = runsForTeam.map((run) => ({
@@ -441,7 +398,7 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
     return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
   }
 
-  const taskId = (validation.data.taskId ?? taskRun.taskId) as Id<"tasks">;
+  const taskId = validation.data.taskId ?? taskRun.taskId;
   if (taskId !== taskRun.taskId) {
     console.warn("[convex.crown] Worker taskId mismatch", {
       providedTaskId: validation.data.taskId,
@@ -469,10 +426,6 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
     return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
   }
 
-  const runs = await ctx.runQuery(internal.taskRuns.listByTaskInternal, {
-    taskId,
-  });
-
   const workspaceSettings = await ctx.runQuery(
     internal.workspaceSettings.getInternal,
     {
@@ -481,10 +434,13 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
     }
   );
 
-  const runsForTeam = runs.filter(
-    (run): run is Doc<"taskRuns"> =>
-      run.teamId === workerAuth.payload.teamId &&
-      run.userId === workerAuth.payload.userId
+  const runsForTeam = await ctx.runQuery(
+    internal.taskRuns.listByTaskForTeamInternal,
+    {
+      taskId,
+      teamId: workerAuth.payload.teamId,
+      userId: workerAuth.payload.userId,
+    }
   );
 
   const allRunsFinished = runsForTeam.every((run) =>
@@ -570,11 +526,9 @@ export const crownWorkerFinalize = httpAction(async (ctx, req) => {
     return jsonResponse({ code: 400, message: "Invalid input" }, 400);
   }
 
-  const taskId = validation.data.taskId as Id<"tasks">;
-  const winnerRunId = validation.data.winnerRunId as Id<"taskRuns">;
-  const candidateRunIds = validation.data.candidateRunIds.map(
-    (id) => id as Id<"taskRuns">
-  );
+  const taskId = validation.data.taskId;
+  const winnerRunId = validation.data.winnerRunId;
+  const candidateRunIds = validation.data.candidateRunIds;
 
   const task = await ctx.runQuery(internal.tasks.getByIdInternal, {
     id: taskId,
@@ -658,13 +612,16 @@ export const crownWorkerComplete = httpAction(async (ctx, req) => {
     return jsonResponse({ code: 400, message: "Invalid input" }, 400);
   }
 
-  const taskRunId = validation.data.taskRunId as Id<"taskRuns">;
+  const taskRunId = validation.data.taskRunId;
   console.log("[convex.crown] Loading task run for completion", { taskRunId });
 
   try {
     await loadTaskRunForWorker(ctx, auth, taskRunId);
   } catch (error) {
-    console.error("[convex.crown] Failed to load task run", { taskRunId, error });
+    console.error("[convex.crown] Failed to load task run", {
+      taskRunId,
+      error,
+    });
     if (error instanceof Error && error.message === "Task run not found") {
       return jsonResponse({ code: 404, message: "Task run not found" }, 404);
     }
@@ -695,14 +652,6 @@ export const crownWorkerComplete = httpAction(async (ctx, req) => {
       })
     : null;
 
-  const containerSettings = await ctx.runQuery(
-    internal.containerSettings.getEffectiveInternal,
-    {
-      teamId: auth.payload.teamId,
-      userId: auth.payload.userId,
-    }
-  );
-
   return jsonResponse({
     ok: true,
     taskRun: updatedRun
@@ -720,70 +669,5 @@ export const crownWorkerComplete = httpAction(async (ctx, req) => {
           text: task.text,
         }
       : null,
-    containerSettings: containerSettings
-      ? {
-          autoCleanupEnabled: containerSettings.autoCleanupEnabled,
-          stopImmediatelyOnCompletion:
-            containerSettings.stopImmediatelyOnCompletion,
-          reviewPeriodMinutes: containerSettings.reviewPeriodMinutes,
-        }
-      : null,
-  });
-});
-
-export const crownWorkerScheduleStop = httpAction(async (ctx, req) => {
-  let auth: WorkerAuthContext;
-  try {
-    auth = await ensureWorkerAuth(req);
-  } catch (error) {
-    console.warn("[convex.crown] Auth failed", error);
-    return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
-  }
-
-  const parsed = await ensureJsonRequest(req);
-  if (parsed instanceof Response) return parsed;
-
-  const validation = WorkerScheduleRequestSchema.safeParse(parsed.json);
-  if (!validation.success) {
-    console.warn(
-      "[convex.crown] Invalid worker schedule payload",
-      validation.error
-    );
-    return jsonResponse({ code: 400, message: "Invalid input" }, 400);
-  }
-
-  const taskRunId = validation.data.taskRunId as Id<"taskRuns">;
-  try {
-    await loadTaskRunForWorker(ctx, auth, taskRunId);
-  } catch (error) {
-    console.error("[convex.crown] Failed to load task run for schedule", { taskRunId, error });
-    if (error instanceof Error && error.message === "Task run not found") {
-      return jsonResponse({ code: 404, message: "Task run not found" }, 404);
-    }
-    return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
-  }
-
-  await ctx.runMutation(internal.taskRuns.updateScheduledStopInternal, {
-    taskRunId,
-    scheduledStopAt: validation.data.scheduledStopAt,
-  });
-
-  return jsonResponse({ ok: true });
-});
-
-// Test endpoint to verify Crown HTTP is working
-export const crownHealthCheck = httpAction(async (_ctx, req) => {
-  console.log("[convex.crown] Health check endpoint called", {
-    path: req.url,
-    method: req.method,
-    timestamp: new Date().toISOString(),
-  });
-
-  return jsonResponse({
-    ok: true,
-    service: "crown",
-    status: "healthy",
-    timestamp: new Date().toISOString(),
-    version: "1.0.0",
   });
 });

@@ -58,20 +58,3 @@ export async function convexRequest<T>(
     return null;
   }
 }
-
-export async function scheduleContainerStop(
-  token: string,
-  taskRunId: string,
-  scheduledStopAt?: number,
-  baseUrlOverride?: string
-): Promise<void> {
-  await convexRequest(
-    `/api/crown/schedule-stop`,
-    token,
-    {
-      taskRunId,
-      scheduledStopAt,
-    },
-    baseUrlOverride
-  );
-}

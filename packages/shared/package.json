@@ -70,6 +70,10 @@
       "import": "./src/crown/types.ts",
       "types": "./src/crown/types.ts"
     },
+    "./crown/schemas": {
+      "import": "./src/crown/schemas.ts",
+      "types": "./src/crown/schemas.ts"
+    },
     "./node/convex-cache": {
       "import": "./src/node/convex-cache.ts",
       "types": "./src/node/convex-cache.ts"

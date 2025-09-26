@@ -3,6 +3,7 @@ import {
   postApiSandboxesByIdPublishDevcontainer,
   postApiSandboxesByIdStop,
   postApiSandboxesStart,
+  type StartSandboxBody,
 } from "@cmux/www-openapi-client";
 import { dockerLogger } from "../utils/fileLogger";
 import { getWwwClient } from "../utils/wwwClient";
@@ -43,27 +44,38 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
     dockerLogger.info(
       `[CmuxVSCodeInstance ${this.instanceId}] Requesting sandbox start via www API`
     );
+    const requestBody: StartSandboxBody = {
+      teamSlugOrId: this.teamSlugOrId,
+      ttlSeconds: 20 * 60,
+      taskRunId: String(this.taskRunId),
+      metadata: {
+        instance: `cmux-${this.taskRunId}`,
+        agentName: this.config.agentName || "",
+      },
+    };
+
+    if (this.taskRunJwt) {
+      requestBody.taskRunJwt = this.taskRunJwt;
+    }
+
+    if (this.environmentId) {
+      requestBody.environmentId = this.environmentId;
+    }
+
+    if (this.repoUrl) {
+      requestBody.repoUrl = this.repoUrl;
+      if (this.branch) {
+        requestBody.branch = this.branch;
+      }
+      if (this.newBranch) {
+        requestBody.newBranch = this.newBranch;
+      }
+      requestBody.depth = 1;
+    }
+
     const startRes = await postApiSandboxesStart({
       client: getWwwClient(),
-      body: {
-        teamSlugOrId: this.teamSlugOrId,
-        ttlSeconds: 20 * 60,
-        metadata: {
-          instance: `cmux-${this.taskRunId}`,
-          taskRunId: String(this.taskRunId),
-          agentName: this.config.agentName || "",
-          taskRunJwt: this.taskRunJwt || "",
-        },
-        ...(this.environmentId ? { environmentId: this.environmentId } : {}),
-        ...(this.repoUrl
-          ? {
-              repoUrl: this.repoUrl,
-              branch: this.branch,
-              newBranch: this.newBranch,
-              depth: 1,
-            }
-          : {}),
-      },
+      body: requestBody,
     });
     const data = startRes.data;
     if (!data) {
