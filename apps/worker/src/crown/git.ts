@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { log } from "../logger";
 import { WORKSPACE_ROOT } from "./workspace-root";
 import { execAsync, type ExecError } from "./shell";
-import { toUtf8String } from "./utils";
 
 let gitRepoPath: string | null = null;
 export const branchDiffCache = new Map<string, string>();
@@ -78,14 +77,28 @@ export async function runGitCommand(
   command: string,
   allowFailure = false
 ): Promise<{ stdout: string; stderr: string; exitCode: number } | null> {
+  const formatOutput = (value: unknown): string => {
+    if (typeof value === "string") {
+      return value;
+    }
+    if (value && typeof (value as { toString(): string }).toString === "function") {
+      try {
+        return (value as { toString(): string }).toString();
+      } catch {
+        return "";
+      }
+    }
+    return "";
+  };
+
   try {
     const repoPath = await detectGitRepoPath();
     const result = await execAsync(command, {
       cwd: repoPath,
       maxBuffer: 10 * 1024 * 1024,
     });
-    const stdout = toUtf8String(result.stdout);
-    const stderr = toUtf8String(result.stderr);
+    const stdout = formatOutput(result.stdout);
+    const stderr = formatOutput(result.stderr);
     return { stdout, stderr, exitCode: 0 };
   } catch (error) {
     const execError: ExecError =
@@ -94,8 +107,8 @@ export async function runGitCommand(
         : new Error(
             typeof error === "string" ? error : "Unknown git command error"
           );
-    const stdout = toUtf8String(execError.stdout);
-    const stderr = toUtf8String(execError.stderr);
+    const stdout = formatOutput(execError.stdout);
+    const stderr = formatOutput(execError.stderr);
     const exitCode =
       typeof execError.code === "number"
         ? execError.code

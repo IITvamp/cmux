@@ -40,8 +40,8 @@ export async function performCrownEvaluation(
       maxRetries: 2,
     });
 
-    const parsed = CrownEvaluationLLMResponseSchema.parse(object);
-    return parsed;
+    const evaluationResponse = CrownEvaluationLLMResponseSchema.parse(object);
+    return evaluationResponse;
   } catch (error) {
     console.error("[convex.crown] Evaluation error", error);
     throw new ConvexError("Evaluation failed");
@@ -65,8 +65,8 @@ export async function performCrownSummarization(
       maxRetries: 2,
     });
 
-    const parsed = CrownSummarizationLLMResponseSchema.parse(object);
-    return parsed;
+    const summarizationResponse = CrownSummarizationLLMResponseSchema.parse(object);
+    return summarizationResponse;
   } catch (error) {
     console.error("[convex.crown] Summarization error", error);
     throw new ConvexError("Summarization failed");
@@ -88,10 +88,10 @@ export const evaluate = action({
   handler: async (_ctx, args) => {
     const apiKey = env.ANTHROPIC_API_KEY;
 
-    const parsedCandidates = args.candidates.map((candidate) =>
+    const validatedCandidates = args.candidates.map((candidate) =>
       CrownEvaluationCandidateSchema.parse(candidate)
     );
-    const prompt = buildEvaluationPrompt(args.taskText, parsedCandidates);
+    const prompt = buildEvaluationPrompt(args.taskText, validatedCandidates);
 
     const result = await performCrownEvaluation(apiKey, prompt);
 
