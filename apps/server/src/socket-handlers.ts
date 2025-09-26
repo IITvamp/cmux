@@ -1,4 +1,4 @@
-import { api } from '@cmux/convex/api'
+import { api } from "@cmux/convex/api";
 import {
   ArchiveTaskSchema,
   checkDockerStatus,
@@ -16,30 +16,30 @@ import {
   StartTaskSchema,
   type AvailableEditors,
   type FileInfo,
-} from '@cmux/shared'
-import fuzzysort from 'fuzzysort'
-import { minimatch } from 'minimatch'
-import { exec, spawn } from 'node:child_process'
-import { promises as fs } from 'node:fs'
-import * as os from 'node:os'
-import * as path from 'node:path'
-import { promisify } from 'node:util'
-import { spawnAllAgents } from './agentSpawner'
-import { stopContainersForRuns } from './archiveTask'
-import { compareRefsForRepo } from './diffs/compareRefs'
-import { getRunDiffs } from './diffs/getRunDiffs'
-import { execWithEnv } from './execWithEnv'
-import { GitDiffManager } from './gitDiff'
-import { getRustTime } from './native/core'
-import { landedDiffForRepo, listRemoteBranches } from './native/git.js'
-import type { RealtimeServer } from './realtime'
-import { RepositoryManager } from './repositoryManager'
-import type { GitRepoInfo } from './server'
-import { getPRTitleFromTaskDescription } from './utils/branchNameGenerator'
-import { getConvex } from './utils/convexClient'
-import { ensureRunWorktreeAndBranch } from './utils/ensureRunWorktree'
-import { serverLogger } from './utils/fileLogger'
-import { getGitHubTokenFromKeychain } from './utils/getGitHubToken'
+} from "@cmux/shared";
+import fuzzysort from "fuzzysort";
+import { minimatch } from "minimatch";
+import { exec, spawn } from "node:child_process";
+import { promises as fs } from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { promisify } from "node:util";
+import { spawnAllAgents } from "./agentSpawner";
+import { stopContainersForRuns } from "./archiveTask";
+import { compareRefsForRepo } from "./diffs/compareRefs";
+import { getRunDiffs } from "./diffs/getRunDiffs";
+import { execWithEnv } from "./execWithEnv";
+import { GitDiffManager } from "./gitDiff";
+import { getRustTime } from "./native/core";
+import { landedDiffForRepo, listRemoteBranches } from "./native/git.js";
+import type { RealtimeServer } from "./realtime";
+import { RepositoryManager } from "./repositoryManager";
+import type { GitRepoInfo } from "./server";
+import { getPRTitleFromTaskDescription } from "./utils/branchNameGenerator";
+import { getConvex } from "./utils/convexClient";
+import { ensureRunWorktreeAndBranch } from "./utils/ensureRunWorktree";
+import { serverLogger } from "./utils/fileLogger";
+import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken";
 import {
   createReadyPr,
   fetchPrByHead,
@@ -48,61 +48,61 @@ import {
   mergePr,
   parseRepoFromUrl,
   reopenPr,
-} from './utils/githubPr.js'
-import { getOctokit } from './utils/octokit.js'
-import { checkAllProvidersStatus } from './utils/providerStatus.js'
-import { refreshGitHubData } from './utils/refreshGitHubData.js'
-import { runWithAuth, runWithAuthToken } from './utils/requestContext.js'
-import { DockerVSCodeInstance } from './vscode/DockerVSCodeInstance.js'
-import { getProjectPaths } from './workspace.js'
+} from "./utils/githubPr.js";
+import { getOctokit } from "./utils/octokit.js";
+import { checkAllProvidersStatus } from "./utils/providerStatus.js";
+import { refreshGitHubData } from "./utils/refreshGitHubData.js";
+import { runWithAuth, runWithAuthToken } from "./utils/requestContext.js";
+import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
+import { getProjectPaths } from "./workspace.js";
 
-const execAsync = promisify(exec)
+const execAsync = promisify(exec);
 
 export function setupSocketHandlers(
   rt: RealtimeServer,
   gitDiffManager: GitDiffManager,
   defaultRepo?: GitRepoInfo | null
 ) {
-  let hasRefreshedGithub = false
-  let dockerEventsStarted = false
+  let hasRefreshedGithub = false;
+  let dockerEventsStarted = false;
 
   rt.onConnection((socket) => {
     // Ensure every packet runs within the auth context associated with this socket
-    const q = socket.handshake.query?.auth
+    const q = socket.handshake.query?.auth;
     const token = Array.isArray(q)
       ? q[0]
-      : typeof q === 'string'
+      : typeof q === "string"
         ? q
-        : undefined
-    const qJson = socket.handshake.query?.auth_json
+        : undefined;
+    const qJson = socket.handshake.query?.auth_json;
     const tokenJson = Array.isArray(qJson)
       ? qJson[0]
-      : typeof qJson === 'string'
+      : typeof qJson === "string"
         ? qJson
-        : undefined
+        : undefined;
 
     // authenticate the token
     if (!token) {
       // disconnect the socket
-      socket.disconnect()
-      return
+      socket.disconnect();
+      return;
     }
 
     socket.use((_, next) => {
-      runWithAuth(token, tokenJson, () => next())
-    })
-    serverLogger.info('Client connected:', socket.id)
+      runWithAuth(token, tokenJson, () => next());
+    });
+    serverLogger.info("Client connected:", socket.id);
 
     // Rust N-API test endpoint
-    socket.on('rust-get-time', async (callback) => {
+    socket.on("rust-get-time", async (callback) => {
       try {
-        const time = await getRustTime()
-        callback({ ok: true, time })
+        const time = await getRustTime();
+        callback({ ok: true, time });
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e)
-        callback({ ok: false, error: msg })
+        const msg = e instanceof Error ? e.message : String(e);
+        callback({ ok: false, error: msg });
       }
-    })
+    });
 
     // Send default repo info to newly connected client if available
     if (defaultRepo?.remoteName) {
@@ -110,140 +110,143 @@ export function setupSocketHandlers(
         repoFullName: defaultRepo.remoteName,
         branch: defaultRepo.currentBranch || defaultRepo.defaultBranch,
         localPath: defaultRepo.path,
-      }
+      };
       serverLogger.info(
         `Sending default-repo to new client ${socket.id}:`,
         defaultRepoData
-      )
-      socket.emit('default-repo', defaultRepoData)
+      );
+      socket.emit("default-repo", defaultRepoData);
     }
 
     // Kick off initial GitHub data refresh only after an authenticated connection
-    const qAuth = socket.handshake.query?.auth
-    const qTeam = socket.handshake.query?.team
-    const qAuthJson = socket.handshake.query?.auth_json
+    const qAuth = socket.handshake.query?.auth;
+    const qTeam = socket.handshake.query?.team;
+    const qAuthJson = socket.handshake.query?.auth_json;
     const initialToken = Array.isArray(qAuth)
       ? qAuth[0]
-      : typeof qAuth === 'string'
+      : typeof qAuth === "string"
         ? qAuth
-        : undefined
+        : undefined;
     const initialAuthJson = Array.isArray(qAuthJson)
       ? qAuthJson[0]
-      : typeof qAuthJson === 'string'
+      : typeof qAuthJson === "string"
         ? qAuthJson
-        : undefined
+        : undefined;
     const initialTeam = Array.isArray(qTeam)
       ? qTeam[0]
-      : typeof qTeam === 'string'
+      : typeof qTeam === "string"
         ? qTeam
-        : undefined
-    const safeTeam = initialTeam || 'default'
+        : undefined;
+    const safeTeam = initialTeam || "default";
     if (!hasRefreshedGithub && initialToken) {
-      hasRefreshedGithub = true
+      hasRefreshedGithub = true;
       runWithAuth(initialToken, initialAuthJson, () => {
         if (!initialTeam) {
           serverLogger.warn(
-            'No team provided on socket handshake; skipping initial GitHub refresh'
-          )
-          return
+            "No team provided on socket handshake; skipping initial GitHub refresh"
+          );
+          return;
         }
         refreshGitHubData({ teamSlugOrId: initialTeam }).catch((error) => {
-          serverLogger.error('Background refresh failed:', error)
-        })
-      })
+          serverLogger.error("Background refresh failed:", error);
+        });
+      });
       // Start Docker container state sync after first authenticated connection
       if (!dockerEventsStarted) {
-        dockerEventsStarted = true
+        dockerEventsStarted = true;
         runWithAuth(initialToken, initialAuthJson, () => {
           serverLogger.info(
-            'Starting Docker container state sync after authenticated connect'
-          )
-          DockerVSCodeInstance.startContainerStateSync()
-        })
+            "Starting Docker container state sync after authenticated connect"
+          );
+          DockerVSCodeInstance.startContainerStateSync();
+        });
       }
     } else if (!initialToken) {
       serverLogger.info(
-        'Skipping initial GitHub refresh: no auth token on connect'
-      )
+        "Skipping initial GitHub refresh: no auth token on connect"
+      );
     }
 
-    socket.on('git-diff-refs', async (data, callback) => {
+    socket.on("git-diff-refs", async (data, callback) => {
       try {
-        const { repoFullName, ref1, ref2 } = GitCompareRefsSchema.parse(data)
+        const { repoFullName, ref1, ref2 } = GitCompareRefsSchema.parse(data);
         const diffs = await compareRefsForRepo({
           repoFullName,
           ref1,
           ref2,
           teamSlugOrId: safeTeam,
-        })
-        callback?.({ ok: true, diffs })
+        });
+        callback?.({ ok: true, diffs });
       } catch (error) {
-        serverLogger.error('Error in git-diff-refs:', error)
+        serverLogger.error("Error in git-diff-refs:", error);
         callback?.({
           ok: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: error instanceof Error ? error.message : "Unknown error",
           diffs: [],
-        })
+        });
       }
-    })
+    });
 
     // Landed diff (closed-PR semantics): compute what actually landed on base
-    socket.on('git-diff-landed', async (data, callback) => {
+    socket.on("git-diff-landed", async (data, callback) => {
       try {
         const { repoFullName, baseRef, headRef, b0Ref } =
-          GitLandedRefsSchema.parse(data)
+          GitLandedRefsSchema.parse(data);
         serverLogger.info(
-          '[socket] git-diff-landed',
+          "[socket] git-diff-landed",
           JSON.stringify({ repoFullName, baseRef, headRef, b0Ref })
-        )
+        );
         // Ensure a local clone exists under our standard workspace
-        let originPathOverride = ''
+        let originPathOverride = "";
         try {
-          const repoUrl = `https://github.com/${repoFullName}.git`
-          const repoManager = RepositoryManager.getInstance()
-          const { originPath } = await getProjectPaths(repoUrl, safeTeam)
-          await repoManager.ensureRepository(repoUrl, originPath)
-          originPathOverride = originPath
+          const repoUrl = `https://github.com/${repoFullName}.git`;
+          const repoManager = RepositoryManager.getInstance();
+          const { originPath } = await getProjectPaths(repoUrl, safeTeam);
+          await repoManager.ensureRepository(repoUrl, originPath);
+          originPathOverride = originPath;
         } catch (e) {
-          serverLogger.warn('Could not ensure local clone for landed diffs:', e)
+          serverLogger.warn(
+            "Could not ensure local clone for landed diffs:",
+            e
+          );
         }
         serverLogger.info(
-          '[socket] git-diff-landed invoking landedDiffForRepo',
+          "[socket] git-diff-landed invoking landedDiffForRepo",
           JSON.stringify({ originPathOverride })
-        )
-        const t0 = Date.now()
+        );
+        const t0 = Date.now();
         const diffs = await landedDiffForRepo({
           baseRef,
           headRef,
           originPathOverride,
           b0Ref,
           includeContents: true,
-        })
-        const t1 = Date.now()
+        });
+        const t1 = Date.now();
         serverLogger.info(
-          '[socket] git-diff-landed results',
+          "[socket] git-diff-landed results",
           JSON.stringify({ count: diffs.length, ms: t1 - t0 })
-        )
-        callback?.({ ok: true, diffs })
+        );
+        callback?.({ ok: true, diffs });
       } catch (error) {
-        serverLogger.error('Error in git-diff-landed:', error)
+        serverLogger.error("Error in git-diff-landed:", error);
         callback?.({
           ok: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: error instanceof Error ? error.message : "Unknown error",
           diffs: [],
-        })
+        });
       }
-    })
+    });
 
     // Smart diff: prefer latest for unmerged branches, landed for merged
-    socket.on('git-diff-smart', async (data, callback) => {
+    socket.on("git-diff-smart", async (data, callback) => {
       try {
         const { repoFullName, baseRef, headRef, b0Ref } =
-          GitSmartRefsSchema.parse(data)
+          GitSmartRefsSchema.parse(data);
         serverLogger.info(
-          '[socket] git-diff-smart',
+          "[socket] git-diff-smart",
           JSON.stringify({ repoFullName, baseRef, headRef, b0Ref })
-        )
+        );
         // Ensure local clone (same as landed)
         // let originPathOverride = "";
         // try {
@@ -255,26 +258,26 @@ export function setupSocketHandlers(
         // } catch (e) {
         //   serverLogger.warn("Could not ensure local clone for smart diffs:", e);
         // }
-        const t0 = Date.now()
+        const t0 = Date.now();
         const latest = await compareRefsForRepo({
           ref1: baseRef,
           ref2: headRef,
           // originPathOverride,
           repoFullName,
-        })
+        });
         if (latest.length > 0) {
-          const t1 = Date.now()
+          const t1 = Date.now();
           serverLogger.info(
-            '[socket] git-diff-smart results',
+            "[socket] git-diff-smart results",
             JSON.stringify({
-              strategy: 'latest',
+              strategy: "latest",
               count: latest.length,
               ms: t1 - t0,
             })
-          )
-          return callback?.({ ok: true, diffs: latest, strategy: 'latest' })
+          );
+          return callback?.({ ok: true, diffs: latest, strategy: "latest" });
         }
-        const t2 = Date.now()
+        const t2 = Date.now();
         const landed = await landedDiffForRepo({
           baseRef,
           headRef,
@@ -282,47 +285,47 @@ export function setupSocketHandlers(
           // originPathOverride,
           repoFullName,
           includeContents: true,
-        })
-        const t3 = Date.now()
+        });
+        const t3 = Date.now();
         serverLogger.info(
-          '[socket] git-diff-smart results',
+          "[socket] git-diff-smart results",
           JSON.stringify({
-            strategy: 'landed',
+            strategy: "landed",
             count: landed.length,
             msLatest: t2 - t0,
             msLanded: t3 - t2,
           })
-        )
-        callback?.({ ok: true, diffs: landed, strategy: 'landed' })
+        );
+        callback?.({ ok: true, diffs: landed, strategy: "landed" });
       } catch (error) {
-        serverLogger.error('Error in git-diff-smart:', error)
+        serverLogger.error("Error in git-diff-smart:", error);
         callback?.({
           ok: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: error instanceof Error ? error.message : "Unknown error",
           diffs: [],
-        })
+        });
       }
-    })
+    });
 
     void (async () => {
       const commandExists = async (cmd: string) => {
         try {
-          await execAsync(`command -v ${cmd}`)
-          return true
+          await execAsync(`command -v ${cmd}`);
+          return true;
         } catch {
-          return false
+          return false;
         }
-      }
+      };
 
       const appExists = async (app: string) => {
-        if (process.platform !== 'darwin') return false
+        if (process.platform !== "darwin") return false;
         try {
-          await execAsync(`open -Ra "${app}"`)
-          return true
+          await execAsync(`open -Ra "${app}"`);
+          return true;
         } catch {
-          return false
+          return false;
         }
-      }
+      };
 
       const [
         vscodeExists,
@@ -335,94 +338,94 @@ export function setupSocketHandlers(
         alacrittyExists,
         xcodeExists,
       ] = await Promise.all([
-        commandExists('code'),
-        commandExists('cursor'),
-        commandExists('windsurf'),
-        appExists('iTerm'),
-        appExists('Terminal'),
-        commandExists('ghostty'),
-        appExists('Ghostty'),
-        commandExists('alacritty'),
-        appExists('Xcode'),
-      ])
+        commandExists("code"),
+        commandExists("cursor"),
+        commandExists("windsurf"),
+        appExists("iTerm"),
+        appExists("Terminal"),
+        commandExists("ghostty"),
+        appExists("Ghostty"),
+        commandExists("alacritty"),
+        appExists("Xcode"),
+      ]);
 
       const availability: AvailableEditors = {
         vscode: vscodeExists,
         cursor: cursorExists,
         windsurf: windsurfExists,
-        finder: process.platform === 'darwin',
+        finder: process.platform === "darwin",
         iterm: itermExists,
         terminal: terminalExists,
         ghostty: ghosttyCommand || ghosttyApp,
         alacritty: alacrittyExists,
         xcode: xcodeExists,
-      }
+      };
 
-      socket.emit('available-editors', availability)
-    })()
+      socket.emit("available-editors", availability);
+    })();
 
-    socket.on('start-task', async (data, callback) => {
-      const taskDataParseResult = StartTaskSchema.safeParse(data)
+    socket.on("start-task", async (data, callback) => {
+      const taskDataParseResult = StartTaskSchema.safeParse(data);
       if (!taskDataParseResult.success) {
         serverLogger.error(
-          'Task data failed schema validation:',
+          "Task data failed schema validation:",
           taskDataParseResult.error
-        )
+        );
         callback({
           taskId: data.taskId,
-          error: 'Task data failed schema validation',
-        })
-        return
+          error: "Task data failed schema validation",
+        });
+        return;
       }
-      const taskData = taskDataParseResult.data
-      serverLogger.info('starting task!', taskData)
-      const taskId = taskData.taskId
+      const taskData = taskDataParseResult.data;
+      serverLogger.info("starting task!", taskData);
+      const taskId = taskData.taskId;
       try {
         // For local mode, ensure Docker is running before attempting to spawn
         if (!taskData.isCloudMode) {
           try {
-            const docker = await checkDockerStatus()
+            const docker = await checkDockerStatus();
             if (!docker.isRunning) {
               callback({
                 taskId,
                 error:
-                  'Docker is not running. Please start Docker Desktop or switch to Cloud mode.',
-              })
-              return
+                  "Docker is not running. Please start Docker Desktop or switch to Cloud mode.",
+              });
+              return;
             }
           } catch (e) {
             serverLogger.warn(
-              'Failed to verify Docker status before start-task',
+              "Failed to verify Docker status before start-task",
               e
-            )
+            );
             callback({
               taskId,
               error:
-                'Unable to verify Docker status. Ensure Docker is running or switch to Cloud mode.',
-            })
-            return
+                "Unable to verify Docker status. Ensure Docker is running or switch to Cloud mode.",
+            });
+            return;
           }
         }
 
         // Generate PR title early from the task description
-        let generatedTitle: string | null = null
+        let generatedTitle: string | null = null;
         try {
           generatedTitle = await getPRTitleFromTaskDescription(
             taskData.taskDescription,
             safeTeam
-          )
+          );
           // Persist to Convex immediately
           await getConvex().mutation(api.tasks.setPullRequestTitle, {
             teamSlugOrId: safeTeam,
             id: taskId,
             pullRequestTitle: generatedTitle,
-          })
-          serverLogger.info(`[Server] Saved early PR title: ${generatedTitle}`)
+          });
+          serverLogger.info(`[Server] Saved early PR title: ${generatedTitle}`);
         } catch (e) {
           serverLogger.error(
             `[Server] Failed generating/saving early PR title:`,
             e
-          )
+          );
         }
 
         // Spawn all agents in parallel (each will create its own taskRun)
@@ -440,20 +443,22 @@ export function setupSocketHandlers(
             environmentId: taskData.environmentId,
           },
           safeTeam
-        )
+        );
 
         // Check if at least one agent spawned successfully
-        const successfulAgents = agentResults.filter((result) => result.success)
+        const successfulAgents = agentResults.filter(
+          (result) => result.success
+        );
         if (successfulAgents.length === 0) {
           const errors = agentResults
             .filter((r) => !r.success)
-            .map((r) => `${r.agentName}: ${r.error || 'Unknown error'}`)
-            .join('; ')
+            .map((r) => `${r.agentName}: ${r.error || "Unknown error"}`)
+            .join("; ");
           callback({
             taskId,
-            error: errors || 'Failed to spawn any agents',
-          })
-          return
+            error: errors || "Failed to spawn any agents",
+          });
+          return;
         }
 
         // Log results for debugging
@@ -461,30 +466,30 @@ export function setupSocketHandlers(
           if (result.success) {
             serverLogger.info(
               `Successfully spawned ${result.agentName} with terminal ${result.terminalId}`
-            )
+            );
             if (result.vscodeUrl) {
               serverLogger.info(
                 `VSCode URL for ${result.agentName}: ${result.vscodeUrl}`
-              )
+              );
             }
           } else {
             serverLogger.error(
               `Failed to spawn ${result.agentName}: ${result.error}`
-            )
+            );
           }
-        })
+        });
 
         // Return the first successful agent's info (you might want to modify this to return all)
-        const primaryAgent = successfulAgents[0]
+        const primaryAgent = successfulAgents[0];
 
         // Emit VSCode URL if available
         if (primaryAgent.vscodeUrl) {
-          rt.emit('vscode-spawned', {
+          rt.emit("vscode-spawned", {
             instanceId: primaryAgent.terminalId,
-            url: primaryAgent.vscodeUrl.replace('/?folder=/root/workspace', ''),
+            url: primaryAgent.vscodeUrl.replace("/?folder=/root/workspace", ""),
             workspaceUrl: primaryAgent.vscodeUrl,
-            provider: taskData.isCloudMode ? 'morph' : 'docker',
-          })
+            provider: taskData.isCloudMode ? "morph" : "docker",
+          });
         }
 
         // Set up file watching for git changes (optional - don't fail if it doesn't work)
@@ -492,17 +497,17 @@ export function setupSocketHandlers(
           void gitDiffManager.watchWorkspace(
             primaryAgent.worktreePath,
             (changedPath) => {
-              rt.emit('git-file-changed', {
+              rt.emit("git-file-changed", {
                 workspacePath: primaryAgent.worktreePath,
                 filePath: changedPath,
-              })
+              });
             }
-          )
+          );
         } catch (error) {
           serverLogger.warn(
-            'Could not set up file watching for workspace:',
+            "Could not set up file watching for workspace:",
             error
-          )
+          );
           // Continue without file watching
         }
 
@@ -510,76 +515,81 @@ export function setupSocketHandlers(
           taskId,
           worktreePath: primaryAgent.worktreePath,
           terminalId: primaryAgent.terminalId,
-        })
+        });
       } catch (error) {
-        serverLogger.error('Error in start-task:', error)
+        serverLogger.error("Error in start-task:", error);
         callback({
           taskId,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        })
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
       }
-    })
+    });
 
     // Sync PR state (non-destructive): query GitHub and update Convex
-    socket.on('github-sync-pr-state', async (data, callback) => {
+    socket.on("github-sync-pr-state", async (data, callback) => {
       try {
-        const { taskRunId } = GitHubCreateDraftPrSchema.parse(data)
+        const { taskRunId } = GitHubCreateDraftPrSchema.parse(data);
 
         // Load run and task (no worktree setup to keep it light)
         const run = await getConvex().query(api.taskRuns.get, {
           teamSlugOrId: safeTeam,
           id: taskRunId,
-        })
+        });
         if (!run) {
-          callback({ success: false, error: 'Task run not found' })
-          return
+          callback({ success: false, error: "Task run not found" });
+          return;
         }
         const task = await getConvex().query(api.tasks.getById, {
           teamSlugOrId: safeTeam,
           id: run.taskId,
-        })
+        });
         if (!task) {
-          callback({ success: false, error: 'Task not found' })
-          return
+          callback({ success: false, error: "Task not found" });
+          return;
         }
 
-        const githubToken = await getGitHubTokenFromKeychain()
+        const githubToken = await getGitHubTokenFromKeychain();
         if (!githubToken) {
-          callback({ success: false, error: 'GitHub token is not configured' })
-          return
+          callback({ success: false, error: "GitHub token is not configured" });
+          return;
         }
 
-        const repoFullName = task.projectFullName || ''
-        let [owner, repo] = repoFullName.split('/')
-        const branchName = run.newBranch || ''
+        const repoFullName = task.projectFullName || "";
+        let [owner, repo] = repoFullName.split("/");
+        const branchName = run.newBranch || "";
 
         // Determine PR via URL number when available
-        let prNumber: number | null = null
+        let prNumber: number | null = null;
         if (run.pullRequestNumber) {
-          prNumber = run.pullRequestNumber
+          prNumber = run.pullRequestNumber;
         } else if (run.pullRequestUrl) {
-          const parsed = parseRepoFromUrl(run.pullRequestUrl)
+          const parsed = parseRepoFromUrl(run.pullRequestUrl);
           if (parsed.owner && parsed.repo) {
-            owner = owner || parsed.owner
-            repo = repo || parsed.repo
+            owner = owner || parsed.owner;
+            repo = repo || parsed.repo;
           }
-          if (parsed.number) prNumber = parsed.number
+          if (parsed.number) prNumber = parsed.number;
         }
 
         let prBasic: {
-          number: number
-          html_url: string
-          state: string
-          draft?: boolean
-        } | null = null
+          number: number;
+          html_url: string;
+          state: string;
+          draft?: boolean;
+        } | null = null;
         if (owner && repo && prNumber) {
-          const detail = await fetchPrDetail(githubToken, owner, repo, prNumber)
+          const detail = await fetchPrDetail(
+            githubToken,
+            owner,
+            repo,
+            prNumber
+          );
           prBasic = {
             number: detail.number,
             html_url: detail.html_url,
             state: detail.state,
             draft: detail.draft,
-          }
+          };
         } else if (owner && repo && branchName) {
           // Find PR by head branch
           prBasic = await fetchPrByHead(
@@ -588,26 +598,26 @@ export function setupSocketHandlers(
             repo,
             owner,
             branchName
-          )
+          );
         }
 
         if (!prBasic) {
           await getConvex().mutation(api.taskRuns.updatePullRequestState, {
             teamSlugOrId: safeTeam,
             id: run._id,
-            state: 'none',
+            state: "none",
             isDraft: undefined,
             number: undefined,
             url: undefined,
-          })
+          });
           // Update task merge status to none
           await getConvex().mutation(api.tasks.updateMergeStatus, {
             teamSlugOrId: safeTeam,
             id: task._id,
-            mergeStatus: 'none',
-          })
-          callback({ success: true, state: 'none' })
-          return
+            mergeStatus: "none",
+          });
+          callback({ success: true, state: "none" });
+          return;
         }
 
         // Fetch detailed PR to detect merged
@@ -616,20 +626,20 @@ export function setupSocketHandlers(
           owner,
           repo,
           prBasic.number
-        )
-        const isMerged = !!prDetail.merged_at
-        const isDraft = prDetail.draft ?? prBasic.draft ?? false
+        );
+        const isMerged = !!prDetail.merged_at;
+        const isDraft = prDetail.draft ?? prBasic.draft ?? false;
 
-        const state: 'open' | 'closed' | 'merged' | 'draft' | 'unknown' =
+        const state: "open" | "closed" | "merged" | "draft" | "unknown" =
           isMerged
-            ? 'merged'
+            ? "merged"
             : isDraft
-              ? 'draft'
-              : prBasic.state === 'open'
-                ? 'open'
-                : prBasic.state === 'closed'
-                  ? 'closed'
-                  : 'unknown'
+              ? "draft"
+              : prBasic.state === "open"
+                ? "open"
+                : prBasic.state === "closed"
+                  ? "closed"
+                  : "unknown";
 
         await getConvex().mutation(api.taskRuns.updatePullRequestState, {
           teamSlugOrId: safeTeam,
@@ -638,35 +648,35 @@ export function setupSocketHandlers(
           isDraft,
           number: prBasic.number,
           url: prBasic.html_url,
-        })
+        });
 
         // Update task merge status based on PR state
         let taskMergeStatus:
-          | 'none'
-          | 'pr_draft'
-          | 'pr_open'
-          | 'pr_merged'
-          | 'pr_closed' = 'none'
+          | "none"
+          | "pr_draft"
+          | "pr_open"
+          | "pr_merged"
+          | "pr_closed" = "none";
         switch (state) {
-          case 'draft':
-            taskMergeStatus = 'pr_draft'
-            break
-          case 'open':
-            taskMergeStatus = 'pr_open'
-            break
-          case 'merged':
-            taskMergeStatus = 'pr_merged'
-            break
-          case 'closed':
-            taskMergeStatus = 'pr_closed'
-            break
+          case "draft":
+            taskMergeStatus = "pr_draft";
+            break;
+          case "open":
+            taskMergeStatus = "pr_open";
+            break;
+          case "merged":
+            taskMergeStatus = "pr_merged";
+            break;
+          case "closed":
+            taskMergeStatus = "pr_closed";
+            break;
         }
-        if (taskMergeStatus !== 'none') {
+        if (taskMergeStatus !== "none") {
           await getConvex().mutation(api.tasks.updateMergeStatus, {
             teamSlugOrId: safeTeam,
             id: task._id,
             mergeStatus: taskMergeStatus,
-          })
+          });
         }
 
         callback({
@@ -675,52 +685,52 @@ export function setupSocketHandlers(
           number: prBasic.number,
           state,
           isDraft,
-        })
+        });
       } catch (error) {
-        serverLogger.error('Error syncing PR state:', error)
+        serverLogger.error("Error syncing PR state:", error);
         callback({
           success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        })
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
       }
-    })
+    });
 
     // Merge PR for a run
-    socket.on('github-merge-pr', async (data, callback) => {
+    socket.on("github-merge-pr", async (data, callback) => {
       try {
-        const { taskRunId, method } = data
+        const { taskRunId, method } = data;
 
         const run = await getConvex().query(api.taskRuns.get, {
           teamSlugOrId: safeTeam,
           id: taskRunId,
-        })
+        });
         if (!run) {
-          return callback({ success: false, error: 'Task run not found' })
+          return callback({ success: false, error: "Task run not found" });
         }
         const task = await getConvex().query(api.tasks.getById, {
           teamSlugOrId: safeTeam,
           id: run.taskId,
-        })
+        });
         if (!task) {
-          return callback({ success: false, error: 'Task not found' })
+          return callback({ success: false, error: "Task not found" });
         }
-        const githubToken = await getGitHubTokenFromKeychain()
+        const githubToken = await getGitHubTokenFromKeychain();
         if (!githubToken) {
           return callback({
             success: false,
-            error: 'GitHub token is not configured',
-          })
+            error: "GitHub token is not configured",
+          });
         }
-        let [owner, repo] = (task.projectFullName || '').split('/')
-        let prNumber: number | null = run.pullRequestNumber || null
+        let [owner, repo] = (task.projectFullName || "").split("/");
+        let prNumber: number | null = run.pullRequestNumber || null;
         if ((!owner || !repo || !prNumber) && run.pullRequestUrl) {
-          const parsed = parseRepoFromUrl(run.pullRequestUrl)
-          owner = owner || parsed.owner || owner
-          repo = repo || parsed.repo || repo
-          prNumber = prNumber || parsed.number || null
+          const parsed = parseRepoFromUrl(run.pullRequestUrl);
+          owner = owner || parsed.owner || owner;
+          repo = repo || parsed.repo || repo;
+          prNumber = prNumber || parsed.number || null;
         }
         if (!owner || !repo) {
-          return callback({ success: false, error: 'Unknown repo for task' })
+          return callback({ success: false, error: "Unknown repo for task" });
         }
         // If PR number still unknown, try to locate via branch
         if (!prNumber && run.newBranch) {
@@ -730,63 +740,63 @@ export function setupSocketHandlers(
             repo,
             owner,
             run.newBranch
-          )
+          );
           if (found) {
-            prNumber = found.number
+            prNumber = found.number;
           }
         }
 
         if (!prNumber) {
           return callback({
             success: false,
-            error: 'Pull request not found for this run',
-          })
+            error: "Pull request not found for this run",
+          });
         }
 
         // Ensure PR is open and not draft
-        const detail = await fetchPrDetail(githubToken, owner, repo, prNumber)
+        const detail = await fetchPrDetail(githubToken, owner, repo, prNumber);
         if (detail.draft) {
           // Try to mark ready
           try {
-            await markPrReady(githubToken, owner, repo, prNumber)
+            await markPrReady(githubToken, owner, repo, prNumber);
             serverLogger.info(
               `[MergePR] Successfully marked PR #${prNumber} as ready for review`
-            )
+            );
           } catch (e: unknown) {
-            const msg = e instanceof Error ? e.message : String(e)
+            const msg = e instanceof Error ? e.message : String(e);
 
             // Check if it's a 404 error
-            if (msg.includes('not found') || msg.includes('404')) {
+            if (msg.includes("not found") || msg.includes("404")) {
               return callback({
                 success: false,
                 error: `Pull request #${prNumber} not found. It may have been deleted.`,
-              })
+              });
             }
 
             return callback({
               success: false,
               error: `PR is draft and could not be made ready: ${msg}`,
-            })
+            });
           }
         }
-        if (detail.state === 'closed') {
+        if (detail.state === "closed") {
           // Try to reopen
           try {
-            await reopenPr(githubToken, owner, repo, prNumber)
+            await reopenPr(githubToken, owner, repo, prNumber);
           } catch (e: unknown) {
-            const msg = e instanceof Error ? e.message : String(e)
+            const msg = e instanceof Error ? e.message : String(e);
             return callback({
               success: false,
               error: `PR is closed and could not be reopened: ${msg}`,
-            })
+            });
           }
         }
 
         // Optional: commit title/message
-        const title = task.pullRequestTitle || task.text || `cmux changes`
+        const title = task.pullRequestTitle || task.text || `cmux changes`;
         const truncatedTitle =
-          title.length > 72 ? `${title.slice(0, 69)}...` : title
-        const commitMessage = `Merged by cmux for task ${String(task._id)}.`
+          title.length > 72 ? `${title.slice(0, 69)}...` : title;
+        const commitMessage = `Merged by cmux for task ${String(task._id)}.`;
 
         // Merge
         try {
@@ -798,169 +808,169 @@ export function setupSocketHandlers(
             method,
             truncatedTitle,
             commitMessage
-          )
+          );
           // Update Convex: merged
           await getConvex().mutation(api.taskRuns.updatePullRequestState, {
             teamSlugOrId: safeTeam,
             id: run._id,
-            state: 'merged',
+            state: "merged",
             isDraft: false,
             number: prNumber,
             url: detail.html_url,
-          })
+          });
           // Update task merge status to merged
           await getConvex().mutation(api.tasks.updateMergeStatus, {
             teamSlugOrId: safeTeam,
             id: task._id,
-            mergeStatus: 'pr_merged',
-          })
+            mergeStatus: "pr_merged",
+          });
           callback({
             success: true,
             merged: !!res.merged,
-            state: 'merged',
+            state: "merged",
             url: detail.html_url,
-          })
+          });
         } catch (e: unknown) {
-          const msg = e instanceof Error ? e.message : String(e)
-          callback({ success: false, error: `Failed to merge PR: ${msg}` })
+          const msg = e instanceof Error ? e.message : String(e);
+          callback({ success: false, error: `Failed to merge PR: ${msg}` });
         }
       } catch (error) {
-        serverLogger.error('Error merging PR:', error)
+        serverLogger.error("Error merging PR:", error);
         callback({
           success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        })
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
       }
-    })
+    });
 
     // Merge branch directly without PR
-    socket.on('github-merge-branch', async (data, callback) => {
+    socket.on("github-merge-branch", async (data, callback) => {
       try {
-        const { taskRunId } = GitHubMergeBranchSchema.parse(data)
+        const { taskRunId } = GitHubMergeBranchSchema.parse(data);
 
         const { run, task, branchName, baseBranch } =
-          await ensureRunWorktreeAndBranch(taskRunId, safeTeam)
+          await ensureRunWorktreeAndBranch(taskRunId, safeTeam);
 
-        const githubToken = await getGitHubTokenFromKeychain()
+        const githubToken = await getGitHubTokenFromKeychain();
         if (!githubToken) {
           return callback({
             success: false,
-            error: 'GitHub token is not configured',
-          })
+            error: "GitHub token is not configured",
+          });
         }
 
-        const repoFullName = task.projectFullName || ''
-        const [owner, repo] = repoFullName.split('/')
+        const repoFullName = task.projectFullName || "";
+        const [owner, repo] = repoFullName.split("/");
         if (!owner || !repo) {
-          return callback({ success: false, error: 'Unknown repo for task' })
+          return callback({ success: false, error: "Unknown repo for task" });
         }
 
         try {
-          const octokit = getOctokit(githubToken)
+          const octokit = getOctokit(githubToken);
           const { data: mergeRes } = await octokit.rest.repos.merge({
             owner,
             repo,
             base: baseBranch,
             head: branchName,
-          })
+          });
 
           await getConvex().mutation(api.taskRuns.updatePullRequestState, {
             teamSlugOrId: safeTeam,
             id: run._id,
-            state: 'merged',
-          })
+            state: "merged",
+          });
 
           await getConvex().mutation(api.tasks.updateMergeStatus, {
             teamSlugOrId: safeTeam,
             id: task._id,
-            mergeStatus: 'pr_merged',
-          })
+            mergeStatus: "pr_merged",
+          });
 
-          callback({ success: true, merged: true, commitSha: mergeRes.sha })
+          callback({ success: true, merged: true, commitSha: mergeRes.sha });
         } catch (e: unknown) {
-          const msg = e instanceof Error ? e.message : String(e)
+          const msg = e instanceof Error ? e.message : String(e);
           callback({
             success: false,
             error: `Failed to merge branch: ${msg}`,
-          })
+          });
         }
       } catch (error) {
-        serverLogger.error('Error merging branch:', error)
+        serverLogger.error("Error merging branch:", error);
         callback({
           success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        })
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
       }
-    })
+    });
 
     // Keep old handlers for backwards compatibility but they're not used anymore
-    socket.on('git-status', async () => {
-      socket.emit('git-status-response', {
+    socket.on("git-status", async () => {
+      socket.emit("git-status-response", {
         files: [],
-        error: 'Not implemented - use git-full-diff instead',
-      })
-    })
+        error: "Not implemented - use git-full-diff instead",
+      });
+    });
 
-    socket.on('git-diff', async () => {
-      socket.emit('git-diff-response', {
-        path: '',
+    socket.on("git-diff", async () => {
+      socket.emit("git-diff-response", {
+        path: "",
         diff: [],
-        error: 'Not implemented - use git-full-diff instead',
-      })
-    })
+        error: "Not implemented - use git-full-diff instead",
+      });
+    });
 
-    socket.on('git-full-diff', async (data) => {
+    socket.on("git-full-diff", async (data) => {
       try {
-        const { workspacePath } = GitFullDiffRequestSchema.parse(data)
-        const diff = await gitDiffManager.getFullDiff(workspacePath)
-        socket.emit('git-full-diff-response', { diff })
+        const { workspacePath } = GitFullDiffRequestSchema.parse(data);
+        const diff = await gitDiffManager.getFullDiff(workspacePath);
+        socket.emit("git-full-diff-response", { diff });
       } catch (error) {
-        serverLogger.error('Error getting full git diff:', error)
-        socket.emit('git-full-diff-response', {
-          diff: '',
-          error: error instanceof Error ? error.message : 'Unknown error',
-        })
+        serverLogger.error("Error getting full git diff:", error);
+        socket.emit("git-full-diff-response", {
+          diff: "",
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
       }
-    })
+    });
 
     // Continue with all other handlers...
     // (I'll include the rest of the handlers in the next message due to length)
 
     // Provide file contents on demand to avoid large Convex docs
-    socket.on('git-diff-file-contents', async (data, callback) => {
+    socket.on("git-diff-file-contents", async (data, callback) => {
       try {
-        const { taskRunId, filePath } = data
+        const { taskRunId, filePath } = data;
         // Ensure the worktree exists for this run
-        const ensured = await ensureRunWorktreeAndBranch(taskRunId, safeTeam)
-        const worktreePath = ensured.worktreePath as string
-        let oldContent = ''
-        let newContent = ''
+        const ensured = await ensureRunWorktreeAndBranch(taskRunId, safeTeam);
+        const worktreePath = ensured.worktreePath as string;
+        let oldContent = "";
+        let newContent = "";
         try {
           newContent = await fs.readFile(
             path.join(worktreePath, filePath),
-            'utf-8'
-          )
+            "utf-8"
+          );
         } catch {
-          newContent = ''
+          newContent = "";
         }
         try {
           // Use git CLI to read baseRef version of the file. Prefer default branch (origin/<default>),
           // then upstream, and finally HEAD as a last resort.
-          let baseRef = 'HEAD'
+          let baseRef = "HEAD";
           try {
-            const repoMgr = RepositoryManager.getInstance()
-            const defaultBranch = await repoMgr.getDefaultBranch(worktreePath)
-            if (defaultBranch) baseRef = `origin/${defaultBranch}`
+            const repoMgr = RepositoryManager.getInstance();
+            const defaultBranch = await repoMgr.getDefaultBranch(worktreePath);
+            if (defaultBranch) baseRef = `origin/${defaultBranch}`;
           } catch {
             // ignore and try upstream next
           }
-          if (baseRef === 'HEAD') {
+          if (baseRef === "HEAD") {
             try {
               const { stdout } = await execAsync(
-                'git rev-parse --abbrev-ref --symbolic-full-name @{u}',
+                "git rev-parse --abbrev-ref --symbolic-full-name @{u}",
                 { cwd: worktreePath }
-              )
-              if (stdout.trim()) baseRef = '@{upstream}'
+              );
+              if (stdout.trim()) baseRef = "@{upstream}";
             } catch {
               // stick with HEAD
             }
@@ -971,227 +981,227 @@ export function setupSocketHandlers(
               cwd: worktreePath,
               maxBuffer: 10 * 1024 * 1024,
             }
-          )
-          oldContent = stdout
+          );
+          oldContent = stdout;
         } catch {
-          oldContent = ''
+          oldContent = "";
         }
-        callback?.({ ok: true, oldContent, newContent, isBinary: false })
+        callback?.({ ok: true, oldContent, newContent, isBinary: false });
       } catch (error) {
-        serverLogger.error('Error in git-diff-file-contents:', error)
+        serverLogger.error("Error in git-diff-file-contents:", error);
         callback?.({
           ok: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        })
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
       }
-    })
+    });
 
     // Get diffs on demand to avoid storing in Convex
-    socket.on('get-run-diffs', async (data, callback) => {
-      const t0 = Date.now()
+    socket.on("get-run-diffs", async (data, callback) => {
+      const t0 = Date.now();
       try {
-        const { taskRunId } = data
+        const { taskRunId } = data;
         const entries = await getRunDiffs({
           taskRunId,
           teamSlugOrId: safeTeam,
           gitDiffManager,
           rt,
           includeContents: true,
-        })
-        const t1 = Date.now()
+        });
+        const t1 = Date.now();
         serverLogger.info(
           `[Perf][socket.get-run-diffs] run=${String(taskRunId)} team=${safeTeam} entries=${entries.length} totalMs=${t1 - t0}`
-        )
-        callback?.({ ok: true, diffs: entries })
+        );
+        callback?.({ ok: true, diffs: entries });
       } catch (error) {
-        serverLogger.error('Error getting run diffs:', error)
+        serverLogger.error("Error getting run diffs:", error);
         callback?.({
           ok: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: error instanceof Error ? error.message : "Unknown error",
           diffs: [],
-        })
+        });
       }
-    })
+    });
 
-    socket.on('open-in-editor', async (data, callback) => {
+    socket.on("open-in-editor", async (data, callback) => {
       try {
-        const { editor, path } = OpenInEditorSchema.parse(data)
+        const { editor, path } = OpenInEditorSchema.parse(data);
 
-        let command: string[]
+        let command: string[];
         switch (editor) {
-          case 'vscode':
-            command = ['code', path]
-            break
-          case 'cursor':
-            command = ['cursor', path]
-            break
-          case 'windsurf':
-            command = ['windsurf', path]
-            break
-          case 'finder': {
-            if (process.platform !== 'darwin') {
-              throw new Error('Finder is only supported on macOS')
+          case "vscode":
+            command = ["code", path];
+            break;
+          case "cursor":
+            command = ["cursor", path];
+            break;
+          case "windsurf":
+            command = ["windsurf", path];
+            break;
+          case "finder": {
+            if (process.platform !== "darwin") {
+              throw new Error("Finder is only supported on macOS");
             }
             // Use macOS 'open' to open the folder in Finder
-            command = ['open', path]
-            break
+            command = ["open", path];
+            break;
           }
-          case 'iterm':
-            command = ['open', '-a', 'iTerm', path]
-            break
-          case 'terminal':
-            command = ['open', '-a', 'Terminal', path]
-            break
-          case 'ghostty':
-            command = ['open', '-a', 'Ghostty', path]
-            break
-          case 'alacritty':
-            command = ['alacritty', '--working-directory', path]
-            break
-          case 'xcode':
-            command = ['open', '-a', 'Xcode', path]
-            break
+          case "iterm":
+            command = ["open", "-a", "iTerm", path];
+            break;
+          case "terminal":
+            command = ["open", "-a", "Terminal", path];
+            break;
+          case "ghostty":
+            command = ["open", "-a", "Ghostty", path];
+            break;
+          case "alacritty":
+            command = ["alacritty", "--working-directory", path];
+            break;
+          case "xcode":
+            command = ["open", "-a", "Xcode", path];
+            break;
           default:
-            throw new Error(`Unknown editor: ${editor}`)
+            throw new Error(`Unknown editor: ${editor}`);
         }
 
-        console.log('command', command)
+        console.log("command", command);
 
-        const childProcess = spawn(command[0], command.slice(1))
+        const childProcess = spawn(command[0], command.slice(1));
 
-        childProcess.on('close', (code) => {
+        childProcess.on("close", (code) => {
           if (code === 0) {
-            serverLogger.info(`Successfully opened ${path} in ${editor}`)
+            serverLogger.info(`Successfully opened ${path} in ${editor}`);
             // Send success callback
             if (callback) {
-              callback({ success: true })
+              callback({ success: true });
             }
           } else {
             serverLogger.error(
               `Error opening ${editor}: process exited with code ${code}`
-            )
-            const error = `Failed to open ${editor}: process exited with code ${code}`
-            socket.emit('open-in-editor-error', { error })
+            );
+            const error = `Failed to open ${editor}: process exited with code ${code}`;
+            socket.emit("open-in-editor-error", { error });
             // Send error callback
             if (callback) {
-              callback({ success: false, error })
+              callback({ success: false, error });
             }
           }
-        })
+        });
 
-        childProcess.on('error', (error) => {
-          serverLogger.error(`Error opening ${editor}:`, error)
-          const errorMessage = `Failed to open ${editor}: ${error.message}`
-          socket.emit('open-in-editor-error', { error: errorMessage })
+        childProcess.on("error", (error) => {
+          serverLogger.error(`Error opening ${editor}:`, error);
+          const errorMessage = `Failed to open ${editor}: ${error.message}`;
+          socket.emit("open-in-editor-error", { error: errorMessage });
           // Send error callback
           if (callback) {
-            callback({ success: false, error: errorMessage })
+            callback({ success: false, error: errorMessage });
           }
-        })
+        });
       } catch (error) {
-        serverLogger.error('Error opening editor:', error)
+        serverLogger.error("Error opening editor:", error);
         const errorMessage =
-          error instanceof Error ? error.message : 'Unknown error'
-        socket.emit('open-in-editor-error', { error: errorMessage })
+          error instanceof Error ? error.message : "Unknown error";
+        socket.emit("open-in-editor-error", { error: errorMessage });
         // Send error callback
         if (callback) {
-          callback({ success: false, error: errorMessage })
+          callback({ success: false, error: errorMessage });
         }
       }
-    })
+    });
 
-    socket.on('list-files', async (data) => {
+    socket.on("list-files", async (data) => {
       try {
         const {
           repoPath: repoUrl,
           branch,
           pattern,
-        } = ListFilesRequestSchema.parse(data)
-        const repoManager = RepositoryManager.getInstance()
+        } = ListFilesRequestSchema.parse(data);
+        const repoManager = RepositoryManager.getInstance();
 
         // Resolve origin path without assuming any branch
-        const projectPaths = await getProjectPaths(repoUrl, safeTeam)
+        const projectPaths = await getProjectPaths(repoUrl, safeTeam);
 
         // Ensure directories exist
-        await fs.mkdir(projectPaths.projectPath, { recursive: true })
-        await fs.mkdir(projectPaths.worktreesPath, { recursive: true })
+        await fs.mkdir(projectPaths.projectPath, { recursive: true });
+        await fs.mkdir(projectPaths.worktreesPath, { recursive: true });
 
         // Ensure the repository is cloned/fetched with deduplication
         // Ensure repository exists (clone if needed) without assuming branch
-        await repoManager.ensureRepository(repoUrl, projectPaths.originPath)
+        await repoManager.ensureRepository(repoUrl, projectPaths.originPath);
 
         // Determine the effective base branch
         const baseBranch =
           branch ||
-          (await repoManager.getDefaultBranch(projectPaths.originPath))
+          (await repoManager.getDefaultBranch(projectPaths.originPath));
 
         // Fetch that branch to make sure origin has it
         await repoManager.ensureRepository(
           repoUrl,
           projectPaths.originPath,
           baseBranch
-        )
+        );
 
         // For clarity downstream, compute a proper worktreeInfo keyed by baseBranch
         const worktreeInfo = {
           ...projectPaths,
-          worktreePath: projectPaths.worktreesPath + '/' + baseBranch,
+          worktreePath: projectPaths.worktreesPath + "/" + baseBranch,
           branch: baseBranch,
-        } as const
+        } as const;
 
         // Check if the origin directory exists
         try {
-          await fs.access(worktreeInfo.originPath)
+          await fs.access(worktreeInfo.originPath);
         } catch {
           serverLogger.error(
-            'Origin directory does not exist:',
+            "Origin directory does not exist:",
             worktreeInfo.originPath
-          )
-          socket.emit('list-files-response', {
+          );
+          socket.emit("list-files-response", {
             files: [],
-            error: 'Repository directory not found',
-          })
-          return
+            error: "Repository directory not found",
+          });
+          return;
         }
 
         const ignoredPatterns = [
-          '**/node_modules/**',
-          '**/.git/**',
-          '**/dist/**',
-          '**/build/**',
-          '**/.next/**',
-          '**/coverage/**',
-          '**/.turbo/**',
-          '**/.vscode/**',
-          '**/.idea/**',
-          '**/tmp/**',
-          '**/.DS_Store',
-          '**/npm-debug.log*',
-          '**/yarn-debug.log*',
-          '**/yarn-error.log*',
-        ]
+          "**/node_modules/**",
+          "**/.git/**",
+          "**/dist/**",
+          "**/build/**",
+          "**/.next/**",
+          "**/coverage/**",
+          "**/.turbo/**",
+          "**/.vscode/**",
+          "**/.idea/**",
+          "**/tmp/**",
+          "**/.DS_Store",
+          "**/npm-debug.log*",
+          "**/yarn-debug.log*",
+          "**/yarn-error.log*",
+        ];
 
         async function walkDir(
           dir: string,
           baseDir: string
         ): Promise<FileInfo[]> {
-          const files: FileInfo[] = []
+          const files: FileInfo[] = [];
 
           try {
-            const entries = await fs.readdir(dir, { withFileTypes: true })
+            const entries = await fs.readdir(dir, { withFileTypes: true });
 
             for (const entry of entries) {
-              const fullPath = path.join(dir, entry.name)
-              const relativePath = path.relative(baseDir, fullPath)
+              const fullPath = path.join(dir, entry.name);
+              const relativePath = path.relative(baseDir, fullPath);
 
               // Check if path should be ignored
               const shouldIgnore = ignoredPatterns.some(
                 (pattern) =>
                   minimatch(relativePath, pattern) ||
                   minimatch(fullPath, pattern)
-              )
+              );
 
-              if (shouldIgnore) continue
+              if (shouldIgnore) continue;
 
               // Skip pattern matching here - we'll do fuzzy matching later
               // For directories, we still need to recurse to get all files
@@ -1202,53 +1212,53 @@ export function setupSocketHandlers(
                   name: entry.name,
                   isDirectory: true,
                   relativePath,
-                })
+                });
               }
 
               if (entry.isDirectory()) {
                 // Recurse into subdirectory
-                const subFiles = await walkDir(fullPath, baseDir)
-                files.push(...subFiles)
+                const subFiles = await walkDir(fullPath, baseDir);
+                files.push(...subFiles);
               } else {
                 files.push({
                   path: fullPath,
                   name: entry.name,
                   isDirectory: false,
                   relativePath,
-                })
+                });
               }
             }
           } catch (error) {
-            serverLogger.error(`Error reading directory ${dir}:`, error)
+            serverLogger.error(`Error reading directory ${dir}:`, error);
           }
 
-          return files
+          return files;
         }
 
         // List files from the origin directory
         let fileList = await walkDir(
           worktreeInfo.originPath,
           worktreeInfo.originPath
-        )
+        );
 
         // Apply fuzzysort fuzzy matching if pattern is provided
         if (pattern) {
           // Prepare file paths for fuzzysort
-          const filePaths = fileList.map((f) => f.relativePath)
+          const filePaths = fileList.map((f) => f.relativePath);
 
           // Use fuzzysort to search and sort files
           const results = fuzzysort.go(pattern, filePaths, {
             threshold: -10000, // Show all results, even poor matches
             limit: 1000, // Limit results for performance
-          })
+          });
 
           // Create a map for quick lookup
-          const fileMap = new Map(fileList.map((f) => [f.relativePath, f]))
+          const fileMap = new Map(fileList.map((f) => [f.relativePath, f]));
 
           // Rebuild fileList based on fuzzysort results
           fileList = results
             .map((result) => fileMap.get(result.target)!)
-            .filter(Boolean)
+            .filter(Boolean);
 
           // Add any files that didn't match at the end (if we want to show all files)
           // Uncomment if you want to show non-matching files at the bottom
@@ -1258,35 +1268,35 @@ export function setupSocketHandlers(
         } else {
           // Only sort by directory/name when there's no search query
           fileList.sort((a, b) => {
-            if (a.isDirectory && !b.isDirectory) return -1
-            if (!a.isDirectory && b.isDirectory) return 1
-            return a.relativePath.localeCompare(b.relativePath)
-          })
+            if (a.isDirectory && !b.isDirectory) return -1;
+            if (!a.isDirectory && b.isDirectory) return 1;
+            return a.relativePath.localeCompare(b.relativePath);
+          });
         }
 
-        socket.emit('list-files-response', { files: fileList })
+        socket.emit("list-files-response", { files: fileList });
       } catch (error) {
-        serverLogger.error('Error listing files:', error)
-        socket.emit('list-files-response', {
+        serverLogger.error("Error listing files:", error);
+        socket.emit("list-files-response", {
           files: [],
-          error: error instanceof Error ? error.message : 'Unknown error',
-        })
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
       }
-    })
+    });
 
-    socket.on('github-test-auth', async (callback) => {
+    socket.on("github-test-auth", async (callback) => {
       try {
         // Run all commands in parallel
         const [authStatus, whoami, home, ghConfig] = await Promise.all([
-          execWithEnv('gh auth status')
+          execWithEnv("gh auth status")
             .then((r) => r.stdout)
             .catch((e) => e.message),
-          execWithEnv('whoami').then((r) => r.stdout),
-          execWithEnv('echo $HOME').then((r) => r.stdout),
+          execWithEnv("whoami").then((r) => r.stdout),
+          execWithEnv("echo $HOME").then((r) => r.stdout),
           execWithEnv('ls -la ~/.config/gh/ || echo "No gh config"').then(
             (r) => r.stdout
           ),
-        ])
+        ]);
 
         callback({
           authStatus,
@@ -1296,71 +1306,71 @@ export function setupSocketHandlers(
           processEnv: {
             HOME: process.env.HOME,
             USER: process.env.USER,
-            GH_TOKEN: process.env.GH_TOKEN ? 'Set' : 'Not set',
-            GITHUB_TOKEN: process.env.GITHUB_TOKEN ? 'Set' : 'Not set',
+            GH_TOKEN: process.env.GH_TOKEN ? "Set" : "Not set",
+            GITHUB_TOKEN: process.env.GITHUB_TOKEN ? "Set" : "Not set",
           },
-        })
+        });
       } catch (error) {
         callback({
           error: error instanceof Error ? error.message : String(error),
           processEnv: {
             HOME: process.env.HOME,
             USER: process.env.USER,
-            GH_TOKEN: process.env.GH_TOKEN ? 'Set' : 'Not set',
-            GITHUB_TOKEN: process.env.GITHUB_TOKEN ? 'Set' : 'Not set',
+            GH_TOKEN: process.env.GH_TOKEN ? "Set" : "Not set",
+            GITHUB_TOKEN: process.env.GITHUB_TOKEN ? "Set" : "Not set",
           },
-        })
+        });
       }
-    })
+    });
 
-    socket.on('github-fetch-repos', async (data, callback) => {
+    socket.on("github-fetch-repos", async (data, callback) => {
       try {
-        const { teamSlugOrId } = GitHubFetchReposSchema.parse(data)
+        const { teamSlugOrId } = GitHubFetchReposSchema.parse(data);
         if (!initialToken) {
-          callback({ success: false, repos: {}, error: 'Not authenticated' })
-          return
+          callback({ success: false, repos: {}, error: "Not authenticated" });
+          return;
         }
         // First, try to get existing repos from Convex
         const existingRepos = await getConvex().query(api.github.getAllRepos, {
           teamSlugOrId,
-        })
+        });
 
         if (existingRepos.length > 0) {
           // If we have repos, return them and refresh in the background
           const reposByOrg = await getConvex().query(api.github.getReposByOrg, {
             teamSlugOrId,
-          })
-          callback({ success: true, repos: reposByOrg })
+          });
+          callback({ success: true, repos: reposByOrg });
 
           // Refresh in the background to add any new repos
           runWithAuthToken(initialToken, () =>
             refreshGitHubData({ teamSlugOrId }).catch((error) => {
-              serverLogger.error('Background refresh failed:', error)
+              serverLogger.error("Background refresh failed:", error);
             })
-          )
-          return
+          );
+          return;
         }
 
         // If no repos exist, do a full fetch
         await runWithAuthToken(initialToken, () =>
           refreshGitHubData({ teamSlugOrId })
-        )
+        );
         const reposByOrg = await getConvex().query(api.github.getReposByOrg, {
           teamSlugOrId,
-        })
-        callback({ success: true, repos: reposByOrg })
+        });
+        callback({ success: true, repos: reposByOrg });
       } catch (error) {
-        serverLogger.error('Error fetching repos:', error)
+        serverLogger.error("Error fetching repos:", error);
         callback({
           success: false,
           error: `Failed to fetch GitHub repos: ${
             error instanceof Error ? error.message : String(error)
           }`,
-        })
+        });
       }
-    })
+    });
 
-    socket.on('spawn-from-comment', async (data, callback) => {
+    socket.on("spawn-from-comment", async (data, callback) => {
       try {
         const {
           url,
@@ -1372,8 +1382,8 @@ export function setupSocketHandlers(
           content,
           selectedAgents,
           commentId,
-        } = SpawnFromCommentSchema.parse(data)
-        console.log('spawn-from-comment data', data)
+        } = SpawnFromCommentSchema.parse(data);
+        console.log("spawn-from-comment data", data);
 
         // Format the prompt with comment metadata
         const formattedPrompt = `Fix the issue described in this comment:
@@ -1386,75 +1396,77 @@ Context:
 - Element XPath: ${nodeId}
 - Position: ${x * 100}% x ${y * 100}% relative to element
 
-Please address the issue mentioned in the comment above.`
+Please address the issue mentioned in the comment above.`;
 
         // Create a new task in Convex
         const taskId = await getConvex().mutation(api.tasks.create, {
           teamSlugOrId: safeTeam,
           text: formattedPrompt,
-          projectFullName: 'manaflow-ai/cmux',
-        })
+          projectFullName: "manaflow-ai/cmux",
+        });
         // Create a comment reply with link to the task
         try {
           await getConvex().mutation(api.comments.addReply, {
             teamSlugOrId: safeTeam,
             commentId: commentId,
             content: `[View run here](http://localhost:5173/${safeTeam}/task/${taskId})`,
-          })
-          serverLogger.info('Created comment reply with task link:', {
+          });
+          serverLogger.info("Created comment reply with task link:", {
             commentId,
             taskId,
-          })
+          });
         } catch (replyError) {
-          serverLogger.error('Failed to create comment reply:', replyError)
+          serverLogger.error("Failed to create comment reply:", replyError);
           // Don't fail the whole operation if reply fails
         }
 
-        serverLogger.info('Created task from comment:', { taskId, content })
+        serverLogger.info("Created task from comment:", { taskId, content });
 
         // Spawn agents with the formatted prompt
         const agentResults = await spawnAllAgents(
           taskId,
           {
-            repoUrl: 'https://github.com/manaflow-ai/cmux.git',
-            branch: 'main',
+            repoUrl: "https://github.com/manaflow-ai/cmux.git",
+            branch: "main",
             taskDescription: formattedPrompt,
             isCloudMode: true,
-            theme: 'dark',
+            theme: "dark",
             // Use provided selectedAgents or default to claude/sonnet-4 and codex/gpt-5
             selectedAgents: selectedAgents || [
-              'claude/sonnet-4',
-              'codex/gpt-5',
+              "claude/sonnet-4",
+              "codex/gpt-5",
             ],
           },
           safeTeam
-        )
+        );
 
         // Check if at least one agent spawned successfully
-        const successfulAgents = agentResults.filter((result) => result.success)
+        const successfulAgents = agentResults.filter(
+          (result) => result.success
+        );
 
         if (successfulAgents.length === 0) {
           const errors = agentResults
             .filter((r) => !r.success)
-            .map((r) => `${r.agentName}: ${r.error || 'Unknown error'}`)
-            .join('; ')
+            .map((r) => `${r.agentName}: ${r.error || "Unknown error"}`)
+            .join("; ");
           callback({
             success: false,
-            error: errors || 'Failed to spawn any agents',
-          })
-          return
+            error: errors || "Failed to spawn any agents",
+          });
+          return;
         }
 
-        const primaryAgent = successfulAgents[0]
+        const primaryAgent = successfulAgents[0];
 
         // Emit VSCode URL if available
         if (primaryAgent.vscodeUrl) {
-          rt.emit('vscode-spawned', {
+          rt.emit("vscode-spawned", {
             instanceId: primaryAgent.terminalId,
-            url: primaryAgent.vscodeUrl.replace('/?folder=/root/workspace', ''),
+            url: primaryAgent.vscodeUrl.replace("/?folder=/root/workspace", ""),
             workspaceUrl: primaryAgent.vscodeUrl,
-            provider: 'morph', // Since isCloudMode is true
-          })
+            provider: "morph", // Since isCloudMode is true
+          });
         }
 
         callback({
@@ -1464,55 +1476,55 @@ Please address the issue mentioned in the comment above.`
           worktreePath: primaryAgent.worktreePath,
           terminalId: primaryAgent.terminalId,
           vscodeUrl: primaryAgent.vscodeUrl,
-        })
+        });
       } catch (error) {
-        serverLogger.error('Error spawning from comment:', error)
+        serverLogger.error("Error spawning from comment:", error);
         callback({
           success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        })
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
       }
-    })
+    });
 
-    socket.on('github-fetch-branches', async (data, callback) => {
+    socket.on("github-fetch-branches", async (data, callback) => {
       try {
-        const { repo } = GitHubFetchBranchesSchema.parse(data)
+        const { repo } = GitHubFetchBranchesSchema.parse(data);
 
-        const branches = await listRemoteBranches({ repoFullName: repo })
-        callback({ success: true, branches: branches.map((b) => b.name) })
-        return
+        const branches = await listRemoteBranches({ repoFullName: repo });
+        callback({ success: true, branches: branches.map((b) => b.name) });
+        return;
       } catch (error) {
-        serverLogger.error('Error fetching branches:', error)
+        serverLogger.error("Error fetching branches:", error);
       }
-    })
+    });
 
     // Create a draft PR for a crowned run: commits, pushes, then creates a draft PR
-    socket.on('github-create-draft-pr', async (data, callback) => {
+    socket.on("github-create-draft-pr", async (data, callback) => {
       try {
-        const { taskRunId } = GitHubCreateDraftPrSchema.parse(data)
+        const { taskRunId } = GitHubCreateDraftPrSchema.parse(data);
 
         // Ensure worktree exists and we are on the correct branch
         const { run, task, worktreePath, branchName, baseBranch } =
-          await ensureRunWorktreeAndBranch(taskRunId, safeTeam)
+          await ensureRunWorktreeAndBranch(taskRunId, safeTeam);
 
         // Get GitHub token from keychain/Convex
-        const githubToken = await getGitHubTokenFromKeychain()
+        const githubToken = await getGitHubTokenFromKeychain();
         if (!githubToken) {
-          callback({ success: false, error: 'GitHub token is not configured' })
-          return
+          callback({ success: false, error: "GitHub token is not configured" });
+          return;
         }
 
         // Create PR title/body and commit message using stored task title when available
-        const title = task.pullRequestTitle || task.text || 'cmux changes'
+        const title = task.pullRequestTitle || task.text || "cmux changes";
         const truncatedTitle =
-          title.length > 72 ? `${title.slice(0, 69)}...` : title
-        const commitMessage = `${truncatedTitle}\n\nGenerated by cmux for task ${String(task._id)}.`
-        const body = task.text || `## Summary\n\n${title}`
+          title.length > 72 ? `${title.slice(0, 69)}...` : title;
+        const commitMessage = `${truncatedTitle}\n\nGenerated by cmux for task ${String(task._id)}.`;
+        const body = task.text || `## Summary\n\n${title}`;
 
         // Ensure on branch, commit, push, and create draft PR using local filesystem
-        const cwd = worktreePath
+        const cwd = worktreePath;
 
-        let prUrl: string | undefined
+        let prUrl: string | undefined;
 
         // 1) Fetch base (optional but helpful)
         try {
@@ -1520,16 +1532,16 @@ Please address the issue mentioned in the comment above.`
             cwd,
             env: { ...process.env },
             maxBuffer: 10 * 1024 * 1024,
-          })
+          });
         } catch (e: unknown) {
           const err = e as {
-            stdout?: string
-            stderr?: string
-            message?: string
-          }
+            stdout?: string;
+            stderr?: string;
+            message?: string;
+          };
           serverLogger.warn(
-            `[DraftPR] Fetch base failed (continuing): ${err?.stderr || err?.message || 'unknown'}`
-          )
+            `[DraftPR] Fetch base failed (continuing): ${err?.stderr || err?.message || "unknown"}`
+          );
         }
 
         // 2) Ensure we are on branchName without discarding local changes
@@ -1537,59 +1549,59 @@ Please address the issue mentioned in the comment above.`
           const { stdout: cbOut } = await execAsync(
             `git rev-parse --abbrev-ref HEAD`,
             { cwd, env: { ...process.env } }
-          )
-          const currentBranch = cbOut.trim()
+          );
+          const currentBranch = cbOut.trim();
           if (currentBranch !== branchName) {
             // Try create from current HEAD; if exists, just switch
             try {
               await execAsync(`git checkout -b ${branchName}`, {
                 cwd,
                 env: { ...process.env },
-              })
+              });
             } catch {
               await execAsync(`git checkout ${branchName}`, {
                 cwd,
                 env: { ...process.env },
-              })
+              });
             }
           }
         } catch (e: unknown) {
           const err = e as {
-            stdout?: string
-            stderr?: string
-            message?: string
-          }
+            stdout?: string;
+            stderr?: string;
+            message?: string;
+          };
           const msg =
-            err?.message || err?.stderr || err?.stdout || 'unknown error'
-          serverLogger.error(`[DraftPR] Failed at 'Ensure branch': ${msg}`)
+            err?.message || err?.stderr || err?.stdout || "unknown error";
+          serverLogger.error(`[DraftPR] Failed at 'Ensure branch': ${msg}`);
           callback({
             success: false,
             error: `Failed at 'Ensure branch': ${msg}`,
-          })
-          return
+          });
+          return;
         }
 
         // 3) Stage and commit changes (no-op safe)
         try {
-          await execAsync('git add -A', { cwd, env: { ...process.env } })
+          await execAsync("git add -A", { cwd, env: { ...process.env } });
           await execAsync(
             `git commit -m ${JSON.stringify(commitMessage)} || echo 'No changes to commit'`,
-            { cwd, env: { ...process.env }, shell: '/bin/bash' }
-          )
+            { cwd, env: { ...process.env }, shell: "/bin/bash" }
+          );
         } catch (e: unknown) {
           const err = e as {
-            stdout?: string
-            stderr?: string
-            message?: string
-          }
+            stdout?: string;
+            stderr?: string;
+            message?: string;
+          };
           const msg =
-            err?.message || err?.stderr || err?.stdout || 'unknown error'
-          serverLogger.error(`[DraftPR] Failed at 'Commit changes': ${msg}`)
+            err?.message || err?.stderr || err?.stdout || "unknown error";
+          serverLogger.error(`[DraftPR] Failed at 'Commit changes': ${msg}`);
           callback({
             success: false,
             error: `Failed at 'Commit changes': ${msg}`,
-          })
-          return
+          });
+          return;
         }
 
         // 4) If remote branch exists, pull --rebase to integrate updates
@@ -1597,28 +1609,28 @@ Please address the issue mentioned in the comment above.`
           const { stdout: lsOut } = await execAsync(
             `git ls-remote --heads origin ${branchName}`,
             { cwd, env: { ...process.env } }
-          )
-          if ((lsOut || '').trim().length > 0) {
+          );
+          if ((lsOut || "").trim().length > 0) {
             await execAsync(`git pull --rebase origin ${branchName}`, {
               cwd,
               env: { ...process.env },
               maxBuffer: 10 * 1024 * 1024,
-            })
+            });
           }
         } catch (e: unknown) {
           const err = e as {
-            stdout?: string
-            stderr?: string
-            message?: string
-          }
+            stdout?: string;
+            stderr?: string;
+            message?: string;
+          };
           const msg =
-            err?.message || err?.stderr || err?.stdout || 'unknown error'
-          serverLogger.error(`[DraftPR] Failed at 'Pull --rebase': ${msg}`)
+            err?.message || err?.stderr || err?.stdout || "unknown error";
+          serverLogger.error(`[DraftPR] Failed at 'Pull --rebase': ${msg}`);
           callback({
             success: false,
             error: `Failed at 'Pull --rebase': ${msg}`,
-          })
-          return
+          });
+          return;
         }
 
         // 5) Push branch (set upstream)
@@ -1627,21 +1639,21 @@ Please address the issue mentioned in the comment above.`
             cwd,
             env: { ...process.env },
             maxBuffer: 10 * 1024 * 1024,
-          })
+          });
         } catch (e: unknown) {
           const err = e as {
-            stdout?: string
-            stderr?: string
-            message?: string
-          }
+            stdout?: string;
+            stderr?: string;
+            message?: string;
+          };
           const msg =
-            err?.message || err?.stderr || err?.stdout || 'unknown error'
-          serverLogger.error(`[DraftPR] Failed at 'Push branch': ${msg}`)
+            err?.message || err?.stderr || err?.stdout || "unknown error";
+          serverLogger.error(`[DraftPR] Failed at 'Push branch': ${msg}`);
           callback({
             success: false,
             error: `Failed at 'Push branch': ${msg}`,
-          })
-          return
+          });
+          return;
         }
 
         // 6) Create draft PR
@@ -1650,8 +1662,8 @@ Please address the issue mentioned in the comment above.`
           const tmpBodyPath = path.join(
             os.tmpdir(),
             `cmux_pr_body_${Date.now()}_${Math.random().toString(36).slice(2)}.md`
-          )
-          await fs.writeFile(tmpBodyPath, body, 'utf8')
+          );
+          await fs.writeFile(tmpBodyPath, body, "utf8");
 
           const { stdout, stderr } = await execAsync(
             `gh pr create --draft --title ${JSON.stringify(
@@ -1664,30 +1676,30 @@ Please address the issue mentioned in the comment above.`
               env: { ...process.env, GH_TOKEN: githubToken },
               maxBuffer: 10 * 1024 * 1024,
             }
-          )
-          const out = (stdout || stderr || '').trim()
-          const match = out.match(/https:\/\/github\.com\/[^\s]+/)
-          prUrl = match ? match[0] : out
+          );
+          const out = (stdout || stderr || "").trim();
+          const match = out.match(/https:\/\/github\.com\/[^\s]+/);
+          prUrl = match ? match[0] : out;
           // Clean up temp file
           try {
-            await fs.unlink(tmpBodyPath)
+            await fs.unlink(tmpBodyPath);
           } catch (e) {
-            serverLogger.error('Error cleaning up temp file:', e)
+            serverLogger.error("Error cleaning up temp file:", e);
           }
         } catch (e: unknown) {
           const err = e as {
-            stdout?: string
-            stderr?: string
-            message?: string
-          }
+            stdout?: string;
+            stderr?: string;
+            message?: string;
+          };
           const msg =
-            err?.message || err?.stderr || err?.stdout || 'unknown error'
-          serverLogger.error(`[DraftPR] Failed at 'Create draft PR': ${msg}`)
+            err?.message || err?.stderr || err?.stdout || "unknown error";
+          serverLogger.error(`[DraftPR] Failed at 'Create draft PR': ${msg}`);
           callback({
             success: false,
             error: `Failed at 'Create draft PR': ${msg}`,
-          })
-          return
+          });
+          return;
         }
 
         if (prUrl) {
@@ -1696,65 +1708,65 @@ Please address the issue mentioned in the comment above.`
             id: run._id,
             pullRequestUrl: prUrl,
             isDraft: true,
-          })
+          });
           // Update task merge status to draft PR
           await getConvex().mutation(api.tasks.updateMergeStatus, {
             teamSlugOrId: safeTeam,
             id: task._id,
-            mergeStatus: 'pr_draft',
-          })
+            mergeStatus: "pr_draft",
+          });
         }
 
-        callback({ success: true, url: prUrl })
+        callback({ success: true, url: prUrl });
       } catch (error) {
-        serverLogger.error('Error creating draft PR:', error)
+        serverLogger.error("Error creating draft PR:", error);
         callback({
           success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        })
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
       }
-    })
+    });
 
     // Open PR: create a non-draft PR if missing, or mark draft PR as ready
-    socket.on('github-open-pr', async (data, callback) => {
+    socket.on("github-open-pr", async (data, callback) => {
       try {
-        const { taskRunId } = GitHubCreateDraftPrSchema.parse(data)
+        const { taskRunId } = GitHubCreateDraftPrSchema.parse(data);
 
         const { run, task, worktreePath, branchName, baseBranch } =
-          await ensureRunWorktreeAndBranch(taskRunId, safeTeam)
+          await ensureRunWorktreeAndBranch(taskRunId, safeTeam);
 
-        const githubToken = await getGitHubTokenFromKeychain()
+        const githubToken = await getGitHubTokenFromKeychain();
         if (!githubToken) {
-          callback({ success: false, error: 'GitHub token is not configured' })
-          return
+          callback({ success: false, error: "GitHub token is not configured" });
+          return;
         }
 
-        const title = task.pullRequestTitle || task.text || 'cmux changes'
+        const title = task.pullRequestTitle || task.text || "cmux changes";
         const truncatedTitle =
-          title.length > 72 ? `${title.slice(0, 69)}...` : title
-        const commitMessage = `${truncatedTitle}\n\nGenerated by cmux for task ${String(task._id)}.`
-        const body = task.text || `## Summary\n\n${title}`
+          title.length > 72 ? `${title.slice(0, 69)}...` : title;
+        const commitMessage = `${truncatedTitle}\n\nGenerated by cmux for task ${String(task._id)}.`;
+        const body = task.text || `## Summary\n\n${title}`;
 
-        const cwd = worktreePath
-        const repoFullNameOpen = task.projectFullName || '' // e.g. owner/name
-        const [owner, repo] = repoFullNameOpen.split('/')
+        const cwd = worktreePath;
+        const repoFullNameOpen = task.projectFullName || ""; // e.g. owner/name
+        const [owner, repo] = repoFullNameOpen.split("/");
 
         // Stage/commit/push branch, similar to draft flow, but tolerant to no-op
         try {
-          await execAsync('git add -A', { cwd, env: { ...process.env } })
+          await execAsync("git add -A", { cwd, env: { ...process.env } });
           await execAsync(
             `git commit -m ${JSON.stringify(commitMessage)} || echo 'No changes to commit'`,
-            { cwd, env: { ...process.env }, shell: '/bin/bash' }
-          )
+            { cwd, env: { ...process.env }, shell: "/bin/bash" }
+          );
         } catch (e: unknown) {
           const err = e as {
-            stdout?: string
-            stderr?: string
-            message?: string
-          }
+            stdout?: string;
+            stderr?: string;
+            message?: string;
+          };
           const msg =
-            err?.message || err?.stderr || err?.stdout || 'unknown error'
-          serverLogger.warn(`[OpenPR] Commit step warning: ${msg}`)
+            err?.message || err?.stderr || err?.stdout || "unknown error";
+          serverLogger.warn(`[OpenPR] Commit step warning: ${msg}`);
         }
 
         try {
@@ -1762,16 +1774,16 @@ Please address the issue mentioned in the comment above.`
             cwd,
             env: { ...process.env },
             maxBuffer: 10 * 1024 * 1024,
-          })
+          });
         } catch (e: unknown) {
           const err = e as {
-            stdout?: string
-            stderr?: string
-            message?: string
-          }
+            stdout?: string;
+            stderr?: string;
+            message?: string;
+          };
           const msg =
-            err?.message || err?.stderr || err?.stdout || 'unknown error'
-          serverLogger.warn(`[OpenPR] Push warning: ${msg}`)
+            err?.message || err?.stderr || err?.stdout || "unknown error";
+          serverLogger.warn(`[OpenPR] Push warning: ${msg}`);
         }
 
         // PR resolution via helpers
@@ -1779,28 +1791,28 @@ Please address the issue mentioned in the comment above.`
           owner,
           repo,
           branchName,
-          tokenPrefix: githubToken ? githubToken.substring(0, 10) : 'NO_TOKEN',
-        })
+          tokenPrefix: githubToken ? githubToken.substring(0, 10) : "NO_TOKEN",
+        });
         const initialBasic =
           owner && repo
             ? await fetchPrByHead(githubToken, owner, repo, owner, branchName)
-            : null
+            : null;
         serverLogger.info(`[OpenPR] fetchPrByHead result:`, {
           found: !!initialBasic,
           number: initialBasic?.number,
           draft: initialBasic?.draft,
           state: initialBasic?.state,
-        })
+        });
 
-        let finalUrl: string | undefined
-        let finalNumber: number | undefined
-        let finalState: string | undefined // GitHub state string
-        let finalIsDraft: boolean | undefined
+        let finalUrl: string | undefined;
+        let finalNumber: number | undefined;
+        let finalState: string | undefined; // GitHub state string
+        let finalIsDraft: boolean | undefined;
 
         if (!initialBasic) {
           if (!owner || !repo) {
-            callback({ success: false, error: 'Unknown repo for task' })
-            return
+            callback({ success: false, error: "Unknown repo for task" });
+            return;
           }
           try {
             const created = await createReadyPr(
@@ -1811,31 +1823,31 @@ Please address the issue mentioned in the comment above.`
               branchName,
               baseBranch,
               body
-            )
-            finalUrl = created.html_url
-            finalNumber = created.number
-            finalState = created.state
-            finalIsDraft = !!created.draft
+            );
+            finalUrl = created.html_url;
+            finalNumber = created.number;
+            finalState = created.state;
+            finalIsDraft = !!created.draft;
           } catch (e: unknown) {
-            const msg = e instanceof Error ? e.message : String(e)
+            const msg = e instanceof Error ? e.message : String(e);
             if (!/already exists/i.test(msg)) {
-              serverLogger.error(`[OpenPR] Failed creating PR via API: ${msg}`)
+              serverLogger.error(`[OpenPR] Failed creating PR via API: ${msg}`);
               callback({
                 success: false,
                 error: `Failed to create PR: ${msg}`,
-              })
-              return
+              });
+              return;
             }
           }
           const latest =
             owner && repo
               ? await fetchPrByHead(githubToken, owner, repo, owner, branchName)
-              : null
+              : null;
           if (latest) {
-            finalUrl = latest.html_url
-            finalNumber = latest.number
-            finalState = latest.state
-            finalIsDraft = !!latest.draft
+            finalUrl = latest.html_url;
+            finalNumber = latest.number;
+            finalState = latest.state;
+            finalIsDraft = !!latest.draft;
           }
         } else if (initialBasic.draft) {
           try {
@@ -1847,53 +1859,53 @@ Please address the issue mentioned in the comment above.`
                 number: initialBasic.number,
                 tokenPrefix: githubToken
                   ? githubToken.substring(0, 10)
-                  : 'NO_TOKEN',
+                  : "NO_TOKEN",
               }
-            )
-            await markPrReady(githubToken, owner!, repo!, initialBasic.number)
+            );
+            await markPrReady(githubToken, owner!, repo!, initialBasic.number);
             serverLogger.info(
               `[OpenPR] Successfully marked PR #${initialBasic.number} as ready for review`
-            )
+            );
           } catch (e: unknown) {
-            const errorMessage = e instanceof Error ? e.message : String(e)
+            const errorMessage = e instanceof Error ? e.message : String(e);
             serverLogger.error(
               `[OpenPR] Failed to mark PR #${initialBasic.number} as ready: ${errorMessage}`
-            )
+            );
 
             // If the PR wasn't found or there's a permission issue, fail the operation
             if (
-              errorMessage.includes('not found') ||
-              errorMessage.includes('404')
+              errorMessage.includes("not found") ||
+              errorMessage.includes("404")
             ) {
               callback({
                 success: false,
                 error: `Pull request #${initialBasic.number} not found. It may have been deleted or you may not have access.`,
-              })
-              return
+              });
+              return;
             } else if (
-              errorMessage.includes('Permission denied') ||
-              errorMessage.includes('403')
+              errorMessage.includes("Permission denied") ||
+              errorMessage.includes("403")
             ) {
               callback({
                 success: false,
                 error: `Permission denied. Please check that your GitHub token has the required permissions.`,
-              })
-              return
+              });
+              return;
             } else if (
-              errorMessage.includes('Authentication failed') ||
-              errorMessage.includes('401')
+              errorMessage.includes("Authentication failed") ||
+              errorMessage.includes("401")
             ) {
               callback({
                 success: false,
                 error: `Authentication failed. Please check that your GitHub token is valid.`,
-              })
-              return
+              });
+              return;
             }
 
             // For other errors, log but continue (e.g., if PR is already ready)
             serverLogger.warn(
               `[OpenPR] Continuing despite error: ${errorMessage}`
-            )
+            );
           }
           const latest = await fetchPrByHead(
             githubToken,
@@ -1901,21 +1913,21 @@ Please address the issue mentioned in the comment above.`
             repo!,
             owner!,
             branchName
-          )
+          );
           if (latest) {
-            finalUrl = latest.html_url
-            finalNumber = latest.number
-            finalState = latest.state
-            finalIsDraft = !!latest.draft
+            finalUrl = latest.html_url;
+            finalNumber = latest.number;
+            finalState = latest.state;
+            finalIsDraft = !!latest.draft;
           }
         } else {
           // Exists but not draft; if closed, attempt reopen
-          if ((initialBasic.state || '').toUpperCase() === 'CLOSED') {
+          if ((initialBasic.state || "").toUpperCase() === "CLOSED") {
             try {
-              await reopenPr(githubToken, owner!, repo!, initialBasic.number)
+              await reopenPr(githubToken, owner!, repo!, initialBasic.number);
             } catch (e: unknown) {
-              const msg = e instanceof Error ? e.message : String(e)
-              serverLogger.warn(`[OpenPR] Failed to reopen PR via API: ${msg}`)
+              const msg = e instanceof Error ? e.message : String(e);
+              serverLogger.warn(`[OpenPR] Failed to reopen PR via API: ${msg}`);
             }
           }
           // Reflect latest state
@@ -1925,12 +1937,12 @@ Please address the issue mentioned in the comment above.`
             repo!,
             owner!,
             branchName
-          )
+          );
           if (latest) {
-            finalUrl = latest.html_url
-            finalNumber = latest.number
-            finalState = latest.state
-            finalIsDraft = !!latest.draft
+            finalUrl = latest.html_url;
+            finalNumber = latest.number;
+            finalState = latest.state;
+            finalIsDraft = !!latest.draft;
           }
         }
 
@@ -1939,23 +1951,23 @@ Please address the issue mentioned in the comment above.`
           s?: string,
           isDraft?: boolean,
           merged?: boolean
-        ): 'open' | 'draft' | 'merged' | 'closed' | 'unknown' => {
-          if (merged) return 'merged'
-          if (isDraft) return 'draft'
-          switch ((s || '').toUpperCase()) {
-            case 'OPEN':
-              return 'open'
-            case 'MERGED':
-              return 'merged'
-            case 'CLOSED':
-              return 'closed'
+        ): "open" | "draft" | "merged" | "closed" | "unknown" => {
+          if (merged) return "merged";
+          if (isDraft) return "draft";
+          switch ((s || "").toUpperCase()) {
+            case "OPEN":
+              return "open";
+            case "MERGED":
+              return "merged";
+            case "CLOSED":
+              return "closed";
             default:
-              return 'unknown'
+              return "unknown";
           }
-        }
+        };
 
         // Determine merged via detail
-        let merged = false
+        let merged = false;
         if (owner && repo && finalNumber) {
           try {
             const detail = await fetchPrDetail(
@@ -1963,10 +1975,10 @@ Please address the issue mentioned in the comment above.`
               owner,
               repo,
               finalNumber
-            )
-            merged = !!detail.merged_at
+            );
+            merged = !!detail.merged_at;
           } catch (e) {
-            serverLogger.error('Error fetching PR detail:', e)
+            serverLogger.error("Error fetching PR detail:", e);
           }
         }
 
@@ -1975,100 +1987,100 @@ Please address the issue mentioned in the comment above.`
           id: run._id,
           state: finalUrl
             ? stateMap(finalState, finalIsDraft, merged)
-            : ('none' as const),
+            : ("none" as const),
           isDraft: finalIsDraft,
           number: finalNumber,
           url: finalUrl,
-        })
+        });
 
         // Update task merge status based on PR state
         const prState = finalUrl
           ? stateMap(finalState, finalIsDraft, merged)
-          : 'none'
+          : "none";
         let taskMergeStatus:
-          | 'none'
-          | 'pr_draft'
-          | 'pr_open'
-          | 'pr_merged'
-          | 'pr_closed' = 'none'
+          | "none"
+          | "pr_draft"
+          | "pr_open"
+          | "pr_merged"
+          | "pr_closed" = "none";
         switch (prState) {
-          case 'draft':
-            taskMergeStatus = 'pr_draft'
-            break
-          case 'open':
-            taskMergeStatus = 'pr_open'
-            break
-          case 'merged':
-            taskMergeStatus = 'pr_merged'
-            break
-          case 'closed':
-            taskMergeStatus = 'pr_closed'
-            break
+          case "draft":
+            taskMergeStatus = "pr_draft";
+            break;
+          case "open":
+            taskMergeStatus = "pr_open";
+            break;
+          case "merged":
+            taskMergeStatus = "pr_merged";
+            break;
+          case "closed":
+            taskMergeStatus = "pr_closed";
+            break;
         }
-        if (taskMergeStatus !== 'none') {
+        if (taskMergeStatus !== "none") {
           await getConvex().mutation(api.tasks.updateMergeStatus, {
             teamSlugOrId: safeTeam,
             id: task._id,
             mergeStatus: taskMergeStatus,
-          })
+          });
         }
 
         callback({
           success: true,
           url: finalUrl,
-          state: finalUrl ? stateMap(finalState, finalIsDraft, merged) : 'none',
-        })
+          state: finalUrl ? stateMap(finalState, finalIsDraft, merged) : "none",
+        });
       } catch (error) {
-        serverLogger.error('Error opening PR:', error)
+        serverLogger.error("Error opening PR:", error);
         callback({
           success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        })
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
       }
-    })
+    });
 
-    socket.on('check-provider-status', async (callback) => {
+    socket.on("check-provider-status", async (callback) => {
       try {
-        const status = await checkAllProvidersStatus()
-        callback({ success: true, ...status })
+        const status = await checkAllProvidersStatus();
+        callback({ success: true, ...status });
       } catch (error) {
-        serverLogger.error('Error checking provider status:', error)
+        serverLogger.error("Error checking provider status:", error);
         callback({
           success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        })
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
       }
-    })
+    });
 
-    socket.on('archive-task', async (data, callback) => {
+    socket.on("archive-task", async (data, callback) => {
       try {
-        const { taskId } = ArchiveTaskSchema.parse(data)
+        const { taskId } = ArchiveTaskSchema.parse(data);
 
         // Stop/pause all containers via helper (handles querying + logging)
-        const results = await stopContainersForRuns(taskId, safeTeam)
+        const results = await stopContainersForRuns(taskId, safeTeam);
 
         // Log summary
-        const successful = results.filter((r) => r.success).length
-        const failed = results.filter((r) => !r.success).length
+        const successful = results.filter((r) => r.success).length;
+        const failed = results.filter((r) => !r.success).length;
 
         if (failed > 0) {
           serverLogger.warn(
             `Archived task ${taskId}: ${successful} containers stopped, ${failed} failed`
-          )
+          );
         } else {
           serverLogger.info(
             `Successfully archived task ${taskId}: all ${successful} containers stopped`
-          )
+          );
         }
 
-        callback({ success: true })
+        callback({ success: true });
       } catch (error) {
-        serverLogger.error('Error archiving task:', error)
+        serverLogger.error("Error archiving task:", error);
         callback({
           success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        })
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
       }
-    })
-  })
+    });
+  });
 }

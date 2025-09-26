@@ -35,11 +35,11 @@ import { cpus, platform, totalmem } from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { Server, type Namespace, type Socket } from "socket.io";
-import { checkDockerReadiness } from "./checkDockerReadiness.js";
-import { detectTerminalIdle } from "./detectTerminalIdle.js";
-import { runWorkerExec } from "./execRunner.js";
-import { FileWatcher, computeGitDiff, getFileWithDiff } from "./fileWatcher.js";
-import { log } from "./logger.js";
+import { checkDockerReadiness } from "./checkDockerReadiness";
+import { detectTerminalIdle } from "./detectTerminalIdle";
+import { runWorkerExec } from "./execRunner";
+import { FileWatcher, computeGitDiff, getFileWithDiff } from "./fileWatcher";
+import { log } from "./logger";
 
 const execAsync = promisify(exec);
 
@@ -1023,31 +1023,38 @@ async function createTerminal(
   log("INFO", `Looking for agent config: ${options.agentModel}`, {
     agentModel: options.agentModel,
     taskRunId: options.taskRunId,
-    availableConfigs: AGENT_CONFIGS.map(c => c.name).slice(0, 5), // Log first 5 for debugging
+    availableConfigs: AGENT_CONFIGS.map((c) => c.name).slice(0, 5), // Log first 5 for debugging
   });
 
   // if missing need to return early
   if (!agentConfig) {
     log("ERROR", `Agent config not found for ${options.agentModel}`, {
       agentModel: options.agentModel,
-      availableConfigs: AGENT_CONFIGS.map(c => c.name),
+      availableConfigs: AGENT_CONFIGS.map((c) => c.name),
     });
     return;
   }
 
   if (options.taskRunId && agentConfig?.completionDetector) {
     try {
-      log("INFO", `Setting up completion detector for task ${options.taskRunId}`, {
-        taskRunId: options.taskRunId,
-        agentModel: options.agentModel,
-        hasDetector: !!agentConfig.completionDetector,
-      });
-      
+      log(
+        "INFO",
+        `Setting up completion detector for task ${options.taskRunId}`,
+        {
+          taskRunId: options.taskRunId,
+          agentModel: options.agentModel,
+          hasDetector: !!agentConfig.completionDetector,
+        }
+      );
+
       agentConfig
         .completionDetector(options.taskRunId)
         .then(async () => {
-          log("INFO", `Completion detector resolved for task ${options.taskRunId}`);
-          
+          log(
+            "INFO",
+            `Completion detector resolved for task ${options.taskRunId}`
+          );
+
           emitToMainServer("worker:task-complete", {
             workerId: WORKER_ID,
             terminalId,
@@ -1076,12 +1083,12 @@ async function createTerminal(
               elapsedMs: Date.now() - processStartTime,
               exitCode: storedExitCode ?? 0,
             });
-            
+
             log("INFO", `Crown workflow completed for ${options.taskRunId}`, {
               taskRunId: options.taskRunId,
               agentModel: options.agentModel,
             });
-            
+
             // Clean up stored exit code
             if (options.taskRunId) {
               processExitCodes.delete(options.taskRunId);

@@ -16,10 +16,10 @@ import {
   generateNewBranchName,
   generateUniqueBranchNames,
   generateUniqueBranchNamesFromTitle,
-} from "./utils/branchNameGenerator.js";
-import { getConvex } from "./utils/convexClient.js";
-import { retryOnOptimisticConcurrency } from "./utils/convexRetry.js";
-import { serverLogger } from "./utils/fileLogger.js";
+} from "./utils/branchNameGenerator";
+import { getConvex } from "./utils/convexClient";
+import { retryOnOptimisticConcurrency } from "./utils/convexRetry";
+import { serverLogger } from "./utils/fileLogger";
 import {
   getAuthHeaderJson,
   getAuthToken,
@@ -339,7 +339,7 @@ export async function spawnAgent(
         branch: options.branch,
         newBranch,
         environmentId: options.environmentId,
-        taskRunJwt, // Pass the JWT token for crown workflow
+        taskRunJwt,
       });
 
       worktreePath = "/root/workspace";
