@@ -14,6 +14,13 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 // Track the actual git repository path (may be different from WORKSPACE_ROOT)
 let GIT_REPO_PATH: string | null = null;
 
+type ExecError = Error & {
+  stdout?: string | Buffer;
+  stderr?: string | Buffer;
+  code?: number | string;
+  status?: number;
+};
+
 type WorkerRunContext = {
   token: string;
   prompt: string;
@@ -81,6 +88,19 @@ type WorkerAllRunsCompleteResponse = {
 const taskRunContexts = new Map<string, WorkerRunContext>();
 const branchDiffCache = new Map<string, string>();
 
+function toUtf8String(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (Buffer.isBuffer(value)) {
+    return value.toString("utf8");
+  }
+  if (value === undefined || value === null) {
+    return "";
+  }
+  return String(value);
+}
+
 function getConvexBaseUrl(override?: string): string | null {
   const url = override ?? process.env.NEXT_PUBLIC_CONVEX_URL;
   if (!url) {
@@ -132,7 +152,7 @@ async function convexRequest<T>(
       return null;
     }
 
-    return (await response.json()) as T;
+    return await response.json();
   } catch (error) {
     log("ERROR", "Failed to reach crown endpoint", {
       url: fullUrl,
@@ -222,13 +242,7 @@ async function runGitCommand(
       cwd: gitPath,
       maxBuffer: 20 * 1024 * 1024,
     });
-    const stdoutValue = result.stdout as unknown;
-    const stdout =
-      typeof stdoutValue === "string"
-        ? stdoutValue
-        : Buffer.isBuffer(stdoutValue)
-          ? stdoutValue.toString("utf8")
-          : String(stdoutValue ?? "");
+    const stdout = toUtf8String(result.stdout);
     return { stdout };
   } catch (error) {
     log("ERROR", "Git command failed", { command, error });
@@ -363,11 +377,10 @@ async function collectDiffForRun(
 async function ensureBranchesAvailable(
   completedRuns: Array<{ id: string; newBranch: string | null }>,
   baseBranch: string,
-  maxAttempts = 10,
   localFallbackBranches: Set<string> = new Set()
 ): Promise<boolean> {
   const sanitizedBase = baseBranch || "main";
-  const attemptLimit = Math.min(maxAttempts, 3);
+  const attemptLimit = 3;
   for (let attempt = 0; attempt < attemptLimit; attempt += 1) {
     const baseOk = await fetchRemoteRef(sanitizedBase);
     log("INFO", "Ensuring branches available", {
@@ -462,44 +475,24 @@ async function runGitCommandSafe(
       cwd: gitPath,
       maxBuffer: 10 * 1024 * 1024,
     });
-    const stdoutValue = result.stdout as unknown;
-    const stderrValue = result.stderr as unknown;
-    const stdout =
-      typeof stdoutValue === "string"
-        ? stdoutValue
-        : Buffer.isBuffer(stdoutValue)
-          ? stdoutValue.toString("utf8")
-          : String(stdoutValue ?? "");
-    const stderr =
-      typeof stderrValue === "string"
-        ? stderrValue
-        : Buffer.isBuffer(stderrValue)
-          ? stderrValue.toString("utf8")
-          : String(stderrValue ?? "");
+    const stdout = toUtf8String(result.stdout);
+    const stderr = toUtf8String(result.stderr);
     return { stdout, stderr, exitCode: 0 };
   } catch (error) {
-    const execError = error as Error & {
-      stdout?: string | Buffer;
-      stderr?: string | Buffer;
-      code?: number | string;
-      status?: number;
-    };
-    const stdout =
-      typeof execError.stdout === "string"
-        ? execError.stdout
-        : Buffer.isBuffer(execError.stdout)
-          ? execError.stdout.toString("utf8")
-          : "";
-    const stderr =
-      typeof execError.stderr === "string"
-        ? execError.stderr
-        : Buffer.isBuffer(execError.stderr)
-          ? execError.stderr.toString("utf8")
-          : "";
+    const execError: ExecError =
+      error instanceof Error
+        ? error
+        : new Error(
+            typeof error === "string" ? error : "Unknown git command error"
+          );
+    const stdout = toUtf8String(execError.stdout);
+    const stderr = toUtf8String(execError.stderr);
     const exitCode =
       typeof execError.code === "number"
         ? execError.code
-        : (execError.status ?? 1);
+        : typeof execError.status === "number"
+          ? execError.status
+          : 1;
     const errorPayload = {
       command,
       message: execError.message,
@@ -812,7 +805,7 @@ function mapGhState(
     normalized === "closed" ||
     normalized === "merged"
   ) {
-    return normalized as "open" | "closed" | "merged";
+    return normalized;
   }
   return "unknown";
 }
@@ -1366,13 +1359,7 @@ export async function handleWorkerTaskCompletion(
 
         const branchesReady = await ensureBranchesAvailable(
           [{ id: candidate.runId, newBranch: candidate.newBranch }],
-          baseBranch,
-          3,
-          new Set(
-            candidate.newBranch && branchDiffCache.has(candidate.newBranch)
-              ? [candidate.newBranch]
-              : []
-          )
+          baseBranch
         );
         if (!branchesReady) {
           log("WARN", "Branches not ready for single-run crown; continuing", {

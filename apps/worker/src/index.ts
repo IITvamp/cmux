@@ -1019,13 +1019,6 @@ async function createTerminal(
   // Config-driven completion detector
   const agentConfig = AGENT_CONFIGS.find((c) => c.name === options.agentModel);
 
-  // Log what agent config we're looking for
-  log("INFO", `Looking for agent config: ${options.agentModel}`, {
-    agentModel: options.agentModel,
-    taskRunId: options.taskRunId,
-    availableConfigs: AGENT_CONFIGS.map((c) => c.name).slice(0, 5), // Log first 5 for debugging
-  });
-
   // if missing need to return early
   if (!agentConfig) {
     log("ERROR", `Agent config not found for ${options.agentModel}`, {
