@@ -54,19 +54,16 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
         agentName: this.config.agentName || "",
       },
       taskRunJwt: this.taskRunJwt,
-      environmentId: this.environmentId,
+      ...(this.environmentId ? { environmentId: this.environmentId } : {}),
+      ...(this.repoUrl && this.branch && this.newBranch
+        ? {
+            repoUrl: this.repoUrl,
+            branch: this.branch,
+            newBranch: this.newBranch,
+            depth: 1,
+          }
+        : {}),
     };
-
-    if (this.repoUrl) {
-      requestBody.repoUrl = this.repoUrl;
-      if (this.branch) {
-        requestBody.branch = this.branch;
-      }
-      if (this.newBranch) {
-        requestBody.newBranch = this.newBranch;
-      }
-      requestBody.depth = 1;
-    }
 
     const startRes = await postApiSandboxesStart({
       client: getWwwClient(),
