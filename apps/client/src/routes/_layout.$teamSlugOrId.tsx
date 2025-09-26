@@ -18,8 +18,7 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId")({
     const user = await stackClientApp.getUser();
     if (!user) {
       throw redirect({
-        to: "/handler/$",
-        params: { _splat: "sign-in" },
+        to: "/sign-in",
         search: {
           after_auth_return_to: location.pathname,
         },
