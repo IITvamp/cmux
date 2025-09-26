@@ -241,9 +241,7 @@ export const crownSummarize = httpAction(async (ctx, req) => {
   const jsonResult = await ensureJsonRequest(req);
   if (jsonResult instanceof Response) return jsonResult;
 
-  const validation = CrownSummarizationRequestSchema.safeParse(
-    jsonResult.json
-  );
+  const validation = CrownSummarizationRequestSchema.safeParse(jsonResult.json);
   if (!validation.success) {
     console.warn(
       "[convex.crown] Invalid summarization payload",
