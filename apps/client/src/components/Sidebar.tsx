@@ -63,22 +63,45 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
   const DEFAULT_WIDTH = 256;
   const MIN_WIDTH = 240;
   const MAX_WIDTH = 600;
+  const COLLAPSED_WIDTH = 12;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const containerLeftRef = useRef<number>(0);
   const rafIdRef = useRef<number | null>(null);
+  const previousWidthRef = useRef<number>(DEFAULT_WIDTH);
   const [width, setWidth] = useState<number>(() => {
-    const stored = localStorage.getItem("sidebarWidth");
+    if (typeof window === "undefined") {
+      return DEFAULT_WIDTH;
+    }
+    const stored = window.localStorage.getItem("sidebarWidth");
     const parsed = stored ? Number.parseInt(stored, 10) : DEFAULT_WIDTH;
     if (Number.isNaN(parsed)) return DEFAULT_WIDTH;
     return Math.min(Math.max(parsed, MIN_WIDTH), MAX_WIDTH);
+  });
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    return window.localStorage.getItem("sidebarCollapsed") === "true";
   });
   const [isResizing, setIsResizing] = useState(false);
 
   const { expandTaskIds } = useExpandTasks();
 
   useEffect(() => {
-    localStorage.setItem("sidebarWidth", String(width));
+    if (typeof window === "undefined") return;
+    if (!isCollapsed) {
+      window.localStorage.setItem("sidebarWidth", String(width));
+    }
+  }, [width, isCollapsed]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("sidebarCollapsed", String(isCollapsed));
+  }, [isCollapsed]);
+
+  useEffect(() => {
+    previousWidthRef.current = width;
   }, [width]);
 
   const onMouseMove = useCallback((e: MouseEvent) => {
@@ -129,6 +152,9 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
 
   const startResizing = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
+      if (isCollapsed) {
+        return;
+      }
       e.preventDefault();
       setIsResizing(true);
       document.body.style.cursor = "col-resize";
@@ -151,7 +177,7 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
       window.addEventListener("mousemove", onMouseMove);
       window.addEventListener("mouseup", stopResizing);
     },
-    [onMouseMove, stopResizing]
+    [isCollapsed, onMouseMove, stopResizing]
   );
 
   useEffect(() => {
@@ -163,130 +189,165 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
 
   const resetWidth = useCallback(() => setWidth(DEFAULT_WIDTH), []);
 
+  const collapseSidebar = useCallback(() => {
+    previousWidthRef.current = width;
+    setIsCollapsed(true);
+  }, [width]);
+
+  const expandSidebar = useCallback(() => {
+    const restoredWidth = previousWidthRef.current ?? DEFAULT_WIDTH;
+    const clampedWidth = Math.min(
+      Math.max(restoredWidth, MIN_WIDTH),
+      MAX_WIDTH
+    );
+    setWidth(clampedWidth);
+    setIsCollapsed(false);
+  }, []);
+
   return (
     <div
       ref={containerRef}
-      className="relative bg-neutral-50 dark:bg-black flex flex-col shrink-0 h-dvh grow"
+      className="relative group bg-neutral-50 dark:bg-black flex flex-col shrink-0 h-dvh grow"
       style={{
-        width: `${width}px`,
-        minWidth: `${width}px`,
-        maxWidth: `${width}px`,
+        width: `${isCollapsed ? COLLAPSED_WIDTH : width}px`,
+        minWidth: `${isCollapsed ? COLLAPSED_WIDTH : width}px`,
+        maxWidth: `${isCollapsed ? COLLAPSED_WIDTH : width}px`,
         userSelect: isResizing ? ("none" as const) : undefined,
+        overflow: isCollapsed ? "visible" : undefined,
       }}
     >
-      <div
-        className={`h-[38px] flex items-center pr-1.5 shrink-0 ${isElectron ? "" : "pl-3"}`}
-        style={{ WebkitAppRegion: "drag" } as CSSProperties}
-      >
-        {isElectron && <div className="w-[80px]"></div>}
-        <Link
-          to="/$teamSlugOrId/dashboard"
-          params={{ teamSlugOrId }}
-          activeOptions={{ exact: true }}
-          className="flex items-center gap-2 select-none cursor-pointer"
-          style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
-        >
-          {/* <Terminals */}
-          <CmuxLogo height={32} />
-        </Link>
-        <div className="grow"></div>
-        <Link
-          to="/$teamSlugOrId/dashboard"
-          params={{ teamSlugOrId }}
-          activeOptions={{ exact: true }}
-          className="w-[25px] h-[25px] border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-900 rounded-lg flex items-center justify-center transition-colors cursor-default"
-          title="New task"
-          style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
-        >
-          <Plus
-            className="w-4 h-4 text-neutral-700 dark:text-neutral-300"
-            aria-hidden="true"
-          />
-        </Link>
-      </div>
-      <nav className="grow flex flex-col overflow-hidden">
-        <div className="flex-1 overflow-y-auto pb-8">
-          <ul className="flex flex-col gap-px">
-            {navItems.map((item) => (
-              <li key={item.label}>
-                <SidebarNavLink
-                  to={item.to}
+      {!isCollapsed && (
+        <>
+          <div
+            className={`h-[38px] flex items-center pr-1.5 shrink-0 ${
+              isElectron ? "" : "pl-3"
+            }`}
+            style={{ WebkitAppRegion: "drag" } as CSSProperties}
+          >
+            {isElectron && <div className="w-[80px]"></div>}
+            <Link
+              to="/$teamSlugOrId/dashboard"
+              params={{ teamSlugOrId }}
+              activeOptions={{ exact: true }}
+              className="flex items-center gap-2 select-none cursor-pointer"
+              style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+            >
+              {/* <Terminals */}
+              <CmuxLogo height={32} />
+            </Link>
+            <div className="grow"></div>
+            <Link
+              to="/$teamSlugOrId/dashboard"
+              params={{ teamSlugOrId }}
+              activeOptions={{ exact: true }}
+              className="w-[25px] h-[25px] border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-900 rounded-lg flex items-center justify-center transition-colors cursor-default"
+              title="New task"
+              style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+            >
+              <Plus
+                className="w-4 h-4 text-neutral-700 dark:text-neutral-300"
+                aria-hidden="true"
+              />
+            </Link>
+          </div>
+          <nav className="grow flex flex-col overflow-hidden">
+            <div className="flex-1 overflow-y-auto pb-8">
+              <ul className="flex flex-col gap-px">
+                {navItems.map((item) => (
+                  <li key={item.label}>
+                    <SidebarNavLink
+                      to={item.to}
+                      params={{ teamSlugOrId }}
+                      search={item.search}
+                      icon={item.icon}
+                      exact={item.exact}
+                      label={item.label}
+                    />
+                  </li>
+                ))}
+              </ul>
+
+              <div className="mt-4 flex flex-col">
+                <SidebarSectionLink
+                  to="/$teamSlugOrId/prs"
                   params={{ teamSlugOrId }}
-                  search={item.search}
-                  icon={item.icon}
-                  exact={item.exact}
-                  label={item.label}
-                />
-              </li>
-            ))}
-          </ul>
+                  exact
+                >
+                  Pull requests
+                </SidebarSectionLink>
+                <div className="ml-2 pt-px">
+                  <SidebarPullRequestList teamSlugOrId={teamSlugOrId} />
+                </div>
+              </div>
 
-          <div className="mt-4 flex flex-col">
-            <SidebarSectionLink
-              to="/$teamSlugOrId/prs"
-              params={{ teamSlugOrId }}
-              exact
-            >
-              Pull requests
-            </SidebarSectionLink>
-            <div className="ml-2 pt-px">
-              <SidebarPullRequestList teamSlugOrId={teamSlugOrId} />
+              <div className="mt-2 flex flex-col gap-0.5">
+                <SidebarSectionLink
+                  to="/$teamSlugOrId/workspaces"
+                  params={{ teamSlugOrId }}
+                  exact
+                >
+                  Workspaces
+                </SidebarSectionLink>
+              </div>
+
+              <div className="ml-2 pt-px">
+                <div className="space-y-px">
+                  {tasks === undefined ? (
+                    <TaskTreeSkeleton count={5} />
+                  ) : tasks && tasks.length > 0 ? (
+                    tasks.map((task) => (
+                      <TaskTree
+                        key={task._id}
+                        task={task}
+                        defaultExpanded={
+                          expandTaskIds?.includes(task._id) ?? false
+                        }
+                        teamSlugOrId={teamSlugOrId}
+                      />
+                    ))
+                  ) : (
+                    <p className="px-2 py-1.5 text-xs text-center text-neutral-500 dark:text-neutral-400 select-none">
+                      No recent tasks
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
+          </nav>
 
-          <div className="mt-2 flex flex-col gap-0.5">
-            <SidebarSectionLink
-              to="/$teamSlugOrId/workspaces"
-              params={{ teamSlugOrId }}
-              exact
-            >
-              Workspaces
-            </SidebarSectionLink>
-          </div>
+          {/* Resize handle */}
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            title="Drag to resize"
+            onMouseDown={startResizing}
+            onDoubleClick={resetWidth}
+            className="absolute top-0 right-0 h-full cursor-col-resize"
+            style={
+              {
+                // Invisible, but with a comfortable hit area
+                width: "14px",
+                transform: "translateX(13px)",
+                // marginRight: "-5px",
+                background: "transparent",
+                // background: "red",
+                zIndex: "var(--z-sidebar-resize-handle)",
+              } as CSSProperties
+            }
+          />
+        </>
+      )}
 
-          <div className="ml-2 pt-px">
-            <div className="space-y-px">
-              {tasks === undefined ? (
-                <TaskTreeSkeleton count={5} />
-              ) : tasks && tasks.length > 0 ? (
-                tasks.map((task) => (
-                  <TaskTree
-                    key={task._id}
-                    task={task}
-                    defaultExpanded={expandTaskIds?.includes(task._id) ?? false}
-                    teamSlugOrId={teamSlugOrId}
-                  />
-                ))
-              ) : (
-                <p className="px-2 py-1.5 text-xs text-center text-neutral-500 dark:text-neutral-400 select-none">
-                  No recent tasks
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      {/* Resize handle */}
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        title="Drag to resize"
-        onMouseDown={startResizing}
-        onDoubleClick={resetWidth}
-        className="absolute top-0 right-0 h-full cursor-col-resize"
-        style={
-          {
-            // Invisible, but with a comfortable hit area
-            width: "14px",
-            transform: "translateX(13px)",
-            // marginRight: "-5px",
-            background: "transparent",
-            // background: "red",
-            zIndex: "var(--z-sidebar-resize-handle)",
-          } as CSSProperties
-        }
-      />
+      <button
+        type="button"
+        onClick={isCollapsed ? expandSidebar : collapseSidebar}
+        aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        className={`absolute top-1/2 -right-3 flex h-10 w-6 -translate-y-1/2 items-center justify-center rounded-r-md border border-neutral-200 bg-neutral-100 text-neutral-700 shadow transition-all hover:bg-neutral-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-400 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800 dark:focus-visible:outline-neutral-600 ${
+          isCollapsed ? "opacity-0 group-hover:opacity-100 focus-visible:opacity-100" : ""
+        }`}
+      >
+        {isCollapsed ? ">" : "<"}
+      </button>
     </div>
   );
 }
