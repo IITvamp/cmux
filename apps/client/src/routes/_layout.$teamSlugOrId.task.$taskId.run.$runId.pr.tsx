@@ -1,12 +1,15 @@
 import { FloatingPane } from "@/components/floating-pane";
 import { PersistentWebView } from "@/components/persistent-webview";
+import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
+import { useSocket } from "@/contexts/socket/use-socket";
 import { getTaskRunPullRequestPersistKey } from "@/lib/persistent-webview-keys";
 import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { toast } from "sonner";
 import z from "zod";
 
 const paramsSchema = z.object({
@@ -70,13 +73,48 @@ function RunPullRequestPage() {
     return getTaskRunPullRequestPersistKey(runId);
   }, [runId]);
   const paneBorderRadius = 6;
+  const { socket, isConnected } = useSocket();
+  const [isMerging, setIsMerging] = useState(false);
+  const prIsOpen = selectedRun?.pullRequestState === "open";
+  const taskRunId = selectedRun?._id;
+  const canMerge = prIsOpen && hasUrl && Boolean(taskRunId);
+
+  const handleMerge = useCallback(
+    (method: MergeMethod) => {
+      if (!socket || !isConnected) {
+        toast.error("Socket not connected. Refresh or try again later.");
+        return;
+      }
+      if (!taskRunId || isMerging) {
+        return;
+      }
+      setIsMerging(true);
+      const toastId = toast.loading(`Merging PR (${method})...`);
+      socket.emit(
+        "github-merge-pr",
+        { taskRunId, method },
+        (resp: { success: boolean; url?: string; error?: string }) => {
+          setIsMerging(false);
+          if (resp.success) {
+            toast.success("PR merged", { id: toastId, description: resp.url });
+          } else {
+            toast.error("Failed to merge PR", {
+              id: toastId,
+              description: resp.error,
+            });
+          }
+        }
+      );
+    },
+    [socket, taskRunId, isMerging, isConnected]
+  );
 
   return (
     <FloatingPane>
       <div className="flex h-full min-h-0 flex-col relative isolate">
         <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
           {/* Header */}
-          <div className="border-b border-neutral-200 dark:border-neutral-800 px-4 py-3 flex items-center justify-between shrink-0">
+          <div className="border-b border-neutral-200 dark:border-neutral-800 px-4 py-3 flex items-center gap-2 shrink-0">
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
                 Pull Request
@@ -87,12 +125,19 @@ function RunPullRequestPage() {
                 </span>
               )}
             </div>
+            {canMerge && (
+              <MergeButton
+                onMerge={handleMerge}
+                isOpen
+                disabled={isMerging || !socket || !isConnected}
+              />
+            )}
             {hasUrl && (
               <a
                 href={pullRequestUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 ml-auto"
               >
                 Open in GitHub
                 <svg
