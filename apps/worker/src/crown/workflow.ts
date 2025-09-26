@@ -942,6 +942,10 @@ export function registerTaskRunContext(
   });
 }
 
+export function hasTaskRunContext(taskRunId: string): boolean {
+  return taskRunContexts.has(taskRunId);
+}
+
 export function clearTaskRunContext(taskRunId: string) {
   taskRunContexts.delete(taskRunId);
   log("INFO", "Cleared task run context", {

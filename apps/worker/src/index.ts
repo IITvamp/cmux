@@ -19,6 +19,7 @@ import { startAmpProxy } from "@cmux/shared/src/providers/amp/start-amp-proxy.ts
 import {
   registerTaskRunContext,
   handleWorkerTaskCompletion,
+  hasTaskRunContext,
 } from "./crown/workflow";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import * as xtermHeadless from "@xterm/headless";
@@ -1149,10 +1150,16 @@ async function createTerminal(
       args: spawnArgs.slice(0, 5), // Log first 5 args for debugging
     });
 
-    // Store exit code for later use by crown workflow
     if (options.taskRunId) {
-      processExitCodes.set(options.taskRunId, exitCode);
-      log("INFO", `Stored exit code ${exitCode} for task ${options.taskRunId}`);
+      if (hasTaskRunContext(options.taskRunId)) {
+        processExitCodes.set(options.taskRunId, exitCode);
+        log("INFO", `Stored exit code ${exitCode} for task ${options.taskRunId}`);
+      } else if (processExitCodes.delete(options.taskRunId)) {
+        log(
+          "INFO",
+          `Discarded exit code ${exitCode} for task ${options.taskRunId} after workflow cleanup`
+        );
+      }
     }
 
     // Still emit to main server for backwards compatibility/logging
