@@ -44,3 +44,7 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+Autumn leaves falling,
+Code compiles without fail,
+Joy in the console.
