@@ -6,6 +6,11 @@ import { ConvexError, v } from "convex/values";
 import { z } from "zod";
 import { env } from "../../_shared/convex-env";
 import { action } from "../_generated/server";
+import {
+  CrownEvaluationCandidateSchema,
+  buildEvaluationPrompt,
+  buildSummarizationPrompt,
+} from "@cmux/shared/crown/prompts";
 
 const MODEL_NAME = "claude-3-5-sonnet-20241022";
 
@@ -76,28 +81,48 @@ export async function performCrownSummarization(
 
 export const evaluate = action({
   args: {
-    prompt: v.string(),
+    taskText: v.string(),
+    candidates: v.array(
+      v.object({
+        runId: v.string(),
+        agentName: v.string(),
+        gitDiff: v.string(),
+      })
+    ),
     teamSlugOrId: v.string(),
   },
   handler: async (_ctx, args) => {
-    // Get the API key for this team
     const apiKey = env.ANTHROPIC_API_KEY;
 
-    // Perform the evaluation
-    return performCrownEvaluation(apiKey, args.prompt);
+    const parsedCandidates = args.candidates.map((candidate) =>
+      CrownEvaluationCandidateSchema.parse(candidate)
+    );
+    const prompt = buildEvaluationPrompt(args.taskText, parsedCandidates);
+
+    const result = await performCrownEvaluation(apiKey, prompt);
+
+    return {
+      ...result,
+      prompt,
+    };
   },
 });
 
 export const summarize = action({
   args: {
-    prompt: v.string(),
-    teamSlugOrId: v.string(),
+    taskText: v.string(),
+    gitDiff: v.string(),
+    teamSlugOrId: v.optional(v.string()),
   },
   handler: async (_ctx, args) => {
-    // Get the API key for this team
     const apiKey = env.ANTHROPIC_API_KEY;
+    const prompt = buildSummarizationPrompt(args.taskText, args.gitDiff);
 
-    // Perform the summarization
-    return performCrownSummarization(apiKey, args.prompt);
+    const result = await performCrownSummarization(apiKey, prompt);
+
+    return {
+      ...result,
+      prompt,
+    };
   },
 });

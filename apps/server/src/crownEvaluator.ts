@@ -1,5 +1,9 @@
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
+import {
+  buildEvaluationPrompt,
+  buildSummarizationPrompt,
+} from "@cmux/shared/crown/prompts";
 import * as fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -468,8 +472,10 @@ export async function evaluateCrown({
         });
         const originalRequest = task?.text || "";
 
-        // Summarization prompt
-        const summarizationPrompt = `You are an expert reviewer summarizing a pull request.\n\nGOAL\n- Explain succinctly what changed and why.\n- Call out areas the user should review carefully.\n- Provide a quick test plan to validate the changes.\n\nCONTEXT\n- User's original request:\n${originalRequest}\n- Relevant diffs (unified):\n${effectiveDiff || "<no code changes captured>"}\n\nINSTRUCTIONS\n- Base your summary strictly on the provided diffs and request.\n- Be specific about files and functions when possible.\n- Prefer clear bullet points over prose. Keep it under ~300 words.\n- If there are no code changes, say so explicitly and suggest next steps.\n\nOUTPUT FORMAT (Markdown)\n## PR Review Summary\n- What Changed: bullet list\n- Review Focus: bullet list (risks/edge cases)\n- Test Plan: bullet list of practical steps\n- Follow-ups: optional bullets if applicable\n`;
+        const summarizationPrompt = buildSummarizationPrompt(
+          originalRequest,
+          effectiveDiff
+        );
 
         serverLogger.info(
           `[CrownEvaluator] Generating PR summary via Anthropic (AI SDK)...`
@@ -477,16 +483,21 @@ export async function evaluateCrown({
 
         let commentText = "";
         try {
-          // Call the Convex action for summarization - API key is handled securely in Convex
           const result = await getConvex().action(
             api.crown.actions.summarize,
             // (api as any)["crown/actions"].summarize,
             {
-              prompt: summarizationPrompt,
+              taskText: originalRequest,
+              gitDiff: effectiveDiff,
               teamSlugOrId,
             }
           );
           commentText = result.summary;
+          if (result.prompt !== summarizationPrompt) {
+            serverLogger.debug(
+              "[CrownEvaluator] Summarization prompt differed between server and Convex"
+            );
+          }
         } catch (e) {
           serverLogger.error(
             `[CrownEvaluator] Failed to generate PR summary:`,
@@ -662,44 +673,25 @@ export async function evaluateCrown({
       })
     );
 
-    // Create structured data for the evaluation
-    const evaluationData = {
-      implementations: candidateData.map((candidate, idx) => ({
-        modelName: candidate.agentName,
-        gitDiff: candidate.gitDiff,
-        index: idx,
-      })),
-    };
+    const evaluationCandidates = candidateData.map((candidate) => ({
+      runId: candidate.runId,
+      agentName: candidate.agentName,
+      gitDiff: candidate.gitDiff,
+    }));
 
-    // Create evaluation prompt with structured output request
-    const evaluationPrompt = `You are evaluating code implementations from different AI models.
+    const taskText = task.text ?? "";
 
-Here are the implementations to evaluate:
-${JSON.stringify(evaluationData, null, 2)}
-
-NOTE: The git diffs shown contain only actual code changes. Lock files, build artifacts, and other non-essential files have been filtered out.
-
-Analyze these implementations and select the best one based on:
-1. Code quality and correctness
-2. Completeness of the solution
-3. Following best practices
-4. Actually having meaningful code changes (if one has no changes, prefer the one with changes)
-
-Respond with a JSON object containing:
-- "winner": the index (0-based) of the best implementation
-- "reason": a brief explanation of why this implementation was chosen
-
-Example response:
-{"winner": 0, "reason": "Model claude/sonnet-4 provided a more complete implementation with better error handling and cleaner code structure."}
-
-IMPORTANT: Respond ONLY with the JSON object, no other text.`;
+    const evaluationPromptForLogging = buildEvaluationPrompt(
+      taskText,
+      evaluationCandidates
+    );
 
     serverLogger.info(
-      `[CrownEvaluator] Evaluation prompt length: ${evaluationPrompt.length} characters`
+      `[CrownEvaluator] Evaluation prompt length: ${evaluationPromptForLogging.length} characters`
     );
 
     // Log prompt structure for debugging
-    const promptLines = evaluationPrompt.split("\n");
+    const promptLines = evaluationPromptForLogging.split("\n");
     serverLogger.info(
       `[CrownEvaluator] Prompt has ${promptLines.length} lines`
     );
@@ -723,9 +715,16 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
 
     // Use Convex action for evaluation - API key is handled securely in Convex
     const jsonResponse = await getConvex().action(api.crown.actions.evaluate, {
-      prompt: evaluationPrompt,
+      taskText,
+      candidates: evaluationCandidates,
       teamSlugOrId,
     });
+
+    if (jsonResponse.prompt !== evaluationPromptForLogging) {
+      serverLogger.debug(
+        "[CrownEvaluator] Evaluation prompt differed between server and Convex"
+      );
+    }
 
     if (
       typeof jsonResponse.winner !== "number" ||

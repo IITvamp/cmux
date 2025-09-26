@@ -248,6 +248,8 @@ export const workerFinalize = internalMutation({
     evaluationPrompt: v.string(),
     evaluationResponse: v.string(),
     candidateRunIds: v.array(v.id("taskRuns")),
+    summarizationPrompt: v.optional(v.string()),
+    summarizationResponse: v.optional(v.string()),
     pullRequest: v.optional(
       v.object({
         url: v.string(),
@@ -332,6 +334,12 @@ export const workerFinalize = internalMutation({
       candidateRunIds: args.candidateRunIds,
       evaluationPrompt: args.evaluationPrompt,
       evaluationResponse: args.evaluationResponse,
+      ...(args.summarizationPrompt
+        ? { summarizationPrompt: args.summarizationPrompt }
+        : {}),
+      ...(args.summarizationResponse
+        ? { summarizationResponse: args.summarizationResponse }
+        : {}),
       createdAt: now,
       userId: args.userId,
       teamId: args.teamId,

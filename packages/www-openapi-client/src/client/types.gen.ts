@@ -1674,7 +1674,8 @@ export type PostApiSandboxesByIdPublishDevcontainerResponse = PostApiSandboxesBy
 
 export type PostApiCrownSummarizeData = {
     body: {
-        prompt: string;
+        taskText: string;
+        gitDiff: string;
         teamSlugOrId?: string;
     };
     path?: never;
@@ -1699,6 +1700,7 @@ export type PostApiCrownSummarizeResponses = {
      */
     200: {
         summary: string;
+        prompt: string;
     };
 };
 
@@ -1706,8 +1708,13 @@ export type PostApiCrownSummarizeResponse = PostApiCrownSummarizeResponses[keyof
 
 export type PostApiCrownEvaluateData = {
     body: {
-        prompt: string;
-        teamSlugOrId: string;
+        taskText: string;
+        candidates: Array<{
+            runId: string;
+            agentName: string;
+            gitDiff: string;
+        }>;
+        teamSlugOrId?: string;
     };
     path?: never;
     query?: never;
@@ -1736,6 +1743,7 @@ export type PostApiCrownEvaluateResponses = {
     200: {
         winner: number;
         reason: string;
+        prompt: string;
     };
 };
 

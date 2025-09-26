@@ -4,10 +4,14 @@ import { join } from "node:path";
 import { log } from "../logger";
 import { WORKSPACE_ROOT } from "./constants";
 import { execAsync, type ExecError } from "./shell";
-import { sleep, toUtf8String } from "./utils";
+import { toUtf8String } from "./utils";
 
 let gitRepoPath: string | null = null;
 const branchDiffCache = new Map<string, string>();
+
+const COLLECT_RELEVANT_DIFF_SCRIPT =
+  "/usr/local/bin/cmux-collect-relevant-diff.sh";
+const COLLECT_CROWN_DIFF_SCRIPT = "/usr/local/bin/cmux-collect-crown-diff.sh";
 
 export function getCachedBranchDiff(branch: string): string | undefined {
   return branchDiffCache.get(branch);
@@ -24,7 +28,9 @@ export async function detectGitRepoPath(): Promise<string> {
 
   if (existsSync(join(WORKSPACE_ROOT, ".git"))) {
     gitRepoPath = WORKSPACE_ROOT;
-    log("INFO", "Git repository found at workspace root", { path: gitRepoPath });
+    log("INFO", "Git repository found at workspace root", {
+      path: gitRepoPath,
+    });
     return gitRepoPath;
   }
 
@@ -60,7 +66,9 @@ export async function detectGitRepoPath(): Promise<string> {
     if (stdout && stdout.trim()) {
       const gitDir = stdout.trim();
       gitRepoPath = gitDir.replace(/\/.git$/, "");
-      log("INFO", "Git repository found via find command", { path: gitRepoPath });
+      log("INFO", "Git repository found via find command", {
+        path: gitRepoPath,
+      });
       return gitRepoPath;
     }
   } catch (error) {
@@ -141,54 +149,40 @@ export async function fetchRemoteRef(ref: string): Promise<boolean> {
   if (!ref) {
     return false;
   }
-  const attempts = 3;
+
   const remoteBranch = ref.replace(/^origin\//, "");
   const verifyRef = `refs/remotes/origin/${remoteBranch}`;
   const fetchCommand = `git fetch --no-tags --prune origin refs/heads/${remoteBranch}:${verifyRef}`;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const attemptNumber = attempt + 1;
-    log("DEBUG", "Fetching remote ref", {
-      ref,
-      attempt: attemptNumber,
-      attempts,
-    });
 
-    const result = await runGitCommand(fetchCommand);
+  log("DEBUG", "Fetching remote ref", { ref });
+  const result = await runGitCommand(fetchCommand);
 
-    if (result) {
-      const trimmedStdout = result.stdout.trim();
-      if (trimmedStdout.length > 0) {
-        log("DEBUG", "git fetch output", {
-          ref,
-          output: trimmedStdout.slice(0, 160),
-        });
-      }
-      const verifyResult = await runGitCommand(
-        `git rev-parse --verify --quiet ${verifyRef}`
-      );
-
-      if (verifyResult?.stdout.trim()) {
-        log("INFO", "Remote ref verified", {
-          ref,
-          attempt: attemptNumber,
-          commit: verifyResult.stdout.trim(),
-        });
-        return true;
-      }
-
-      log("WARN", "Remote ref still missing after fetch attempt", {
-        ref,
-        attempt: attemptNumber,
-      });
-    } else {
-      log("WARN", "git fetch failed for ref", {
-        ref,
-        attempt: attemptNumber,
-      });
-    }
-    await sleep(1000);
+  if (!result) {
+    log("WARN", "git fetch failed for ref", { ref });
+    return false;
   }
-  log("ERROR", "Failed to fetch remote ref after retries", { ref, attempts });
+
+  const trimmedStdout = result.stdout.trim();
+  if (trimmedStdout.length > 0) {
+    log("DEBUG", "git fetch output", {
+      ref,
+      output: trimmedStdout.slice(0, 160),
+    });
+  }
+
+  const verifyResult = await runGitCommand(
+    `git rev-parse --verify --quiet ${verifyRef}`
+  );
+
+  if (verifyResult?.stdout.trim()) {
+    log("INFO", "Remote ref verified", {
+      ref,
+      commit: verifyResult.stdout.trim(),
+    });
+    return true;
+  }
+
+  log("WARN", "Remote ref missing after fetch", { ref });
   return false;
 }
 
@@ -228,18 +222,15 @@ export async function collectDiffForRun(
   const branchRef = branch.startsWith("origin/") ? branch : `origin/${branch}`;
 
   try {
-    const { stdout } = await execAsync(
-      "/usr/local/bin/cmux-collect-relevant-diff.sh",
-      {
-        cwd: WORKSPACE_ROOT,
-        maxBuffer: 5 * 1024 * 1024,
-        env: {
-          ...process.env,
-          CMUX_DIFF_BASE: baseRef,
-          CMUX_DIFF_HEAD_REF: branchRef,
-        },
-      }
-    );
+    const { stdout } = await execAsync(COLLECT_CROWN_DIFF_SCRIPT, {
+      cwd: WORKSPACE_ROOT,
+      maxBuffer: 5 * 1024 * 1024,
+      env: {
+        ...process.env,
+        CMUX_DIFF_BASE: baseRef,
+        CMUX_DIFF_HEAD_REF: branchRef,
+      },
+    });
 
     const diff = stdout.trim();
     if (!diff) {
@@ -268,62 +259,53 @@ export async function ensureBranchesAvailable(
   localFallbackBranches: Set<string> = new Set()
 ): Promise<boolean> {
   const sanitizedBase = baseBranch || "main";
-  const attemptLimit = 3;
-  for (let attempt = 0; attempt < attemptLimit; attempt += 1) {
-    const baseOk = await fetchRemoteRef(sanitizedBase);
-    log("INFO", "Ensuring branches available", {
-      attempt,
-      maxAttempts: attemptLimit,
-      baseBranch: sanitizedBase,
-      baseOk,
-      completedRunCount: completedRuns.length,
+  const baseOk = await fetchRemoteRef(sanitizedBase);
+  log("INFO", "Ensuring branches available", {
+    baseBranch: sanitizedBase,
+    baseOk,
+    completedRunCount: completedRuns.length,
+  });
+
+  let allBranchesOk = true;
+  for (const run of completedRuns) {
+    if (!run.newBranch) {
+      log("ERROR", "Run missing branch name", { runId: run.id });
+      return false;
+    }
+    const branchOk = await fetchRemoteRef(run.newBranch);
+    log("INFO", "Checked branch availability", {
+      runId: run.id,
+      branch: run.newBranch,
+      branchOk,
     });
-    let allBranchesOk = true;
-    for (const run of completedRuns) {
-      if (!run.newBranch) {
-        log("ERROR", "Run missing branch name", { runId: run.id });
-        return false;
-      }
-      const branchOk = await fetchRemoteRef(run.newBranch);
-      log("INFO", "Checked branch availability", {
+    if (!branchOk && !localFallbackBranches.has(run.newBranch)) {
+      allBranchesOk = false;
+    } else if (!branchOk) {
+      log("INFO", "Using cached diff fallback for branch", {
         runId: run.id,
         branch: run.newBranch,
-        branchOk,
       });
-      if (!branchOk && !localFallbackBranches.has(run.newBranch)) {
-        allBranchesOk = false;
-      } else if (!branchOk) {
-        log("INFO", "Using cached diff fallback for branch", {
-          runId: run.id,
-          branch: run.newBranch,
-        });
-      }
-    }
-    if (baseOk && allBranchesOk) {
-      return true;
-    }
-    log("INFO", "Branch check failed; retrying", {
-      attempt,
-      baseOk,
-      allBranchesOk,
-    });
-    if (attempt < attemptLimit - 1) {
-      await sleep(3000);
     }
   }
+
+  if (baseOk && allBranchesOk) {
+    return true;
+  }
+
+  log("INFO", "Branches not ready for crown", {
+    baseOk,
+    allBranchesOk,
+  });
   return false;
 }
 
 export async function captureRelevantDiff(): Promise<string> {
   try {
     const repoPath = await detectGitRepoPath();
-    const { stdout } = await execAsync(
-      "/usr/local/bin/cmux-collect-relevant-diff.sh",
-      {
-        cwd: repoPath,
-        maxBuffer: 5 * 1024 * 1024,
-      }
-    );
+    const { stdout } = await execAsync(COLLECT_RELEVANT_DIFF_SCRIPT, {
+      cwd: repoPath,
+      maxBuffer: 5 * 1024 * 1024,
+    });
     const diff = stdout ? stdout.trim() : "";
     return diff.length > 0 ? diff : "No changes detected";
   } catch (error) {

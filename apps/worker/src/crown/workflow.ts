@@ -16,7 +16,6 @@ import {
   runGitCommandSafe,
 } from "./git";
 import { createPullRequestIfEnabled } from "./pull-request";
-import { buildEvaluationPrompt, buildSummarizationPrompt } from "./prompts";
 import type {
   CandidateData,
   CrownEvaluationResponse,
@@ -266,7 +265,7 @@ export async function handleWorkerTaskCompletion(
     }
 
     async function attemptCrownEvaluation(currentTaskId: string) {
-      log("INFO", "Starting crown evaluation attempt", {
+      log("INFO", "Starting crown evaluation", {
         taskRunId,
         taskId: currentTaskId,
       });
@@ -281,63 +280,38 @@ export async function handleWorkerTaskCompletion(
         baseUrlOverride
       );
 
-      // Retry logic for checking all-complete status
-      const maxRetries = 3;
-      let allComplete = false;
-      let completionState: WorkerAllRunsCompleteResponse | null = null;
+      const completionState = await convexRequest<WorkerAllRunsCompleteResponse>(
+        "/api/crown/check",
+        runContext.token,
+        {
+          taskId: currentTaskId,
+          checkType: "all-complete",
+        },
+        baseUrlOverride
+      );
 
-      for (let attempt = 0; attempt < maxRetries; attempt++) {
-        // Use the crown endpoint with checkType="all-complete" to check all runs
-        completionState = await convexRequest<WorkerAllRunsCompleteResponse>(
-          "/api/crown/check",
-          runContext.token,
-          {
-            taskId: currentTaskId,
-            checkType: "all-complete",
-          },
-          baseUrlOverride
-        );
-
-        if (!completionState?.ok) {
-          log("ERROR", "Failed to verify task run completion state", {
-            taskRunId,
-            taskId: currentTaskId,
-            attempt,
-          });
-          return;
-        }
-
-        log("INFO", "Task completion state check", {
+      if (!completionState?.ok) {
+        log("ERROR", "Failed to verify task run completion state", {
           taskRunId,
           taskId: currentTaskId,
-          attempt,
-          allComplete: completionState.allComplete,
-          totalStatuses: completionState.statuses.length,
-          completedCount: completionState.statuses.filter(
-            (s) => s.status === "completed"
-          ).length,
         });
-
-        if (completionState.allComplete) {
-          allComplete = true;
-          break;
-        }
-
-        // If not all complete and we have more attempts, wait before retrying
-        if (attempt < maxRetries - 1) {
-          log("INFO", "Not all runs complete yet, waiting before retry", {
-            taskRunId,
-            attempt: attempt + 1,
-            maxRetries,
-          });
-          await sleep(5000); // Wait 5 seconds before retrying
-        }
+        return;
       }
 
-      if (!allComplete || !completionState) {
+      log("INFO", "Task completion state", {
+        taskRunId,
+        taskId: currentTaskId,
+        allComplete: completionState.allComplete,
+        totalStatuses: completionState.statuses.length,
+        completedCount: completionState.statuses.filter(
+          (s) => s.status === "completed"
+        ).length,
+      });
+
+      if (!completionState.allComplete) {
         log(
           "INFO",
-          "Task runs still pending after retries; deferring crown evaluation",
+          "Task runs still pending; deferring crown evaluation",
           {
             taskRunId,
             taskId: currentTaskId,
@@ -464,20 +438,12 @@ export async function handleWorkerTaskCompletion(
           return;
         }
 
-        const evaluationPrompt = buildEvaluationPrompt(
-          checkResponse.task.text,
-          [candidate]
-        );
-        const summarizationPrompt = buildSummarizationPrompt(
-          checkResponse.task.text,
-          candidate.gitDiff
-        );
-
         const summaryResponse = await convexRequest<CrownSummarizationResponse>(
           "/api/crown/summarize",
           runContext.token,
           {
-            prompt: summarizationPrompt,
+            taskText: checkResponse.task.text,
+            gitDiff: candidate.gitDiff,
             teamSlugOrId: runContext.teamId,
           },
           baseUrlOverride
@@ -486,6 +452,9 @@ export async function handleWorkerTaskCompletion(
         const summary = summaryResponse?.summary
           ? summaryResponse.summary.slice(0, 8000)
           : undefined;
+        const summarizationPrompt = summaryResponse?.prompt;
+        const evaluationPrompt =
+          "Single candidate crowned automatically; no evaluation prompt generated.";
 
         const prMetadata = await createPullRequestIfEnabled({
           check: checkResponse,
@@ -505,9 +474,12 @@ export async function handleWorkerTaskCompletion(
             evaluationResponse: JSON.stringify({
               winner: 0,
               reason: "Only candidate run",
+              prompt: evaluationPrompt,
             }),
             candidateRunIds: [taskRunId],
             summary,
+            summarizationPrompt,
+            summarizationResponse: summary,
             pullRequest: prMetadata?.pullRequest,
             pullRequestTitle: prMetadata?.title,
             pullRequestDescription: prMetadata?.description,
@@ -583,16 +555,16 @@ export async function handleWorkerTaskCompletion(
         return;
       }
 
-      const evaluationPrompt = buildEvaluationPrompt(
-        checkResponse.task.text,
-        candidates
-      );
-
       const evaluationResponse = await convexRequest<CrownEvaluationResponse>(
         "/api/crown/evaluate",
         runContext.token,
         {
-          prompt: evaluationPrompt,
+          taskText: checkResponse.task.text,
+          candidates: candidates.map((candidate) => ({
+            runId: candidate.runId,
+            agentName: candidate.agentName,
+            gitDiff: candidate.gitDiff,
+          })),
           teamSlugOrId: runContext.teamId,
         },
         baseUrlOverride
@@ -604,6 +576,8 @@ export async function handleWorkerTaskCompletion(
         });
         return;
       }
+
+      const evaluationPrompt = evaluationResponse.prompt;
 
       log("INFO", "Crown evaluation response", {
         taskRunId,
@@ -624,15 +598,12 @@ export async function handleWorkerTaskCompletion(
         return;
       }
 
-      const summarizationPrompt = buildSummarizationPrompt(
-        checkResponse.task.text,
-        winnerCandidate.gitDiff
-      );
       const summaryResponse = await convexRequest<CrownSummarizationResponse>(
         "/api/crown/summarize",
         runContext.token,
         {
-          prompt: summarizationPrompt,
+          taskText: checkResponse.task.text,
+          gitDiff: winnerCandidate.gitDiff,
           teamSlugOrId: runContext.teamId,
         },
         baseUrlOverride
@@ -646,6 +617,7 @@ export async function handleWorkerTaskCompletion(
       const summary = summaryResponse?.summary
         ? summaryResponse.summary.slice(0, 8000)
         : undefined;
+      const summarizationPrompt = summaryResponse?.prompt;
 
       const prMetadata = await createPullRequestIfEnabled({
         check: checkResponse,
@@ -671,10 +643,13 @@ export async function handleWorkerTaskCompletion(
               winner: candidates.indexOf(winnerCandidate),
               reason,
               fallback: true,
+              prompt: evaluationPrompt,
             }
           ),
           candidateRunIds: candidates.map((candidate) => candidate.runId),
           summary,
+          summarizationPrompt,
+          summarizationResponse: summary,
           pullRequest: prMetadata?.pullRequest,
           pullRequestTitle: prMetadata?.title,
           pullRequestDescription: prMetadata?.description,

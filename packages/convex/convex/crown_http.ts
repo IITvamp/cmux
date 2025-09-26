@@ -2,6 +2,7 @@ import {
   verifyTaskRunToken,
   type TaskRunTokenPayload,
 } from "@cmux/shared/task-run-token";
+import { CrownEvaluationCandidateSchema } from "@cmux/shared/crown/prompts";
 import { z } from "zod";
 import { env } from "../_shared/convex-env";
 import { api, internal } from "./_generated/api";
@@ -12,12 +13,14 @@ import { httpAction } from "./_generated/server";
 const JSON_HEADERS = { "content-type": "application/json" } as const;
 
 const CrownEvaluationRequestSchema = z.object({
-  prompt: z.string(),
-  teamSlugOrId: z.string(),
+  taskText: z.string(),
+  candidates: z.array(CrownEvaluationCandidateSchema).min(1),
+  teamSlugOrId: z.string().optional(),
 });
 
 const CrownSummarizationRequestSchema = z.object({
-  prompt: z.string(),
+  taskText: z.string(),
+  gitDiff: z.string(),
   teamSlugOrId: z.string().optional(),
 });
 
@@ -54,6 +57,8 @@ const WorkerFinalizeSchema = z.object({
     .optional(),
   pullRequestTitle: z.string().optional(),
   pullRequestDescription: z.string().optional(),
+  summarizationPrompt: z.string().optional(),
+  summarizationResponse: z.string().optional(),
 });
 
 const WorkerCompleteRequestSchema = z.object({
@@ -288,7 +293,8 @@ export const crownEvaluate = httpAction(async (ctx, req) => {
 
   try {
     const result = await ctx.runAction(api.crown.actions.evaluate, {
-      prompt: validation.data.prompt,
+      taskText: validation.data.taskText,
+      candidates: validation.data.candidates,
       teamSlugOrId,
     });
     return jsonResponse(result);
@@ -331,7 +337,8 @@ export const crownSummarize = httpAction(async (ctx, req) => {
 
   try {
     const result = await ctx.runAction(api.crown.actions.summarize, {
-      prompt: validation.data.prompt,
+      taskText: validation.data.taskText,
+      gitDiff: validation.data.gitDiff,
       teamSlugOrId,
     });
     return jsonResponse(result);
@@ -662,6 +669,8 @@ export const crownWorkerFinalize = httpAction(async (ctx, req) => {
       evaluationPrompt: validation.data.evaluationPrompt,
       evaluationResponse: validation.data.evaluationResponse,
       candidateRunIds,
+      summarizationPrompt: validation.data.summarizationPrompt,
+      summarizationResponse: validation.data.summarizationResponse,
       pullRequest: validation.data.pullRequest,
       pullRequestTitle: validation.data.pullRequestTitle,
       pullRequestDescription: validation.data.pullRequestDescription,

@@ -55,11 +55,13 @@ export type WorkerAllRunsCompleteResponse = {
 
 export type CrownEvaluationResponse = {
   winner: number;
-  reason?: string;
+  reason: string;
+  prompt: string;
 };
 
 export type CrownSummarizationResponse = {
-  summary?: string;
+  summary: string;
+  prompt: string;
 };
 
 export type PullRequestMetadata = {

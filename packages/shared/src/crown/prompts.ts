@@ -1,8 +1,18 @@
-import type { CandidateData } from "./types";
+import { z } from "zod";
+
+export const CrownEvaluationCandidateSchema = z.object({
+  runId: z.string(),
+  agentName: z.string(),
+  gitDiff: z.string(),
+});
+
+export type CrownEvaluationCandidate = z.infer<
+  typeof CrownEvaluationCandidateSchema
+>;
 
 export function buildEvaluationPrompt(
   taskText: string,
-  candidates: CandidateData[]
+  candidates: CrownEvaluationCandidate[]
 ): string {
   const evaluationData = {
     task: taskText,

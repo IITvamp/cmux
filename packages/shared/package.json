@@ -66,6 +66,10 @@
       "import": "./src/utils/validate-exposed-ports.ts",
       "types": "./src/utils/validate-exposed-ports.ts"
     },
+    "./crown/prompts": {
+      "import": "./src/crown/prompts.ts",
+      "types": "./src/crown/prompts.ts"
+    },
     "./node/convex-cache": {
       "import": "./src/node/convex-cache.ts",
       "types": "./src/node/convex-cache.ts"
