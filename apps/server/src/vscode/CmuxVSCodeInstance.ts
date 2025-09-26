@@ -52,7 +52,7 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
           instance: `cmux-${this.taskRunId}`,
           taskRunId: String(this.taskRunId),
           agentName: this.config.agentName || "",
-          taskRunJwt: this.taskRunJwt || "", // Pass JWT in metadata
+          taskRunJwt: this.taskRunJwt || "",
         },
         ...(this.environmentId ? { environmentId: this.environmentId } : {}),
         ...(this.repoUrl

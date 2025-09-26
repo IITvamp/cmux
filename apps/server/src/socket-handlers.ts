@@ -31,7 +31,7 @@ import { getRunDiffs } from "./diffs/getRunDiffs";
 import { execWithEnv } from "./execWithEnv";
 import { GitDiffManager } from "./gitDiff";
 import { getRustTime } from "./native/core";
-import { landedDiffForRepo, listRemoteBranches } from "./native/git.js";
+import { landedDiffForRepo, listRemoteBranches } from "./native/git";
 import type { RealtimeServer } from "./realtime";
 import { RepositoryManager } from "./repositoryManager";
 import type { GitRepoInfo } from "./server";
@@ -48,13 +48,13 @@ import {
   mergePr,
   parseRepoFromUrl,
   reopenPr,
-} from "./utils/githubPr.js";
-import { getOctokit } from "./utils/octokit.js";
-import { checkAllProvidersStatus } from "./utils/providerStatus.js";
-import { refreshGitHubData } from "./utils/refreshGitHubData.js";
-import { runWithAuth, runWithAuthToken } from "./utils/requestContext.js";
-import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
-import { getProjectPaths } from "./workspace.js";
+} from "./utils/githubPr";
+import { getOctokit } from "./utils/octokit";
+import { checkAllProvidersStatus } from "./utils/providerStatus";
+import { refreshGitHubData } from "./utils/refreshGitHubData";
+import { runWithAuth, runWithAuthToken } from "./utils/requestContext";
+import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance";
+import { getProjectPaths } from "./workspace";
 
 const execAsync = promisify(exec);
 

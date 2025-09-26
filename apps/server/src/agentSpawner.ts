@@ -25,12 +25,12 @@ import {
   getAuthToken,
   runWithAuth,
 } from "./utils/requestContext";
+import { env } from "./utils/server-env";
 import { getWwwClient } from "./utils/wwwClient";
 import { CmuxVSCodeInstance } from "./vscode/CmuxVSCodeInstance";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance";
 import { VSCodeInstance } from "./vscode/VSCodeInstance";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace";
-import { env } from "./utils/server-env";
 
 export interface AgentSpawnResult {
   agentName: string;
