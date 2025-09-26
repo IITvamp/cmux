@@ -788,49 +788,58 @@ async function handleProtocolUrl(url: string): Promise<void> {
       return;
     }
 
-    // Check for the full URL parameter
-    const stackRefresh = encodeURIComponent(rawStackRefresh);
-    const stackAccess = encodeURIComponent(rawStackAccess);
-
     // Verify tokens with Stack JWKS and extract exp for cookie expiry.
+    // Important: use raw (decoded) token strings; do not URI-encode.
     const [refreshPayload, accessPayload] = await Promise.all([
-      verifyJwtAndGetPayload(stackRefresh),
-      verifyJwtAndGetPayload(stackAccess),
+      verifyJwtAndGetPayload(rawStackRefresh),
+      verifyJwtAndGetPayload(rawStackAccess),
     ]);
 
-    if (refreshPayload?.exp === null || accessPayload?.exp === null) {
-      mainWarn("Aborting cookie set due to invalid tokens");
+    const refreshExp =
+      typeof refreshPayload?.exp === "number" ? refreshPayload.exp : undefined;
+    const accessExp =
+      typeof accessPayload?.exp === "number" ? accessPayload.exp : undefined;
+
+    if (!refreshExp || !accessExp) {
+      mainWarn("Aborting cookie set due to invalid token expiry payloads");
       return;
     }
 
-    // Determine a cookieable URL. Prefer our custom cmux:// origin when not
-    // running against an http(s) dev server.
+    // Set cookies against the renderer's origin (dev or prod) at root path.
     const currentUrl = new URL(mainWindow.webContents.getURL());
-    currentUrl.hash = "";
-    const realUrl = currentUrl.toString() + "/";
+    const realUrl = `${currentUrl.protocol}//${currentUrl.host}/`;
 
+    // Remove any existing cookies at both root and legacy /index.html paths
     await Promise.all([
       mainWindow.webContents.session.cookies.remove(
         realUrl,
         `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`
       ),
       mainWindow.webContents.session.cookies.remove(realUrl, `stack-access`),
+      mainWindow.webContents.session.cookies.remove(
+        `https://${APP_HOST}/index.html`,
+        `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`
+      ),
+      mainWindow.webContents.session.cookies.remove(
+        `https://${APP_HOST}/index.html`,
+        `stack-access`
+      ),
     ]);
 
     await Promise.all([
       mainWindow.webContents.session.cookies.set({
         url: realUrl,
         name: `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`,
-        value: stackRefresh,
-        expirationDate: refreshPayload?.exp,
+        value: rawStackRefresh,
+        expirationDate: refreshExp,
         sameSite: "no_restriction",
         secure: true,
       }),
       mainWindow.webContents.session.cookies.set({
         url: realUrl,
         name: "stack-access",
-        value: stackAccess,
-        expirationDate: accessPayload?.exp,
+        value: rawStackAccess,
+        expirationDate: accessExp,
         sameSite: "no_restriction",
         secure: true,
       }),
