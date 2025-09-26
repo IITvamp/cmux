@@ -37,6 +37,11 @@ import {
   appendLogWithRotation,
   type LogRotationOptions,
 } from "./log-management/log-rotation";
+import {
+  restoreAuthCookiesFromDisk,
+  startAuthCookiePersistence,
+  syncAuthCookiesToDisk,
+} from "./auth-persistence";
 const { autoUpdater } = electronUpdater;
 
 import util from "node:util";
@@ -46,6 +51,7 @@ import { env } from "./electron-main-env";
 // Use a cookieable HTTPS origin intercepted locally instead of a custom scheme.
 const PARTITION = "persist:cmux";
 const APP_HOST = "cmux.local";
+const AUTH_COOKIE_URL = `https://${APP_HOST}/`;
 
 function resolveMaxSuspendedWebContents(): number | undefined {
   const raw =
@@ -623,6 +629,19 @@ app.whenReady().then(async () => {
   }
 
   const ses = session.fromPartition(PARTITION);
+  const authCookieBaseUrl = AUTH_COOKIE_URL;
+  const authPersistenceOptions = {
+    session: ses,
+    baseUrl: authCookieBaseUrl,
+    projectId: env.NEXT_PUBLIC_STACK_PROJECT_ID,
+    logger: {
+      log: mainLog,
+      warn: mainWarn,
+    },
+  } as const;
+
+  await restoreAuthCookiesFromDisk(authPersistenceOptions);
+  startAuthCookiePersistence(authPersistenceOptions);
   // Intercept HTTPS for our private host and serve local files; pass-through others.
   ses.protocol.handle("https", async (req) => {
     const u = new URL(req.url);
@@ -803,31 +822,25 @@ async function handleProtocolUrl(url: string): Promise<void> {
       return;
     }
 
-    // Determine a cookieable URL. Prefer our custom cmux:// origin when not
-    // running against an http(s) dev server.
-    const currentUrl = new URL(mainWindow.webContents.getURL());
-    currentUrl.hash = "";
-    const realUrl = currentUrl.toString() + "/";
+    const refreshCookieName = `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`;
+    const sessionCookies = mainWindow.webContents.session.cookies;
 
     await Promise.all([
-      mainWindow.webContents.session.cookies.remove(
-        realUrl,
-        `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`
-      ),
-      mainWindow.webContents.session.cookies.remove(realUrl, `stack-access`),
+      sessionCookies.remove(AUTH_COOKIE_URL, refreshCookieName),
+      sessionCookies.remove(AUTH_COOKIE_URL, "stack-access"),
     ]);
 
     await Promise.all([
-      mainWindow.webContents.session.cookies.set({
-        url: realUrl,
-        name: `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`,
+      sessionCookies.set({
+        url: AUTH_COOKIE_URL,
+        name: refreshCookieName,
         value: stackRefresh,
         expirationDate: refreshPayload?.exp,
         sameSite: "no_restriction",
         secure: true,
       }),
-      mainWindow.webContents.session.cookies.set({
-        url: realUrl,
+      sessionCookies.set({
+        url: AUTH_COOKIE_URL,
         name: "stack-access",
         value: stackAccess,
         expirationDate: accessPayload?.exp,
@@ -835,6 +848,22 @@ async function handleProtocolUrl(url: string): Promise<void> {
         secure: true,
       }),
     ]);
+
+    try {
+      await sessionCookies.flushStore();
+    } catch (error) {
+      mainWarn("Failed to flush auth cookies", error);
+    }
+
+    await syncAuthCookiesToDisk({
+      session: mainWindow.webContents.session,
+      baseUrl: AUTH_COOKIE_URL,
+      projectId: env.NEXT_PUBLIC_STACK_PROJECT_ID,
+      logger: {
+        log: mainLog,
+        warn: mainWarn,
+      },
+    });
 
     mainWindow.webContents.reload();
     return;
