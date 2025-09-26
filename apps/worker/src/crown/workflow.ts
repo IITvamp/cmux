@@ -1,6 +1,8 @@
 import { Buffer } from 'node:buffer'
 import { exec as childExec } from 'node:child_process'
 import { promisify } from 'node:util'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 
 import { log } from '../logger.js'
 
@@ -8,6 +10,9 @@ const execAsync = promisify(childExec)
 
 const WORKSPACE_ROOT = process.env.CMUX_WORKSPACE_PATH || '/root/workspace'
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+// Track the actual git repository path (may be different from WORKSPACE_ROOT)
+let GIT_REPO_PATH: string | null = null
 
 type WorkerRunContext = {
   token: string
@@ -138,12 +143,77 @@ async function convexRequest<T>(
   }
 }
 
+async function detectGitRepoPath(): Promise<string> {
+  // If we've already detected the path, return it
+  if (GIT_REPO_PATH) {
+    return GIT_REPO_PATH
+  }
+
+  // First check if WORKSPACE_ROOT itself is a git repository
+  if (existsSync(join(WORKSPACE_ROOT, '.git'))) {
+    GIT_REPO_PATH = WORKSPACE_ROOT
+    log('INFO', 'Git repository found at workspace root', {
+      path: GIT_REPO_PATH,
+    })
+    return GIT_REPO_PATH
+  }
+
+  // In cloud mode, check for subdirectories (like /root/workspace/cmux)
+  try {
+    // First check if any immediate subdirectories contain .git
+    const { stdout: dirs } = await execAsync(`ls -d ${WORKSPACE_ROOT}/*/ 2>/dev/null || true`, {
+      cwd: WORKSPACE_ROOT,
+    })
+    
+    if (dirs && dirs.trim()) {
+      const dirList = dirs.trim().split('\n')
+      for (const dir of dirList) {
+        const trimmedDir = dir.replace(/\/$/, '')
+        if (existsSync(join(trimmedDir, '.git'))) {
+          GIT_REPO_PATH = trimmedDir
+          log('INFO', 'Git repository found in subdirectory', {
+            path: GIT_REPO_PATH,
+          })
+          return GIT_REPO_PATH
+        }
+      }
+    }
+    
+    // Fallback to find command if ls doesn't work
+    const { stdout } = await execAsync(`find ${WORKSPACE_ROOT} -maxdepth 2 -type d -name .git 2>/dev/null | head -1`, {
+      cwd: WORKSPACE_ROOT,
+    })
+    
+    if (stdout && stdout.trim()) {
+      const gitDir = stdout.trim()
+      // Get parent directory of .git
+      GIT_REPO_PATH = gitDir.replace(/\/.git$/, '')
+      log('INFO', 'Git repository found via find command', {
+        path: GIT_REPO_PATH,
+      })
+      return GIT_REPO_PATH
+    }
+  } catch (error) {
+    log('WARN', 'Failed to search for git repositories', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+    })
+  }
+
+  // Fallback to workspace root (even if no git repo)
+  log('WARN', 'No git repository found, using workspace root', {
+    path: WORKSPACE_ROOT,
+  })
+  GIT_REPO_PATH = WORKSPACE_ROOT
+  return GIT_REPO_PATH
+}
+
 async function runGitCommand(
   command: string
 ): Promise<{ stdout: string } | null> {
   try {
+    const gitPath = await detectGitRepoPath()
     const result = await execAsync(command, {
-      cwd: WORKSPACE_ROOT,
+      cwd: gitPath,
       maxBuffer: 20 * 1024 * 1024,
     })
     const stdoutValue = result.stdout as unknown
@@ -348,10 +418,11 @@ type CandidateData = {
 
 async function captureRelevantDiff(): Promise<string> {
   try {
+    const gitPath = await detectGitRepoPath()
     const { stdout } = await execAsync(
       '/usr/local/bin/cmux-collect-relevant-diff.sh',
       {
-        cwd: WORKSPACE_ROOT,
+        cwd: gitPath,
         maxBuffer: 5 * 1024 * 1024,
       }
     )
@@ -380,10 +451,11 @@ function buildCommitMessage({
 async function runGitCommandSafe(
   command: string,
   allowFailure = false
-): Promise<{ stdout: string; stderr: string } | null> {
+): Promise<{ stdout: string; stderr: string; exitCode: number } | null> {
   try {
+    const gitPath = await detectGitRepoPath()
     const result = await execAsync(command, {
-      cwd: WORKSPACE_ROOT,
+      cwd: gitPath,
       maxBuffer: 10 * 1024 * 1024,
     })
     const stdoutValue = result.stdout as unknown
@@ -400,7 +472,7 @@ async function runGitCommandSafe(
         : Buffer.isBuffer(stderrValue)
           ? stderrValue.toString('utf8')
           : String(stderrValue ?? '')
-    return { stdout, stderr }
+    return { stdout, stderr, exitCode: 0 }
   } catch (error) {
     const execError = error as Error & {
       stdout?: string | Buffer
@@ -413,20 +485,21 @@ async function runGitCommandSafe(
         ? execError.stdout
         : Buffer.isBuffer(execError.stdout)
           ? execError.stdout.toString('utf8')
-          : undefined
+          : ''
     const stderr =
       typeof execError.stderr === 'string'
         ? execError.stderr
         : Buffer.isBuffer(execError.stderr)
           ? execError.stderr.toString('utf8')
-          : undefined
+          : ''
+    const exitCode =
+      typeof execError.code === 'number'
+        ? execError.code
+        : execError.status ?? 1
     const errorPayload = {
       command,
       message: execError.message,
-      exitCode:
-        typeof execError.code === 'number'
-          ? execError.code
-          : execError.status,
+      exitCode,
       stdout: stdout?.slice(0, 500),
       stderr: stderr?.slice(0, 500),
     }
@@ -435,7 +508,7 @@ async function runGitCommandSafe(
       throw error
     }
     log('WARN', 'Git command failed (ignored)', errorPayload)
-    return null
+    return { stdout, stderr, exitCode }
   }
 }
 
@@ -466,15 +539,48 @@ async function autoCommitAndPush({
     return
   }
 
+  const gitPath = await detectGitRepoPath()
+  
   log('INFO', 'Worker auto-commit starting', {
     branchName,
     remoteOverride: remoteUrl,
+    workspacePath: WORKSPACE_ROOT,
+    gitRepoPath: gitPath,
   })
+
+  // First verify we're in a git repository
+  const gitCheck = await runGitCommandSafe('git rev-parse --git-dir', true)
+  if (!gitCheck || gitCheck.exitCode !== 0) {
+    log('ERROR', 'Not in a git repository', {
+      branchName,
+      workspacePath: WORKSPACE_ROOT,
+      gitRepoPath: gitPath,
+      gitCheckError: gitCheck?.stderr,
+    })
+    // Try to initialize git if needed (for cloud mode edge cases)
+    const initResult = await runGitCommandSafe('git init', true)
+    if (!initResult || initResult.exitCode !== 0) {
+      log('ERROR', 'Failed to initialize git repository', {
+        branchName,
+        gitRepoPath: gitPath,
+        error: initResult?.stderr,
+      })
+      return
+    }
+    log('INFO', 'Initialized git repository', { branchName, gitRepoPath: gitPath })
+  }
 
   if (remoteUrl) {
     const currentRemote = await runGitCommandSafe('git remote get-url origin', true)
     const trimmed = currentRemote?.stdout.trim()
-    if (!trimmed || trimmed !== remoteUrl) {
+    if (!trimmed) {
+      // No remote exists, add it
+      log('INFO', 'Adding origin remote', {
+        branchName,
+        remoteUrl,
+      })
+      await runGitCommandSafe(`git remote add origin ${remoteUrl}`)
+    } else if (trimmed !== remoteUrl) {
       log('INFO', 'Updating origin remote before push', {
         branchName,
         currentRemote: trimmed,
@@ -818,10 +924,22 @@ export function registerTaskRunContext(
   context: WorkerRunContext
 ) {
   taskRunContexts.set(taskRunId, context)
+  log('INFO', 'Registered task run context for crown workflow', {
+    taskRunId,
+    hasToken: !!context.token,
+    hasPrompt: !!context.prompt,
+    agentModel: context.agentModel,
+    convexUrl: context.convexUrl,
+    totalRegistered: taskRunContexts.size,
+  })
 }
 
 export function clearTaskRunContext(taskRunId: string) {
   taskRunContexts.delete(taskRunId)
+  log('INFO', 'Cleared task run context', {
+    taskRunId,
+    remainingContexts: taskRunContexts.size,
+  })
 }
 
 export async function handleWorkerTaskCompletion(
@@ -829,10 +947,26 @@ export async function handleWorkerTaskCompletion(
   opts: { agentModel?: string; elapsedMs?: number; exitCode?: number }
 ): Promise<void> {
   const { agentModel, elapsedMs, exitCode = 0 } = opts
+  
+  // Detect git repo path early to log it
+  const detectedGitPath = await detectGitRepoPath()
+  
+  log('INFO', 'Worker task completion handler started', {
+    taskRunId,
+    workspacePath: WORKSPACE_ROOT,
+    gitRepoPath: detectedGitPath,
+    envWorkspacePath: process.env.CMUX_WORKSPACE_PATH,
+    agentModel,
+    elapsedMs,
+    exitCode,
+    convexUrl: process.env.NEXT_PUBLIC_CONVEX_URL,
+  })
+  
   const context = taskRunContexts.get(taskRunId)
   if (!context) {
-    log('WARNING', 'No worker context found for completed task run', {
+    log('ERROR', 'No worker context found for completed task run - crown workflow cannot proceed', {
       taskRunId,
+      registeredContexts: Array.from(taskRunContexts.keys()),
     })
     return
   }
@@ -881,58 +1015,102 @@ export async function handleWorkerTaskCompletion(
       runContext.teamId = runContext.teamId ?? info.taskRun.teamId
     }
 
-    const taskTextForCommit =
-      info?.task?.text ?? runContext.prompt ?? 'cmux task'
-
-    const diffForCommit = await captureRelevantDiff()
-    log('INFO', 'Captured relevant diff', {
-      taskRunId,
-      diffPreview: diffForCommit.slice(0, 120),
-    })
-
-    const commitMessage = buildCommitMessage({
-      taskText: taskTextForCommit,
-      agentName: agentModel ?? runContext.agentModel ?? 'cmux-agent',
-    })
-
-    const branchForCommit =
-      info?.taskRun?.newBranch ?? (await getCurrentBranch())
-
-    if (branchForCommit) {
-      branchDiffCache.set(branchForCommit, diffForCommit)
-      log('INFO', 'Cached diff for branch after auto-commit', {
-        branch: branchForCommit,
-        diffLength: diffForCommit.length,
-      })
-    }
-
-    if (branchForCommit) {
-      const remoteUrl = info?.task?.projectFullName
-        ? `https://github.com/${info.task.projectFullName}.git`
-        : undefined
-      if (!remoteUrl) {
-        log('WARN', 'Task missing projectFullName; using existing git remote', {
-          taskRunId,
-          branch: branchForCommit,
-        })
-      }
-      try {
-        await autoCommitAndPush({
-          branchName: branchForCommit,
-          commitMessage,
-          remoteUrl,
-        })
-      } catch (error) {
-        log('ERROR', 'Worker auto-commit failed', {
-          taskRunId,
-          branch: branchForCommit,
-          error,
-        })
-      }
-    } else {
-      log('ERROR', 'Unable to resolve branch for auto-commit', {
+    // Check if we should perform git operations
+    // Skip if: 1) No projectFullName (environment mode), or 2) No git repo detected
+    const hasGitRepo = existsSync(join(detectedGitPath, '.git'))
+    const hasProjectInfo = !!info?.task?.projectFullName
+    const shouldPerformGitOps = hasProjectInfo && hasGitRepo
+    
+    if (!shouldPerformGitOps) {
+      log('INFO', 'Skipping git operations', {
         taskRunId,
+        hasProjectFullName: hasProjectInfo,
+        hasGitRepo,
+        gitPath: detectedGitPath,
+        reason: !hasProjectInfo ? 'environment-mode' : 'no-git-repo',
       })
+    } else {
+      // Only perform git operations if we have a repository
+      const taskTextForCommit =
+        info?.task?.text ?? runContext.prompt ?? 'cmux task'
+
+      const diffForCommit = await captureRelevantDiff()
+      log('INFO', 'Captured relevant diff', {
+        taskRunId,
+        diffPreview: diffForCommit.slice(0, 120),
+      })
+
+      const commitMessage = buildCommitMessage({
+        taskText: taskTextForCommit,
+        agentName: agentModel ?? runContext.agentModel ?? 'cmux-agent',
+      })
+
+      // Try to get branch from task run info first, fall back to git command
+      let branchForCommit = info?.taskRun?.newBranch
+      if (!branchForCommit) {
+        branchForCommit = await getCurrentBranch()
+        if (!branchForCommit) {
+          // Last resort: if we can't detect the branch, check if we're in a detached HEAD state
+          // This can happen in cloud mode if the git setup is incomplete
+          const headCheck = await runGitCommandSafe('git symbolic-ref -q HEAD', true)
+          if (!headCheck || headCheck.stdout.includes('fatal')) {
+            log('WARN', 'Git HEAD is detached or not properly initialized', {
+              taskRunId,
+              headStatus: headCheck?.stderr || 'unknown',
+            })
+            // Try to get the branch name from environment or task context
+            if (info?.taskRun?.newBranch) {
+              // Create the branch if we have the name
+              const createBranch = await runGitCommandSafe(
+                `git checkout -b ${info.taskRun.newBranch}`,
+                true
+              )
+              if (createBranch && createBranch.stdout) {
+                branchForCommit = info.taskRun.newBranch
+                log('INFO', 'Created branch from task run info', {
+                  branch: branchForCommit,
+                  taskRunId,
+                })
+              }
+            }
+          }
+        }
+      }
+
+      if (branchForCommit) {
+        branchDiffCache.set(branchForCommit, diffForCommit)
+        log('INFO', 'Cached diff for branch after auto-commit', {
+          branch: branchForCommit,
+          diffLength: diffForCommit.length,
+        })
+      }
+
+      if (branchForCommit && info?.task?.projectFullName) {
+        const remoteUrl = `https://github.com/${info.task.projectFullName}.git`
+        try {
+          await autoCommitAndPush({
+            branchName: branchForCommit,
+            commitMessage,
+            remoteUrl,
+          })
+        } catch (error) {
+          log('ERROR', 'Worker auto-commit failed', {
+            taskRunId,
+            branch: branchForCommit,
+            error,
+          })
+        }
+      } else {
+        log('ERROR', 'Unable to resolve branch for auto-commit', {
+          taskRunId,
+          taskInfo: {
+            hasTaskRun: !!info?.taskRun,
+            newBranch: info?.taskRun?.newBranch,
+            hasTask: !!info?.task,
+            projectFullName: info?.task?.projectFullName,
+          },
+        })
+      }
     }
 
     const completion = await convexRequest<WorkerTaskRunResponse>(

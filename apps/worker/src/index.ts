@@ -1019,17 +1019,35 @@ async function createTerminal(
   // Config-driven completion detector
   const agentConfig = AGENT_CONFIGS.find((c) => c.name === options.agentModel);
 
+  // Log what agent config we're looking for
+  log("INFO", `Looking for agent config: ${options.agentModel}`, {
+    agentModel: options.agentModel,
+    taskRunId: options.taskRunId,
+    availableConfigs: AGENT_CONFIGS.map(c => c.name).slice(0, 5), // Log first 5 for debugging
+  });
+
   // if missing need to return early
   if (!agentConfig) {
-    log("ERROR", `Agent config not found for ${options.agentModel}`);
+    log("ERROR", `Agent config not found for ${options.agentModel}`, {
+      agentModel: options.agentModel,
+      availableConfigs: AGENT_CONFIGS.map(c => c.name),
+    });
     return;
   }
 
   if (options.taskRunId && agentConfig?.completionDetector) {
     try {
-      void agentConfig
+      log("INFO", `Setting up completion detector for task ${options.taskRunId}`, {
+        taskRunId: options.taskRunId,
+        agentModel: options.agentModel,
+        hasDetector: !!agentConfig.completionDetector,
+      });
+      
+      agentConfig
         .completionDetector(options.taskRunId)
-        .then(() => {
+        .then(async () => {
+          log("INFO", `Completion detector resolved for task ${options.taskRunId}`);
+          
           emitToMainServer("worker:task-complete", {
             workerId: WORKER_ID,
             terminalId,
@@ -1051,37 +1069,39 @@ async function createTerminal(
           // Retrieve the exit code if the process has already exited
           const storedExitCode = processExitCodes.get(options.taskRunId!);
 
-          void handleWorkerTaskCompletion(options.taskRunId!, {
-            agentModel: options.agentModel,
-            elapsedMs: Date.now() - processStartTime,
-            exitCode: storedExitCode ?? 0,
-          })
-            .then(() => {
-              log("INFO", `Crown workflow completed for ${options.taskRunId}`, {
+          // Await the crown workflow directly
+          try {
+            await handleWorkerTaskCompletion(options.taskRunId!, {
+              agentModel: options.agentModel,
+              elapsedMs: Date.now() - processStartTime,
+              exitCode: storedExitCode ?? 0,
+            });
+            
+            log("INFO", `Crown workflow completed for ${options.taskRunId}`, {
+              taskRunId: options.taskRunId,
+              agentModel: options.agentModel,
+            });
+            
+            // Clean up stored exit code
+            if (options.taskRunId) {
+              processExitCodes.delete(options.taskRunId);
+            }
+          } catch (error) {
+            log(
+              "ERROR",
+              `Failed to handle crown workflow for ${options.taskRunId}`,
+              {
                 taskRunId: options.taskRunId,
                 agentModel: options.agentModel,
-              });
-              // Clean up stored exit code
-              if (options.taskRunId) {
-                processExitCodes.delete(options.taskRunId);
+                error: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : undefined,
               }
-            })
-            .catch((error) => {
-              log(
-                "ERROR",
-                `Failed to handle crown workflow for ${options.taskRunId}`,
-                {
-                  taskRunId: options.taskRunId,
-                  agentModel: options.agentModel,
-                  error: error instanceof Error ? error.message : String(error),
-                  stack: error instanceof Error ? error.stack : undefined,
-                }
-              );
-              // Clean up stored exit code even on error
-              if (options.taskRunId) {
-                processExitCodes.delete(options.taskRunId);
-              }
-            });
+            );
+            // Clean up stored exit code even on error
+            if (options.taskRunId) {
+              processExitCodes.delete(options.taskRunId);
+            }
+          }
         })
         .catch((e) => {
           log(
