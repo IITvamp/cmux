@@ -44,6 +44,7 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
     dockerLogger.info(
       `[CmuxVSCodeInstance ${this.instanceId}] Requesting sandbox start via www API`
     );
+
     const requestBody: StartSandboxBody = {
       teamSlugOrId: this.teamSlugOrId,
       ttlSeconds: 20 * 60,
@@ -52,15 +53,9 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
         instance: `cmux-${this.taskRunId}`,
         agentName: this.config.agentName || "",
       },
+      taskRunJwt: this.taskRunJwt,
+      environmentId: this.environmentId,
     };
-
-    if (this.taskRunJwt) {
-      requestBody.taskRunJwt = this.taskRunJwt;
-    }
-
-    if (this.environmentId) {
-      requestBody.environmentId = this.environmentId;
-    }
 
     if (this.repoUrl) {
       requestBody.repoUrl = this.repoUrl;

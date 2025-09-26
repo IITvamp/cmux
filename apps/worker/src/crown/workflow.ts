@@ -7,7 +7,7 @@ import { convexRequest } from "./convex";
 import {
   autoCommitAndPush,
   buildCommitMessage,
-  cacheBranchDiff,
+  branchDiffCache,
   captureRelevantDiff,
   collectDiffForRun,
   detectGitRepoPath,
@@ -161,7 +161,7 @@ export async function handleWorkerTaskCompletion(
       }
 
       if (branchForCommit) {
-        cacheBranchDiff(branchForCommit, diffForCommit);
+        branchDiffCache.set(branchForCommit, diffForCommit);
         log("INFO", "Cached diff for branch after auto-commit", {
           branch: branchForCommit,
           diffLength: diffForCommit.length,
@@ -245,16 +245,6 @@ export async function handleWorkerTaskCompletion(
         taskRunId,
         taskId: currentTaskId,
       });
-
-      await convexRequest(
-        "/api/crown/status",
-        runContext.token,
-        {
-          taskRunId,
-          status: "complete",
-        },
-        baseUrlOverride
-      );
 
       const completionState =
         await convexRequest<WorkerAllRunsCompleteResponse>(

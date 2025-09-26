@@ -7,20 +7,11 @@ import { execAsync, type ExecError } from "./shell";
 import { toUtf8String } from "./utils";
 
 let gitRepoPath: string | null = null;
-const branchDiffCache = new Map<string, string>();
+export const branchDiffCache = new Map<string, string>();
 
 const COLLECT_RELEVANT_DIFF_SCRIPT =
   "/usr/local/bin/cmux-collect-relevant-diff.sh";
-const COLLECT_CROWN_DIFF_SCRIPT =
-  "/usr/local/bin/cmux-collect-crown-diff.sh";
-
-export function getCachedBranchDiff(branch: string): string | undefined {
-  return branchDiffCache.get(branch);
-}
-
-export function cacheBranchDiff(branch: string, diff: string): void {
-  branchDiffCache.set(branch, diff);
-}
+const COLLECT_CROWN_DIFF_SCRIPT = "/usr/local/bin/cmux-collect-crown-diff.sh";
 
 export async function detectGitRepoPath(): Promise<string> {
   if (gitRepoPath) {
@@ -29,7 +20,9 @@ export async function detectGitRepoPath(): Promise<string> {
 
   if (existsSync(join(WORKSPACE_ROOT, ".git"))) {
     gitRepoPath = WORKSPACE_ROOT;
-    log("INFO", "Git repository found at workspace root", { path: gitRepoPath });
+    log("INFO", "Git repository found at workspace root", {
+      path: gitRepoPath,
+    });
     return gitRepoPath;
   }
 
@@ -65,7 +58,9 @@ export async function detectGitRepoPath(): Promise<string> {
     if (stdout && stdout.trim()) {
       const gitDir = stdout.trim();
       gitRepoPath = gitDir.replace(/\/.git$/, "");
-      log("INFO", "Git repository found via find command", { path: gitRepoPath });
+      log("INFO", "Git repository found via find command", {
+        path: gitRepoPath,
+      });
       return gitRepoPath;
     }
   } catch (error) {
@@ -167,13 +162,10 @@ export async function fetchRemoteRef(ref: string): Promise<boolean> {
   return false;
 }
 
-export function truncateDiff(diff: string): string {
+export function formatDiff(diff: string): string {
   if (!diff) return "No changes detected";
   const trimmed = diff.trim();
-  if (trimmed.length === 0) return "No changes detected";
-  const limit = 5000;
-  if (trimmed.length <= limit) return trimmed;
-  return `${trimmed.slice(0, limit)}\n... (truncated)`;
+  return trimmed.length > 0 ? trimmed : "No changes detected";
 }
 
 export async function collectDiffForRun(
@@ -184,10 +176,10 @@ export async function collectDiffForRun(
     return "No changes detected";
   }
 
-  const cachedDiff = getCachedBranchDiff(branch);
+  const cachedDiff = branchDiffCache.get(branch);
   if (cachedDiff) {
     log("INFO", "Using cached diff for branch", { branch });
-    return truncateDiff(cachedDiff);
+    return formatDiff(cachedDiff);
   }
 
   const sanitizedBase = baseBranch || "main";
@@ -203,18 +195,15 @@ export async function collectDiffForRun(
   const branchRef = branch.startsWith("origin/") ? branch : `origin/${branch}`;
 
   try {
-    const { stdout } = await execAsync(
-      COLLECT_CROWN_DIFF_SCRIPT,
-      {
-        cwd: WORKSPACE_ROOT,
-        maxBuffer: 5 * 1024 * 1024,
-        env: {
-          ...process.env,
-          CMUX_DIFF_BASE: baseRef,
-          CMUX_DIFF_HEAD_REF: branchRef,
-        },
-      }
-    );
+    const { stdout } = await execAsync(COLLECT_CROWN_DIFF_SCRIPT, {
+      cwd: WORKSPACE_ROOT,
+      maxBuffer: 5 * 1024 * 1024,
+      env: {
+        ...process.env,
+        CMUX_DIFF_BASE: baseRef,
+        CMUX_DIFF_HEAD_REF: branchRef,
+      },
+    });
 
     const diff = stdout.trim();
     if (!diff) {
@@ -225,8 +214,8 @@ export async function collectDiffForRun(
       return "No changes detected";
     }
 
-    cacheBranchDiff(branch, diff);
-    return truncateDiff(diff);
+    branchDiffCache.set(branch, diff);
+    return formatDiff(diff);
   } catch (error) {
     log("ERROR", "Failed to collect diff for run", {
       baseBranch: sanitizedBase,
@@ -286,13 +275,10 @@ export async function ensureBranchesAvailable(
 export async function captureRelevantDiff(): Promise<string> {
   try {
     const repoPath = await detectGitRepoPath();
-    const { stdout } = await execAsync(
-      COLLECT_RELEVANT_DIFF_SCRIPT,
-      {
-        cwd: repoPath,
-        maxBuffer: 5 * 1024 * 1024,
-      }
-    );
+    const { stdout } = await execAsync(COLLECT_RELEVANT_DIFF_SCRIPT, {
+      cwd: repoPath,
+      maxBuffer: 5 * 1024 * 1024,
+    });
     const diff = stdout ? stdout.trim() : "";
     return diff.length > 0 ? diff : "No changes detected";
   } catch (error) {
@@ -316,10 +302,7 @@ export function buildCommitMessage({
 }
 
 export async function getCurrentBranch(): Promise<string | null> {
-  const result = await runGitCommand(
-    "git rev-parse --abbrev-ref HEAD",
-    true
-  );
+  const result = await runGitCommand("git rev-parse --abbrev-ref HEAD", true);
   const branch = result?.stdout.trim();
   if (!branch) {
     log("WARN", "Unable to determine current git branch");
@@ -414,9 +397,7 @@ export async function autoCommitAndPush({
       : undefined,
   });
 
-  const checkoutResult = await runGitCommand(
-    `git checkout -B ${branchName}`
-  );
+  const checkoutResult = await runGitCommand(`git checkout -B ${branchName}`);
   log("INFO", "git checkout -B completed", {
     branchName,
     stdout: checkoutResult?.stdout
@@ -485,9 +466,7 @@ export async function autoCommitAndPush({
     });
   }
 
-  const pushResult = await runGitCommand(
-    `git push -u origin ${branchName}`
-  );
+  const pushResult = await runGitCommand(`git push -u origin ${branchName}`);
   if (pushResult) {
     log("INFO", "git push output", {
       branchName,
