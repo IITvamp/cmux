@@ -37,6 +37,11 @@ import {
   appendLogWithRotation,
   type LogRotationOptions,
 } from "./log-management/log-rotation";
+import {
+  persistCurrentStackAuth,
+  restorePersistedStackAuth,
+  watchStackAuthCookies,
+} from "./auth-persistence";
 const { autoUpdater } = electronUpdater;
 
 import util from "node:util";
@@ -46,6 +51,25 @@ import { env } from "./electron-main-env";
 // Use a cookieable HTTPS origin intercepted locally instead of a custom scheme.
 const PARTITION = "persist:cmux";
 const APP_HOST = "cmux.local";
+const STACK_REFRESH_COOKIE_NAME = `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`;
+const STACK_ACCESS_COOKIE_NAME = "stack-access";
+
+const stackAuthLogger = {
+  log(message: string, details?: Record<string, unknown>) {
+    if (details) {
+      mainLog(message, details);
+      return;
+    }
+    mainLog(message);
+  },
+  warn(message: string, details?: unknown) {
+    if (details !== undefined) {
+      mainWarn(message, details);
+      return;
+    }
+    mainWarn(message);
+  },
+};
 
 function resolveMaxSuspendedWebContents(): number | undefined {
   const raw =
@@ -623,6 +647,26 @@ app.whenReady().then(async () => {
   }
 
   const ses = session.fromPartition(PARTITION);
+
+  await restorePersistedStackAuth({
+    session: ses,
+    cookieNames: {
+      refresh: STACK_REFRESH_COOKIE_NAME,
+      access: STACK_ACCESS_COOKIE_NAME,
+    },
+    hostFallback: APP_HOST,
+    logger: stackAuthLogger,
+  });
+
+  watchStackAuthCookies({
+    session: ses,
+    cookieNames: {
+      refresh: STACK_REFRESH_COOKIE_NAME,
+      access: STACK_ACCESS_COOKIE_NAME,
+    },
+    hostFallback: APP_HOST,
+    logger: stackAuthLogger,
+  });
   // Intercept HTTPS for our private host and serve local files; pass-through others.
   ses.protocol.handle("https", async (req) => {
     const u = new URL(req.url);
@@ -812,15 +856,18 @@ async function handleProtocolUrl(url: string): Promise<void> {
     await Promise.all([
       mainWindow.webContents.session.cookies.remove(
         realUrl,
-        `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`
+        STACK_REFRESH_COOKIE_NAME
       ),
-      mainWindow.webContents.session.cookies.remove(realUrl, `stack-access`),
+      mainWindow.webContents.session.cookies.remove(
+        realUrl,
+        STACK_ACCESS_COOKIE_NAME
+      ),
     ]);
 
     await Promise.all([
       mainWindow.webContents.session.cookies.set({
         url: realUrl,
-        name: `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`,
+        name: STACK_REFRESH_COOKIE_NAME,
         value: stackRefresh,
         expirationDate: refreshPayload?.exp,
         sameSite: "no_restriction",
@@ -828,13 +875,23 @@ async function handleProtocolUrl(url: string): Promise<void> {
       }),
       mainWindow.webContents.session.cookies.set({
         url: realUrl,
-        name: "stack-access",
+        name: STACK_ACCESS_COOKIE_NAME,
         value: stackAccess,
         expirationDate: accessPayload?.exp,
         sameSite: "no_restriction",
         secure: true,
       }),
     ]);
+
+    await persistCurrentStackAuth({
+      session: mainWindow.webContents.session,
+      cookieNames: {
+        refresh: STACK_REFRESH_COOKIE_NAME,
+        access: STACK_ACCESS_COOKIE_NAME,
+      },
+      hostFallback: APP_HOST,
+      logger: stackAuthLogger,
+    });
 
     mainWindow.webContents.reload();
     return;
