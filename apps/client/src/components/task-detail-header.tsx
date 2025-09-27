@@ -56,11 +56,12 @@ function AdditionsAndDeletions({
   ref1: string;
   ref2: string;
 }) {
-  const diffsQuery = useRQ(
-    repoFullName && ref1 && ref2
-      ? gitDiffQueryOptions({ repoFullName, baseRef: ref1, headRef: ref2 })
-      : { queryKey: ["git-diff-disabled"], queryFn: async () => [] }
-  );
+  const diffsQuery = useRQ({
+    ...gitDiffQueryOptions({ repoFullName, baseRef: ref1, headRef: ref2 }),
+    enabled: Boolean(repoFullName && ref2),
+  });
+
+  console.log({ repoFullName, ref1, ref2 });
 
   if (diffsQuery.error) {
     return (

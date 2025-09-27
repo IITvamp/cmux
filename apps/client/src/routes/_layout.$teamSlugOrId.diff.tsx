@@ -153,17 +153,14 @@ function DashboardDiffPage() {
   }, [search.ref1, search.ref2, setSearch]);
 
   const bothSelected = !!search.ref1 && !!search.ref2 && !!selectedProject;
-  const diffsQuery = useRQ(
-    selectedProject && search.ref1 && search.ref2
-      ? gitDiffQueryOptions({
-          repoFullName: selectedProject,
-          baseRef: search.ref1,
-          headRef: search.ref2,
-        })
-      : { queryKey: ["git-diff-disabled"], queryFn: async () => [] }
-  );
-
-  // Smart view: no toggle logic needed
+  const diffsQuery = useRQ({
+    ...gitDiffQueryOptions({
+      repoFullName: selectedProject!,
+      baseRef: search.ref1,
+      headRef: search.ref2!,
+    }),
+    enabled: Boolean(selectedProject && search.ref1 && search.ref2),
+  });
 
   useEffect(() => {
     if (diffsQuery.isError) {

@@ -25,7 +25,9 @@ function applyRepoPrefix(
   return {
     ...entry,
     filePath: `${normalizedPrefix}${entry.filePath}`,
-    oldPath: entry.oldPath ? `${normalizedPrefix}${entry.oldPath}` : entry.oldPath,
+    oldPath: entry.oldPath
+      ? `${normalizedPrefix}${entry.oldPath}`
+      : entry.oldPath,
   };
 }
 
@@ -55,25 +57,19 @@ export function RunDiffSection(props: RunDiffSectionProps) {
   const canFetch = repoFullNames.length > 0 && Boolean(ref1) && Boolean(ref2);
 
   const queries = useQueries({
-    queries: repoFullNames.map((repo) =>
-      canFetch
-        ? {
-            ...gitDiffQueryOptions({
-              repoFullName: repo,
-              baseRef: ref1,
-              headRef: ref2,
-            }),
-            enabled: true,
-          }
-        : {
-            queryKey: ["git-diff-disabled", repo],
-            queryFn: async () => [] as ReplaceDiffEntry[],
-            enabled: false,
-          }
-    ),
+    queries: repoFullNames.map((repo) => ({
+      ...gitDiffQueryOptions({
+        repoFullName: repo,
+        baseRef: ref1,
+        headRef: ref2,
+      }),
+      enabled: canFetch,
+    })),
   });
 
-  const isPending = queries.some((query) => query.isPending || query.isFetching);
+  const isPending = queries.some(
+    (query) => query.isPending || query.isFetching
+  );
   const firstError = queries.find((query) => query.isError);
 
   if (!canFetch) {
