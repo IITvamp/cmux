@@ -143,17 +143,17 @@ export default function LandingPage() {
             <div className="bg-blue-500 rounded-sm" aria-hidden="true"></div>
             <div>
               <h1 className="text-4xl sm:text-4xl md:text-4xl font-semibold mb-6">
-                Universal AI coding agent manager for 10x engineers
+                AI Workflow Builder for Businesses
               </h1>
 
               <p className="text-lg text-neutral-300 mb-4 leading-relaxed">
-                cmux is a universal AI coding agent manager that supports Claude Code, Codex, Gemini CLI, Amp,
-                Opencode, and other coding CLIs. We give 10x engineers an interface to manage AI coding tasks in
-                parallel, context switch fast, and verify AI-generated code to stay actually productive with AI.
+                cmux is an AI workflow builder that helps businesses streamline their development processes with
+                multiple AI coding agents. Manage Claude Code, Codex, Gemini CLI, Amp, Opencode, and other coding
+                CLIs in parallel to accelerate your team&apos;s productivity and deliver faster results.
               </p>
               <p className="text-lg text-neutral-300 mb-4 leading-relaxed">
-                Every run spins up an isolated VS Code instances via Docker with the git diff UI and terminal so parallel
-                agent work stays verifiable, fast, and ready to ship.
+                Each task runs in isolated VS Code instances via Docker with built-in code review tools, ensuring
+                your business can scale development workflows while maintaining code quality and security standards.
               </p>
               <p className="text-lg text-neutral-300 leading-relaxed">
                 Learn more about the{" "}
