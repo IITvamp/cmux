@@ -143,17 +143,17 @@ export default function LandingPage() {
             <div className="bg-blue-500 rounded-sm" aria-hidden="true"></div>
             <div>
               <h1 className="text-4xl sm:text-4xl md:text-4xl font-semibold mb-6">
-                Universal AI coding agent manager for 10x engineers
+                AI workflow builder for businesses
               </h1>
 
               <p className="text-lg text-neutral-300 mb-4 leading-relaxed">
-                cmux is a universal AI coding agent manager that supports Claude Code, Codex, Gemini CLI, Amp,
-                Opencode, and other coding CLIs. We give 10x engineers an interface to manage AI coding tasks in
-                parallel, context switch fast, and verify AI-generated code to stay actually productive with AI.
+                cmux streamlines business software development by orchestrating multiple AI coding agents in parallel.
+                Teams can deploy Claude Code, Codex, Gemini CLI, and other AI tools simultaneously across different
+                projects, dramatically accelerating development cycles while maintaining code quality and oversight.
               </p>
               <p className="text-lg text-neutral-300 mb-4 leading-relaxed">
-                Every run spins up an isolated VS Code instances via Docker with the git diff UI and terminal so parallel
-                agent work stays verifiable, fast, and ready to ship.
+                Each workflow runs in isolated VS Code environments with built-in verification tools, ensuring
+                your business can scale AI-assisted development safely and efficiently.
               </p>
               <p className="text-lg text-neutral-300 leading-relaxed">
                 Learn more about the{" "}
@@ -243,66 +243,64 @@ export default function LandingPage() {
       <section id="about" className="pt-8 px-4 sm:px-6 lg:px-12">
         <div className="container max-w-5xl mx-auto">
           <h2 className="text-2xl font-semibold text-center mb-8">
-            Rethinking the developer interface
+            Scaling business development with AI workflows
           </h2>
 
           <div className="space-y-8 text-neutral-400 mb-12">
             <div className="space-y-2">
               <p>
                 <span className="text-white font-semibold">
-                  The interface is the bottleneck.
+                  Modern businesses need faster development cycles.
                 </span>{" "}
-                We&apos;ve spent years making AI agents better at coding, but almost
-                no time making it easier to verify their work. The result?
-                Developers spend 80% of their time reviewing and 20% prompting.
+                Traditional development approaches can't keep pace with market demands.
+                AI coding agents offer unprecedented speed, but managing multiple agents
+                across business projects becomes chaotic without proper orchestration.
               </p>
               <blockquote className="border-l-2 border-neutral-800 pl-4 text-neutral-300">
                 <p>
-                  Running multiple agents at once sounds powerful until it turns
-                  into chaos: 3-4 terminals, each on a different task, and
-                  you&apos;re asking, &quot;Which one is on auth? Did the database
-                  refactor finish?&quot; You end up bouncing between windows, running
-                  git diff, and piecing together what changed where.
+                  Businesses often struggle to coordinate AI development across teams:
+                  multiple agents working on different features, unclear progress tracking,
+                  and difficulty ensuring code quality standards. The result is wasted
+                  time and inconsistent outcomes.
                 </p>
               </blockquote>
             </div>
             <div className="space-y-2">
               <p>
                 <span className="text-white font-semibold">
-                  Isolation enables scale.
+                  Workflow isolation drives business results.
                 </span>{" "}
-                When each agent runs in its own container with its own VS Code
-                instance, you eliminate the confusion of shared state. Every
-                diff is clean. Every terminal output is separate. Every
-                verification is independent.
+                cmux creates separate development environments for each AI workflow,
+                eliminating conflicts and enabling true parallel development.
+                Business teams can confidently scale their AI-assisted development
+                without sacrificing quality or control.
               </p>
               <blockquote className="border-l-2 border-neutral-800 pl-4 text-neutral-300">
                 <p>
-                  The issue isn&apos;t that agents aren&apos;t good — they&apos;re getting
-                  scary good. It&apos;s that our tools were designed for a different
-                  era. VS Code was built for writing code, not reviewing five
-                  parallel streams of AI-generated changes. Terminals expect
-                  sequential commands, not a fleet of autonomous workers.
+                  Traditional development tools weren't designed for AI workflow management.
+                  Businesses need platforms that can orchestrate multiple AI agents
+                  while maintaining clear oversight, progress tracking, and quality
+                  assurance across all development initiatives.
                 </p>
               </blockquote>
             </div>
             <div className="space-y-2">
               <p>
                 <span className="text-white font-semibold">
-                  Verification is non-negotiable.
+                  Business-grade verification and oversight.
                 </span>{" "}
-                Code diffs are just the start. We need to see the running
-                application, the test results, the performance metrics—all in
-                real-time, for every agent, without switching contexts.
+                Enterprise development requires comprehensive verification:
+                code reviews, automated testing, performance monitoring, and
+                compliance checks—all visible in real-time across every
+                AI workflow without context switching.
               </p>
               <blockquote className="border-l-2 border-neutral-800 pl-4 text-neutral-300">
                 <p>
-                  cmux solves this by giving each agent its own world: separate
-                  Docker container, separate VS Code, separate git state. VS
-                  Code opens with the git diff already showing. Every change is
-                  isolated to its task, so you can see exactly what each agent
-                  did — immediately — without losing context. That&apos;s what makes
-                  running 10+ agents actually workable.
+                  cmux delivers enterprise-ready AI workflow management with
+                  isolated Docker environments and dedicated VS Code instances
+                  for each workflow. Teams get immediate visibility into every
+                  change, automated quality gates, and seamless integration
+                  with existing business processes.
                 </p>
               </blockquote>
             </div>
@@ -329,7 +327,7 @@ export default function LandingPage() {
       <section id="features" className="pt-8 px-4 sm:px-6 lg:px-12">
         <div className="container max-w-5xl mx-auto">
           <h2 className="text-2xl font-semibold mb-8 text-center">
-            How cmux works today
+            Enterprise AI workflow capabilities
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -341,11 +339,12 @@ export default function LandingPage() {
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
-                  Separate VS Code IDE instances
+                  Isolated development environments
                 </h3>
                 <p className="text-sm text-neutral-400">
-                  Each agent runs in its own VS Code instance. You can open them
-                  in your IDE of choice, locally or remotely.
+                  Each business workflow runs in dedicated VS Code instances
+                  with full environment isolation, ensuring clean development
+                  cycles and preventing conflicts between projects.
                 </p>
               </div>
 
@@ -356,12 +355,12 @@ export default function LandingPage() {
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
-                  Multiple agent support
+                  Multi-agent orchestration
                 </h3>
                 <p className="text-sm text-neutral-400">
-                  Claude Code, Codex, Gemini CLI, Amp, Opencode, and other
-                  coding agent CLIs. Particularly useful to run agents together
-                  and find the best one for the task.
+                  Deploy Claude Code, Codex, Gemini CLI, and other AI agents
+                  across your business workflows. Compare agent performance
+                  and automatically route tasks to the most effective AI for each job.
                 </p>
               </div>
 
@@ -372,11 +371,12 @@ export default function LandingPage() {
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
-                  Git extension UI
+                  Built-in code review workflows
                 </h3>
                 <p className="text-sm text-neutral-400">
-                  On mount, VS Code opens the git extension&apos;s diff UI. Review
-                  changes without context switching.
+                  Integrated git diff UI opens automatically for immediate
+                  code review. Streamline approval processes and maintain
+                  development standards across all AI-generated code.
                 </p>
               </div>
             </div>
@@ -389,11 +389,12 @@ export default function LandingPage() {
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
-                  Sandbox environment preview
+                  Business-ready testing environments
                 </h3>
                 <p className="text-sm text-neutral-400">
-                  Spin up isolated sandboxes to preview your changes safely.
-                  cmux uses fast cloud sandboxes or Docker locally.
+                  Deploy secure, isolated testing environments for safe
+                  validation of AI-generated changes. Support both cloud
+                  and on-premises deployment models.
                 </p>
               </div>
 
@@ -404,11 +405,12 @@ export default function LandingPage() {
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
-                  Code review page
+                  Centralized workflow dashboard
                 </h3>
                 <p className="text-sm text-neutral-400">
-                  Central place to review changes across agents. View diffs for
-                  draft PRs and committed work without leaving the dashboard.
+                  Unified view of all AI workflows across your organization.
+                  Track progress, review changes, and manage approvals
+                  from a single business intelligence dashboard.
                 </p>
               </div>
 
@@ -419,11 +421,12 @@ export default function LandingPage() {
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
-                  Task management
+                  Enterprise task orchestration
                 </h3>
                 <p className="text-sm text-neutral-400">
-                  Track parallel executions, view task history, keep containers
-                  alive when needed.
+                  Comprehensive workflow tracking with execution history,
+                  resource management, and business metrics. Scale AI
+                  development operations with enterprise-grade controls.
                 </p>
               </div>
             </div>
@@ -450,15 +453,15 @@ export default function LandingPage() {
       <section id="roadmap" className="pt-8 pb-8 px-4 sm:px-6 lg:px-12">
         <div className="container max-w-5xl mx-auto">
           <h2 className="text-2xl font-semibold mb-8 text-center">
-            The roadmap
+            Enterprise roadmap
           </h2>
           <div className="space-y-6">
             <div className="text-neutral-400">
               <p className="mb-6">
-                We&apos;re building the missing layer between AI agents and
-                developers. Not another agent, not another IDE—but the
-                verification interface that makes managing 10, 20, or 100
-                parallel agents as easy as managing one.
+                We&apos;re building the enterprise platform that transforms
+                how businesses deploy AI for software development. Our focus
+                is creating scalable workflow orchestration that enables
+                organizations to leverage AI development at unprecedented scale.
               </p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
