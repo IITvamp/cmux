@@ -1,7 +1,8 @@
 use super::*;
 use std::{fs, process::Command};
 use tempfile::tempdir;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+use crate::types::GitDiffWorkspaceOptions;
 
 fn run(cwd: &std::path::Path, cmd: &str) {
   let status = if cfg!(target_os = "windows") {

@@ -225,9 +225,6 @@ export const VSCodeSpawnedSchema = z.object({
   provider: z.enum(["docker", "morph", "daytona"]),
 });
 
-export const VSCodeErrorSchema = z.object({
-  error: z.string(),
-});
 
 // GitHub events
 export const GitHubFetchReposSchema = z.object({
@@ -407,7 +404,6 @@ export type ListFilesRequest = z.infer<typeof ListFilesRequestSchema>;
 export type FileInfo = z.infer<typeof FileInfoSchema>;
 export type ListFilesResponse = z.infer<typeof ListFilesResponseSchema>;
 export type VSCodeSpawned = z.infer<typeof VSCodeSpawnedSchema>;
-export type VSCodeError = z.infer<typeof VSCodeErrorSchema>;
 export type GitHubFetchBranches = z.infer<typeof GitHubFetchBranchesSchema>;
 export type GitHubBranchesResponse = z.infer<
   typeof GitHubBranchesResponseSchema
@@ -588,8 +584,6 @@ export interface ClientToServerEvents {
 }
 
 export interface ServerToClientEvents {
-  "task-started": (data: TaskStarted) => void;
-  "task-error": (data: TaskError) => void;
   "git-status-response": (data: GitStatusResponse) => void;
   "git-diff-response": (data: GitDiffResponse) => void;
   "git-file-changed": (data: GitFileChanged) => void;
@@ -597,7 +591,6 @@ export interface ServerToClientEvents {
   "open-in-editor-error": (data: OpenInEditorError) => void;
   "list-files-response": (data: ListFilesResponse) => void;
   "vscode-spawned": (data: VSCodeSpawned) => void;
-  "vscode-error": (data: VSCodeError) => void;
   "default-repo": (data: DefaultRepo) => void;
   "available-editors": (data: AvailableEditors) => void;
 }
