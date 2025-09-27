@@ -178,6 +178,11 @@ mod tests {
     let origin_url = origin_path.to_string_lossy().to_string();
     run_git(seed.to_str().unwrap(), &["remote", "add", "origin", &origin_url]).unwrap();
     run_git(seed.to_str().unwrap(), &["push", "-u", "origin", "main"]).unwrap();
+    run_git(
+      origin_path.to_str().unwrap(),
+      &["symbolic-ref", "HEAD", "refs/heads/main"]
+    )
+    .unwrap();
     run_git(seed.to_str().unwrap(), &["push", "-u", "origin", "dev"]).unwrap();
     run_git(seed.to_str().unwrap(), &["push", "-u", "origin", "feature"]).unwrap();
 
