@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { compareRefsForRepo } from "./compareRefs";
+import { getGitDiff } from "./gitDiff";
 
 function run(cwd: string, cmd: string) {
   const shell = process.platform === "win32" ? "cmd" : "sh";
@@ -27,16 +27,16 @@ function initRepo(): string {
   return dir;
 }
 
-describe("compareRefsForRepo (native)", () => {
+describe("getGitDiff (native)", () => {
   test("detects pure rename via identity (unchanged content)", async () => {
     const repo = initRepo();
     run(repo, "git checkout -b feature");
     run(repo, "git mv a.txt b.txt");
     run(repo, "git -c user.email=a@b -c user.name=test commit -m rename");
 
-    const diffs = await compareRefsForRepo({
-      ref1: "main",
-      ref2: "feature",
+    const diffs = await getGitDiff({
+      baseRef: "main",
+      headRef: "feature",
       originPathOverride: repo,
     });
 
@@ -67,9 +67,9 @@ describe("compareRefsForRepo (native)", () => {
       "git -c user.email=a@b -c user.name=test commit -m rename_modify"
     );
 
-    const diffs = await compareRefsForRepo({
-      ref1: "main",
-      ref2: "feature",
+    const diffs = await getGitDiff({
+      baseRef: "main",
+      headRef: "feature",
       originPathOverride: repo,
     });
 
@@ -92,9 +92,9 @@ describe("compareRefsForRepo (native)", () => {
     run(repo, "git add .");
     run(repo, "git -c user.email=a@b -c user.name=test commit -m change");
 
-    const diffs = await compareRefsForRepo({
-      ref1: "main",
-      ref2: "feature",
+    const diffs = await getGitDiff({
+      baseRef: "main",
+      headRef: "feature",
       originPathOverride: repo,
     });
 

@@ -45,23 +45,9 @@ pub struct GitDiffWorkspaceOptions {
 
 #[napi(object)]
 #[derive(Default, Debug, Clone)]
-pub struct GitDiffRefsOptions {
-  pub ref1: String,
-  pub ref2: String,
-  pub repoFullName: Option<String>,
-  pub repoUrl: Option<String>,
-  pub teamSlugOrId: Option<String>,
-  pub originPathOverride: Option<String>,
-  pub includeContents: Option<bool>,
-  pub maxBytes: Option<i32>,
-}
-
-#[napi(object)]
-#[derive(Default, Debug, Clone)]
-pub struct GitDiffLandedOptions {
-  pub baseRef: String,
+pub struct GitDiffOptions {
   pub headRef: String,
-  pub b0Ref: Option<String>,
+  pub baseRef: Option<String>,
   pub repoFullName: Option<String>,
   pub repoUrl: Option<String>,
   pub teamSlugOrId: Option<String>,

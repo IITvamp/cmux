@@ -1,4 +1,4 @@
-import { diffSmartQueryOptions } from "@/queries/diff-smart";
+import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { useQueries } from "@tanstack/react-query";
 import { useMemo, type ComponentProps } from "react";
 import { GitDiffViewer } from "./git-diff-viewer";
@@ -58,7 +58,7 @@ export function RunDiffSection(props: RunDiffSectionProps) {
     queries: repoFullNames.map((repo) =>
       canFetch
         ? {
-            ...diffSmartQueryOptions({
+            ...gitDiffQueryOptions({
               repoFullName: repo,
               baseRef: ref1,
               headRef: ref2,
@@ -66,7 +66,7 @@ export function RunDiffSection(props: RunDiffSectionProps) {
             enabled: true,
           }
         : {
-            queryKey: ["diff-smart-disabled", repo],
+            queryKey: ["git-diff-disabled", repo],
             queryFn: async () => [] as ReplaceDiffEntry[],
             enabled: false,
           }

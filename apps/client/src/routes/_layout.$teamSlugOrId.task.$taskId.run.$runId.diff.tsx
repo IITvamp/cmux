@@ -13,7 +13,7 @@ import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { refWithOrigin } from "@/lib/refWithOrigin";
 import { cn } from "@/lib/utils";
-import { diffSmartQueryOptions } from "@/queries/diff-smart";
+import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
@@ -141,7 +141,7 @@ export const Route = createFileRoute(
       selectedTaskRun?.newBranch
     ) {
       void opts.context.queryClient.ensureQueryData(
-        diffSmartQueryOptions({
+        gitDiffQueryOptions({
           baseRef: task.baseBranch,
           headRef: selectedTaskRun?.newBranch,
           repoFullName: task.projectFullName,

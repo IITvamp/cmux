@@ -100,27 +100,14 @@ export const GitFullDiffRequestSchema = z.object({
 });
 
 // Compare arbitrary refs within a repository (e.g., branch names or SHAs)
-export const GitCompareRefsSchema = z.object({
-  // Full repo name, e.g., "owner/name". Server will derive remote URL.
-  repoFullName: z.string(),
-  ref1: z.string(),
-  ref2: z.string(),
-});
-
-// Landed diff request: compute what landed on base when head was integrated
-export const GitLandedRefsSchema = z.object({
-  repoFullName: z.string(),
-  baseRef: z.string(),
+export const GitRepoDiffRequestSchema = z.object({
   headRef: z.string(),
-  b0Ref: z.string().optional(),
-});
-
-// Smart diff request: returns latest or landed depending on branch state
-export const GitSmartRefsSchema = z.object({
-  repoFullName: z.string(),
-  baseRef: z.string(),
-  headRef: z.string(),
-  b0Ref: z.string().optional(),
+  baseRef: z.string().optional(),
+  repoFullName: z.string().optional(),
+  repoUrl: z.string().optional(),
+  originPathOverride: z.string().optional(),
+  includeContents: z.boolean().optional(),
+  maxBytes: z.number().optional(),
 });
 
 export const GitFileSchema = z.object({
@@ -394,7 +381,7 @@ export type GitStatusResponse = z.infer<typeof GitStatusResponseSchema>;
 export type GitDiffResponse = z.infer<typeof GitDiffResponseSchema>;
 export type GitFileChanged = z.infer<typeof GitFileChangedSchema>;
 export type GitFullDiffRequest = z.infer<typeof GitFullDiffRequestSchema>;
-export type GitCompareRefs = z.infer<typeof GitCompareRefsSchema>;
+export type GitRepoDiffRequest = z.infer<typeof GitRepoDiffRequestSchema>;
 export type GitFullDiffResponse = z.infer<typeof GitFullDiffResponseSchema>;
 export type OpenInEditor = z.infer<typeof OpenInEditorSchema>;
 export type OpenInEditorError = z.infer<typeof OpenInEditorErrorSchema>;
@@ -434,46 +421,16 @@ export interface ClientToServerEvents {
     data: StartTask,
     callback: (response: TaskStarted | TaskError) => void
   ) => void;
-  "git-diff-smart": (
-    data: z.infer<typeof GitSmartRefsSchema>,
-    callback: (
-      response:
-        | {
-            ok: true;
-            diffs: import("./diff-types.js").ReplaceDiffEntry[];
-            strategy?: "latest" | "landed";
-          }
-        | { ok: false; error: string; diffs?: [] }
-    ) => void
-  ) => void;
   "git-status": (data: GitStatusRequest) => void;
-  "git-diff": (data: GitDiffRequest) => void;
-  "git-full-diff": (data: GitFullDiffRequest) => void;
-  "git-diff-refs": (
-    data: GitCompareRefs,
-    callback: (
-      response:
-        | { ok: true; diffs: import("./diff-types.js").ReplaceDiffEntry[] }
-        | { ok: false; error: string; diffs?: [] }
-    ) => void
-  ) => void;
-  "git-diff-landed": (
-    data: z.infer<typeof GitLandedRefsSchema>,
-    callback: (
-      response:
-        | { ok: true; diffs: import("./diff-types.js").ReplaceDiffEntry[] }
-        | { ok: false; error: string; diffs?: [] }
-    ) => void
-  ) => void;
-  // On-demand diffs for a task run
-  "get-run-diffs": (
-    data: { taskRunId: Id<"taskRuns"> },
+  "git-diff": (
+    data: z.infer<typeof GitRepoDiffRequestSchema>,
     callback: (
       response:
         | { ok: true; diffs: import("./diff-types.js").ReplaceDiffEntry[] }
         | { ok: false; error: string; diffs: [] }
     ) => void
   ) => void;
+  "git-full-diff": (data: GitFullDiffRequest) => void;
   "git-diff-file-contents": (
     data: { taskRunId: Id<"taskRuns">; filePath: string },
     callback: (
@@ -585,7 +542,6 @@ export interface ClientToServerEvents {
 
 export interface ServerToClientEvents {
   "git-status-response": (data: GitStatusResponse) => void;
-  "git-diff-response": (data: GitDiffResponse) => void;
   "git-file-changed": (data: GitFileChanged) => void;
   "git-full-diff-response": (data: GitFullDiffResponse) => void;
   "open-in-editor-error": (data: OpenInEditorError) => void;

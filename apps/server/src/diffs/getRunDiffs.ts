@@ -1,7 +1,7 @@
 import type { Id } from "@cmux/convex/dataModel";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 import { GitDiffManager } from "../gitDiff";
-import { loadNativeGit } from "../native/git";
+import { getGitDiff } from "./gitDiff";
 import type { RealtimeServer } from "../realtime";
 import { ensureRunWorktreeAndBranch } from "../utils/ensureRunWorktree";
 import { serverLogger } from "../utils/fileLogger";
@@ -40,14 +40,11 @@ export async function getRunDiffs(
   const tEnsure = Date.now();
   const worktreePath = ensured.worktreePath;
 
-  const native = loadNativeGit();
-  if (!native?.gitDiffRefs) {
-    throw new Error("Native git diff not available; rebuild @cmux/native-core");
-  }
-  const entries: ReplaceDiffEntry[] = await native.gitDiffRefs({
-    ref1: ensured.baseBranch,
-    ref2: ensured.branchName,
+  const entries = await getGitDiff({
+    baseRef: ensured.baseBranch,
+    headRef: ensured.branchName,
     repoFullName: ensured.task.projectFullName || undefined,
+    originPathOverride: worktreePath,
     includeContents,
   });
   const tCompute = Date.now();

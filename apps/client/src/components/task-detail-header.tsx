@@ -3,7 +3,7 @@ import { Dropdown } from "@/components/ui/dropdown";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { useSocketSuspense } from "@/contexts/socket/use-socket";
 import { isElectron } from "@/lib/electron";
-import { diffSmartQueryOptions } from "@/queries/diff-smart";
+import { gitDiffQueryOptions } from "@/queries/git-diff";
 import type { Doc, Id } from "@cmux/convex/dataModel";
 import { Skeleton } from "@heroui/react";
 import { useClipboard } from "@mantine/hooks";
@@ -58,8 +58,8 @@ function AdditionsAndDeletions({
 }) {
   const diffsQuery = useRQ(
     repoFullName && ref1 && ref2
-      ? diffSmartQueryOptions({ repoFullName, baseRef: ref1, headRef: ref2 })
-      : { queryKey: ["diff-smart-disabled"], queryFn: async () => [] }
+      ? gitDiffQueryOptions({ repoFullName, baseRef: ref1, headRef: ref2 })
+      : { queryKey: ["git-diff-disabled"], queryFn: async () => [] }
   );
 
   if (diffsQuery.error) {
@@ -422,7 +422,7 @@ function SocketActions({
 }) {
   const { socket } = useSocketSuspense();
   const diffsQuery = useRQ(
-    diffSmartQueryOptions({ repoFullName, baseRef: ref1, headRef: ref2 })
+    gitDiffQueryOptions({ repoFullName, baseRef: ref1, headRef: ref2 })
   );
   const hasChanges = (diffsQuery.data || []).length > 0;
 
