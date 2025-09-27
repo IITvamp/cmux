@@ -1,8 +1,7 @@
-use super::*;
 use std::{fs, process::Command};
 use tempfile::tempdir;
 use std::path::PathBuf;
-use crate::types::GitDiffWorkspaceOptions;
+use crate::types::{GitDiffOptions, GitDiffWorkspaceOptions};
 
 fn run(cwd: &std::path::Path, cmd: &str) {
   let status = if cfg!(target_os = "windows") {
@@ -121,9 +120,9 @@ fn refs_diff_basic_on_local_repo() {
   run(&work, "git add .");
   run(&work, "git -c user.email=a@b -c user.name=test commit -m change");
 
-  let out = crate::diff::refs::diff_refs(GitDiffRefsOptions{
-    ref1: "main".into(),
-    ref2: "feature".into(),
+  let out = crate::diff::refs::diff_refs(GitDiffOptions{
+    baseRef: Some("main".into()),
+    headRef: "feature".into(),
     repoFullName: None,
     repoUrl: None,
     teamSlugOrId: None,
@@ -159,9 +158,9 @@ fn refs_merge_base_after_merge_is_branch_tip() {
   run(&work, "git add .");
   run(&work, "git -c user.email=a@b -c user.name=test commit -m main-after-merge");
 
-  let out = crate::diff::refs::diff_refs(GitDiffRefsOptions{
-    ref1: "main".into(),
-    ref2: "feature".into(),
+  let out = crate::diff::refs::diff_refs(GitDiffOptions{
+    baseRef: Some("main".into()),
+    headRef: "feature".into(),
     repoFullName: None,
     repoUrl: None,
     teamSlugOrId: None,
@@ -169,123 +168,7 @@ fn refs_merge_base_after_merge_is_branch_tip() {
     includeContents: Some(true),
     maxBytes: Some(1024*1024),
   }).unwrap();
-
   assert_eq!(out.len(), 0, "Expected no differences after merge, got: {:?}", out);
-}
-
-#[test]
-fn landed_diff_merge_by_message_yields_changes() {
-  let tmp = tempdir().unwrap();
-  let work = tmp.path().join("repo");
-  fs::create_dir_all(&work).unwrap();
-
-  // Initialize base
-  run(&work, "git init");
-  run(&work, "git -c user.email=a@b -c user.name=test checkout -b main");
-  fs::write(work.join("f.txt"), b"base\n").unwrap();
-  run(&work, "git add .");
-  run(&work, "git -c user.email=a@b -c user.name=test commit -m base");
-
-  // Feature branch with a change
-  run(&work, "git checkout -b feature");
-  fs::write(work.join("f.txt"), b"feature\n").unwrap();
-  run(&work, "git add .");
-  run(&work, "git -c user.email=a@b -c user.name=test commit -m feature-change");
-
-  // Merge back to main with a message that includes the head branch name
-  run(&work, "git checkout main");
-  run(&work, "git -c user.email=a@b -c user.name=test merge --no-ff feature -m 'Merge pull request #1 from test/feature'");
-
-  let out = crate::diff::landed::landed_diff(GitDiffLandedOptions {
-    baseRef: "main".into(),
-    headRef: "feature".into(),
-    b0Ref: None,
-    repoFullName: None,
-    repoUrl: None,
-    teamSlugOrId: None,
-    originPathOverride: Some(work.to_string_lossy().to_string()),
-    includeContents: Some(true),
-    maxBytes: Some(1024 * 1024),
-  })
-  .expect("landed diff");
-
-  assert!(
-    out.iter().any(|e| e.filePath == "f.txt"),
-    "expected f.txt in landed diff, got {:?}",
-    out
-  );
-}
-
-#[test]
-fn landed_diff_with_path_override_is_fast() {
-  use std::time::Instant;
-  let tmp = tempdir().unwrap();
-  let work = tmp.path().join("repo");
-  fs::create_dir_all(&work).unwrap();
-
-  // Initialize repo and create a merge commit to exercise landed
-  run(&work, "git init");
-  run(&work, "git -c user.email=a@b -c user.name=test checkout -b main");
-  fs::write(work.join("f.txt"), b"base\n").unwrap();
-  run(&work, "git add .");
-  run(&work, "git -c user.email=a@b -c user.name=test commit -m base");
-  run(&work, "git checkout -b feature");
-  fs::write(work.join("f.txt"), b"feature\n").unwrap();
-  run(&work, "git add .");
-  run(&work, "git -c user.email=a@b -c user.name=test commit -m change");
-  run(&work, "git checkout main");
-  run(&work, "git -c user.email=a@b -c user.name=test merge --no-ff feature -m merge-feature");
-
-  let t0 = Instant::now();
-  let out = crate::diff::landed::landed_diff(GitDiffLandedOptions {
-    baseRef: "main".into(),
-    headRef: "feature".into(),
-    b0Ref: None,
-    repoFullName: None,
-    repoUrl: None,
-    teamSlugOrId: None,
-    originPathOverride: Some(work.to_string_lossy().to_string()),
-    includeContents: Some(true),
-    maxBytes: Some(1024 * 1024),
-  })
-  .expect("landed diff");
-  let ms = t0.elapsed().as_millis();
-  assert!(
-    ms < 300,
-    "landed diff with originPathOverride should be fast; took {}ms; entries={:?}",
-    ms,
-    out.len()
-  );
-}
-
-#[test]
-fn landed_diff_equal_tips_returns_empty() {
-  let tmp = tempdir().unwrap();
-  let work = tmp.path().join("repo");
-  fs::create_dir_all(&work).unwrap();
-
-  // Initialize base and create a new branch without commits
-  run(&work, "git init");
-  run(&work, "git -c user.email=a@b -c user.name=test checkout -b main");
-  fs::write(work.join("f.txt"), b"base\n").unwrap();
-  run(&work, "git add .");
-  run(&work, "git -c user.email=a@b -c user.name=test commit -m base");
-  run(&work, "git checkout -b feature");
-  // No commits on feature; tips equal
-
-  let out = crate::diff::landed::landed_diff(GitDiffLandedOptions {
-    baseRef: "main".into(),
-    headRef: "feature".into(),
-    b0Ref: None,
-    repoFullName: None,
-    repoUrl: None,
-    teamSlugOrId: None,
-    originPathOverride: Some(work.to_string_lossy().to_string()),
-    includeContents: Some(true),
-    maxBytes: Some(1024 * 1024),
-  })
-  .expect("landed diff");
-  assert!(out.is_empty(), "expected empty landed diff for equal tips");
 }
 
 #[test]
@@ -304,9 +187,9 @@ fn refs_diff_numstat_matches_known_pairs() {
   ];
 
   for (from, to, exp_adds, exp_dels) in cases {
-    let out = crate::diff::refs::diff_refs(GitDiffRefsOptions{
-      ref1: from.into(),
-      ref2: to.into(),
+    let out = crate::diff::refs::diff_refs(GitDiffOptions{
+      baseRef: Some(from.into()),
+      headRef: to.into(),
       repoFullName: None,
       repoUrl: None,
       teamSlugOrId: None,
@@ -353,9 +236,9 @@ fn refs_diff_handles_binary_files() {
     .output().unwrap().stdout).unwrap();
   let c2 = c2.trim().to_string();
 
-  let out = crate::diff::refs::diff_refs(GitDiffRefsOptions{
-    ref1: c1.clone(),
-    ref2: c2.clone(),
+  let out = crate::diff::refs::diff_refs(GitDiffOptions{
+    baseRef: Some(c1.clone()),
+    headRef: c2.clone(),
     repoFullName: None,
     repoUrl: None,
     teamSlugOrId: None,

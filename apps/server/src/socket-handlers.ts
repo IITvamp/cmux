@@ -846,66 +846,6 @@ export function setupSocketHandlers(
     // Continue with all other handlers...
     // (I'll include the rest of the handlers in the next message due to length)
 
-    // Provide file contents on demand to avoid large Convex docs
-    socket.on("git-diff-file-contents", async (data, callback) => {
-      try {
-        const { taskRunId, filePath } = data;
-        // Ensure the worktree exists for this run
-        const ensured = await ensureRunWorktreeAndBranch(taskRunId, safeTeam);
-        const worktreePath = ensured.worktreePath as string;
-        let oldContent = "";
-        let newContent = "";
-        try {
-          newContent = await fs.readFile(
-            path.join(worktreePath, filePath),
-            "utf-8"
-          );
-        } catch {
-          newContent = "";
-        }
-        try {
-          // Use git CLI to read baseRef version of the file. Prefer default branch (origin/<default>),
-          // then upstream, and finally HEAD as a last resort.
-          let baseRef = "HEAD";
-          try {
-            const repoMgr = RepositoryManager.getInstance();
-            const defaultBranch = await repoMgr.getDefaultBranch(worktreePath);
-            if (defaultBranch) baseRef = `origin/${defaultBranch}`;
-          } catch {
-            // ignore and try upstream next
-          }
-          if (baseRef === "HEAD") {
-            try {
-              const { stdout } = await execAsync(
-                "git rev-parse --abbrev-ref --symbolic-full-name @{u}",
-                { cwd: worktreePath }
-              );
-              if (stdout.trim()) baseRef = "@{upstream}";
-            } catch {
-              // stick with HEAD
-            }
-          }
-          const { stdout } = await execAsync(
-            `git show ${baseRef}:"${filePath.replace(/"/g, '\\"')}"`,
-            {
-              cwd: worktreePath,
-              maxBuffer: 10 * 1024 * 1024,
-            }
-          );
-          oldContent = stdout;
-        } catch {
-          oldContent = "";
-        }
-        callback?.({ ok: true, oldContent, newContent, isBinary: false });
-      } catch (error) {
-        serverLogger.error("Error in git-diff-file-contents:", error);
-        callback?.({
-          ok: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
-    });
-
     socket.on("open-in-editor", async (data, callback) => {
       try {
         const { editor, path } = OpenInEditorSchema.parse(data);
