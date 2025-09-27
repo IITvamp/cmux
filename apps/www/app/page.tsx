@@ -143,17 +143,18 @@ export default function LandingPage() {
             <div className="bg-blue-500 rounded-sm" aria-hidden="true"></div>
             <div>
               <h1 className="text-4xl sm:text-4xl md:text-4xl font-semibold mb-6">
-                Universal AI coding agent manager for 10x engineers
+                AI Workflow Builder for Businesses
               </h1>
 
               <p className="text-lg text-neutral-300 mb-4 leading-relaxed">
-                cmux is a universal AI coding agent manager that supports Claude Code, Codex, Gemini CLI, Amp,
-                Opencode, and other coding CLIs. We give 10x engineers an interface to manage AI coding tasks in
-                parallel, context switch fast, and verify AI-generated code to stay actually productive with AI.
+                cmux is an AI workflow builder that helps businesses automate development tasks at scale. Orchestrate
+                multiple AI agents including Claude Code, Codex, Gemini CLI, and more to build, test, and ship code
+                faster while maintaining quality and control.
               </p>
               <p className="text-lg text-neutral-300 mb-4 leading-relaxed">
-                Every run spins up an isolated VS Code instances via Docker with the git diff UI and terminal so parallel
-                agent work stays verifiable, fast, and ready to ship.
+                Transform your development workflow with isolated, verifiable AI environments. Each agent runs in its
+                own containerized VS Code instance, enabling teams to scale development capacity without sacrificing
+                code quality or security.
               </p>
               <p className="text-lg text-neutral-300 leading-relaxed">
                 Learn more about the{" "}
@@ -243,66 +244,63 @@ export default function LandingPage() {
       <section id="about" className="pt-8 px-4 sm:px-6 lg:px-12">
         <div className="container max-w-5xl mx-auto">
           <h2 className="text-2xl font-semibold text-center mb-8">
-            Rethinking the developer interface
+            Built for Modern Development Teams
           </h2>
 
           <div className="space-y-8 text-neutral-400 mb-12">
             <div className="space-y-2">
               <p>
                 <span className="text-white font-semibold">
-                  The interface is the bottleneck.
+                  Scale your development capacity instantly.
                 </span>{" "}
-                We&apos;ve spent years making AI agents better at coding, but almost
-                no time making it easier to verify their work. The result?
-                Developers spend 80% of their time reviewing and 20% prompting.
+                Modern businesses need to ship faster without compromising quality.
+                cmux enables your team to leverage AI agents effectively, reducing
+                development time by 70% while maintaining full control and visibility.
               </p>
               <blockquote className="border-l-2 border-neutral-800 pl-4 text-neutral-300">
                 <p>
-                  Running multiple agents at once sounds powerful until it turns
-                  into chaos: 3-4 terminals, each on a different task, and
-                  you&apos;re asking, &quot;Which one is on auth? Did the database
-                  refactor finish?&quot; You end up bouncing between windows, running
-                  git diff, and piecing together what changed where.
+                  Traditional development workflows break down when you need to
+                  manage multiple AI agents. Teams struggle with coordination,
+                  verification, and maintaining code quality across parallel
+                  workstreams. cmux solves this with unified orchestration.
                 </p>
               </blockquote>
             </div>
             <div className="space-y-2">
               <p>
                 <span className="text-white font-semibold">
-                  Isolation enables scale.
+                  Enterprise-grade isolation and security.
                 </span>{" "}
-                When each agent runs in its own container with its own VS Code
-                instance, you eliminate the confusion of shared state. Every
-                diff is clean. Every terminal output is separate. Every
-                verification is independent.
+                Each AI workflow runs in its own secure container, ensuring complete
+                isolation between tasks. Your code, credentials, and business logic
+                remain protected while enabling parallel execution at scale.
               </p>
               <blockquote className="border-l-2 border-neutral-800 pl-4 text-neutral-300">
                 <p>
-                  The issue isn&apos;t that agents aren&apos;t good — they&apos;re getting
-                  scary good. It&apos;s that our tools were designed for a different
-                  era. VS Code was built for writing code, not reviewing five
-                  parallel streams of AI-generated changes. Terminals expect
-                  sequential commands, not a fleet of autonomous workers.
+                  Your business needs tools designed for AI-powered development.
+                  cmux provides the infrastructure to manage dozens of AI agents
+                  simultaneously, with enterprise features like audit trails,
+                  role-based access control, and seamless integration with your
+                  existing tech stack.
                 </p>
               </blockquote>
             </div>
             <div className="space-y-2">
               <p>
                 <span className="text-white font-semibold">
-                  Verification is non-negotiable.
+                  Built-in quality assurance.
                 </span>{" "}
-                Code diffs are just the start. We need to see the running
-                application, the test results, the performance metrics—all in
-                real-time, for every agent, without switching contexts.
+                Every AI-generated change is automatically verified through your
+                existing CI/CD pipelines. See diffs, test results, and performance
+                metrics in real-time, ensuring production-ready code every time.
               </p>
               <blockquote className="border-l-2 border-neutral-800 pl-4 text-neutral-300">
                 <p>
-                  cmux solves this by giving each agent its own world: separate
-                  Docker container, separate VS Code, separate git state. VS
-                  Code opens with the git diff already showing. Every change is
-                  isolated to its task, so you can see exactly what each agent
-                  did — immediately — without losing context. That&apos;s what makes
-                  running 10+ agents actually workable.
+                  With cmux, your team gets complete visibility into every AI
+                  workflow. Track progress, review changes, and deploy with
+                  confidence. Our platform integrates with your existing tools
+                  and processes, making AI adoption seamless and risk-free for
+                  your organization.
                 </p>
               </blockquote>
             </div>
@@ -455,66 +453,66 @@ export default function LandingPage() {
           <div className="space-y-6">
             <div className="text-neutral-400">
               <p className="mb-6">
-                We&apos;re building the missing layer between AI agents and
-                developers. Not another agent, not another IDE—but the
-                verification interface that makes managing 10, 20, or 100
-                parallel agents as easy as managing one.
+                We&apos;re building the enterprise platform for AI-powered software
+                development. Enable your teams to leverage AI at scale while
+                maintaining governance, security, and quality standards that
+                enterprise businesses demand.
               </p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-6">
                 <h3 className="font-semibold mb-3 text-lg">
-                  Verification at scale
+                  Enterprise Compliance & Governance
                 </h3>
                 <p className="text-sm text-neutral-400 mb-4">
-                  Every code change will have a visual preview. Backend API
-                  changes show request/response diffs. Frontend changes show
-                  before/after screenshots. Database migrations show schema
-                  changes visually.
+                  Built-in compliance tracking for regulated industries. Audit
+                  trails for every AI decision, SOC 2 compliant infrastructure,
+                  and role-based access controls ensure your business meets
+                  security and regulatory requirements.
                 </p>
               </div>
               <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-6">
                 <h3 className="font-semibold mb-3 text-lg">
-                  Intelligent task routing
+                  Cost Optimization & ROI Tracking
                 </h3>
                 <p className="text-sm text-neutral-400 mb-4">
-                  Automatically route tasks to the best agent based on
-                  performance history. Claude for complex refactors, Codex for
-                  test generation, specialized models for documentation.
+                  Monitor AI usage costs across your organization. Intelligent
+                  routing ensures you use the most cost-effective model for each
+                  task. Built-in analytics show ROI and productivity gains in
+                  real-time.
                 </p>
               </div>
               <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-6">
                 <h3 className="font-semibold mb-3 text-lg">
-                  Verification workflows
+                  Custom Workflow Templates
                 </h3>
                 <p className="text-sm text-neutral-400 mb-4">
-                  Define verification criteria upfront. Set test coverage
-                  requirements, performance benchmarks, security checks. Agents
-                  can&apos;t mark tasks complete until verification passes.
+                  Create reusable workflow templates for common business processes.
+                  Define approval chains, quality gates, and integration points.
+                  Standardize AI usage across teams while allowing flexibility.
                 </p>
               </div>
               <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-6">
                 <h3 className="font-semibold mb-3 text-lg">
-                  Cross-agent coordination
+                  API & Integration Platform
                 </h3>
                 <p className="text-sm text-neutral-400 mb-4">
-                  Agents will communicate through a shared context layer. One
-                  agent&apos;s output becomes another&apos;s input. Automatic conflict
-                  resolution when agents modify the same files.
+                  Connect cmux to your existing tech stack via REST APIs and
+                  webhooks. Integrate with Jira, GitHub, GitLab, Slack, and
+                  your CI/CD pipelines for seamless workflow automation.
                 </p>
               </div>
             </div>
             <div className="mt-8 p-6 bg-neutral-900/60 border border-neutral-800 rounded-lg">
               <h3 className="font-semibold mb-3">
-                The endgame: Autonomous verification
+                The Future: Autonomous Business Operations
               </h3>
               <p className="text-sm text-neutral-400">
-                Eventually, verification itself will be automated. A manager
-                agent will review the work of worker agents, using the same
-                interfaces you use today. It will approve simple changes,
-                escalate complex ones, and learn from your verification
-                patterns. The goal isn&apos;t to replace developers—it&apos;s to amplify
-                them 100x by removing the verification bottleneck entirely.
+                Transform your entire software development lifecycle with AI.
+                From requirements gathering to deployment, cmux will orchestrate
+                complex workflows that adapt to your business needs. Reduce
+                time-to-market by 10x while maintaining enterprise standards
+                for quality, security, and compliance.
               </p>
             </div>
           </div>
