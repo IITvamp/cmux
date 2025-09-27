@@ -9,7 +9,7 @@ mod branches;
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use types::{BranchInfo, DiffEntry, GitDiffRefsOptions, GitDiffWorkspaceOptions, GitListRemoteBranchesOptions, GitDiffLandedOptions};
+use types::{BranchInfo, DiffEntry, GitDiffRefsOptions, GitListRemoteBranchesOptions, GitDiffLandedOptions};
 
 #[napi]
 pub async fn get_time() -> String {
@@ -18,21 +18,6 @@ pub async fn get_time() -> String {
   println!("[cmux_native_core] get_time invoked");
   let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
   now.as_millis().to_string()
-}
-
-#[napi]
-pub async fn git_diff_workspace(opts: GitDiffWorkspaceOptions) -> Result<Vec<DiffEntry>> {
-  #[cfg(debug_assertions)]
-  println!(
-    "[cmux_native_git] git_diff_workspace worktreePath={} includeContents={:?} maxBytes={:?}",
-    opts.worktreePath,
-    opts.includeContents,
-    opts.maxBytes
-  );
-  tokio::task::spawn_blocking(move || diff::workspace::diff_workspace(opts))
-    .await
-    .map_err(|e| Error::from_reason(format!("Join error: {e}")))?
-    .map_err(|e| Error::from_reason(format!("{e:#}")))
 }
 
 #[napi]

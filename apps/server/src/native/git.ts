@@ -7,12 +7,6 @@ import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 
 export type GitImplMode = "rust" | "js";
 
-export interface GitDiffWorkspaceOptions {
-  worktreePath: string;
-  includeContents?: boolean;
-  maxBytes?: number;
-}
-
 export interface GitDiffRefsOptions {
   ref1: string;
   ref2: string;
@@ -26,9 +20,6 @@ export interface GitDiffRefsOptions {
 
 type NativeGitModule = {
   // napi-rs exports as camelCase
-  gitDiffWorkspace?: (
-    opts: GitDiffWorkspaceOptions
-  ) => Promise<ReplaceDiffEntry[]>;
   gitDiffRefs?: (opts: GitDiffRefsOptions) => Promise<ReplaceDiffEntry[]>;
   gitDiffLanded?: (opts: {
     baseRef: string;

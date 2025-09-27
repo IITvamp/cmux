@@ -36,7 +36,6 @@ pub struct GitListRemoteBranchesOptions {
   pub originPathOverride: Option<String>,
 }
 
-#[napi(object)]
 #[derive(Default, Debug, Clone)]
 pub struct GitDiffWorkspaceOptions {
   pub worktreePath: String,
