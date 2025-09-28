@@ -1,7 +1,7 @@
 import { RunDiffSection } from "@/components/RunDiffSection";
 import { Dropdown } from "@/components/ui/dropdown";
 import { refWithOrigin } from "@/lib/refWithOrigin";
-import { diffSmartQueryOptions } from "@/queries/diff-smart";
+import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
 import { useQuery as useRQ } from "@tanstack/react-query";
 import { useQuery as useConvexQuery } from "convex/react";
@@ -34,7 +34,7 @@ function AdditionsAndDeletions({
   ref2,
 }: AdditionsAndDeletionsProps) {
   const diffsQuery = useRQ(
-    diffSmartQueryOptions({
+    gitDiffQueryOptions({
       repoFullName,
       baseRef: refWithOrigin(ref1),
       headRef: refWithOrigin(ref2),

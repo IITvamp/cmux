@@ -1,4 +1,4 @@
-import { diffSmartQueryOptions } from "@/queries/diff-smart";
+import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { useQueries } from "@tanstack/react-query";
 import { useMemo, type ComponentProps } from "react";
 import { GitDiffViewer } from "./git-diff-viewer";
@@ -12,6 +12,13 @@ export interface RunDiffSectionProps {
   onControlsChange?: ComponentProps<typeof GitDiffViewer>["onControlsChange"];
   additionalRepoFullNames?: string[];
   withRepoPrefix?: boolean;
+  metadataByRepo?: Record<
+    string,
+    {
+      lastKnownBaseSha?: string;
+      lastKnownMergeCommitSha?: string;
+    }
+  >;
 }
 
 function applyRepoPrefix(
@@ -25,7 +32,9 @@ function applyRepoPrefix(
   return {
     ...entry,
     filePath: `${normalizedPrefix}${entry.filePath}`,
-    oldPath: entry.oldPath ? `${normalizedPrefix}${entry.oldPath}` : entry.oldPath,
+    oldPath: entry.oldPath
+      ? `${normalizedPrefix}${entry.oldPath}`
+      : entry.oldPath,
   };
 }
 
@@ -38,6 +47,7 @@ export function RunDiffSection(props: RunDiffSectionProps) {
     onControlsChange,
     additionalRepoFullNames,
     withRepoPrefix,
+    metadataByRepo,
   } = props;
 
   const repoFullNames = useMemo(() => {
@@ -55,25 +65,22 @@ export function RunDiffSection(props: RunDiffSectionProps) {
   const canFetch = repoFullNames.length > 0 && Boolean(ref1) && Boolean(ref2);
 
   const queries = useQueries({
-    queries: repoFullNames.map((repo) =>
-      canFetch
-        ? {
-            ...diffSmartQueryOptions({
-              repoFullName: repo,
-              baseRef: ref1,
-              headRef: ref2,
-            }),
-            enabled: true,
-          }
-        : {
-            queryKey: ["diff-smart-disabled", repo],
-            queryFn: async () => [] as ReplaceDiffEntry[],
-            enabled: false,
-          }
-    ),
+    queries: repoFullNames.map((repo) => ({
+      ...gitDiffQueryOptions({
+        repoFullName: repo,
+        baseRef: ref1,
+        headRef: ref2,
+        lastKnownBaseSha: metadataByRepo?.[repo]?.lastKnownBaseSha,
+        lastKnownMergeCommitSha:
+          metadataByRepo?.[repo]?.lastKnownMergeCommitSha,
+      }),
+      enabled: canFetch,
+    })),
   });
 
-  const isPending = queries.some((query) => query.isPending || query.isFetching);
+  const isPending = queries.some(
+    (query) => query.isPending || query.isFetching
+  );
   const firstError = queries.find((query) => query.isError);
 
   if (!canFetch) {

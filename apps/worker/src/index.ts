@@ -10,9 +10,11 @@ import {
   type SocketData,
   type WorkerHeartbeat,
   type WorkerRegister,
+  type WorkerToServerEventNames,
   type WorkerToServerEvents,
 } from "@cmux/shared";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
+import type { Id } from "@cmux/convex/dataModel";
 
 import { getWorkerServerSocketOptions } from "@cmux/shared/node/socket";
 import { startAmpProxy } from "@cmux/shared/src/providers/amp/start-amp-proxy.ts";
@@ -63,12 +65,16 @@ app.get("/health", (_req, res) => {
     uptime: process.uptime(),
     mainServerConnected: !!mainServerSocket && mainServerSocket.connected,
     pendingEventsCount: pendingEvents.length,
-    pendingEvents: pendingEvents.map((e) => ({
-      event: e.event,
-      age: Date.now() - e.timestamp,
-      taskId: e.data.taskId,
-      taskRunId: e.data.taskRunId,
-    })),
+    pendingEvents: pendingEvents.map((pendingEvent) => {
+      const payload = pendingEvent.args[0];
+      return {
+        event: pendingEvent.event,
+        age: Date.now() - pendingEvent.timestamp,
+        taskId: payload && hasTaskId(payload) ? payload.taskId : undefined,
+        taskRunId:
+          payload && hasTaskRunId(payload) ? payload.taskRunId : undefined,
+      };
+    }),
   });
 });
 
@@ -154,29 +160,45 @@ const activeFileWatchers: Map<string, FileWatcher> = new Map();
 const processExitCodes: Map<string, number> = new Map();
 
 // Queue for pending events when mainServerSocket is not connected
-interface PendingEvent {
-  event: string;
-  data: any;
+interface PendingEvent<
+  K extends WorkerToServerEventNames = WorkerToServerEventNames,
+> {
+  event: K;
+  args: Parameters<WorkerToServerEvents[K]>;
   timestamp: number;
 }
+
+const hasTaskId = (value: unknown): value is { taskId?: Id<"tasks"> } =>
+  typeof value === "object" && value !== null && "taskId" in value;
+
+const hasTaskRunId = (
+  value: unknown
+): value is { taskRunId?: Id<"taskRuns"> } =>
+  typeof value === "object" && value !== null && "taskRunId" in value;
+
 const pendingEvents: PendingEvent[] = [];
 
 /**
  * Emit an event to the main server, queuing it if not connected
  */
-function emitToMainServer(event: string, data: any) {
+function emitToMainServer<K extends WorkerToServerEventNames>(
+  event: K,
+  ...args: Parameters<WorkerToServerEvents[K]>
+) {
+  const [payload] = args;
+
   if (mainServerSocket && mainServerSocket.connected) {
-    log("DEBUG", `Emitting ${event} to main server`, { event, data });
-    mainServerSocket.emit(event as any, data);
+    log("DEBUG", `Emitting ${event} to main server`, { event, data: payload });
+    mainServerSocket.emit(event, ...args);
   } else {
     log("WARNING", `Main server not connected, queuing ${event} event`, {
       event,
-      data,
+      data: payload,
       pendingEventsCount: pendingEvents.length + 1,
     });
     pendingEvents.push({
       event,
-      data,
+      args,
       timestamp: Date.now(),
     });
   }
@@ -195,6 +217,8 @@ function sendPendingEvents() {
     return;
   }
 
+  const socket = mainServerSocket;
+
   log("INFO", `Sending ${pendingEvents.length} pending events to main server`);
 
   const eventsToSend = [...pendingEvents];
@@ -202,16 +226,17 @@ function sendPendingEvents() {
 
   for (const pendingEvent of eventsToSend) {
     const age = Date.now() - pendingEvent.timestamp;
+    const payload = pendingEvent.args[0];
     log(
       "DEBUG",
       `Sending pending ${pendingEvent.event} event (age: ${age}ms)`,
       {
         event: pendingEvent.event,
-        data: pendingEvent.data,
+        data: payload,
         age,
       }
     );
-    mainServerSocket.emit(pendingEvent.event as any, pendingEvent.data);
+    socket.emit(pendingEvent.event, ...pendingEvent.args);
   }
 }
 
@@ -820,7 +845,7 @@ async function createTerminal(
     env?: Record<string, string>;
     command?: string;
     args?: string[];
-    taskRunId?: string;
+    taskRunId?: Id<"taskRuns">;
     agentModel?: string;
     startupCommands?: string[];
   } = {}
@@ -1051,7 +1076,6 @@ async function createTerminal(
 
           emitToMainServer("worker:task-complete", {
             workerId: WORKER_ID,
-            terminalId,
             taskRunId: options.taskRunId!,
             agentModel: options.agentModel,
             elapsedMs: Date.now() - processStartTime,
@@ -1303,13 +1327,15 @@ setInterval(() => {
   const validEvents = pendingEvents.filter((event) => {
     const age = now - event.timestamp;
     if (age > MAX_EVENT_AGE) {
+      const payload = event.args[0];
       log(
         "WARNING",
         `Dropping old pending ${event.event} event (age: ${age}ms)`,
         {
           event: event.event,
           age,
-          taskRunId: event.data.taskRunId,
+          taskRunId:
+            payload && hasTaskRunId(payload) ? payload.taskRunId : undefined,
         }
       );
       return false;
@@ -1332,11 +1358,15 @@ setInterval(() => {
       "WARNING",
       `Still have ${pendingEvents.length} pending events waiting to be sent`,
       {
-        events: pendingEvents.map((e) => ({
-          event: e.event,
-          age: now - e.timestamp,
-          taskRunId: e.data.taskRunId,
-        })),
+        events: pendingEvents.map((e) => {
+          const payload = e.args[0];
+          return {
+            event: e.event,
+            age: now - e.timestamp,
+            taskRunId:
+              payload && hasTaskRunId(payload) ? payload.taskRunId : undefined,
+          };
+        }),
       }
     );
   }

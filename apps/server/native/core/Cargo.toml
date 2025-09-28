@@ -3,6 +3,10 @@ name = "cmux_native_core"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+fuzz-tests = []
+
 [lib]
 crate-type = ["cdylib"]
 

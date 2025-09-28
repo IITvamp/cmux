@@ -9,7 +9,7 @@ mod branches;
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use types::{BranchInfo, DiffEntry, GitDiffRefsOptions, GitDiffWorkspaceOptions, GitListRemoteBranchesOptions, GitDiffLandedOptions};
+use types::{BranchInfo, DiffEntry, GitDiffOptions, GitListRemoteBranchesOptions};
 
 #[napi]
 pub async fn get_time() -> String {
@@ -21,27 +21,12 @@ pub async fn get_time() -> String {
 }
 
 #[napi]
-pub async fn git_diff_workspace(opts: GitDiffWorkspaceOptions) -> Result<Vec<DiffEntry>> {
+pub async fn git_diff(opts: GitDiffOptions) -> Result<Vec<DiffEntry>> {
   #[cfg(debug_assertions)]
   println!(
-    "[cmux_native_git] git_diff_workspace worktreePath={} includeContents={:?} maxBytes={:?}",
-    opts.worktreePath,
-    opts.includeContents,
-    opts.maxBytes
-  );
-  tokio::task::spawn_blocking(move || diff::workspace::diff_workspace(opts))
-    .await
-    .map_err(|e| Error::from_reason(format!("Join error: {e}")))?
-    .map_err(|e| Error::from_reason(format!("{e:#}")))
-}
-
-#[napi]
-pub async fn git_diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
-  #[cfg(debug_assertions)]
-  println!(
-    "[cmux_native_git] git_diff_refs ref1={} ref2={} originPathOverride={:?} repoUrl={:?} repoFullName={:?} includeContents={:?} maxBytes={:?}",
-    opts.ref1,
-    opts.ref2,
+    "[cmux_native_git] git_diff headRef={} baseRef={:?} originPathOverride={:?} repoUrl={:?} repoFullName={:?} includeContents={:?} maxBytes={:?}",
+    opts.headRef,
+    opts.baseRef,
     opts.originPathOverride,
     opts.repoUrl,
     opts.repoFullName,
@@ -49,26 +34,6 @@ pub async fn git_diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
     opts.maxBytes
   );
   tokio::task::spawn_blocking(move || diff::refs::diff_refs(opts))
-    .await
-    .map_err(|e| Error::from_reason(format!("Join error: {e}")))?
-    .map_err(|e| Error::from_reason(format!("{e:#}")))
-}
-
-#[napi]
-pub async fn git_diff_landed(opts: GitDiffLandedOptions) -> Result<Vec<DiffEntry>> {
-  #[cfg(debug_assertions)]
-  println!(
-    "[cmux_native_git] git_diff_landed baseRef={} headRef={} b0Ref={:?} originPathOverride={:?} repoUrl={:?} repoFullName={:?} includeContents={:?} maxBytes={:?}",
-    opts.baseRef,
-    opts.headRef,
-    opts.b0Ref,
-    opts.originPathOverride,
-    opts.repoUrl,
-    opts.repoFullName,
-    opts.includeContents,
-    opts.maxBytes
-  );
-  tokio::task::spawn_blocking(move || crate::diff::landed::landed_diff(opts))
     .await
     .map_err(|e| Error::from_reason(format!("Join error: {e}")))?
     .map_err(|e| Error::from_reason(format!("{e:#}")))
