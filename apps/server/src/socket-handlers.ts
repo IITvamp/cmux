@@ -1,7 +1,6 @@
 import { api } from "@cmux/convex/api";
 import {
   ArchiveTaskSchema,
-  checkDockerStatus,
   GitFullDiffRequestSchema,
   GitHubCreateDraftPrSchema,
   GitHubFetchBranchesSchema,
@@ -28,7 +27,6 @@ import { execWithEnv } from "./execWithEnv";
 import { getGitDiff } from "./diffs/gitDiff";
 import { GitDiffManager } from "./gitDiff";
 import { getRustTime } from "./native/core";
-import { listRemoteBranches } from "./native/git";
 import type { RealtimeServer } from "./realtime";
 import { RepositoryManager } from "./repositoryManager";
 import type { GitRepoInfo } from "./server";
@@ -307,6 +305,7 @@ export function setupSocketHandlers(
         // For local mode, ensure Docker is running before attempting to spawn
         if (!taskData.isCloudMode) {
           try {
+            const { checkDockerStatus } = await import("@cmux/shared");
             const docker = await checkDockerStatus();
             if (!docker.isRunning) {
               callback({
@@ -1318,6 +1317,7 @@ Please address the issue mentioned in the comment above.`;
       try {
         const { repo } = GitHubFetchBranchesSchema.parse(data);
 
+        const { listRemoteBranches } = await import("./native/git.js");
         const branches = await listRemoteBranches({ repoFullName: repo });
         callback({ success: true, branches: branches.map((b) => b.name) });
         return;
