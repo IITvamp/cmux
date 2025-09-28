@@ -26,6 +26,8 @@ pub struct BranchInfo {
   pub lastCommitSha: Option<String>,
   pub lastActivityAt: Option<i64>,
   pub isDefault: Option<bool>,
+  pub lastKnownBaseSha: Option<String>,
+  pub lastKnownMergeCommitSha: Option<String>,
 }
 
 #[napi(object)]
@@ -36,6 +38,7 @@ pub struct GitListRemoteBranchesOptions {
   pub originPathOverride: Option<String>,
 }
 
+#[cfg(test)]
 #[derive(Default, Debug, Clone)]
 pub struct GitDiffWorkspaceOptions {
   pub worktreePath: String,
@@ -45,27 +48,15 @@ pub struct GitDiffWorkspaceOptions {
 
 #[napi(object)]
 #[derive(Default, Debug, Clone)]
-pub struct GitDiffRefsOptions {
-  pub ref1: String,
-  pub ref2: String,
-  pub repoFullName: Option<String>,
-  pub repoUrl: Option<String>,
-  pub teamSlugOrId: Option<String>,
-  pub originPathOverride: Option<String>,
-  pub includeContents: Option<bool>,
-  pub maxBytes: Option<i32>,
-}
-
-#[napi(object)]
-#[derive(Default, Debug, Clone)]
-pub struct GitDiffLandedOptions {
-  pub baseRef: String,
+pub struct GitDiffOptions {
   pub headRef: String,
-  pub b0Ref: Option<String>,
+  pub baseRef: Option<String>,
   pub repoFullName: Option<String>,
   pub repoUrl: Option<String>,
   pub teamSlugOrId: Option<String>,
   pub originPathOverride: Option<String>,
   pub includeContents: Option<bool>,
   pub maxBytes: Option<i32>,
+  pub lastKnownBaseSha: Option<String>,
+  pub lastKnownMergeCommitSha: Option<String>,
 }

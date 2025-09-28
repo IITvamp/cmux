@@ -5,33 +5,22 @@ import { fileURLToPath } from "node:url";
 
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 
-export type GitImplMode = "rust" | "js";
-
-export interface GitDiffRefsOptions {
-  ref1: string;
-  ref2: string;
+export interface GitDiffOptions {
+  headRef: string;
+  baseRef?: string;
   repoFullName?: string;
   repoUrl?: string;
   teamSlugOrId?: string;
   originPathOverride?: string;
   includeContents?: boolean;
   maxBytes?: number;
+  lastKnownBaseSha?: string;
+  lastKnownMergeCommitSha?: string;
 }
 
 type NativeGitModule = {
   // napi-rs exports as camelCase
-  gitDiffRefs?: (opts: GitDiffRefsOptions) => Promise<ReplaceDiffEntry[]>;
-  gitDiffLanded?: (opts: {
-    baseRef: string;
-    headRef: string;
-    b0Ref?: string;
-    repoFullName?: string;
-    repoUrl?: string;
-    teamSlugOrId?: string;
-    originPathOverride?: string;
-    includeContents?: boolean;
-    maxBytes?: number;
-  }) => Promise<ReplaceDiffEntry[]>;
+  gitDiff?: (opts: GitDiffOptions) => Promise<ReplaceDiffEntry[]>;
   gitListRemoteBranches?: (opts: {
     repoFullName?: string;
     repoUrl?: string;
@@ -42,6 +31,8 @@ type NativeGitModule = {
       lastCommitSha?: string;
       lastActivityAt?: number;
       isDefault?: boolean;
+      lastKnownBaseSha?: string;
+      lastKnownMergeCommitSha?: string;
     }>
   >;
 };
@@ -103,37 +94,12 @@ export function loadNativeGit(): NativeGitModule | null {
   return cachedNative ?? null;
 }
 
-export function getGitImplMode(): GitImplMode {
-  const v = (process.env.CMUX_GIT_IMPL || "rust").toLowerCase();
-  return v === "js" ? "js" : "rust";
-}
-
-export async function landedDiffForRepo(args: {
-  baseRef: string;
-  headRef: string;
-  b0Ref?: string;
-  repoFullName?: string;
-  repoUrl?: string;
-  teamSlugOrId?: string;
-  originPathOverride?: string;
-  includeContents?: boolean;
-  maxBytes?: number;
-}): Promise<ReplaceDiffEntry[]> {
+export async function gitDiff(opts: GitDiffOptions): Promise<ReplaceDiffEntry[]> {
   const mod = loadNativeGit();
-  if (!mod?.gitDiffLanded) {
-    throw new Error("Native gitDiffLanded not available; rebuild @cmux/native-core");
+  if (!mod?.gitDiff) {
+    throw new Error("Native gitDiff not available; rebuild @cmux/native-core");
   }
-  return mod.gitDiffLanded({
-    baseRef: args.baseRef,
-    headRef: args.headRef,
-    b0Ref: args.b0Ref,
-    repoFullName: args.repoFullName,
-    repoUrl: args.repoUrl,
-    teamSlugOrId: args.teamSlugOrId,
-    originPathOverride: args.originPathOverride,
-    includeContents: args.includeContents,
-    maxBytes: args.maxBytes,
-  });
+  return mod.gitDiff(opts);
 }
 
 export async function listRemoteBranches(opts: {
@@ -146,6 +112,8 @@ export async function listRemoteBranches(opts: {
     lastCommitSha?: string;
     lastActivityAt?: number;
     isDefault?: boolean;
+    lastKnownBaseSha?: string;
+    lastKnownMergeCommitSha?: string;
   }>
 > {
   const mod = loadNativeGit();

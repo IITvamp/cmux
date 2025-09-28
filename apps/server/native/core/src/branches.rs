@@ -79,6 +79,60 @@ pub fn list_remote_branches(opts: GitListRemoteBranchesOptions) -> Result<Vec<Br
           last_ts = Some((t.seconds as i64) * 1000);
         }
       }
+    }
+
+    let is_default = origin_head_short
+      .as_ref()
+      .map(|h| h == &short)
+      .unwrap_or(false);
+    out.push(BranchInfo {
+      name: short,
+      lastCommitSha: Some(oid_to_hex(id)),
+      lastActivityAt: last_ts,
+      isDefault: Some(is_default),
+      lastKnownBaseSha: None,
+      lastKnownMergeCommitSha: None,
+    });
+  }
+
+  // Sort: pin main/dev/master/develop first; then by activity desc; then name asc
+  fn pin_rank(name: &str) -> i32 {
+    match name {
+      "main" => 0,
+      "dev" => 1,
+      "master" => 2,
+      "develop" => 3,
+      _ => i32::MAX,
+    }
+  }
+
+  let head = origin_head_short.clone();
+  out.sort_by(|a, b| {
+    if let Some(h) = &head {
+      let a_is_head = &a.name == h;
+      let b_is_head = &b.name == h;
+      if a_is_head != b_is_head {
+        return if a_is_head {
+          std::cmp::Ordering::Less
+        } else {
+          std::cmp::Ordering::Greater
+        };
+      }
+    }
+    let pa = pin_rank(&a.name);
+    let pb = pin_rank(&b.name);
+    if pa != pb {
+      return pa.cmp(&pb);
+    }
+    let at = a.lastActivityAt.unwrap_or(i64::MIN);
+    let bt = b.lastActivityAt.unwrap_or(i64::MIN);
+    if at != bt {
+      return bt.cmp(&at);
+    }
+    a.name.cmp(&b.name)
+  });
+
+  Ok(out)
 }
 
 #[cfg(test)]
@@ -126,6 +180,11 @@ mod tests {
     let origin_url = origin_path.to_string_lossy().to_string();
     run_git(seed.to_str().unwrap(), &["remote", "add", "origin", &origin_url]).unwrap();
     run_git(seed.to_str().unwrap(), &["push", "-u", "origin", "main"]).unwrap();
+    run_git(
+      origin_path.to_str().unwrap(),
+      &["symbolic-ref", "HEAD", "refs/heads/main"]
+    )
+    .unwrap();
     run_git(seed.to_str().unwrap(), &["push", "-u", "origin", "dev"]).unwrap();
     run_git(seed.to_str().unwrap(), &["push", "-u", "origin", "feature"]).unwrap();
 
@@ -152,45 +211,4 @@ mod tests {
     let main_row = res.iter().find(|b| b.name == "main").unwrap();
     assert_eq!(main_row.isDefault, Some(true));
   }
-}
-
-    let is_default = origin_head_short.as_ref().map(|h| h == &short).unwrap_or(false);
-    out.push(BranchInfo {
-      name: short,
-      lastCommitSha: Some(oid_to_hex(id)),
-      lastActivityAt: last_ts,
-      isDefault: Some(is_default),
-    });
-  }
-
-  // Sort: pin main/dev/master/develop first; then by activity desc; then name asc
-  fn pin_rank(name: &str) -> i32 {
-    match name {
-      "main" => 0,
-      "dev" => 1,
-      "master" => 2,
-      "develop" => 3,
-      _ => i32::MAX,
-    }
-  }
-
-  let head = origin_head_short.clone();
-  out.sort_by(|a, b| {
-    if let Some(h) = &head {
-      let a_is_head = &a.name == h;
-      let b_is_head = &b.name == h;
-      if a_is_head != b_is_head {
-        return if a_is_head { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater };
-      }
-    }
-    let pa = pin_rank(&a.name);
-    let pb = pin_rank(&b.name);
-    if pa != pb { return pa.cmp(&pb); }
-    let at = a.lastActivityAt.unwrap_or(i64::MIN);
-    let bt = b.lastActivityAt.unwrap_or(i64::MIN);
-    if at != bt { return bt.cmp(&at); }
-    a.name.cmp(&b.name)
-  });
-
-  Ok(out)
 }

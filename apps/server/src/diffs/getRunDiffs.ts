@@ -1,10 +1,12 @@
+import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 import { GitDiffManager } from "../gitDiff";
-import { loadNativeGit } from "../native/git";
+import { getGitDiff } from "./gitDiff";
 import type { RealtimeServer } from "../realtime";
 import { ensureRunWorktreeAndBranch } from "../utils/ensureRunWorktree";
 import { serverLogger } from "../utils/fileLogger";
+import { getConvex } from "../utils/convexClient";
 // Stop using workspace diff; we rely on native ref diff.
 
 export interface GetRunDiffsOptions {
@@ -40,15 +42,36 @@ export async function getRunDiffs(
   const tEnsure = Date.now();
   const worktreePath = ensured.worktreePath;
 
-  const native = loadNativeGit();
-  if (!native?.gitDiffRefs) {
-    throw new Error("Native git diff not available; rebuild @cmux/native-core");
+  let baseBranchMetadata:
+    | {
+        lastKnownBaseSha?: string;
+        lastKnownMergeCommitSha?: string;
+      }
+    | undefined;
+  if (ensured.task.projectFullName && ensured.baseBranch) {
+    try {
+      const rows = await getConvex().query(api.github.getBranchesByRepo, {
+        teamSlugOrId,
+        repo: ensured.task.projectFullName,
+      });
+      baseBranchMetadata = rows?.find(
+        (branch) => branch.name === ensured.baseBranch
+      );
+    } catch (error) {
+      serverLogger.warn(
+        `Failed to load branch metadata for ${ensured.task.projectFullName}#${ensured.baseBranch}: ${String(error)}`
+      );
+    }
   }
-  const entries: ReplaceDiffEntry[] = await native.gitDiffRefs({
-    ref1: ensured.baseBranch,
-    ref2: ensured.branchName,
+
+  const entries = await getGitDiff({
+    baseRef: ensured.baseBranch,
+    headRef: ensured.branchName,
     repoFullName: ensured.task.projectFullName || undefined,
+    originPathOverride: worktreePath,
     includeContents,
+    lastKnownBaseSha: baseBranchMetadata?.lastKnownBaseSha,
+    lastKnownMergeCommitSha: baseBranchMetadata?.lastKnownMergeCommitSha,
   });
   const tCompute = Date.now();
 
