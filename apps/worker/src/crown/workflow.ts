@@ -64,6 +64,19 @@ export async function handleWorkerTaskCompletion(
     convexUrl: runContext.convexUrl ?? process.env.NEXT_PUBLIC_CONVEX_URL,
   });
 
+  log("INFO", "Initial crown context", {
+    taskRunId,
+    hasToken: !!runContext.token,
+    tokenLength: runContext.token?.length ?? 0,
+    hasTaskId: !!runContext.taskId,
+    taskId: runContext.taskId,
+    hasTeamId: !!runContext.teamId,
+    teamId: runContext.teamId,
+    convexUrl: runContext.convexUrl ?? process.env.NEXT_PUBLIC_CONVEX_URL,
+  });
+
+  let hydratedCheck: CrownWorkerCheckResponse | null = null;
+
   const baseUrlOverride = runContext.convexUrl;
 
   try {
@@ -97,13 +110,62 @@ export async function handleWorkerTaskCompletion(
       );
       // Try to continue with minimal context
     } else if (!info.ok || !info.taskRun) {
-      log("ERROR", "Task run info response invalid", {
+      log("WARN", "Task run info response missing run details; continuing", {
         taskRunId,
         response: info,
         hasOk: info?.ok,
         hasTaskRun: info?.taskRun,
       });
-      return;
+    } else {
+      runContext.taskId = runContext.taskId ?? info.taskRun.taskId;
+      runContext.teamId = runContext.teamId ?? info.taskRun.teamId;
+      log("INFO", "Loaded task run info from Convex", {
+        taskRunId,
+        taskId: info.taskRun.taskId,
+        teamId: info.taskRun.teamId,
+        agentName: info.taskRun.agentName,
+        hasTask: !!info.task,
+      });
+    }
+
+    log("INFO", "Task run info response summary", {
+      taskRunId,
+      ok: info?.ok ?? false,
+      hasTaskRun: !!info?.taskRun,
+      hasTask: !!info?.task,
+      taskKeys: info ? Object.keys(info) : [],
+    });
+
+    if (!runContext.taskId || !runContext.teamId) {
+      log("INFO", "Missing taskId or teamId, calling check endpoint to hydrate", {
+        taskRunId,
+        hasTaskId: !!runContext.taskId,
+        hasTeamId: !!runContext.teamId,
+      });
+      hydratedCheck = await convexRequest<CrownWorkerCheckResponse>(
+        "/api/crown/check",
+        runContext.token,
+        {
+          taskRunId,
+          taskId: runContext.taskId, // Pass taskId if we have it
+        },
+        baseUrlOverride
+      );
+
+      if (hydratedCheck?.ok) {
+        runContext.taskId = runContext.taskId ?? hydratedCheck.taskId;
+        runContext.teamId = runContext.teamId ?? hydratedCheck.teamId;
+        log("INFO", "Hydrated crown context from check endpoint", {
+          taskRunId,
+          taskId: hydratedCheck.taskId,
+          teamId: hydratedCheck.teamId,
+          totalRuns: hydratedCheck.runs.length,
+        });
+      } else {
+        log("WARN", "Failed to hydrate crown context via check endpoint", {
+          taskRunId,
+        });
+      }
     }
 
     // Check if we should perform git operations
@@ -274,7 +336,10 @@ export async function handleWorkerTaskCompletion(
     }
     runContext.taskId = taskId;
 
-    async function attemptCrownEvaluation(currentTaskId: string) {
+    async function attemptCrownEvaluation(
+      currentTaskId: string,
+      initialCheck?: CrownWorkerCheckResponse | null
+    ) {
       log("INFO", "Starting crown evaluation", {
         taskRunId,
         taskId: currentTaskId,
@@ -345,18 +410,24 @@ export async function handleWorkerTaskCompletion(
       );
 
       // Check if evaluation already exists before proceeding
-      const checkResponse = await convexRequest<CrownWorkerCheckResponse>(
-        "/api/crown/check",
-        runContext.token,
-        {
-          taskId: currentTaskId,
-        },
-        baseUrlOverride
-      );
+      const checkResponse =
+        initialCheck?.taskId === currentTaskId
+          ? initialCheck
+          : await convexRequest<CrownWorkerCheckResponse>(
+              "/api/crown/check",
+              runContext.token,
+              {
+                taskId: currentTaskId,
+              },
+              baseUrlOverride
+            );
 
       if (!checkResponse?.ok) {
         return;
       }
+
+      runContext.taskId = runContext.taskId ?? checkResponse.taskId;
+      runContext.teamId = runContext.teamId ?? checkResponse.teamId;
 
       if (checkResponse.existingEvaluation) {
         log(
@@ -685,7 +756,7 @@ export async function handleWorkerTaskCompletion(
       });
     }
 
-    await attemptCrownEvaluation(taskId);
+    await attemptCrownEvaluation(taskId, hydratedCheck);
   } finally {
     // Nothing to cleanup here; caller is responsible for lifecycle management.
   }

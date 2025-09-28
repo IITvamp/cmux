@@ -3,6 +3,7 @@ import { z } from "zod";
 
 const TaskRunTokenPayloadSchema = z.object({
   taskRunId: z.string().min(1),
+  taskId: z.string().min(1).optional(), // Optional for backward compatibility
   teamId: z.string().min(1),
   userId: z.string().min(1),
 });

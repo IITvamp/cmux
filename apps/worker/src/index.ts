@@ -868,12 +868,38 @@ async function createTerminal(
 
   const taskRunToken = env?.CMUX_TASK_RUN_JWT;
   const convexUrl = env?.NEXT_PUBLIC_CONVEX_URL;
+
+  // Parse the JWT token to extract taskId and teamId
+  let tokenPayload: { taskId?: string; teamId?: string } | null = null;
+  if (taskRunToken) {
+    try {
+      // Decode JWT payload (base64 decode the middle part)
+      const parts = taskRunToken.split('.');
+      if (parts.length === 3 && parts[1]) {
+        const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
+        tokenPayload = {
+          taskId: payload.taskId,
+          teamId: payload.teamId,
+        };
+        log("INFO", "Extracted token payload", {
+          taskId: tokenPayload.taskId,
+          teamId: tokenPayload.teamId,
+          taskRunId: payload.taskRunId,
+        });
+      }
+    } catch (error) {
+      log("WARN", "Failed to parse JWT token payload", { error });
+    }
+  }
+
   const crownContext: WorkerRunContext | null =
     options.taskRunId && taskRunToken
       ? {
           token: taskRunToken,
           prompt: env?.CMUX_PROMPT ?? env?.PROMPT ?? "",
           agentModel: options.agentModel,
+          taskId: tokenPayload?.taskId,
+          teamId: tokenPayload?.teamId,
           convexUrl,
         }
       : null;
@@ -1073,6 +1099,13 @@ async function createTerminal(
 
   // Config-driven completion detector
   const agentConfig = AGENT_CONFIGS.find((c) => c.name === options.agentModel);
+
+  log("INFO", `Looking for agent config`, {
+    agentModel: options.agentModel,
+    foundConfig: !!agentConfig,
+    hasCompletionDetector: !!agentConfig?.completionDetector,
+    availableConfigs: AGENT_CONFIGS.map((c) => c.name),
+  });
 
   // if missing need to return early
   if (!agentConfig) {

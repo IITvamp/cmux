@@ -87,6 +87,7 @@ export const create = authMutation({
     }
     const jwt = await new SignJWT({
       taskRunId,
+      taskId: args.taskId,
       teamId,
       userId,
     })

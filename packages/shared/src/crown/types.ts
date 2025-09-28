@@ -1,6 +1,7 @@
 export type CrownWorkerCheckResponse = {
   ok: true;
   taskId: string;
+  teamId: string;
   allRunsFinished: boolean;
   allWorkersReported: boolean;
   shouldEvaluate: boolean;

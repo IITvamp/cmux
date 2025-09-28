@@ -295,27 +295,58 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
   console.log("[convex.crown] Worker crown readiness check", {
     taskRunId: validation.data.taskRunId,
     taskId: validation.data.taskId,
+    authPayload: {
+      taskRunId: workerAuth.payload.taskRunId,
+      taskId: workerAuth.payload.taskId,
+      teamId: workerAuth.payload.teamId,
+      userId: workerAuth.payload.userId,
+    },
+    requestBody: validation.data,
   });
 
   let taskRun: Doc<"taskRuns">;
   try {
+    console.log("[convex.crown] Loading task run for worker check", {
+      providedTaskRunId: validation.data.taskRunId,
+      authTaskRunId: workerAuth.payload.taskRunId,
+      willUseId: validation.data.taskRunId ?? workerAuth.payload.taskRunId,
+    });
     taskRun = await loadTaskRunForWorker(
       ctx,
       workerAuth,
       validation.data.taskRunId
     );
+    console.log("[convex.crown] Loaded task run successfully", {
+      taskRunId: taskRun._id,
+      taskId: taskRun.taskId,
+      teamId: taskRun.teamId,
+      status: taskRun.status,
+    });
   } catch (error) {
-    console.error("[convex.crown] Failed to load task run", error);
+    console.error("[convex.crown] Failed to load task run", {
+      error,
+      taskRunId: validation.data.taskRunId,
+      authTaskRunId: workerAuth.payload.taskRunId,
+    });
     if (error instanceof Error && error.message === "Task run not found") {
       return jsonResponse({ code: 404, message: "Task run not found" }, 404);
     }
     return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
   }
 
-  const taskId = validation.data.taskId ?? taskRun.taskId;
+  // Use taskId from request, auth payload, or taskRun (in that order)
+  const taskId = validation.data.taskId ?? workerAuth.payload.taskId ?? taskRun.taskId;
+  console.log("[convex.crown] Task ID resolution", {
+    providedTaskId: validation.data.taskId,
+    authTaskId: workerAuth.payload.taskId,
+    taskRunTaskId: taskRun.taskId,
+    resolvedTaskId: taskId,
+    isMatch: taskId === taskRun.taskId,
+  });
   if (taskId !== taskRun.taskId) {
     console.warn("[convex.crown] Worker taskId mismatch", {
       providedTaskId: validation.data.taskId,
+      authTaskId: workerAuth.payload.taskId,
       expectedTaskId: taskRun.taskId,
     });
     return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
@@ -397,6 +428,7 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
   return jsonResponse({
     ok: true,
     taskId,
+    teamId: taskRun.teamId,
     allRunsFinished,
     allWorkersReported,
     shouldEvaluate,
@@ -420,9 +452,22 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
 });
 
 export const crownWorkerTaskRunInfo = httpAction(async (ctx, req) => {
+  console.log("[convex.crown] Worker task-run endpoint called", {
+    path: req.url,
+    method: req.method,
+    hasToken: !!req.headers.get("x-cmux-token"),
+  });
+
   let workerAuth: WorkerAuthContext;
   try {
     workerAuth = await ensureWorkerAuth(req);
+    console.log("[convex.crown] Auth successful for task-run", {
+      authPayload: {
+        taskRunId: workerAuth.payload.taskRunId,
+        teamId: workerAuth.payload.teamId,
+        userId: workerAuth.payload.userId,
+      },
+    });
   } catch (error) {
     console.warn("[convex.crown] Auth failed", error);
     return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
@@ -441,6 +486,10 @@ export const crownWorkerTaskRunInfo = httpAction(async (ctx, req) => {
   }
 
   const taskRunId = validation.data.taskRunId;
+  console.log("[convex.crown] Task run info request", {
+    requestedTaskRunId: taskRunId,
+    authTaskRunId: workerAuth.payload.taskRunId,
+  });
 
   let taskRun: Doc<"taskRuns">;
   try {
@@ -460,7 +509,7 @@ export const crownWorkerTaskRunInfo = httpAction(async (ctx, req) => {
     id: taskRun.taskId,
   });
 
-  return jsonResponse({
+  const response = {
     ok: true,
     taskRun: {
       id: taskRun._id,
@@ -476,7 +525,15 @@ export const crownWorkerTaskRunInfo = httpAction(async (ctx, req) => {
           projectFullName: task.projectFullName ?? null,
         }
       : null,
+  };
+  console.log("[convex.crown] Task run info response", {
+    taskRunId: response.taskRun.id,
+    taskId: response.taskRun.taskId,
+    teamId: response.taskRun.teamId,
+    hasTask: !!response.task,
+    projectFullName: response.task?.projectFullName,
   });
+  return jsonResponse(response);
 });
 
 export const crownWorkerRunsComplete = httpAction(async (ctx, req) => {
@@ -636,6 +693,7 @@ export const crownWorkerComplete = httpAction(async (ctx, req) => {
     path: req.url,
     method: req.method,
     hasToken: !!req.headers.get("x-cmux-token"),
+    timestamp: new Date().toISOString(),
   });
 
   let auth: WorkerAuthContext;
