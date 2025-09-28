@@ -7,6 +7,7 @@ import {
   crownWorkerRunsComplete,
   crownWorkerFinalize,
   crownWorkerComplete,
+  crownDebug,
 } from "./crown_http";
 import { githubSetup } from "./github_setup";
 import { githubWebhook } from "./github_webhook";
@@ -66,6 +67,12 @@ http.route({
   path: "/api/crown/complete",
   method: "POST",
   handler: crownWorkerComplete,
+});
+
+http.route({
+  path: "/api/crown/debug",
+  method: "POST",
+  handler: crownDebug,
 });
 
 http.route({

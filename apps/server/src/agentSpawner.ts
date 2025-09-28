@@ -89,6 +89,15 @@ export async function spawnAgent(
       }
     );
 
+    serverLogger.info(
+      `[AgentSpawner] Created task run for ${agent.name}:`,
+      {
+        taskRunId,
+        hasJwt: !!taskRunJwt,
+        jwtLength: taskRunJwt?.length || 0,
+      }
+    );
+
     // Fetch the task to get image storage IDs
     const task = await getConvex().query(api.tasks.getById, {
       teamSlugOrId,

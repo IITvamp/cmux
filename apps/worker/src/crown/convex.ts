@@ -13,6 +13,35 @@ export function getConvexBaseUrl(override?: string): string | null {
   return httpActionUrl.replace(/\/$/, "");
 }
 
+export async function debugCrownWorkflow(
+  stage: string,
+  context: Record<string, unknown>,
+  token?: string,
+  baseUrlOverride?: string
+): Promise<void> {
+  const baseUrl = getConvexBaseUrl(baseUrlOverride);
+  if (!baseUrl || !token) {
+    return;
+  }
+
+  try {
+    await fetch(`${baseUrl}/api/crown/debug`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-cmux-token": token,
+      },
+      body: JSON.stringify({
+        stage,
+        ...context,
+        timestamp: new Date().toISOString(),
+      }),
+    });
+  } catch {
+    // Silently fail debug calls
+  }
+}
+
 export async function convexRequest<T>(
   path: string,
   token: string,

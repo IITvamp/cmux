@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { log } from "../logger";
 import { WORKSPACE_ROOT } from "./workspace-root";
-import { convexRequest } from "./convex";
+import { convexRequest, debugCrownWorkflow } from "./convex";
 import {
   autoCommitAndPush,
   buildCommitMessage,
@@ -35,6 +35,21 @@ export async function handleWorkerTaskCompletion(
 ): Promise<void> {
   const { agentModel, elapsedMs, exitCode = 0 } = opts;
 
+  // Debug: Crown workflow started
+  await debugCrownWorkflow(
+    "crown-workflow-started",
+    {
+      taskRunId,
+      agentModel,
+      exitCode,
+      elapsedMs,
+      hasToken: !!runContext.token,
+      convexUrl: runContext.convexUrl ?? process.env.NEXT_PUBLIC_CONVEX_URL,
+    },
+    runContext.token,
+    runContext.convexUrl
+  );
+
   // Detect git repo path early to log it
   const detectedGitPath = await detectGitRepoPath();
 
@@ -52,6 +67,14 @@ export async function handleWorkerTaskCompletion(
   const baseUrlOverride = runContext.convexUrl;
 
   try {
+    // Debug: Before loading task run info
+    await debugCrownWorkflow(
+      "before-task-run-load",
+      { taskRunId },
+      runContext.token,
+      runContext.convexUrl
+    );
+
     // Ask the crown API for task run info before finishing up
     const info = await convexRequest<WorkerTaskRunResponse>(
       "/api/crown/task-run",
@@ -206,6 +229,18 @@ export async function handleWorkerTaskCompletion(
       }
     }
 
+    // Debug: Before calling complete endpoint
+    await debugCrownWorkflow(
+      "before-complete-call",
+      {
+        taskRunId,
+        exitCode,
+        hasGitRepo: shouldPerformGitOps,
+      },
+      runContext.token,
+      runContext.convexUrl
+    );
+
     const completion = await convexRequest<WorkerTaskRunResponse>(
       "/api/crown/complete",
       runContext.token,
@@ -244,6 +279,17 @@ export async function handleWorkerTaskCompletion(
         taskRunId,
         taskId: currentTaskId,
       });
+
+      // Debug: Crown evaluation started
+      await debugCrownWorkflow(
+        "crown-evaluation-started",
+        {
+          taskRunId,
+          taskId: currentTaskId,
+        },
+        runContext.token,
+        runContext.convexUrl
+      );
 
       const completionState =
         await convexRequest<WorkerAllRunsCompleteResponse>(
@@ -286,6 +332,17 @@ export async function handleWorkerTaskCompletion(
         taskRunId,
         taskId: currentTaskId,
       });
+
+      // Debug: Before crown check
+      await debugCrownWorkflow(
+        "before-crown-check",
+        {
+          taskRunId,
+          taskId: currentTaskId,
+        },
+        runContext.token,
+        runContext.convexUrl
+      );
 
       // Check if evaluation already exists before proceeding
       const checkResponse = await convexRequest<CrownWorkerCheckResponse>(

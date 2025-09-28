@@ -717,3 +717,77 @@ export const crownWorkerComplete = httpAction(async (ctx, req) => {
       : null,
   });
 });
+
+// Debug endpoint to check crown workflow status
+export const crownDebug = httpAction(async (ctx, req) => {
+  const headers: Record<string, string> = {};
+  req.headers.forEach((value, key) => {
+    if (!key.toLowerCase().includes("auth") && !key.toLowerCase().includes("token")) {
+      headers[key] = value;
+    }
+  });
+
+  console.log("[convex.crown.debug] Debug endpoint called", {
+    path: req.url,
+    method: req.method,
+    headers,
+  });
+
+  const bodyOrResponse = await ensureJsonRequest(req);
+  if (bodyOrResponse instanceof Response) {
+    console.log("[convex.crown.debug] Request validation failed");
+    return bodyOrResponse;
+  }
+
+  const body = bodyOrResponse.json as Record<string, unknown>;
+  console.log("[convex.crown.debug] Request body:", {
+    taskRunId: body?.taskRunId,
+    taskId: body?.taskId,
+    context: body?.context,
+    stage: body?.stage,
+    metadata: body?.metadata,
+  });
+
+  // Try to verify auth if token provided
+  const token = req.headers.get("x-cmux-token");
+  if (token) {
+    try {
+      const payload = await verifyTaskRunToken(
+        token,
+        env.CMUX_TASK_RUN_JWT_SECRET
+      );
+      console.log("[convex.crown.debug] Token verified:", {
+        taskRunId: payload.taskRunId,
+        userId: payload.userId,
+      });
+    } catch (error) {
+      console.log("[convex.crown.debug] Token verification failed:", error);
+    }
+  } else {
+    console.log("[convex.crown.debug] No token provided");
+  }
+
+  // Try to load task run if ID provided
+  if (body?.taskRunId && typeof body.taskRunId === "string") {
+    try {
+      const taskRun = await ctx.runQuery(internal.taskRuns.getById, {
+        id: body.taskRunId as Id<"taskRuns">,
+      });
+      console.log("[convex.crown.debug] Task run found:", {
+        id: taskRun?._id,
+        status: taskRun?.status,
+        agentName: taskRun?.agentName,
+        exitCode: taskRun?.exitCode,
+      });
+    } catch (error) {
+      console.log("[convex.crown.debug] Failed to load task run:", error);
+    }
+  }
+
+  return jsonResponse({
+    ok: true,
+    message: "Debug info logged to console",
+    timestamp: new Date().toISOString(),
+    stage: body?.stage || "unknown",
+  });
+});

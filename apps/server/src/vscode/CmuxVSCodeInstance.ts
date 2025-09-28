@@ -42,8 +42,20 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
 
   async start(): Promise<VSCodeInstanceInfo> {
     dockerLogger.info(
-      `[CmuxVSCodeInstance ${this.instanceId}] Requesting sandbox start via www API`
+      `[CmuxVSCodeInstance ${this.instanceId}] Requesting sandbox start via www API`,
+      {
+        hasJwt: !!this.taskRunJwt,
+        jwtLength: this.taskRunJwt?.length || 0,
+        taskRunId: this.taskRunId,
+        environmentId: this.environmentId,
+      }
     );
+
+    if (!this.taskRunJwt) {
+      dockerLogger.warn(
+        `[CmuxVSCodeInstance ${this.instanceId}] NO JWT TOKEN being sent to sandbox!`
+      );
+    }
 
     const requestBody: StartSandboxBody = {
       teamSlugOrId: this.teamSlugOrId,

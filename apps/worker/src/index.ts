@@ -20,6 +20,7 @@ import {
   handleWorkerTaskCompletion,
   type WorkerRunContext,
 } from "./crown/workflow";
+import { debugCrownWorkflow } from "./crown/convex";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import * as xtermHeadless from "@xterm/headless";
 import express from "express";
@@ -852,6 +853,35 @@ async function createTerminal(
         }
       : null;
 
+  // Debug: Crown context creation status
+  if (crownContext) {
+    debugCrownWorkflow(
+      "crown-context-created",
+      {
+        taskRunId: options.taskRunId,
+        agentModel: options.agentModel,
+        hasToken: !!taskRunToken,
+        tokenLength: taskRunToken?.length,
+        convexUrl,
+      },
+      crownContext.token,
+      crownContext.convexUrl
+    ).catch(() => {}); // Ignore debug failures
+  } else if (options.taskRunId) {
+    // Only debug if we expected crown but it's missing
+    debugCrownWorkflow(
+      "crown-context-missing",
+      {
+        taskRunId: options.taskRunId,
+        reason: !taskRunToken ? "no-jwt-token" : "no-task-run-id",
+        hasToken: !!taskRunToken,
+        hasTaskRunId: !!options.taskRunId,
+      },
+      taskRunToken || "",
+      convexUrl
+    ).catch(() => {}); // Ignore debug failures
+  }
+
   const shell = command || (platform() === "win32" ? "powershell.exe" : "bash");
 
   log("INFO", `[createTerminal] Creating terminal ${terminalId}:`, {
@@ -1030,6 +1060,21 @@ async function createTerminal(
 
   if (options.taskRunId && agentConfig?.completionDetector) {
     try {
+      // Debug: Completion detector setup
+      if (crownContext) {
+        debugCrownWorkflow(
+          "completion-detector-setup",
+          {
+            taskRunId: options.taskRunId,
+            agentModel: options.agentModel,
+            hasDetector: !!agentConfig.completionDetector,
+            hasCrownContext: !!crownContext,
+          },
+          crownContext.token,
+          crownContext.convexUrl
+        ).catch(() => {});
+      }
+
       log(
         "INFO",
         `Setting up completion detector for task ${options.taskRunId}`,
@@ -1047,6 +1092,33 @@ async function createTerminal(
             "INFO",
             `Completion detector resolved for task ${options.taskRunId}`
           );
+
+          // Debug: Completion detector resolved
+          if (crownContext) {
+            await debugCrownWorkflow(
+              "completion-detector-resolved",
+              {
+                taskRunId: options.taskRunId,
+                agentModel: options.agentModel,
+              },
+              crownContext.token,
+              crownContext.convexUrl
+            );
+          }
+
+          // Debug: Task complete event
+          if (crownContext) {
+            await debugCrownWorkflow(
+              "task-complete-event-emitted",
+              {
+                taskRunId: options.taskRunId,
+                agentModel: options.agentModel,
+                elapsedMs: Date.now() - processStartTime,
+              },
+              crownContext.token,
+              crownContext.convexUrl
+            );
+          }
 
           emitToMainServer("worker:task-complete", {
             workerId: WORKER_ID,
@@ -1068,6 +1140,19 @@ async function createTerminal(
 
           // Await the crown workflow directly
           try {
+            // Debug: completion detector triggered
+            await debugCrownWorkflow(
+              "completion-detector-triggered",
+              {
+                taskRunId: options.taskRunId,
+                hasTaskRunId: !!options.taskRunId,
+                hasCrownContext: !!crownContext,
+                agentModel: options.agentModel,
+              },
+              crownContext?.token,
+              crownContext?.convexUrl
+            );
+
             if (!options.taskRunId) {
               throw new Error("Task run ID is required");
             }
@@ -1130,8 +1215,25 @@ async function createTerminal(
   });
 
   // Handle process exit
-  childProcess.on("exit", (code, signal) => {
+  childProcess.on("exit", async (code, signal) => {
     const runtime = Date.now() - processStartTime;
+
+    // Debug: Process exit
+    if (options.taskRunId) {
+      await debugCrownWorkflow(
+        "process-exit",
+        {
+          taskRunId: options.taskRunId,
+          agentModel: options.agentModel,
+          exitCode: code,
+          signal,
+          runtime,
+          hasCrownContext: !!crownContext,
+        },
+        crownContext?.token || "dummy-token",
+        crownContext?.convexUrl
+      );
+    }
 
     log("INFO", `Process exited for terminal ${terminalId}`, {
       code,

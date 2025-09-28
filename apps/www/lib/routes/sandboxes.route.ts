@@ -198,9 +198,13 @@ sandboxesRouter.openapi(
       // Add CMUX task-related env vars if present
       if (taskRunId) {
         envVarsToApply += `\nCMUX_TASK_RUN_ID="${taskRunId}"`;
+        console.log(`[sandboxes.start] Adding CMUX_TASK_RUN_ID: ${taskRunId}`);
       }
       if (taskRunJwt) {
         envVarsToApply += `\nCMUX_TASK_RUN_JWT="${taskRunJwt}"`;
+        console.log(`[sandboxes.start] Adding CMUX_TASK_RUN_JWT: length=${taskRunJwt.length}`);
+      } else {
+        console.warn(`[sandboxes.start] NO JWT TOKEN for taskRunId: ${taskRunId}`);
       }
 
       // Apply all environment variables if any
@@ -215,6 +219,8 @@ sandboxesRouter.openapi(
                 hasEnvironmentVars: Boolean(environmentEnvVarsContent),
                 hasTaskRunId: Boolean(taskRunId),
                 hasTaskRunJwt: Boolean(taskRunJwt),
+                taskRunId,
+                jwtLength: taskRunJwt?.length || 0,
               }
             );
           } else {
