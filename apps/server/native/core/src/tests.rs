@@ -1,7 +1,18 @@
-use std::{fs, process::Command};
+use std::{
+  collections::HashMap,
+  fs,
+  process::Command,
+  sync::{Mutex, OnceLock},
+};
 use tempfile::tempdir;
 use std::path::PathBuf;
-use crate::types::{GitDiffOptions, GitDiffWorkspaceOptions};
+use serde::Deserialize;
+use crate::{
+  diff::refs,
+  repo::cache::{ensure_repo, resolve_repo_url},
+  types::{GitDiffOptions, GitDiffWorkspaceOptions},
+  util::run_git,
+};
 
 fn run(cwd: &std::path::Path, cmd: &str) {
   let status = if cfg!(target_os = "windows") {
@@ -19,6 +30,119 @@ fn find_git_root(mut p: PathBuf) -> PathBuf {
     if !p.pop() { break; }
   }
   panic!(".git not found from test cwd");
+}
+
+const LARGE_MAX_BYTES: i32 = 64 * 1024 * 1024;
+
+#[derive(Debug, Deserialize)]
+struct GroundTruthFile {
+  #[allow(dead_code)]
+  generated_at: String,
+  repos: HashMap<String, Vec<PullRequestRecord>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PullRequestRecord {
+  repo: String,
+  number: u64,
+  #[allow(dead_code)]
+  is_merged: bool,
+  merge_commit_sha: Option<String>,
+  last_commit_sha: String,
+  #[allow(dead_code)]
+  base_sha: String,
+  additions: i64,
+  deletions: i64,
+  changed_files: i64,
+}
+
+#[derive(Clone, Debug)]
+struct CachedDiff {
+  additions: i64,
+  deletions: i64,
+  changed_files: usize,
+  debug: refs::DiffComputationDebug,
+}
+
+static GROUND_TRUTH: OnceLock<GroundTruthFile> = OnceLock::new();
+static PULL_FETCH_CACHE: OnceLock<Mutex<HashMap<String, bool>>> = OnceLock::new();
+static DIFF_CACHE: OnceLock<Mutex<HashMap<String, CachedDiff>>> = OnceLock::new();
+
+fn ground_truth() -> &'static GroundTruthFile {
+  GROUND_TRUTH.get_or_init(|| {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let repo_root = find_git_root(manifest_dir);
+    let path = repo_root.join("data/github/pr-ground-truth.json");
+    let json = fs::read_to_string(&path)
+      .unwrap_or_else(|err| panic!("failed to read ground truth file {}: {err}", path.display()));
+    serde_json::from_str(&json)
+      .unwrap_or_else(|err| panic!("failed to parse ground truth file {}: {err}", path.display()))
+  })
+}
+
+fn ensure_repo_with_pull_refs(repo_slug: &str) -> PathBuf {
+  let url = resolve_repo_url(Some(repo_slug), None).expect("resolve repo url");
+  let repo_path = ensure_repo(&url).expect("ensure repo path");
+  let repo_path_str = repo_path.to_string_lossy().to_string();
+
+  let cache = PULL_FETCH_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+  let already_fetched = {
+    let map = cache.lock().expect("pull fetch cache lock");
+    map.get(repo_slug).copied().unwrap_or(false)
+  };
+
+  if !already_fetched {
+    run_git(&repo_path_str, &["fetch", "origin", "+refs/pull/*/head:refs/cmux-tests/pull/*"])
+      .unwrap_or_else(|err| panic!("failed to fetch pull refs for {repo_slug}: {err}"));
+    let mut map = cache.lock().expect("pull fetch cache lock");
+    map.insert(repo_slug.to_string(), true);
+  }
+
+  repo_path
+}
+
+fn compute_diff_for_pr(pr: &PullRequestRecord) -> CachedDiff {
+  let cache_key = format!("{}#{}", pr.repo, pr.number);
+  let cache = DIFF_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+  if let Some(entry) = cache.lock().expect("diff cache lock").get(&cache_key).cloned() {
+    return entry;
+  }
+
+  let repo_path = ensure_repo_with_pull_refs(&pr.repo);
+  let repo_path_str = repo_path.to_string_lossy().to_string();
+  let diff = crate::diff::refs::diff_refs(GitDiffOptions {
+    headRef: pr.last_commit_sha.clone(),
+    baseRef: None,
+    repoFullName: Some(pr.repo.clone()),
+    repoUrl: None,
+    teamSlugOrId: None,
+    originPathOverride: Some(repo_path_str.clone()),
+    includeContents: Some(true),
+    maxBytes: Some(LARGE_MAX_BYTES),
+  })
+  .unwrap_or_else(|err| panic!("diff_refs failed for {}#{}: {err}", pr.repo, pr.number));
+
+  let debug = refs::last_diff_debug()
+    .unwrap_or_else(|| panic!("missing diff debug for {}#{}", pr.repo, pr.number));
+
+  let additions: i64 = diff.iter().map(|entry| entry.additions as i64).sum();
+  let deletions: i64 = diff.iter().map(|entry| entry.deletions as i64).sum();
+  let changed_files = diff.len();
+
+  let cached = CachedDiff { additions, deletions, changed_files, debug };
+  cache
+    .lock()
+    .expect("diff cache lock")
+    .insert(cache_key, cached.clone());
+  cached
+}
+
+fn first_parent_sha(repo_path: &str, commit: &str) -> Option<String> {
+  let rev = format!("{commit}^1");
+  run_git(repo_path, &["rev-parse", &rev])
+    .ok()
+    .map(|out| out.trim().to_string())
 }
 
 #[test]
@@ -251,4 +375,56 @@ fn refs_diff_handles_binary_files() {
   assert!(bin_entry.isBinary, "binary file should be detected");
   assert_eq!(bin_entry.additions, 0);
   assert_eq!(bin_entry.deletions, 0);
+}
+
+#[test]
+fn fuzz_merge_commit_inference_matches_github() {
+  let truth = ground_truth();
+  for prs in truth.repos.values() {
+    for pr in prs {
+      let cached = compute_diff_for_pr(pr);
+      if let Some(merge_sha) = &pr.merge_commit_sha {
+        let parent = first_parent_sha(&cached.debug.repo_path, merge_sha)
+          .unwrap_or_else(|| panic!("failed to resolve parent for merge commit {} in {}#{}", merge_sha, pr.repo, pr.number));
+        assert_eq!(
+          cached.debug.compare_base_oid,
+          parent,
+          "merge-base mismatch for {}#{} (mergeCommitSha={merge_sha})",
+          pr.repo,
+          pr.number,
+        );
+      }
+    }
+  }
+}
+
+#[test]
+fn fuzz_diff_stats_match_github_ground_truth() {
+  let truth = ground_truth();
+  for prs in truth.repos.values() {
+    for pr in prs {
+      let cached = compute_diff_for_pr(pr);
+      assert_eq!(
+        cached.additions,
+        pr.additions,
+        "additions mismatch for {}#{}",
+        pr.repo,
+        pr.number,
+      );
+      assert_eq!(
+        cached.deletions,
+        pr.deletions,
+        "deletions mismatch for {}#{}",
+        pr.repo,
+        pr.number,
+      );
+      assert_eq!(
+        cached.changed_files as i64,
+        pr.changed_files,
+        "changed files mismatch for {}#{}",
+        pr.repo,
+        pr.number,
+      );
+    }
+  }
 }

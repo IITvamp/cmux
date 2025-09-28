@@ -2,6 +2,8 @@ use anyhow::Result;
 use gix::bstr::ByteSlice;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
+#[cfg(test)]
+use std::cell::RefCell;
 
 use crate::{
   repo::cache::{ensure_repo, resolve_repo_url},
@@ -74,10 +76,35 @@ fn resolve_default_base(repo: &Repository, head_oid: ObjectId) -> ObjectId {
   head_oid
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
+#[derive(Clone, Debug)]
+pub struct DiffComputationDebug {
+  pub head_oid: String,
+  pub resolved_base_oid: String,
+  pub compare_base_oid: String,
+  pub base_ref_input: Option<String>,
+  pub repo_path: String,
+}
+
+#[cfg(test)]
+thread_local! {
+  static LAST_DIFF_DEBUG: RefCell<Option<DiffComputationDebug>> = RefCell::new(None);
+}
+
+#[cfg(test)]
+pub fn last_diff_debug() -> Option<DiffComputationDebug> {
+  LAST_DIFF_DEBUG.with(|cell| cell.borrow().clone())
+}
+
 pub fn diff_refs(opts: GitDiffOptions) -> Result<Vec<DiffEntry>> {
   let include = opts.includeContents.unwrap_or(true);
   let max_bytes = opts.maxBytes.unwrap_or(950*1024) as usize;
   let t_total = Instant::now();
+  #[cfg(test)]
+  LAST_DIFF_DEBUG.with(|cell| {
+    *cell.borrow_mut() = None;
+  });
 
   let head_ref = opts.headRef.trim();
   if head_ref.is_empty() {
@@ -89,6 +116,8 @@ pub fn diff_refs(opts: GitDiffOptions) -> Result<Vec<DiffEntry>> {
     .as_ref()
     .map(|s| s.trim().to_string())
     .filter(|s| !s.is_empty());
+  #[cfg(test)]
+  let base_ref_for_debug = base_ref_input.clone();
 
   #[cfg(debug_assertions)]
   println!(
@@ -170,6 +199,16 @@ pub fn diff_refs(opts: GitDiffOptions) -> Result<Vec<DiffEntry>> {
     crate::merge_base::MergeBaseStrategy::Bfs,
   )
   .unwrap_or(resolved_base_oid);
+  #[cfg(test)]
+  LAST_DIFF_DEBUG.with(|cell| {
+    *cell.borrow_mut() = Some(DiffComputationDebug {
+      head_oid: head_oid.to_string(),
+      resolved_base_oid: resolved_base_oid.to_string(),
+      compare_base_oid: compare_base_oid.to_string(),
+      base_ref_input: base_ref_for_debug.clone(),
+      repo_path: cwd.clone(),
+    });
+  });
   let _d_merge_base = t_merge_base.elapsed();
   #[cfg(debug_assertions)]
   println!(
