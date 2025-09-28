@@ -23,7 +23,7 @@ export interface RunDiffSectionProps {
 
 function applyRepoPrefix(
   entry: ReplaceDiffEntry,
-  prefix: string | null
+  prefix: string | null,
 ): ReplaceDiffEntry {
   if (!prefix) {
     return entry;
@@ -79,7 +79,7 @@ export function RunDiffSection(props: RunDiffSectionProps) {
   });
 
   const isPending = queries.some(
-    (query) => query.isPending || query.isFetching
+    (query) => query.isPending || query.isFetching,
   );
   const firstError = queries.find((query) => query.isError);
 

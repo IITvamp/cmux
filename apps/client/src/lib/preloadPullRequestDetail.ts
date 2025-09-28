@@ -1,4 +1,4 @@
-import { refWithOrigin } from "@/lib/refWithOrigin";
+import { normalizeGitRef } from "@/lib/refWithOrigin";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
 import { convexQuery } from "@convex-dev/react-query";
@@ -34,8 +34,8 @@ export async function preloadPullRequestDetail({
         await queryClient.ensureQueryData(
           gitDiffQueryOptions({
             repoFullName: target.repoFullName,
-            baseRef: refWithOrigin(target.baseRef),
-            headRef: refWithOrigin(target.headRef),
+            baseRef: normalizeGitRef(target.baseRef),
+            headRef: normalizeGitRef(target.headRef),
           })
         );
       }
