@@ -14,6 +14,8 @@ export interface GitDiffOptions {
   originPathOverride?: string;
   includeContents?: boolean;
   maxBytes?: number;
+  lastKnownBaseSha?: string;
+  lastKnownMergeCommitSha?: string;
 }
 
 type NativeGitModule = {
@@ -29,6 +31,8 @@ type NativeGitModule = {
       lastCommitSha?: string;
       lastActivityAt?: number;
       isDefault?: boolean;
+      lastKnownBaseSha?: string;
+      lastKnownMergeCommitSha?: string;
     }>
   >;
 };
@@ -108,6 +112,8 @@ export async function listRemoteBranches(opts: {
     lastCommitSha?: string;
     lastActivityAt?: number;
     isDefault?: boolean;
+    lastKnownBaseSha?: string;
+    lastKnownMergeCommitSha?: string;
   }>
 > {
   const mod = loadNativeGit();

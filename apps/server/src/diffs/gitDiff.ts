@@ -11,6 +11,8 @@ export interface GitDiffRequest {
   originPathOverride?: string;
   includeContents?: boolean;
   maxBytes?: number;
+  lastKnownBaseSha?: string;
+  lastKnownMergeCommitSha?: string;
 }
 
 export async function getGitDiff(
@@ -32,5 +34,7 @@ export async function getGitDiff(
     originPathOverride: request.originPathOverride,
     includeContents: request.includeContents,
     maxBytes: request.maxBytes,
+    lastKnownBaseSha: request.lastKnownBaseSha,
+    lastKnownMergeCommitSha: request.lastKnownMergeCommitSha,
   });
 }

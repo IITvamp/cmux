@@ -12,6 +12,13 @@ export interface RunDiffSectionProps {
   onControlsChange?: ComponentProps<typeof GitDiffViewer>["onControlsChange"];
   additionalRepoFullNames?: string[];
   withRepoPrefix?: boolean;
+  metadataByRepo?: Record<
+    string,
+    {
+      lastKnownBaseSha?: string;
+      lastKnownMergeCommitSha?: string;
+    }
+  >;
 }
 
 function applyRepoPrefix(
@@ -40,6 +47,7 @@ export function RunDiffSection(props: RunDiffSectionProps) {
     onControlsChange,
     additionalRepoFullNames,
     withRepoPrefix,
+    metadataByRepo,
   } = props;
 
   const repoFullNames = useMemo(() => {
@@ -62,6 +70,9 @@ export function RunDiffSection(props: RunDiffSectionProps) {
         repoFullName: repo,
         baseRef: ref1,
         headRef: ref2,
+        lastKnownBaseSha: metadataByRepo?.[repo]?.lastKnownBaseSha,
+        lastKnownMergeCommitSha:
+          metadataByRepo?.[repo]?.lastKnownMergeCommitSha,
       }),
       enabled: canFetch,
     })),

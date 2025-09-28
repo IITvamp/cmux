@@ -85,6 +85,7 @@ pub struct DiffComputationDebug {
   pub compare_base_oid: String,
   pub base_ref_input: Option<String>,
   pub repo_path: String,
+  pub merge_commit_oid: Option<String>,
 }
 
 #[cfg(test)]
@@ -95,6 +96,59 @@ thread_local! {
 #[cfg(test)]
 pub fn last_diff_debug() -> Option<DiffComputationDebug> {
   LAST_DIFF_DEBUG.with(|cell| cell.borrow().clone())
+}
+
+fn is_ancestor(repo: &Repository, anc: ObjectId, desc: ObjectId) -> bool {
+  match crate::merge_base::merge_base(
+    "",
+    repo,
+    desc,
+    anc,
+    crate::merge_base::MergeBaseStrategy::Bfs,
+  ) {
+    Some(x) if x == anc => true,
+    _ => false,
+  }
+}
+
+fn find_merge_parent_on_base(
+  repo: &Repository,
+  mut base_tip: ObjectId,
+  head_tip: ObjectId,
+  limit: usize,
+) -> Option<(ObjectId, ObjectId)> {
+  let mut seen = 0usize;
+  let mut ancestor_candidate: Option<(ObjectId, ObjectId)> = None;
+  while seen < limit {
+    seen += 1;
+    let obj = repo.find_object(base_tip).ok()?;
+    let commit = obj.try_into_commit().ok()?;
+    let mut parents_iter = commit.parent_ids();
+    let first_parent = parents_iter.next().map(|p| p.detach());
+    let rest: Vec<ObjectId> = parents_iter.map(|p| p.detach()).collect();
+    if let Some(p1) = first_parent {
+      if rest.iter().any(|p| *p == head_tip) {
+        return Some((base_tip, p1));
+      }
+      if ancestor_candidate.is_none()
+        && rest.iter().any(|p| is_ancestor(repo, *p, head_tip))
+      {
+        ancestor_candidate = Some((base_tip, p1));
+      }
+      base_tip = p1;
+    } else {
+      break;
+    }
+  }
+  ancestor_candidate
+}
+
+fn parse_oid(hex: &str) -> Option<ObjectId> {
+  let trimmed = hex.trim();
+  if trimmed.is_empty() {
+    return None;
+  }
+  ObjectId::from_hex(trimmed.as_bytes()).ok()
 }
 
 pub fn diff_refs(opts: GitDiffOptions) -> Result<Vec<DiffEntry>> {
@@ -170,7 +224,7 @@ pub fn diff_refs(opts: GitDiffOptions) -> Result<Vec<DiffEntry>> {
   let _d_head = t_head.elapsed();
 
   let t_base = Instant::now();
-  let resolved_base_oid = match base_ref_input {
+  let mut resolved_base_oid = match base_ref_input {
     Some(ref spec) => match oid_from_rev_parse(&repo, spec) {
       Ok(oid) => oid,
       Err(_) => {
@@ -189,9 +243,16 @@ pub fn diff_refs(opts: GitDiffOptions) -> Result<Vec<DiffEntry>> {
     None => resolve_default_base(&repo, head_oid),
   };
   let _d_base = t_base.elapsed();
+  if let Some(ref known_base) = opts.lastKnownBaseSha {
+    if let Some(candidate) = parse_oid(known_base) {
+      if repo.find_object(candidate).is_ok() && is_ancestor(&repo, candidate, head_oid) {
+        resolved_base_oid = candidate;
+      }
+    }
+  }
   let t_merge_base = Instant::now();
   // Compute merge-base; prefer BFS (pure gix) to avoid shelling out
-  let compare_base_oid = crate::merge_base::merge_base(
+  let mut compare_base_oid = crate::merge_base::merge_base(
     &cwd,
     &repo,
     resolved_base_oid,
@@ -200,6 +261,36 @@ pub fn diff_refs(opts: GitDiffOptions) -> Result<Vec<DiffEntry>> {
   )
   .unwrap_or(resolved_base_oid);
   #[cfg(test)]
+  let mut merge_commit_for_debug: Option<String> = None;
+  if let Some(ref known_merge) = opts.lastKnownMergeCommitSha {
+    if let Some(merge_oid) = parse_oid(known_merge) {
+      if let Ok(obj) = repo.find_object(merge_oid) {
+        if let Ok(commit) = obj.try_into_commit() {
+          if let Some(parent_oid) = commit.parent_ids().next().map(|p| p.detach()) {
+            if is_ancestor(&repo, parent_oid, head_oid) {
+              compare_base_oid = parent_oid;
+              #[cfg(test)]
+              {
+                merge_commit_for_debug = Some(merge_oid.to_string());
+              }
+            }
+          }
+        }
+      }
+    }
+  } else if base_ref_input.is_none() {
+    if let Some((merge_commit_oid, parent_oid)) =
+      find_merge_parent_on_base(&repo, resolved_base_oid, head_oid, 20_000)
+    {
+      compare_base_oid = parent_oid;
+      #[cfg(test)]
+      {
+        merge_commit_for_debug = Some(merge_commit_oid.to_string());
+      }
+      let _ = merge_commit_oid;
+    }
+  }
+  #[cfg(test)]
   LAST_DIFF_DEBUG.with(|cell| {
     *cell.borrow_mut() = Some(DiffComputationDebug {
       head_oid: head_oid.to_string(),
@@ -207,6 +298,7 @@ pub fn diff_refs(opts: GitDiffOptions) -> Result<Vec<DiffEntry>> {
       compare_base_oid: compare_base_oid.to_string(),
       base_ref_input: base_ref_for_debug.clone(),
       repo_path: cwd.clone(),
+      merge_commit_oid: merge_commit_for_debug.clone(),
     });
   });
   let _d_merge_base = t_merge_base.elapsed();

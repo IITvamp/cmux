@@ -108,6 +108,8 @@ export const GitRepoDiffRequestSchema = z.object({
   originPathOverride: z.string().optional(),
   includeContents: z.boolean().optional(),
   maxBytes: z.number().optional(),
+  lastKnownBaseSha: z.string().optional(),
+  lastKnownMergeCommitSha: z.string().optional(),
 });
 
 export const GitFileSchema = z.object({

@@ -10,6 +10,8 @@ export interface GitDiffQuery {
   baseRef?: string;
   includeContents?: boolean;
   maxBytes?: number;
+  lastKnownBaseSha?: string;
+  lastKnownMergeCommitSha?: string;
 }
 
 export function gitDiffQueryOptions({
@@ -20,6 +22,8 @@ export function gitDiffQueryOptions({
   baseRef,
   includeContents = true,
   maxBytes,
+  lastKnownBaseSha,
+  lastKnownMergeCommitSha,
 }: GitDiffQuery) {
   const repoKey = repoFullName ?? repoUrl ?? originPathOverride ?? "";
 
@@ -31,6 +35,8 @@ export function gitDiffQueryOptions({
       baseRef ?? "",
       includeContents ? "with-contents" : "no-contents",
       maxBytes ?? "",
+      lastKnownBaseSha ?? "",
+      lastKnownMergeCommitSha ?? "",
     ],
     queryFn: async () => {
       const socket = await waitForConnectedSocket();
@@ -45,6 +51,8 @@ export function gitDiffQueryOptions({
             baseRef,
             includeContents,
             maxBytes,
+            lastKnownBaseSha,
+            lastKnownMergeCommitSha,
           },
           (
             resp:

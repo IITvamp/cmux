@@ -104,17 +104,56 @@ export const getAllRepos = authQuery({
   },
 });
 
+const SYSTEM_BRANCH_USER_ID = "__system__";
+
 export const getBranchesByRepo = authQuery({
   args: { teamSlugOrId: v.string(), repo: v.string() },
   handler: async (ctx, { teamSlugOrId, repo }) => {
     const userId = ctx.identity.subject;
     const teamId = await getTeamId(ctx, teamSlugOrId);
-    return await ctx.db
+
+    const rows = await ctx.db
       .query("branches")
       .withIndex("by_repo", (q) => q.eq("repo", repo))
       .filter((q) => q.eq(q.field("teamId"), teamId))
-      .filter((q) => q.eq(q.field("userId"), userId))
       .collect();
+
+    const relevant = rows.filter(
+      (row) => row.userId === userId || row.userId === SYSTEM_BRANCH_USER_ID
+    );
+
+    const byName = new Map<string, Doc<"branches">>();
+    for (const row of relevant) {
+      const existing = byName.get(row.name);
+      if (!existing) {
+        byName.set(row.name, row);
+        continue;
+      }
+
+      const currentHasKnown = Boolean(
+        row.lastKnownBaseSha || row.lastKnownMergeCommitSha
+      );
+      const existingHasKnown = Boolean(
+        existing.lastKnownBaseSha || existing.lastKnownMergeCommitSha
+      );
+
+      if (currentHasKnown && !existingHasKnown) {
+        byName.set(row.name, row);
+        continue;
+      }
+
+      if (!currentHasKnown && existingHasKnown) {
+        continue;
+      }
+
+      const currentActivity = row.lastActivityAt ?? -Infinity;
+      const existingActivity = existing.lastActivityAt ?? -Infinity;
+      if (currentActivity > existingActivity) {
+        byName.set(row.name, row);
+      }
+    }
+
+    return Array.from(byName.values());
   },
 });
 
@@ -424,6 +463,8 @@ export const bulkUpsertBranchesWithActivity = authMutation({
         name: v.string(),
         lastActivityAt: v.optional(v.number()),
         lastCommitSha: v.optional(v.string()),
+        lastKnownBaseSha: v.optional(v.string()),
+        lastKnownMergeCommitSha: v.optional(v.string()),
       })
     ),
   },
@@ -454,6 +495,18 @@ export const bulkUpsertBranchesWithActivity = authMutation({
         if (b.lastCommitSha && b.lastCommitSha !== row.lastCommitSha) {
           patch.lastCommitSha = b.lastCommitSha;
         }
+        if (
+          b.lastKnownBaseSha &&
+          b.lastKnownBaseSha !== row.lastKnownBaseSha
+        ) {
+          patch.lastKnownBaseSha = b.lastKnownBaseSha;
+        }
+        if (
+          b.lastKnownMergeCommitSha &&
+          b.lastKnownMergeCommitSha !== row.lastKnownMergeCommitSha
+        ) {
+          patch.lastKnownMergeCommitSha = b.lastKnownMergeCommitSha;
+        }
         if (Object.keys(patch).length > 0) {
           await ctx.db.patch(row._id, patch);
         }
@@ -466,6 +519,8 @@ export const bulkUpsertBranchesWithActivity = authMutation({
         teamId,
         lastCommitSha: b.lastCommitSha,
         lastActivityAt: b.lastActivityAt ?? now,
+        lastKnownBaseSha: b.lastKnownBaseSha,
+        lastKnownMergeCommitSha: b.lastKnownMergeCommitSha,
       });
     });
 

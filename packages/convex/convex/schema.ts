@@ -276,6 +276,8 @@ const convexSchema = defineSchema({
     teamId: v.string(),
     lastCommitSha: v.optional(v.string()),
     lastActivityAt: v.optional(v.number()),
+    lastKnownBaseSha: v.optional(v.string()),
+    lastKnownMergeCommitSha: v.optional(v.string()),
   })
     .index("by_repo", ["repo"])
     .index("by_repoId", ["repoId"]) // new canonical lookup
@@ -489,6 +491,7 @@ const convexSchema = defineSchema({
     headRef: v.optional(v.string()),
     baseSha: v.optional(v.string()),
     headSha: v.optional(v.string()),
+    mergeCommitSha: v.optional(v.string()),
 
     // Timestamps
     createdAt: v.optional(v.number()),

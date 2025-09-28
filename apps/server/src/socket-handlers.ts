@@ -61,6 +61,8 @@ const GitSocketDiffRequestSchema = z.object({
   originPathOverride: z.string().optional(),
   includeContents: z.boolean().optional(),
   maxBytes: z.number().optional(),
+  lastKnownBaseSha: z.string().optional(),
+  lastKnownMergeCommitSha: z.string().optional(),
 });
 
 export function setupSocketHandlers(
@@ -195,6 +197,8 @@ export function setupSocketHandlers(
           includeContents: parsed.includeContents ?? true,
           maxBytes: parsed.maxBytes,
           teamSlugOrId: safeTeam,
+          lastKnownBaseSha: parsed.lastKnownBaseSha,
+          lastKnownMergeCommitSha: parsed.lastKnownMergeCommitSha,
         });
 
         if (parsed.originPathOverride) {

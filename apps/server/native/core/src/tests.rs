@@ -187,6 +187,8 @@ fn compute_diff_for_pr(pr: &PullRequestRecord) -> CachedDiff {
     originPathOverride: Some(repo_path_str.clone()),
     includeContents: Some(true),
     maxBytes: Some(LARGE_MAX_BYTES),
+    lastKnownBaseSha: None,
+    lastKnownMergeCommitSha: None,
   })
   .unwrap_or_else(|err| panic!("diff_refs failed for {}#{}: {err}", pr.repo, pr.number));
 
@@ -420,6 +422,8 @@ fn workspace_diff_basic() {
     worktreePath: work.to_string_lossy().to_string(),
     includeContents: Some(true),
     maxBytes: Some(1024*1024),
+    lastKnownBaseSha: None,
+    lastKnownMergeCommitSha: None,
   }).unwrap();
 
   let mut has_a = false;
@@ -509,6 +513,8 @@ fn refs_diff_basic_on_local_repo() {
     originPathOverride: Some(work.to_string_lossy().to_string()),
     includeContents: Some(true),
     maxBytes: Some(1024*1024),
+    lastKnownBaseSha: None,
+    lastKnownMergeCommitSha: None,
   }).unwrap();
 
   assert!(out.iter().any(|e| e.filePath == "b.txt"));
@@ -547,6 +553,8 @@ fn refs_merge_base_after_merge_is_branch_tip() {
     originPathOverride: Some(work.to_string_lossy().to_string()),
     includeContents: Some(true),
     maxBytes: Some(1024*1024),
+    lastKnownBaseSha: None,
+    lastKnownMergeCommitSha: None,
   }).unwrap();
   assert_eq!(out.len(), 0, "Expected no differences after merge, got: {:?}", out);
 }
@@ -576,6 +584,8 @@ fn refs_diff_numstat_matches_known_pairs() {
       originPathOverride: Some(repo_root.to_string_lossy().to_string()),
       includeContents: Some(true),
       maxBytes: Some(10*1024*1024),
+      lastKnownBaseSha: None,
+      lastKnownMergeCommitSha: None,
     }).expect("diff refs");
     let adds: i32 = out.iter().map(|e| e.additions).sum();
     let dels: i32 = out.iter().map(|e| e.deletions).sum();
@@ -625,6 +635,8 @@ fn refs_diff_handles_binary_files() {
     originPathOverride: Some(work.to_string_lossy().to_string()),
     includeContents: Some(true),
     maxBytes: Some(1024*1024),
+    lastKnownBaseSha: None,
+    lastKnownMergeCommitSha: None,
   }).expect("diff refs binary");
 
   let bin_entry = out.iter().find(|e| e.filePath == "bin.dat").expect("binary entry");

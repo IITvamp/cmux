@@ -90,6 +90,8 @@ pub fn list_remote_branches(opts: GitListRemoteBranchesOptions) -> Result<Vec<Br
       lastCommitSha: Some(oid_to_hex(id)),
       lastActivityAt: last_ts,
       isDefault: Some(is_default),
+      lastKnownBaseSha: None,
+      lastKnownMergeCommitSha: None,
     });
   }
 
