@@ -422,8 +422,6 @@ fn workspace_diff_basic() {
     worktreePath: work.to_string_lossy().to_string(),
     includeContents: Some(true),
     maxBytes: Some(1024*1024),
-    lastKnownBaseSha: None,
-    lastKnownMergeCommitSha: None,
   }).unwrap();
 
   let mut has_a = false;
