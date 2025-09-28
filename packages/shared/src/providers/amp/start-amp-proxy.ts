@@ -1,10 +1,15 @@
 import { createServer as createHttpServer } from "node:http";
 import { readFile as fspReadFile } from "node:fs/promises";
+import type { Id } from "@cmux/convex/dataModel";
+import type { WorkerToServerEvents } from "../../worker-schemas";
 
 export type AmpProxyOptions = {
   ampUrl?: string;
   workerId?: string;
-  emitToMainServer?: (event: string, payload: unknown) => void;
+  emitToMainServer?: <K extends keyof WorkerToServerEvents>(
+    event: K,
+    ...args: Parameters<WorkerToServerEvents[K]>
+  ) => void;
 };
 
 async function getRealAmpApiKey(): Promise<string | null> {
@@ -186,11 +191,11 @@ export function startAmpProxy(options: AmpProxyOptions = {}) {
         responseHeaders.delete("content-length");
         const completed = ampResponseIndicatesCompletion(loggedRequestBody);
 
-        if (completed && taskRunId) {
+        if (completed && taskRunId && workerId) {
           const elapsedMs = Date.now() - start;
           emit("worker:task-complete", {
             workerId,
-            taskRunId,
+            taskRunId: taskRunId as Id<"taskRuns">,
             agentModel: "amp",
             elapsedMs,
           });
