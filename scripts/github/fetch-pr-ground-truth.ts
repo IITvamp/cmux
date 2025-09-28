@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { mkdir, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import process from "node:process";
 
 const API_ROOT = "https://api.github.com";
@@ -73,17 +73,24 @@ type StoredPullRequest = {
   updatedAt: string;
 };
 
+type CliOptions = {
+  repos: RepoSlug[];
+  state: PullRequestState;
+  outputFile: string;
+};
+
 async function main() {
-  const repos = parseReposFromArgs(process.argv.slice(2));
+  const options = parseOptionsFromArgs(process.argv.slice(2));
+  const { repos, state, outputFile } = options;
   const token = await resolveToken();
   const headers = buildHeaders(token);
   const now = new Date().toISOString();
   const results: Record<RepoSlug, StoredPullRequest[]> = {} as Record<RepoSlug, StoredPullRequest[]>;
 
   for (const repo of repos) {
-    console.error(`Fetching closed pull requests for ${repo}...`);
-    const pulls = await fetchAllPulls(repo, headers);
-    console.error(`  Found ${pulls.length} closed PRs`);
+    console.error(`Fetching ${state} pull requests for ${repo}...`);
+    const pulls = await fetchAllPulls(repo, headers, state);
+    console.error(`  Found ${pulls.length} ${state} PRs`);
     let processed = 0;
     const detailed = await mapWithConcurrency(pulls, CONCURRENCY, async (pull, index) => {
       const [detail, commits] = await Promise.all([
@@ -128,10 +135,10 @@ async function main() {
     results[repo] = detailed;
   }
 
-  await mkdir(OUTPUT_DIR, { recursive: true });
+  await mkdir(dirname(outputFile), { recursive: true });
   const payload = { generatedAt: now, repos: results };
-  await writeFile(OUTPUT_FILE, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
-  console.error(`Wrote ground truth data to ${OUTPUT_FILE}`);
+  await writeFile(outputFile, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  console.error(`Wrote ground truth data to ${outputFile}`);
 }
 
 function parseReposFromArgs(args: string[]): RepoSlug[] {
@@ -180,9 +187,13 @@ async function resolveToken(): Promise<string> {
   return token;
 }
 
-async function fetchAllPulls(repo: RepoSlug, headers: Record<string, string>): Promise<PullRequestListItem[]> {
+async function fetchAllPulls(
+  repo: RepoSlug,
+  headers: Record<string, string>,
+  state: PullRequestState,
+): Promise<PullRequestListItem[]> {
   const search = new URLSearchParams();
-  search.set("state", "closed");
+  search.set("state", state);
   search.set("per_page", PER_PAGE.toString());
   let url: string | null = buildUrl(`/repos/${repo}/pulls`, search);
   const out: PullRequestListItem[] = [];
@@ -192,6 +203,52 @@ async function fetchAllPulls(repo: RepoSlug, headers: Record<string, string>): P
     url = page.next;
   }
   return out;
+}
+
+function parseOptionsFromArgs(args: string[]): CliOptions {
+  if (args.length === 0) {
+    return {
+      repos: DEFAULT_REPOS,
+      state: "closed",
+      outputFile: OUTPUT_FILE,
+    };
+  }
+
+  let state: PullRequestState = "closed";
+  let outputFile = OUTPUT_FILE;
+  const repoArgs: string[] = [];
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--state") {
+      const next = args[index + 1];
+      if (!next) {
+        throw new Error("Missing value for --state");
+      }
+      if (next !== "open" && next !== "closed") {
+        throw new Error("--state must be 'open' or 'closed'");
+      }
+      state = next;
+      index += 1;
+      continue;
+    }
+    if (arg === "--output") {
+      const next = args[index + 1];
+      if (!next) {
+        throw new Error("Missing value for --output");
+      }
+      outputFile = resolve(process.cwd(), next);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--")) {
+      throw new Error(`Unknown option '${arg}'`);
+    }
+    repoArgs.push(arg);
+  }
+
+  const repos = parseReposFromArgs(repoArgs);
+  return { repos, state, outputFile };
 }
 
 async function fetchPullDetail(repo: RepoSlug, number: number, headers: Record<string, string>): Promise<PullRequestDetail> {
