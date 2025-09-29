@@ -28,13 +28,21 @@ function mapGhState(
   return "unknown";
 }
 
-const ghPrCreateResponseSchema = z
-  .object({
-    url: z.string(),
-    number: z.union([z.number(), z.string()]).optional(),
-    state: z.string().optional(),
-    isDraft: z.boolean().optional(),
-  });
+const ghPrCreateResponseSchema = z.object({
+  url: z.string().url(),
+  number: z
+    .union([
+      z.number().int(),
+      z
+        .string()
+        .trim()
+        .regex(/^[0-9]+$/)
+        .transform(Number),
+    ])
+    .optional(),
+  state: z.string().optional(),
+  isDraft: z.boolean().optional(),
+});
 
 type GhPrCreateResponse = z.infer<typeof ghPrCreateResponseSchema>;
 
@@ -115,28 +123,12 @@ rm -f "$BODY_FILE"
       return null;
     }
 
-    const prUrl = parsed.url;
-    if (!prUrl) {
-      log("ERROR", "gh pr create response missing URL", { parsed });
-      return null;
-    }
-
-    const prNumber = (() => {
-      if (typeof parsed.number === "number") return parsed.number;
-      if (typeof parsed.number === "string") {
-        const numeric = Number(parsed.number);
-        return Number.isFinite(numeric) ? numeric : undefined;
-      }
-      return undefined;
-    })();
-
     const metadata: PullRequestMetadata = {
       pullRequest: {
-        url: prUrl,
-        number: prNumber,
+        url: parsed.url,
+        number: parsed.number,
         state: mapGhState(parsed.state),
-        isDraft:
-          typeof parsed.isDraft === "boolean" ? parsed.isDraft : undefined,
+        isDraft: parsed.isDraft,
       },
       title: prTitle,
       description: prBody,
@@ -145,7 +137,7 @@ rm -f "$BODY_FILE"
     log("INFO", "Created pull request", {
       taskId: check.taskId,
       runId: winner.runId,
-      url: prUrl,
+      url: parsed.url,
     });
 
     return metadata;
