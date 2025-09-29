@@ -194,6 +194,29 @@ export type GithubPrCodeResponse = {
     files: Array<GithubPrFile>;
 };
 
+export type GithubPrsMergeResponse = {
+    success: boolean;
+    merged?: boolean;
+    sha?: string;
+    url?: string;
+    error?: string;
+};
+
+export type GithubPrsMergeBody = {
+    /**
+     * Merge method (default squash)
+     */
+    method?: 'squash' | 'rebase' | 'merge';
+    /**
+     * Optional merge commit title
+     */
+    commit_title?: string;
+    /**
+     * Optional merge commit message
+     */
+    commit_message?: string;
+};
+
 export type GithubPrsFilesResponse = {
     repoFullName: string;
     number: number;
@@ -1075,6 +1098,50 @@ export type GetApiIntegrationsGithubPrsRawResponses = {
 };
 
 export type GetApiIntegrationsGithubPrsRawResponse = GetApiIntegrationsGithubPrsRawResponses[keyof GetApiIntegrationsGithubPrsRawResponses];
+
+export type PostApiIntegrationsGithubPrsMergeData = {
+    body?: GithubPrsMergeBody;
+    path?: never;
+    query: {
+        /**
+         * Team slug or UUID
+         */
+        team: string;
+        /**
+         * GitHub owner/org
+         */
+        owner: string;
+        /**
+         * GitHub repo name
+         */
+        repo: string;
+        /**
+         * PR number
+         */
+        number: number;
+    };
+    url: '/api/integrations/github/prs/merge';
+};
+
+export type PostApiIntegrationsGithubPrsMergeErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Not found
+     */
+    404: unknown;
+};
+
+export type PostApiIntegrationsGithubPrsMergeResponses = {
+    /**
+     * OK
+     */
+    200: GithubPrsMergeResponse;
+};
+
+export type PostApiIntegrationsGithubPrsMergeResponse = PostApiIntegrationsGithubPrsMergeResponses[keyof PostApiIntegrationsGithubPrsMergeResponses];
 
 export type GetApiIntegrationsGithubPrsFilesData = {
     body?: never;
