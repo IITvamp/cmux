@@ -109,7 +109,9 @@ export function GitDiffViewer({
     return kitties[Math.floor(Math.random() * kitties.length)];
   }, []);
 
-  const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
+  const [expandedFiles, setExpandedFiles] = useState<Set<string>>(
+    () => new Set(diffs.map((diff) => diff.filePath)),
+  );
 
   // Group diffs by file
   const fileGroups: FileGroup[] = useMemo(
@@ -127,44 +129,6 @@ export function GitDiffViewer({
       })),
     [diffs],
   );
-
-  // Maintain expansion state across refreshes:
-  // - On first load: expand all
-  // - On subsequent diffs changes: preserve existing expansions, expand only truly new files
-  //   (detected via previous file list, not by expansion set)
-  const prevFilesRef = useRef<Set<string> | null>(null);
-  useEffect(() => {
-    const nextPathsArr = diffs.map((d) => d.filePath);
-    const nextPaths = new Set(nextPathsArr);
-    debugGitDiffViewerLog("recomputing expanded files", {
-      incomingCount: nextPaths.size,
-      previousCount: prevFilesRef.current?.size ?? 0,
-    });
-    setExpandedFiles((prev) => {
-      // First load: expand everything
-      if (prevFilesRef.current == null) {
-        debugGitDiffViewerLog("initial expansion state", {
-          expandedCount: nextPaths.size,
-        });
-        return new Set(nextPaths);
-      }
-      const next = new Set<string>();
-      // Keep expansions that still exist
-      for (const p of prev) {
-        if (nextPaths.has(p)) next.add(p);
-      }
-      // Expand only files not seen before (true additions)
-      for (const p of nextPaths) {
-        if (!prevFilesRef.current.has(p)) next.add(p);
-      }
-      debugGitDiffViewerLog("updated expansion state", {
-        expandedCount: next.size,
-      });
-      return next;
-    });
-    // Update the seen file set after computing the next expansion state
-    prevFilesRef.current = nextPaths;
-  }, [diffs]);
 
   const toggleFile = (filePath: string) => {
     setExpandedFiles((prev) => {
