@@ -140,7 +140,7 @@ const GITHUB_DELETION_TEXT_BG = "#ffcecb";
 
 function debugGitDiffViewerLog(
   message: string,
-  payload?: Record<string, unknown>
+  payload?: Record<string, unknown>,
 ) {
   if (!isElectron && import.meta.env.PROD) {
     return;
@@ -211,7 +211,7 @@ export function GitDiffViewer({
         patch: diff.patch,
         isBinary: diff.isBinary,
       })),
-    [diffs]
+    [diffs],
   );
 
   // Maintain expansion state across refreshes:
@@ -324,7 +324,8 @@ export function GitDiffViewer({
   return (
     <div className="grow bg-white dark:bg-neutral-900">
       {/* Diff sections */}
-      <div className="">
+      <div className="flex flex-col -space-y-px">
+        {/* - space-y-px is to account for the border between each file diff row */}
         {fileGroups.map((file) => (
           <MemoFileDiffRow
             key={`refs:${file.filePath}`}
@@ -336,9 +337,7 @@ export function GitDiffViewer({
             classNames={classNames?.fileDiffRow}
           />
         ))}
-
         <hr className="border-neutral-200 dark:border-neutral-800" />
-
         {/* End-of-diff message */}
         <div className="px-3 py-6 text-center">
           <span className="text-xs text-neutral-500 dark:text-neutral-400 select-none">
@@ -382,7 +381,7 @@ function FileDiffRow({
 
   const [isEditorVisible, setIsEditorVisible] = useState(false);
   const [minimumHeight, setMinimumHeight] = useState(() =>
-    Math.max(120, calculateEditorHeight(file.oldContent, file.newContent))
+    Math.max(120, calculateEditorHeight(file.oldContent, file.newContent)),
   );
 
   const shouldRenderEditor =
@@ -395,7 +394,7 @@ function FileDiffRow({
 
   const languageExtensions = useMemo(
     () => getLanguageExtensions(file.filePath),
-    [file.filePath]
+    [file.filePath],
   );
 
   useLayoutEffect(() => {
@@ -404,7 +403,7 @@ function FileDiffRow({
     }
     const nextHeight = Math.max(
       120,
-      calculateEditorHeight(file.oldContent, file.newContent)
+      calculateEditorHeight(file.oldContent, file.newContent),
     );
     setMinimumHeight((prev) => (prev === nextHeight ? prev : nextHeight));
   }, [
@@ -529,8 +528,8 @@ function FileDiffRow({
       <button
         onClick={onToggle}
         className={cn(
-          "w-full px-3 py-1.5 flex items-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors text-left group pt-1 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-800 sticky z-[var(--z-sticky-low)]",
-          classNames?.button
+          "w-full px-3 py-1.5 flex items-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors text-left group pt-1 bg-white dark:bg-neutral-900 border-y border-neutral-200 dark:border-neutral-800 sticky z-[var(--z-sticky-low)]",
+          classNames?.button,
         )}
       >
         <div className="text-neutral-400 dark:text-neutral-500 group-hover:text-neutral-600 dark:group-hover:text-neutral-400">
@@ -566,7 +565,7 @@ function FileDiffRow({
       </button>
 
       {isExpanded && (
-        <div className="border-t border-neutral-200 dark:border-neutral-800 overflow-hidden">
+        <div className="overflow-hidden">
           {file.status === "renamed" ? (
             <div className="px-3 py-6 text-center text-neutral-500 dark:text-neutral-400 text-xs bg-neutral-50 dark:bg-neutral-900/50 space-y-2">
               <p className="select-none">File was renamed.</p>
@@ -685,11 +684,15 @@ function createBaseExtensions(theme: string | undefined): Extension[] {
       },
       ".cm-mergeView ins.cm-insertedLine": {
         textDecoration: "none",
-        backgroundColor: isDark ? "rgba(52, 211, 153, 0.22)" : GITHUB_ADDITION_TEXT_BG,
+        backgroundColor: isDark
+          ? "rgba(52, 211, 153, 0.22)"
+          : GITHUB_ADDITION_TEXT_BG,
       },
       ".cm-mergeView del.cm-deletedLine": {
         textDecoration: "none",
-        backgroundColor: isDark ? "rgba(252, 165, 165, 0.22)" : GITHUB_DELETION_TEXT_BG,
+        backgroundColor: isDark
+          ? "rgba(252, 165, 165, 0.22)"
+          : GITHUB_DELETION_TEXT_BG,
       },
       ".cm-collapsedLines": {
         backgroundColor: isDark ? "rgba(96, 165, 250, 0.24)" : "#ddf4ff",
@@ -742,21 +745,11 @@ function createBaseExtensions(theme: string | undefined): Extension[] {
           : GITHUB_DELETION_GUTTER_BG,
       },
       "&.cm-merge-b .cm-changedText": {
-        backgroundImage: `linear-gradient(${isDark ? "rgba(45, 212, 191, 0.6)" : GITHUB_ADDITION_TEXT_BG}, ${
-          isDark ? "rgba(45, 212, 191, 0.6)" : GITHUB_ADDITION_TEXT_BG
-        })`,
-        backgroundSize: "100% 2px",
-        backgroundRepeat: "no-repeat",
-        backgroundPosition: "0 100%",
+        background: "none",
         textDecoration: "none",
       },
       "&.cm-merge-a .cm-changedText": {
-        backgroundImage: `linear-gradient(${isDark ? "rgba(248, 113, 113, 0.65)" : GITHUB_DELETION_TEXT_BG}, ${
-          isDark ? "rgba(248, 113, 113, 0.65)" : GITHUB_DELETION_TEXT_BG
-        })`,
-        backgroundSize: "100% 2px",
-        backgroundRepeat: "no-repeat",
-        backgroundPosition: "0 100%",
+        background: "none",
         textDecoration: "none",
       },
       ".cm-panels": {
@@ -766,7 +759,7 @@ function createBaseExtensions(theme: string | undefined): Extension[] {
         backgroundColor: "transparent",
       },
     },
-    { dark: isDark }
+    { dark: isDark },
   );
 
   return [
@@ -776,10 +769,9 @@ function createBaseExtensions(theme: string | undefined): Extension[] {
     highlightActiveLine(),
     highlightActiveLineGutter(),
     lineNumbers(),
-    syntaxHighlighting(
-      isDark ? darkHighlightStyle : defaultHighlightStyle,
-      { fallback: true }
-    ),
+    syntaxHighlighting(isDark ? darkHighlightStyle : defaultHighlightStyle, {
+      fallback: true,
+    }),
     baseTheme,
   ];
 }
