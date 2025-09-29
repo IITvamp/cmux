@@ -1,5 +1,5 @@
-import { refWithOrigin } from "@/lib/refWithOrigin";
-import { diffSmartQueryOptions } from "@/queries/diff-smart";
+import { normalizeGitRef } from "@/lib/refWithOrigin";
+import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
 import { convexQuery } from "@convex-dev/react-query";
 import type { QueryClient } from "@tanstack/react-query";
@@ -32,10 +32,10 @@ export async function preloadPullRequestDetail({
       );
       if (target?.repoFullName && target.baseRef && target.headRef) {
         await queryClient.ensureQueryData(
-          diffSmartQueryOptions({
+          gitDiffQueryOptions({
             repoFullName: target.repoFullName,
-            baseRef: refWithOrigin(target.baseRef),
-            headRef: refWithOrigin(target.headRef),
+            baseRef: normalizeGitRef(target.baseRef),
+            headRef: normalizeGitRef(target.headRef),
           })
         );
       }

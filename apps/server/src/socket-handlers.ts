@@ -1,7 +1,6 @@
 import { api } from "@cmux/convex/api";
 import {
   ArchiveTaskSchema,
-  GitCompareRefsSchema,
   GitFullDiffRequestSchema,
   GitHubCreateDraftPrSchema,
   GitHubFetchBranchesSchema,
@@ -21,11 +20,11 @@ import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
+import z from "zod";
 import { spawnAllAgents } from "./agentSpawner";
 import { stopContainersForRuns } from "./archiveTask";
-import { compareRefsForRepo } from "./diffs/compareRefs";
-import { getRunDiffs } from "./diffs/getRunDiffs";
 import { execWithEnv } from "./execWithEnv";
+import { getGitDiff } from "./diffs/gitDiff";
 import { GitDiffManager } from "./gitDiff";
 import { getRustTime } from "./native/core";
 import type { RealtimeServer } from "./realtime";
@@ -53,6 +52,18 @@ import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance";
 import { getProjectPaths } from "./workspace";
 
 const execAsync = promisify(exec);
+
+const GitSocketDiffRequestSchema = z.object({
+  headRef: z.string(),
+  baseRef: z.string().optional(),
+  repoFullName: z.string().optional(),
+  repoUrl: z.string().optional(),
+  originPathOverride: z.string().optional(),
+  includeContents: z.boolean().optional(),
+  maxBytes: z.number().optional(),
+  lastKnownBaseSha: z.string().optional(),
+  lastKnownMergeCommitSha: z.string().optional(),
+});
 
 export function setupSocketHandlers(
   rt: RealtimeServer,
@@ -163,147 +174,52 @@ export function setupSocketHandlers(
       );
     }
 
-    socket.on("git-diff-refs", async (data, callback) => {
+    socket.on("git-diff", async (data, callback) => {
       try {
-        const { repoFullName, ref1, ref2 } = GitCompareRefsSchema.parse(data);
-        const diffs = await compareRefsForRepo({
-          repoFullName,
-          ref1,
-          ref2,
+        const parsed = GitSocketDiffRequestSchema.parse(data);
+
+        if (
+          !parsed.repoFullName &&
+          !parsed.repoUrl &&
+          !parsed.originPathOverride
+        ) {
+          throw new Error(
+            "repoFullName, repoUrl, or originPathOverride is required"
+          );
+        }
+
+        const diffs = await getGitDiff({
+          headRef: parsed.headRef,
+          baseRef: parsed.baseRef,
+          repoFullName: parsed.repoFullName,
+          repoUrl: parsed.repoUrl,
+          originPathOverride: parsed.originPathOverride,
+          includeContents: parsed.includeContents ?? true,
+          maxBytes: parsed.maxBytes,
           teamSlugOrId: safeTeam,
+          lastKnownBaseSha: parsed.lastKnownBaseSha,
+          lastKnownMergeCommitSha: parsed.lastKnownMergeCommitSha,
         });
+
+        if (parsed.originPathOverride) {
+          const workspacePath = parsed.originPathOverride;
+          try {
+            void gitDiffManager.watchWorkspace(workspacePath, () => {
+              rt.emit("git-file-changed", {
+                workspacePath,
+                filePath: "",
+              });
+            });
+          } catch (e) {
+            serverLogger.warn(
+              `Failed to start watcher for ${parsed.originPathOverride}: ${String(e)}`
+            );
+          }
+        }
+
         callback?.({ ok: true, diffs });
       } catch (error) {
-        serverLogger.error("Error in git-diff-refs:", error);
-        callback?.({
-          ok: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-          diffs: [],
-        });
-      }
-    });
-
-    // Landed diff (closed-PR semantics): compute what actually landed on base
-    socket.on("git-diff-landed", async (data, callback) => {
-      try {
-        const { GitLandedRefsSchema } = await import("@cmux/shared");
-        const { repoFullName, baseRef, headRef, b0Ref } =
-          GitLandedRefsSchema.parse(data);
-        serverLogger.info(
-          "[socket] git-diff-landed",
-          JSON.stringify({ repoFullName, baseRef, headRef, b0Ref })
-        );
-        const { landedDiffForRepo } = await import("./native/git.js");
-        // Ensure a local clone exists under our standard workspace
-        let originPathOverride = "";
-        try {
-          const repoUrl = `https://github.com/${repoFullName}.git`;
-          const repoManager = RepositoryManager.getInstance();
-          const { originPath } = await (
-            await import("./workspace.js")
-          ).getProjectPaths(repoUrl, safeTeam);
-          await repoManager.ensureRepository(repoUrl, originPath);
-          originPathOverride = originPath;
-        } catch (e) {
-          serverLogger.warn(
-            "Could not ensure local clone for landed diffs:",
-            e
-          );
-        }
-        serverLogger.info(
-          "[socket] git-diff-landed invoking landedDiffForRepo",
-          JSON.stringify({ originPathOverride })
-        );
-        const t0 = Date.now();
-        const diffs = await landedDiffForRepo({
-          baseRef,
-          headRef,
-          originPathOverride,
-          b0Ref,
-          includeContents: true,
-        });
-        const t1 = Date.now();
-        serverLogger.info(
-          "[socket] git-diff-landed results",
-          JSON.stringify({ count: diffs.length, ms: t1 - t0 })
-        );
-        callback?.({ ok: true, diffs });
-      } catch (error) {
-        serverLogger.error("Error in git-diff-landed:", error);
-        callback?.({
-          ok: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-          diffs: [],
-        });
-      }
-    });
-
-    // Smart diff: prefer latest for unmerged branches, landed for merged
-    socket.on("git-diff-smart", async (data, callback) => {
-      try {
-        const { GitSmartRefsSchema } = await import("@cmux/shared");
-        const { repoFullName, baseRef, headRef, b0Ref } =
-          GitSmartRefsSchema.parse(data);
-        serverLogger.info(
-          "[socket] git-diff-smart",
-          JSON.stringify({ repoFullName, baseRef, headRef, b0Ref })
-        );
-        // Ensure local clone (same as landed)
-        // let originPathOverride = "";
-        // try {
-        //   const repoUrl = `https://github.com/${repoFullName}.git`;
-        //   const repoManager = RepositoryManager.getInstance();
-        //   const { originPath } = await (
-        //     await import("./workspace.js")
-        //   ).getProjectPaths(repoUrl, safeTeam);
-        //   await repoManager.ensureRepository(repoUrl, originPath);
-        //   originPathOverride = originPath;
-        // } catch (e) {
-        //   serverLogger.warn("Could not ensure local clone for smart diffs:", e);
-        // }
-        const { compareRefsForRepo } = await import("./diffs/compareRefs.js");
-        const { landedDiffForRepo } = await import("./native/git.js");
-        const t0 = Date.now();
-        const latest = await compareRefsForRepo({
-          ref1: baseRef,
-          ref2: headRef,
-          // originPathOverride,
-          repoFullName,
-        });
-        if (latest.length > 0) {
-          const t1 = Date.now();
-          serverLogger.info(
-            "[socket] git-diff-smart results",
-            JSON.stringify({
-              strategy: "latest",
-              count: latest.length,
-              ms: t1 - t0,
-            })
-          );
-          return callback?.({ ok: true, diffs: latest, strategy: "latest" });
-        }
-        const t2 = Date.now();
-        const landed = await landedDiffForRepo({
-          baseRef,
-          headRef,
-          b0Ref,
-          // originPathOverride,
-          repoFullName,
-          includeContents: true,
-        });
-        const t3 = Date.now();
-        serverLogger.info(
-          "[socket] git-diff-smart results",
-          JSON.stringify({
-            strategy: "landed",
-            count: landed.length,
-            msLatest: t2 - t0,
-            msLanded: t3 - t2,
-          })
-        );
-        callback?.({ ok: true, diffs: landed, strategy: "landed" });
-      } catch (error) {
-        serverLogger.error("Error in git-diff-smart:", error);
+        serverLogger.error("Error in git-diff:", error);
         callback?.({
           ok: false,
           error: error instanceof Error ? error.message : "Unknown error",
@@ -917,14 +833,6 @@ export function setupSocketHandlers(
       });
     });
 
-    socket.on("git-diff", async () => {
-      socket.emit("git-diff-response", {
-        path: "",
-        diff: [],
-        error: "Not implemented - use git-full-diff instead",
-      });
-    });
-
     socket.on("git-full-diff", async (data) => {
       try {
         const { workspacePath } = GitFullDiffRequestSchema.parse(data);
@@ -941,93 +849,6 @@ export function setupSocketHandlers(
 
     // Continue with all other handlers...
     // (I'll include the rest of the handlers in the next message due to length)
-
-    // Provide file contents on demand to avoid large Convex docs
-    socket.on("git-diff-file-contents", async (data, callback) => {
-      try {
-        const { taskRunId, filePath } = data;
-        // Ensure the worktree exists for this run
-        const ensured = await ensureRunWorktreeAndBranch(taskRunId, safeTeam);
-        const worktreePath = ensured.worktreePath as string;
-        let oldContent = "";
-        let newContent = "";
-        try {
-          newContent = await fs.readFile(
-            path.join(worktreePath, filePath),
-            "utf-8"
-          );
-        } catch {
-          newContent = "";
-        }
-        try {
-          // Use git CLI to read baseRef version of the file. Prefer default branch (origin/<default>),
-          // then upstream, and finally HEAD as a last resort.
-          let baseRef = "HEAD";
-          try {
-            const repoMgr = RepositoryManager.getInstance();
-            const defaultBranch = await repoMgr.getDefaultBranch(worktreePath);
-            if (defaultBranch) baseRef = `origin/${defaultBranch}`;
-          } catch {
-            // ignore and try upstream next
-          }
-          if (baseRef === "HEAD") {
-            try {
-              const { stdout } = await execAsync(
-                "git rev-parse --abbrev-ref --symbolic-full-name @{u}",
-                { cwd: worktreePath }
-              );
-              if (stdout.trim()) baseRef = "@{upstream}";
-            } catch {
-              // stick with HEAD
-            }
-          }
-          const { stdout } = await execAsync(
-            `git show ${baseRef}:"${filePath.replace(/"/g, '\\"')}"`,
-            {
-              cwd: worktreePath,
-              maxBuffer: 10 * 1024 * 1024,
-            }
-          );
-          oldContent = stdout;
-        } catch {
-          oldContent = "";
-        }
-        callback?.({ ok: true, oldContent, newContent, isBinary: false });
-      } catch (error) {
-        serverLogger.error("Error in git-diff-file-contents:", error);
-        callback?.({
-          ok: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
-    });
-
-    // Get diffs on demand to avoid storing in Convex
-    socket.on("get-run-diffs", async (data, callback) => {
-      const t0 = Date.now();
-      try {
-        const { taskRunId } = data;
-        const entries = await getRunDiffs({
-          taskRunId,
-          teamSlugOrId: safeTeam,
-          gitDiffManager,
-          rt,
-          includeContents: true,
-        });
-        const t1 = Date.now();
-        serverLogger.info(
-          `[Perf][socket.get-run-diffs] run=${String(taskRunId)} team=${safeTeam} entries=${entries.length} totalMs=${t1 - t0}`
-        );
-        callback?.({ ok: true, diffs: entries });
-      } catch (error) {
-        serverLogger.error("Error getting run diffs:", error);
-        callback?.({
-          ok: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-          diffs: [],
-        });
-      }
-    });
 
     socket.on("open-in-editor", async (data, callback) => {
       try {

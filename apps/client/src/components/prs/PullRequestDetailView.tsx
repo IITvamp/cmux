@@ -1,7 +1,7 @@
 import { RunDiffSection } from "@/components/RunDiffSection";
 import { Dropdown } from "@/components/ui/dropdown";
-import { refWithOrigin } from "@/lib/refWithOrigin";
-import { diffSmartQueryOptions } from "@/queries/diff-smart";
+import { normalizeGitRef } from "@/lib/refWithOrigin";
+import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
 import { useQuery as useRQ } from "@tanstack/react-query";
 import { useQuery as useConvexQuery } from "convex/react";
@@ -34,10 +34,10 @@ function AdditionsAndDeletions({
   ref2,
 }: AdditionsAndDeletionsProps) {
   const diffsQuery = useRQ(
-    diffSmartQueryOptions({
+    gitDiffQueryOptions({
       repoFullName,
-      baseRef: refWithOrigin(ref1),
-      headRef: refWithOrigin(ref2),
+      baseRef: normalizeGitRef(ref1),
+      headRef: normalizeGitRef(ref2),
     })
   );
 
@@ -218,8 +218,8 @@ export function PullRequestDetailView({
               currentPR.headRef ? (
                 <RunDiffSection
                   repoFullName={currentPR.repoFullName}
-                  ref1={refWithOrigin(currentPR.baseRef)}
-                  ref2={refWithOrigin(currentPR.headRef)}
+                  ref1={normalizeGitRef(currentPR.baseRef)}
+                  ref2={normalizeGitRef(currentPR.headRef)}
                   onControlsChange={setDiffControls}
                   classNames={gitDiffViewerClassNames}
                 />

@@ -2,10 +2,12 @@ use anyhow::Result;
 use gix::bstr::ByteSlice;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
+#[cfg(test)]
+use std::cell::RefCell;
 
 use crate::{
   repo::cache::{ensure_repo, resolve_repo_url},
-  types::{DiffEntry, GitDiffRefsOptions},
+  types::{DiffEntry, GitDiffOptions},
 };
 use gix::{Repository, hash::ObjectId};
 use similar::TextDiff;
@@ -52,15 +54,132 @@ fn collect_tree_blobs(repo: &Repository, tree_id: ObjectId, prefix: &str, out: &
   Ok(())
 }
 
-pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
+fn resolve_default_base(repo: &Repository, head_oid: ObjectId) -> ObjectId {
+  if let Ok(r) = repo.find_reference("refs/remotes/origin/HEAD") {
+    if let Some(name) = r.target().try_name() {
+      let s = name.as_bstr().to_str_lossy().into_owned();
+      if let Ok(rr) = repo.find_reference(&s) {
+        if let Some(id) = rr.target().try_id() {
+          return id.to_owned();
+        }
+      }
+    }
+  }
+  if let Ok(r) = repo.find_reference("refs/remotes/origin/main") {
+    if let Some(id) = r.target().try_id() {
+      return id.to_owned();
+    }
+  }
+  if let Ok(commit) = repo.head_commit() {
+    return commit.id;
+  }
+  head_oid
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+#[derive(Clone, Debug)]
+pub struct DiffComputationDebug {
+  pub head_oid: String,
+  pub resolved_base_oid: String,
+  pub compare_base_oid: String,
+  pub base_ref_input: Option<String>,
+  pub repo_path: String,
+  pub merge_commit_oid: Option<String>,
+}
+
+#[cfg(test)]
+thread_local! {
+  static LAST_DIFF_DEBUG: RefCell<Option<DiffComputationDebug>> = RefCell::new(None);
+}
+
+#[cfg(test)]
+pub fn last_diff_debug() -> Option<DiffComputationDebug> {
+  LAST_DIFF_DEBUG.with(|cell| cell.borrow().clone())
+}
+
+fn is_ancestor(repo: &Repository, anc: ObjectId, desc: ObjectId) -> bool {
+  match crate::merge_base::merge_base(
+    "",
+    repo,
+    desc,
+    anc,
+    crate::merge_base::MergeBaseStrategy::Bfs,
+  ) {
+    Some(x) if x == anc => true,
+    _ => false,
+  }
+}
+
+fn find_merge_parent_on_base(
+  repo: &Repository,
+  mut base_tip: ObjectId,
+  head_tip: ObjectId,
+  limit: usize,
+) -> Option<(ObjectId, ObjectId)> {
+  let mut seen = 0usize;
+  let mut ancestor_candidate: Option<(ObjectId, ObjectId)> = None;
+  while seen < limit {
+    seen += 1;
+    let obj = repo.find_object(base_tip).ok()?;
+    let commit = obj.try_into_commit().ok()?;
+    let mut parents_iter = commit.parent_ids();
+    let first_parent = parents_iter.next().map(|p| p.detach());
+    let rest: Vec<ObjectId> = parents_iter.map(|p| p.detach()).collect();
+    if let Some(p1) = first_parent {
+      if rest.iter().any(|p| *p == head_tip) {
+        return Some((base_tip, p1));
+      }
+      if ancestor_candidate.is_none()
+        && rest.iter().any(|p| is_ancestor(repo, *p, head_tip))
+      {
+        ancestor_candidate = Some((base_tip, p1));
+      }
+      base_tip = p1;
+    } else {
+      break;
+    }
+  }
+  ancestor_candidate
+}
+
+fn parse_oid(hex: &str) -> Option<ObjectId> {
+  let trimmed = hex.trim();
+  if trimmed.is_empty() {
+    return None;
+  }
+  ObjectId::from_hex(trimmed.as_bytes()).ok()
+}
+
+pub fn diff_refs(opts: GitDiffOptions) -> Result<Vec<DiffEntry>> {
   let include = opts.includeContents.unwrap_or(true);
   let max_bytes = opts.maxBytes.unwrap_or(950*1024) as usize;
   let t_total = Instant::now();
+  #[cfg(test)]
+  LAST_DIFF_DEBUG.with(|cell| {
+    *cell.borrow_mut() = None;
+  });
+
+  let head_ref = opts.headRef.trim();
+  if head_ref.is_empty() {
+    return Ok(Vec::new());
+  }
+
+  let base_ref_input = opts
+    .baseRef
+    .as_ref()
+    .map(|s| s.trim().to_string())
+    .filter(|s| !s.is_empty());
+  #[cfg(test)]
+  let base_ref_for_debug = base_ref_input.clone();
 
   #[cfg(debug_assertions)]
   println!(
-    "[native.refs] start ref1={} ref2={} originPathOverride={:?} repoFullName={:?}",
-    opts.ref1, opts.ref2, opts.originPathOverride, opts.repoFullName
+    "[native.refs] start headRef={} baseRef={:?} originPathOverride={:?} repoFullName={:?}",
+    head_ref,
+    base_ref_input,
+    opts.originPathOverride,
+    opts.repoFullName
   );
 
   let t_repo_path = Instant::now();
@@ -87,51 +206,114 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
   let t_open = Instant::now();
   let repo = gix::open(&cwd)?;
   let _d_open = t_open.elapsed();
-  let t_r1 = Instant::now();
-  let r1_oid = match oid_from_rev_parse(&repo, &opts.ref1) {
+  let t_head = Instant::now();
+  let head_oid = match oid_from_rev_parse(&repo, head_ref) {
     Ok(oid) => oid,
     Err(_) => {
-      let _d_r1 = t_r1.elapsed();
+      let _d_head = t_head.elapsed();
       #[cfg(debug_assertions)]
       println!(
-        "[cmux_native_git] git_diff_refs timings: total={}ms resolve_r1={}ms (failed to resolve); cwd={}",
+        "[cmux_native_git] git_diff timings: total={}ms resolve_head={}ms (failed to resolve); cwd={}",
         t_total.elapsed().as_millis(),
-        _d_r1.as_millis(),
-        cwd,
-      );
-      return Ok(Vec::new());
-    },
-  };
-  let _d_r1 = t_r1.elapsed();
-  let t_r2 = Instant::now();
-  let r2_oid = match oid_from_rev_parse(&repo, &opts.ref2) {
-    Ok(oid) => oid,
-    Err(_) => {
-      let _d_r2 = t_r2.elapsed();
-      #[cfg(debug_assertions)]
-      println!(
-        "[cmux_native_git] git_diff_refs timings: total={}ms resolve_r1={}ms resolve_r2={}ms (failed to resolve); cwd={}",
-        t_total.elapsed().as_millis(),
-        _d_r1.as_millis(),
-        _d_r2.as_millis(),
+        _d_head.as_millis(),
         cwd,
       );
       return Ok(Vec::new());
     }
   };
-  let _d_r2 = t_r2.elapsed();
+  let _d_head = t_head.elapsed();
+
+  let t_base = Instant::now();
+  let mut resolved_base_oid = match base_ref_input {
+    Some(ref spec) => match oid_from_rev_parse(&repo, spec) {
+      Ok(oid) => oid,
+      Err(_) => {
+        let _d_base = t_base.elapsed();
+        #[cfg(debug_assertions)]
+        println!(
+          "[cmux_native_git] git_diff timings: total={}ms resolve_head={}ms resolve_base={}ms (failed to resolve); cwd={}",
+          t_total.elapsed().as_millis(),
+          _d_head.as_millis(),
+          _d_base.as_millis(),
+          cwd,
+        );
+        return Ok(Vec::new());
+      }
+    },
+    None => resolve_default_base(&repo, head_oid),
+  };
+  let _d_base = t_base.elapsed();
+  if let Some(ref known_base) = opts.lastKnownBaseSha {
+    if let Some(candidate) = parse_oid(known_base) {
+      if repo.find_object(candidate).is_ok() && is_ancestor(&repo, candidate, head_oid) {
+        resolved_base_oid = candidate;
+      }
+    }
+  }
   let t_merge_base = Instant::now();
   // Compute merge-base; prefer BFS (pure gix) to avoid shelling out
-  let base_oid = crate::merge_base::merge_base(&cwd, &repo, r1_oid, r2_oid, crate::merge_base::MergeBaseStrategy::Bfs)
-    .unwrap_or(r1_oid);
+  let mut compare_base_oid = crate::merge_base::merge_base(
+    &cwd,
+    &repo,
+    resolved_base_oid,
+    head_oid,
+    crate::merge_base::MergeBaseStrategy::Bfs,
+  )
+  .unwrap_or(resolved_base_oid);
+  #[cfg(test)]
+  let mut merge_commit_for_debug: Option<String> = None;
+  if let Some(ref known_merge) = opts.lastKnownMergeCommitSha {
+    if let Some(merge_oid) = parse_oid(known_merge) {
+      if let Ok(obj) = repo.find_object(merge_oid) {
+        if let Ok(commit) = obj.try_into_commit() {
+          if let Some(parent_oid) = commit.parent_ids().next().map(|p| p.detach()) {
+            if is_ancestor(&repo, parent_oid, head_oid) {
+              compare_base_oid = parent_oid;
+              #[cfg(test)]
+              {
+                merge_commit_for_debug = Some(merge_oid.to_string());
+              }
+            }
+          }
+        }
+      }
+    }
+  } else if base_ref_input.is_none() {
+    if let Some((merge_commit_oid, parent_oid)) =
+      find_merge_parent_on_base(&repo, resolved_base_oid, head_oid, 20_000)
+    {
+      compare_base_oid = parent_oid;
+      #[cfg(test)]
+      {
+        merge_commit_for_debug = Some(merge_commit_oid.to_string());
+      }
+      let _ = merge_commit_oid;
+    }
+  }
+  #[cfg(test)]
+  LAST_DIFF_DEBUG.with(|cell| {
+    *cell.borrow_mut() = Some(DiffComputationDebug {
+      head_oid: head_oid.to_string(),
+      resolved_base_oid: resolved_base_oid.to_string(),
+      compare_base_oid: compare_base_oid.to_string(),
+      base_ref_input: base_ref_for_debug.clone(),
+      repo_path: cwd.clone(),
+      merge_commit_oid: merge_commit_for_debug.clone(),
+    });
+  });
   let _d_merge_base = t_merge_base.elapsed();
   #[cfg(debug_assertions)]
-  println!("[native.refs] MB({}, {})={}", r1_oid, r2_oid, base_oid);
+  println!(
+    "[native.refs] MB({}, {})={}",
+    resolved_base_oid,
+    head_oid,
+    compare_base_oid
+  );
 
   let t_tree_ids = Instant::now();
-  let base_commit = repo.find_object(base_oid)?.try_into_commit()?;
+  let base_commit = repo.find_object(compare_base_oid)?.try_into_commit()?;
   let base_tree_id = base_commit.tree_id()?.detach();
-  let head_commit = repo.find_object(r2_oid)?.try_into_commit()?;
+  let head_commit = repo.find_object(head_oid)?.try_into_commit()?;
   let head_tree_id = head_commit.tree_id()?.detach();
   let _d_tree_ids = t_tree_ids.elapsed();
 
@@ -324,13 +506,13 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
   let _d_total = t_total.elapsed();
   #[cfg(debug_assertions)]
   println!(
-    "[cmux_native_git] git_diff_refs timings: total={}ms repo_path={}ms fetch={}ms open_repo={}ms resolve_r1={}ms resolve_r2={}ms merge_base={}ms tree_ids={}ms collect_base={}ms collect_head={}ms add_mod_loop={}ms del_loop={}ms blob_read={}ms textdiff={}ms textdiff_count={} scanned_bytes={} files: +{} ~{} -{} (binary={}) max_textdiff={{path: {:?}, ms: {}}} cwd={} out_len={}",
+    "[cmux_native_git] git_diff timings: total={}ms repo_path={}ms fetch={}ms open_repo={}ms resolve_head={}ms resolve_base={}ms merge_base={}ms tree_ids={}ms collect_base={}ms collect_head={}ms add_mod_loop={}ms del_loop={}ms blob_read={}ms textdiff={}ms textdiff_count={} scanned_bytes={} files: +{} ~{} -{} (binary={}) max_textdiff={{path: {:?}, ms: {}}} cwd={} out_len={}",
     _d_total.as_millis(),
     _d_repo_path.as_millis(),
     _d_fetch.as_millis(),
     _d_open.as_millis(),
-    _d_r1.as_millis(),
-    _d_r2.as_millis(),
+    _d_head.as_millis(),
+    _d_base.as_millis(),
     _d_merge_base.as_millis(),
     _d_tree_ids.as_millis(),
     _d_collect_base.as_millis(),
@@ -354,7 +536,10 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
     // Fallback to git CLI diff parsing if our tree comparison produced nothing but there might be changes (e.g., merge edge-cases)
     #[cfg(debug_assertions)]
     println!("[native.refs] tree-diff empty; attempting CLI fallback");
-    let r = crate::util::run_git(&cwd, &["diff", "--name-status", &base_oid.to_string(), &r2_oid.to_string()]);
+    let r = crate::util::run_git(
+      &cwd,
+      &["diff", "--name-status", &compare_base_oid.to_string(), &head_oid.to_string()]
+    );
     if let Ok(ns) = r {
       #[cfg(debug_assertions)]
       println!("[native.refs] CLI fallback detected {} lines", ns.lines().count());
@@ -371,8 +556,8 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
               let path = parts[1].to_string();
               let mut e = DiffEntry{ filePath: path.clone(), status: "added".into(), additions: 0, deletions: 0, isBinary: false, ..Default::default() };
               if include {
-                // new content from r2
-                if let Ok(buf) = crate::util::run_git(&cwd, &["show", &format!("{}:{}", r2_oid, path)]) {
+                // new content from head
+                if let Ok(buf) = crate::util::run_git(&cwd, &["show", &format!("{}:{}", head_oid, path)]) {
                   let new_sz = buf.as_bytes().len();
                   e.newSize = Some(new_sz as i32);
                   e.oldSize = Some(0);
@@ -387,8 +572,8 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
               let path = parts[1].to_string();
               let mut e = DiffEntry{ filePath: path.clone(), status: "modified".into(), additions: 0, deletions: 0, isBinary: false, ..Default::default() };
               if include {
-                let old_s = crate::util::run_git(&cwd, &["show", &format!("{}:{}", base_oid, path)]).unwrap_or_default();
-                let new_s = crate::util::run_git(&cwd, &["show", &format!("{}:{}", r2_oid, path)]).unwrap_or_default();
+                let old_s = crate::util::run_git(&cwd, &["show", &format!("{}:{}", compare_base_oid, path)]).unwrap_or_default();
+                let new_s = crate::util::run_git(&cwd, &["show", &format!("{}:{}", head_oid, path)]).unwrap_or_default();
                 let old_sz = old_s.as_bytes().len(); let new_sz = new_s.as_bytes().len();
                 e.oldSize = Some(old_sz as i32); e.newSize = Some(new_sz as i32);
                 if old_sz + new_sz <= max_bytes {
@@ -405,7 +590,7 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
               let path = parts[1].to_string();
               let mut e = DiffEntry{ filePath: path.clone(), status: "deleted".into(), additions: 0, deletions: 0, isBinary: false, ..Default::default() };
               if include {
-                if let Ok(buf) = crate::util::run_git(&cwd, &["show", &format!("{}:{}", base_oid, path)]) {
+                if let Ok(buf) = crate::util::run_git(&cwd, &["show", &format!("{}:{}", compare_base_oid, path)]) {
                   let old_sz = buf.as_bytes().len(); e.oldSize = Some(old_sz as i32);
                   if old_sz <= max_bytes { e.oldContent = Some(buf.clone()); e.newContent = Some(String::new()); e.deletions = buf.lines().count() as i32; e.contentOmitted = Some(false);} else { e.contentOmitted = Some(true); }
                 }
@@ -419,7 +604,7 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
               let newp = parts[2].to_string();
               let mut e = DiffEntry{ filePath: newp.clone(), oldPath: Some(oldp.clone()), status: "renamed".into(), additions: 0, deletions: 0, isBinary: false, ..Default::default() };
               if include {
-                let new_s = crate::util::run_git(&cwd, &["show", &format!("{}:{}", r2_oid, newp)]).unwrap_or_default();
+                let new_s = crate::util::run_git(&cwd, &["show", &format!("{}:{}", head_oid, newp)]).unwrap_or_default();
                 let new_sz = new_s.as_bytes().len(); e.newSize = Some(new_sz as i32); e.oldSize = Some(new_sz as i32);
                 if new_sz <= max_bytes { e.oldContent = Some(new_s.clone()); e.newContent = Some(new_s); e.contentOmitted = Some(false);} else { e.contentOmitted = Some(true); }
               }

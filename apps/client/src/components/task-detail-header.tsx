@@ -3,11 +3,13 @@ import { Dropdown } from "@/components/ui/dropdown";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { useSocketSuspense } from "@/contexts/socket/use-socket";
 import { isElectron } from "@/lib/electron";
-import { diffSmartQueryOptions } from "@/queries/diff-smart";
+import { normalizeGitRef } from "@/lib/refWithOrigin";
+import { gitDiffQueryOptions } from "@/queries/git-diff";
 import type { Doc, Id } from "@cmux/convex/dataModel";
+import type { TaskRunWithChildren } from "@/types/task";
 import { Skeleton } from "@heroui/react";
 import { useClipboard } from "@mantine/hooks";
-import { useQuery as useRQ } from "@tanstack/react-query";
+import { useQuery as useRQ, useQueries } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import {
@@ -32,8 +34,8 @@ import { toast } from "sonner";
 
 interface TaskDetailHeaderProps {
   task?: Doc<"tasks"> | null;
-  taskRuns?: Doc<"taskRuns">[] | null;
-  selectedRun?: Doc<"taskRuns"> | null;
+  taskRuns?: TaskRunWithChildren[] | null;
+  selectedRun?: TaskRunWithChildren | null;
   isCreatingPr: boolean;
   setIsCreatingPr: (v: boolean) => void;
   totalAdditions?: number;
@@ -47,22 +49,80 @@ interface TaskDetailHeaderProps {
 
 const ENABLE_MERGE_BUTTON = false;
 
-function AdditionsAndDeletions({
-  repoFullName,
-  ref1,
-  ref2,
-}: {
+type RepoDiffTarget = {
   repoFullName: string;
-  ref1: string;
-  ref2: string;
-}) {
-  const diffsQuery = useRQ(
-    repoFullName && ref1 && ref2
-      ? diffSmartQueryOptions({ repoFullName, baseRef: ref1, headRef: ref2 })
-      : { queryKey: ["diff-smart-disabled"], queryFn: async () => [] }
-  );
+  baseRef?: string;
+  headRef?: string;
+};
 
-  if (diffsQuery.error) {
+function AdditionsAndDeletions({
+  repos,
+  defaultBaseRef,
+  defaultHeadRef,
+}: {
+  repos: RepoDiffTarget[];
+  defaultBaseRef?: string;
+  defaultHeadRef?: string;
+}) {
+  const repoConfigs = useMemo(() => {
+    const normalizedDefaults = {
+      base: normalizeGitRef(defaultBaseRef),
+      head: normalizeGitRef(defaultHeadRef),
+    };
+
+    const map = new Map<
+      string,
+      { repoFullName: string; baseRef?: string; headRef?: string }
+    >();
+    for (const repo of repos) {
+      const repoFullName = repo.repoFullName?.trim();
+      if (!repoFullName) {
+        continue;
+      }
+      const normalizedBaseRef =
+        normalizeGitRef(repo.baseRef) || normalizedDefaults.base;
+      const normalizedHeadRef =
+        normalizeGitRef(repo.headRef) || normalizedDefaults.head;
+      map.set(repoFullName, {
+        repoFullName,
+        baseRef: normalizedBaseRef || undefined,
+        headRef: normalizedHeadRef || undefined,
+      });
+    }
+
+    return Array.from(map.values());
+  }, [repos, defaultBaseRef, defaultHeadRef]);
+
+  const queries = useQueries({
+    queries: repoConfigs.map((config) => {
+      const headRef = config.headRef ?? "";
+      const options = gitDiffQueryOptions({
+        repoFullName: config.repoFullName,
+        baseRef: config.baseRef,
+        headRef,
+      });
+      return {
+        ...options,
+        enabled: options.enabled,
+      };
+    }),
+  });
+
+  const hasMissingHeadRef = repoConfigs.some((config) => !config.headRef);
+
+  const isLoading =
+    repoConfigs.length === 0 ||
+    hasMissingHeadRef ||
+    queries.some((query) => query.isPending || query.isFetching);
+
+  const firstError = queries.find((query, index) => {
+    if (!repoConfigs[index]?.headRef) {
+      return false;
+    }
+    return Boolean(query.error);
+  });
+
+  if (!isLoading && firstError?.error) {
     return (
       <div className="flex items-center gap-2 text-[11px] ml-2 shrink-0">
         <span className="text-neutral-500 dark:text-neutral-400 font-medium select-none">
@@ -72,33 +132,33 @@ function AdditionsAndDeletions({
     );
   }
 
-  const totals = diffsQuery.data
-    ? diffsQuery.data.reduce(
-        (acc, d) => {
-          acc.add += d.additions || 0;
-          acc.del += d.deletions || 0;
-          return acc;
-        },
-        { add: 0, del: 0 }
-      )
-    : undefined;
+  const totals =
+    !isLoading && queries.length > 0
+      ? queries.reduce(
+          (acc, query, index) => {
+            if (!repoConfigs[index]?.headRef) {
+              return acc;
+            }
+            for (const diff of query.data ?? []) {
+              acc.add += diff.additions ?? 0;
+              acc.del += diff.deletions ?? 0;
+            }
+            return acc;
+          },
+          { add: 0, del: 0 },
+        )
+      : undefined;
 
   return (
     <div className="flex items-center gap-2 text-[11px] ml-2 shrink-0">
-      <Skeleton
-        className="rounded min-w-[20px] h-[14px]"
-        isLoaded={!diffsQuery.isPending}
-      >
+      <Skeleton className="rounded min-w-[20px] h-[14px]" isLoaded={!isLoading}>
         {totals && (
           <span className="text-green-600 dark:text-green-400 font-medium select-none">
             +{totals.add}
           </span>
         )}
       </Skeleton>
-      <Skeleton
-        className="rounded min-w-[20px] h-[14px]"
-        isLoaded={!diffsQuery.isPending}
-      >
+      <Skeleton className="rounded min-w-[20px] h-[14px]" isLoaded={!isLoading}>
         {totals && (
           <span className="text-red-600 dark:text-red-400 font-medium select-none">
             -{totals.del}
@@ -138,8 +198,49 @@ export function TaskDetailHeader({
   const [isMerging, setIsMerging] = useState(false);
   const worktreePath = useMemo(
     () => selectedRun?.worktreePath || task?.worktreePath || null,
-    [selectedRun?.worktreePath, task?.worktreePath]
+    [selectedRun?.worktreePath, task?.worktreePath],
   );
+
+  const normalizedBaseBranch = useMemo(() => {
+    const candidate = task?.baseBranch;
+    if (candidate && candidate.trim()) {
+      return normalizeGitRef(candidate);
+    }
+    return normalizeGitRef("main");
+  }, [task?.baseBranch]);
+  const normalizedHeadBranch = useMemo(
+    () => normalizeGitRef(selectedRun?.newBranch),
+    [selectedRun?.newBranch],
+  );
+
+  const environmentRepos = useMemo<string[]>(() => {
+    const repos = selectedRun?.environment?.selectedRepos ?? [];
+    const trimmed = repos
+      .map((repo: string | undefined) => repo?.trim())
+      .filter((repo): repo is string => Boolean(repo));
+    return Array.from(new Set(trimmed));
+  }, [selectedRun]);
+
+  const repoFullNames = useMemo(() => {
+    const names = new Set<string>();
+    if (task?.projectFullName?.trim()) {
+      names.add(task.projectFullName.trim());
+    }
+    for (const repo of environmentRepos) {
+      names.add(repo);
+    }
+    return Array.from(names);
+  }, [task?.projectFullName, environmentRepos]);
+
+  const repoDiffTargets = useMemo<RepoDiffTarget[]>(() => {
+    const baseRef = normalizedBaseBranch || undefined;
+    const headRef = normalizedHeadBranch || undefined;
+    return repoFullNames.map((repoFullName) => ({
+      repoFullName,
+      baseRef,
+      headRef,
+    }));
+  }, [repoFullNames, normalizedBaseBranch, normalizedHeadBranch]);
 
   const dragStyle = isElectron
     ? ({ WebkitAppRegion: "drag" } as CSSProperties)
@@ -165,9 +266,9 @@ export function TaskDetailHeader({
             }
           >
             <AdditionsAndDeletions
-              repoFullName={task?.projectFullName || ""}
-              ref1={task?.baseBranch || ""}
-              ref2={selectedRun?.newBranch || ""}
+              repos={repoDiffTargets}
+              defaultBaseRef={normalizedBaseBranch || undefined}
+              defaultHeadRef={normalizedHeadBranch || undefined}
             />
           </Suspense>
         </div>
@@ -213,8 +314,8 @@ export function TaskDetailHeader({
               isMerging={isMerging}
               setIsMerging={setIsMerging}
               repoFullName={task?.projectFullName || ""}
-              ref1={task?.baseBranch || ""}
-              ref2={selectedRun?.newBranch || ""}
+              ref1={normalizedBaseBranch}
+              ref2={normalizedHeadBranch}
             />
           </Suspense>
 
@@ -266,21 +367,21 @@ export function TaskDetailHeader({
               <GitBranch
                 className={clsx(
                   "w-3 h-3 absolute inset-0 z-0",
-                  clipboard.copied ? "hidden" : "block group-hover:hidden"
+                  clipboard.copied ? "hidden" : "block group-hover:hidden",
                 )}
                 aria-hidden={clipboard.copied}
               />
               <Copy
                 className={clsx(
                   "w-3 h-3 absolute inset-0 z-[var(--z-low)]",
-                  clipboard.copied ? "hidden" : "hidden group-hover:block"
+                  clipboard.copied ? "hidden" : "hidden group-hover:block",
                 )}
                 aria-hidden={clipboard.copied}
               />
               <Check
                 className={clsx(
                   "w-3 h-3 text-green-400 absolute inset-0 z-[var(--z-sticky)]",
-                  clipboard.copied ? "block" : "hidden"
+                  clipboard.copied ? "block" : "hidden",
                 )}
                 aria-hidden={!clipboard.copied}
               />
@@ -345,7 +446,7 @@ export function TaskDetailHeader({
                                 onCheckedChange={() => {
                                   if (!task?._id) {
                                     console.error(
-                                      "[TaskDetailHeader] No task ID"
+                                      "[TaskDetailHeader] No task ID",
                                     );
                                     return;
                                   }
@@ -406,7 +507,7 @@ function SocketActions({
   ref1,
   ref2,
 }: {
-  selectedRun: Doc<"taskRuns"> | null;
+  selectedRun: TaskRunWithChildren | null;
   taskRunId: Id<"taskRuns">;
   prIsOpen: boolean;
   prIsMerged: boolean;
@@ -421,8 +522,14 @@ function SocketActions({
   ref2: string;
 }) {
   const { socket } = useSocketSuspense();
+  const baseRef = normalizeGitRef(ref1);
+  const headRef = normalizeGitRef(ref2);
   const diffsQuery = useRQ(
-    diffSmartQueryOptions({ repoFullName, baseRef: ref1, headRef: ref2 })
+    gitDiffQueryOptions({
+      repoFullName,
+      baseRef: baseRef || undefined,
+      headRef,
+    }),
   );
   const hasChanges = (diffsQuery.data || []).length > 0;
 
@@ -451,7 +558,7 @@ function SocketActions({
             });
           }
           resolve();
-        }
+        },
       );
     });
   };
@@ -531,7 +638,7 @@ function SocketActions({
             description: resp.error,
           });
         }
-      }
+      },
     );
   };
 

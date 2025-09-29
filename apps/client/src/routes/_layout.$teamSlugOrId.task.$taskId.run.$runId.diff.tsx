@@ -11,15 +11,16 @@ import {
 } from "@/components/ui/tooltip";
 import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { useSocket } from "@/contexts/socket/use-socket";
-import { refWithOrigin } from "@/lib/refWithOrigin";
+import { normalizeGitRef } from "@/lib/refWithOrigin";
 import { cn } from "@/lib/utils";
-import { diffSmartQueryOptions } from "@/queries/diff-smart";
+import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
 import { Switch } from "@heroui/react";
+import { useQuery as useRQ } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import { Command } from "lucide-react";
@@ -87,24 +88,6 @@ function collectAgentNamesFromRuns(
   return ordered;
 }
 
-function normalizeGitRef(ref?: string | null): string {
-  if (!ref) {
-    return "";
-  }
-  const trimmed = ref.trim();
-  if (!trimmed) {
-    return "";
-  }
-  const deduped = trimmed.replace(/^origin\/(origin\/)+/, "origin/");
-  if (deduped.startsWith("refs/")) {
-    return deduped;
-  }
-  if (deduped.startsWith("origin/")) {
-    return deduped;
-  }
-  return refWithOrigin(deduped);
-}
-
 export const Route = createFileRoute(
   "/_layout/$teamSlugOrId/task/$taskId/run/$runId/diff"
 )({
@@ -140,11 +123,30 @@ export const Route = createFileRoute(
       task.projectFullName &&
       selectedTaskRun?.newBranch
     ) {
+      let branchMetadata: Doc<"branches">[] | undefined;
+      try {
+        branchMetadata = await opts.context.queryClient.ensureQueryData(
+          convexQuery(api.github.getBranchesByRepo, {
+            teamSlugOrId: opts.params.teamSlugOrId,
+            repo: task.projectFullName,
+          })
+        );
+      } catch {
+        branchMetadata = undefined;
+      }
+      const baseBranchMeta = branchMetadata?.find(
+        (branch) => branch.name === task.baseBranch
+      );
+      const baseRefForDiff = normalizeGitRef(task.baseBranch);
+      const headRefForDiff = normalizeGitRef(selectedTaskRun.newBranch);
+
       void opts.context.queryClient.ensureQueryData(
-        diffSmartQueryOptions({
-          baseRef: task.baseBranch,
-          headRef: selectedTaskRun?.newBranch,
+        gitDiffQueryOptions({
+          baseRef: baseRefForDiff,
+          headRef: headRefForDiff,
           repoFullName: task.projectFullName,
+          lastKnownBaseSha: baseBranchMeta?.lastKnownBaseSha,
+          lastKnownMergeCommitSha: baseBranchMeta?.lastKnownMergeCommitSha,
         })
       );
     }
@@ -187,6 +189,40 @@ function RunDiffPage() {
     }
     return environmentRepos;
   }, [task?.projectFullName, environmentRepos]);
+
+  const [primaryRepo, ...additionalRepos] = repoFullNames;
+
+  const branchMetadataQuery = useRQ({
+    ...convexQuery(api.github.getBranchesByRepo, {
+      teamSlugOrId,
+      repo: primaryRepo ?? "",
+    }),
+    enabled: Boolean(primaryRepo),
+  });
+
+  const branchMetadata = branchMetadataQuery.data as Doc<"branches">[] | undefined;
+
+  const baseBranchMetadata = useMemo(() => {
+    if (!task?.baseBranch) {
+      return undefined;
+    }
+    return branchMetadata?.find((branch) => branch.name === task.baseBranch);
+  }, [branchMetadata, task?.baseBranch]);
+
+  const metadataByRepo = useMemo(() => {
+    if (!primaryRepo) return undefined;
+    if (!baseBranchMetadata) return undefined;
+    const { lastKnownBaseSha, lastKnownMergeCommitSha } = baseBranchMetadata;
+    if (!lastKnownBaseSha && !lastKnownMergeCommitSha) {
+      return undefined;
+    }
+    return {
+      [primaryRepo]: {
+        lastKnownBaseSha: lastKnownBaseSha ?? undefined,
+        lastKnownMergeCommitSha: lastKnownMergeCommitSha ?? undefined,
+      },
+    };
+  }, [primaryRepo, baseBranchMetadata]);
 
   const restartAgents = useMemo(() => {
     const previousAgents = collectAgentNamesFromRuns(taskRuns);
@@ -377,7 +413,6 @@ function RunDiffPage() {
     );
   }
 
-  const [primaryRepo, ...additionalRepos] = repoFullNames;
   const baseRef = normalizeGitRef(task?.baseBranch || "main");
   const headRef = normalizeGitRef(selectedRun.newBranch);
   const hasDiffSources =
@@ -428,6 +463,7 @@ function RunDiffPage() {
                   ref2={headRef}
                   onControlsChange={setDiffControls}
                   classNames={gitDiffViewerClassNames}
+                  metadataByRepo={metadataByRepo}
                 />
               ) : (
                 <div className="p-6 text-sm text-neutral-600 dark:text-neutral-300">

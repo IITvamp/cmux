@@ -11,7 +11,6 @@ import type {
   WorkerTerminalFailed,
   WorkerTerminalIdle,
 } from "@cmux/shared/worker-schemas";
-import { getApiEnvironmentsByIdVars } from "@cmux/www-openapi-client";
 import { parse as parseDotenv } from "dotenv";
 import { handleTaskCompletion } from "./handle-task-completion";
 import { sanitizeTmuxSessionName } from "./sanitizeTmuxSessionName";
@@ -29,10 +28,13 @@ import {
   runWithAuth,
 } from "./utils/requestContext";
 import { getWwwClient } from "./utils/wwwClient";
+import { getWwwOpenApiModule } from "./utils/wwwOpenApiModule";
 import { CmuxVSCodeInstance } from "./vscode/CmuxVSCodeInstance";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance";
 import { VSCodeInstance } from "./vscode/VSCodeInstance";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace";
+
+const { getApiEnvironmentsByIdVars } = await getWwwOpenApiModule();
 
 export interface AgentSpawnResult {
   agentName: string;

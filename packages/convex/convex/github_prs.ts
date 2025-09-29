@@ -1,7 +1,142 @@
 import { v } from "convex/values";
 import { getTeamId } from "../_shared/team";
-import { internalMutation, internalQuery, type MutationCtx } from "./_generated/server";
+import {
+  internalMutation,
+  internalQuery,
+  type MutationCtx,
+} from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
+
+const SYSTEM_BRANCH_USER_ID = "__system__";
+
+type WebhookUser = {
+  login?: string;
+  id?: number;
+};
+
+type WebhookRepo = {
+  id?: number;
+  pushed_at?: string;
+};
+
+type WebhookBranchRef = {
+  ref?: string;
+  sha?: string;
+  repo?: WebhookRepo;
+};
+
+type WebhookPullRequest = {
+  number?: number;
+  id?: number;
+  title?: string;
+  state?: string;
+  merged?: boolean;
+  draft?: boolean;
+  html_url?: string;
+  merge_commit_sha?: string;
+  created_at?: string;
+  updated_at?: string;
+  closed_at?: string;
+  merged_at?: string;
+  comments?: number;
+  review_comments?: number;
+  commits?: number;
+  additions?: number;
+  deletions?: number;
+  changed_files?: number;
+  user?: WebhookUser;
+  base?: WebhookBranchRef;
+  head?: WebhookBranchRef;
+};
+
+type PullRequestWebhookEnvelope = {
+  pull_request?: WebhookPullRequest;
+  number?: number;
+};
+
+async function upsertBranchMetadata(
+  ctx: MutationCtx,
+  {
+    teamId,
+    repoFullName,
+    branchName,
+    baseSha,
+    mergeCommitSha,
+    headSha,
+    activityTimestamp,
+  }: {
+    teamId: string;
+    repoFullName: string;
+    branchName: string;
+    baseSha?: string;
+    mergeCommitSha?: string;
+    headSha?: string;
+    activityTimestamp?: number;
+  }
+) {
+  if (!baseSha && !mergeCommitSha && !headSha) {
+    return;
+  }
+
+  const repoDoc = await ctx.db
+    .query("repos")
+    .withIndex("by_team", (q) => q.eq("teamId", teamId))
+    .filter((q) => q.eq(q.field("fullName"), repoFullName))
+    .first();
+  const repoId = repoDoc?._id;
+
+  const rows = await ctx.db
+    .query("branches")
+    .withIndex("by_repo", (q) => q.eq("repo", repoFullName))
+    .filter((q) => q.eq(q.field("teamId"), teamId))
+    .filter((q) => q.eq(q.field("name"), branchName))
+    .collect();
+
+  const timestamp = activityTimestamp ?? Date.now();
+
+  for (const row of rows) {
+    const patch: Record<string, unknown> = {};
+    if (repoId && row.repoId !== repoId) {
+      patch.repoId = repoId;
+    }
+    if (baseSha && row.lastKnownBaseSha !== baseSha) {
+      patch.lastKnownBaseSha = baseSha;
+    }
+    if (
+      mergeCommitSha &&
+      row.lastKnownMergeCommitSha !== mergeCommitSha
+    ) {
+      patch.lastKnownMergeCommitSha = mergeCommitSha;
+    }
+    if (headSha && row.lastCommitSha !== headSha) {
+      patch.lastCommitSha = headSha;
+    }
+    if (
+      typeof row.lastActivityAt !== "number" ||
+      timestamp > row.lastActivityAt
+    ) {
+      patch.lastActivityAt = timestamp;
+    }
+    if (Object.keys(patch).length > 0) {
+      await ctx.db.patch(row._id, patch);
+    }
+  }
+
+  const hasSystemRow = rows.some((row) => row.userId === SYSTEM_BRANCH_USER_ID);
+  if (!hasSystemRow) {
+    await ctx.db.insert("branches", {
+      repo: repoFullName,
+      repoId,
+      name: branchName,
+      userId: SYSTEM_BRANCH_USER_ID,
+      teamId,
+      lastKnownBaseSha: baseSha,
+      lastKnownMergeCommitSha: mergeCommitSha,
+      lastCommitSha: headSha,
+      lastActivityAt: timestamp,
+    });
+  }
+}
 
 async function upsertCore(
   ctx: MutationCtx,
@@ -30,6 +165,7 @@ async function upsertCore(
       headRef?: string;
       baseSha?: string;
       headSha?: string;
+      mergeCommitSha?: string;
       createdAt?: number;
       updatedAt?: number;
       closedAt?: number;
@@ -91,6 +227,7 @@ export const upsertPullRequestInternal = internalMutation({
       headRef: v.optional(v.string()),
       baseSha: v.optional(v.string()),
       headSha: v.optional(v.string()),
+      mergeCommitSha: v.optional(v.string()),
       createdAt: v.optional(v.number()),
       updatedAt: v.optional(v.number()),
       closedAt: v.optional(v.number()),
@@ -118,7 +255,7 @@ export const listPullRequests = authQuery({
     const teamId = await getTeamId(ctx, teamSlugOrId);
 
     const useState = state ?? "open";
-    let cursor = ctx.db
+    const cursor = ctx.db
       .query("pullRequests")
       .withIndex(
         useState === "all" ? "by_team" : "by_team_state",
@@ -167,16 +304,30 @@ export const upsertFromWebhookPayload = internalMutation({
   },
   handler: async (ctx, { installationId, repoFullName, teamId, payload }) => {
     try {
-      const pr = (payload?.pull_request ?? {}) as Record<string, any>;
-      const number = Number(pr.number ?? payload?.number ?? 0);
+      const envelope = (payload ?? {}) as PullRequestWebhookEnvelope;
+      const pr = envelope.pull_request ?? {};
+      const number = Number(pr.number ?? envelope.number ?? 0);
       if (!number) return { ok: false as const };
-      const mapStr = (v: unknown) => (typeof v === "string" ? v : undefined);
-      const mapNum = (v: unknown) => (typeof v === "number" ? v : undefined);
+      const mapStr = (value: unknown) =>
+        typeof value === "string" ? value : undefined;
+      const mapNum = (value: unknown) =>
+        typeof value === "number" ? value : undefined;
       const ts = (s: unknown) => {
         if (typeof s !== "string") return undefined;
         const n = Date.parse(s);
         return Number.isFinite(n) ? n : undefined;
       };
+      const baseRef = mapStr(pr.base?.ref);
+      const headRef = mapStr(pr.head?.ref);
+      const baseSha = mapStr(pr.base?.sha);
+      const headSha = mapStr(pr.head?.sha);
+      const mergeCommitSha = mapStr(pr.merge_commit_sha);
+      const baseActivityTs =
+        ts(pr.base?.repo?.pushed_at) ??
+        ts(pr.merged_at) ??
+        ts(pr.updated_at) ??
+        Date.now();
+
       await upsertCore(ctx, {
         teamId,
         installationId,
@@ -184,18 +335,19 @@ export const upsertFromWebhookPayload = internalMutation({
         number,
         record: {
           providerPrId: mapNum(pr.id),
-          repositoryId: mapNum(pr?.base?.repo?.id),
+          repositoryId: mapNum(pr.base?.repo?.id),
           title: mapStr(pr.title) ?? "",
           state: mapStr(pr.state) === "closed" ? "closed" : "open",
           merged: Boolean(pr.merged),
           draft: Boolean(pr.draft),
-          authorLogin: mapStr(pr?.user?.login),
-          authorId: mapNum(pr?.user?.id),
+          authorLogin: mapStr(pr.user?.login),
+          authorId: mapNum(pr.user?.id),
           htmlUrl: mapStr(pr.html_url),
-          baseRef: mapStr(pr?.base?.ref),
-          headRef: mapStr(pr?.head?.ref),
-          baseSha: mapStr(pr?.base?.sha),
-          headSha: mapStr(pr?.head?.sha),
+          baseRef,
+          headRef,
+          baseSha,
+          headSha,
+          mergeCommitSha,
           createdAt: ts(pr.created_at),
           updatedAt: ts(pr.updated_at),
           closedAt: ts(pr.closed_at),
@@ -208,6 +360,26 @@ export const upsertFromWebhookPayload = internalMutation({
           changedFiles: mapNum(pr.changed_files),
         },
       });
+
+      if (baseRef && (baseSha || mergeCommitSha)) {
+        await upsertBranchMetadata(ctx, {
+          teamId,
+          repoFullName,
+          branchName: baseRef,
+          baseSha,
+          mergeCommitSha,
+          activityTimestamp: baseActivityTs,
+        });
+      }
+      if (headRef && headSha) {
+        await upsertBranchMetadata(ctx, {
+          teamId,
+          repoFullName,
+          branchName: headRef,
+          headSha,
+          activityTimestamp: ts(pr.updated_at) ?? Date.now(),
+        });
+      }
       return { ok: true as const };
     } catch (_e) {
       return { ok: false as const };
@@ -235,6 +407,7 @@ export const upsertFromServer = authMutation({
       headRef: v.optional(v.string()),
       baseSha: v.optional(v.string()),
       headSha: v.optional(v.string()),
+      mergeCommitSha: v.optional(v.string()),
       createdAt: v.optional(v.number()),
       updatedAt: v.optional(v.number()),
       closedAt: v.optional(v.number()),

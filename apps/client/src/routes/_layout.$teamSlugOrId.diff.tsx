@@ -6,7 +6,7 @@ import {
 } from "@/components/ui/searchable-select";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { branchesQueryOptions } from "@/queries/branches";
-import { diffSmartQueryOptions } from "@/queries/diff-smart";
+import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery as useRQ } from "@tanstack/react-query";
@@ -153,17 +153,14 @@ function DashboardDiffPage() {
   }, [search.ref1, search.ref2, setSearch]);
 
   const bothSelected = !!search.ref1 && !!search.ref2 && !!selectedProject;
-  const diffsQuery = useRQ(
-    selectedProject && search.ref1 && search.ref2
-      ? diffSmartQueryOptions({
-          repoFullName: selectedProject,
-          baseRef: search.ref1,
-          headRef: search.ref2,
-        })
-      : { queryKey: ["diff-smart-disabled"], queryFn: async () => [] }
-  );
-
-  // Smart view: no toggle logic needed
+  const diffsQuery = useRQ({
+    ...gitDiffQueryOptions({
+      repoFullName: selectedProject!,
+      baseRef: search.ref1,
+      headRef: search.ref2!,
+    }),
+    enabled: Boolean(selectedProject && search.ref1 && search.ref2),
+  });
 
   useEffect(() => {
     if (diffsQuery.isError) {
