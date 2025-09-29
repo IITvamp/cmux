@@ -35,6 +35,9 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId/dashboard")({
   component: DashboardComponent,
 });
 
+// Default agents (not persisted to localStorage)
+const DEFAULT_AGENTS = ["claude/sonnet-4.5", "claude/opus-4.1", "codex/gpt-5-codex-high"];
+
 function DashboardComponent() {
   const { teamSlugOrId } = Route.useParams();
   const searchParams = Route.useSearch() as { environmentId?: string };
@@ -47,11 +50,13 @@ function DashboardComponent() {
     return stored ? JSON.parse(stored) : [];
   });
   const [selectedBranch, setSelectedBranch] = useState<string[]>([]);
+
   const [selectedAgents, setSelectedAgents] = useState<string[]>(() => {
     const stored = localStorage.getItem("selectedAgents");
-    return stored
+    // Only use stored value if it exists and has selections, otherwise use defaults
+    return stored && JSON.parse(stored).length > 0
       ? JSON.parse(stored)
-      : ["claude/opus-4.1", "codex/gpt-5-codex-high"];
+      : DEFAULT_AGENTS;
   });
   const [taskDescription, setTaskDescription] = useState<string>("");
   const [isCloudMode, setIsCloudMode] = useState<boolean>(() => {
@@ -124,7 +129,17 @@ function DashboardComponent() {
   // Callback for agent selection changes
   const handleAgentChange = useCallback((newAgents: string[]) => {
     setSelectedAgents(newAgents);
-    localStorage.setItem("selectedAgents", JSON.stringify(newAgents));
+    // Only persist to localStorage if the user made a selection (not using defaults)
+    // If newAgents is empty or equals defaults, remove from localStorage
+    const isDefault =
+      newAgents.length === DEFAULT_AGENTS.length &&
+      newAgents.every((agent, index) => agent === DEFAULT_AGENTS[index]);
+
+    if (isDefault || newAgents.length === 0) {
+      localStorage.removeItem("selectedAgents");
+    } else {
+      localStorage.setItem("selectedAgents", JSON.stringify(newAgents));
+    }
   }, []);
 
   // Fetch repos from Convex
