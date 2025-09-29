@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { useSocket } from "@/contexts/socket/use-socket";
-import { refWithOrigin } from "@/lib/refWithOrigin";
+import { normalizeGitRef } from "@/lib/refWithOrigin";
 import { cn } from "@/lib/utils";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
@@ -86,24 +86,6 @@ function collectAgentNamesFromRuns(
 
   traverse(runs);
   return ordered;
-}
-
-function normalizeGitRef(ref?: string | null): string {
-  if (!ref) {
-    return "";
-  }
-  const trimmed = ref.trim();
-  if (!trimmed) {
-    return "";
-  }
-  const deduped = trimmed.replace(/^origin\/(origin\/)+/, "origin/");
-  if (deduped.startsWith("refs/")) {
-    return deduped;
-  }
-  if (deduped.startsWith("origin/")) {
-    return deduped;
-  }
-  return refWithOrigin(deduped);
 }
 
 export const Route = createFileRoute(

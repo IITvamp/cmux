@@ -1,4 +1,5 @@
 import { waitForConnectedSocket } from "@/contexts/socket/socket-boot";
+import { normalizeGitRef } from "@/lib/refWithOrigin";
 import type { ReplaceDiffEntry } from "@cmux/shared";
 import { queryOptions } from "@tanstack/react-query";
 
@@ -27,12 +28,16 @@ export function gitDiffQueryOptions({
 }: GitDiffQuery) {
   const repoKey = repoFullName ?? repoUrl ?? originPathOverride ?? "";
 
+  const canonicalHeadRef = normalizeGitRef(headRef) || headRef?.trim() || "";
+  const canonicalBaseRef =
+    normalizeGitRef(baseRef) || baseRef?.trim() || "";
+
   return queryOptions({
     queryKey: [
       "git-diff",
       repoKey,
-      headRef,
-      baseRef ?? "",
+      canonicalHeadRef,
+      canonicalBaseRef,
       includeContents ? "with-contents" : "no-contents",
       maxBytes ?? "",
       lastKnownBaseSha ?? "",
@@ -47,8 +52,8 @@ export function gitDiffQueryOptions({
             repoFullName,
             repoUrl,
             originPathOverride,
-            headRef,
-            baseRef,
+            headRef: canonicalHeadRef,
+            baseRef: canonicalBaseRef || undefined,
             includeContents,
             maxBytes,
             lastKnownBaseSha,
@@ -71,6 +76,6 @@ export function gitDiffQueryOptions({
       });
     },
     staleTime: 10_000,
-    enabled: Boolean(headRef?.trim()) && Boolean(repoKey.trim()),
+    enabled: Boolean(canonicalHeadRef) && Boolean(repoKey.trim()),
   });
 }

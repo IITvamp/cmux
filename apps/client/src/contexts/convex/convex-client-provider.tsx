@@ -39,7 +39,7 @@ function useAuthFromStack() {
   // Only consider authenticated once an access token is available.
   const isAuthenticated = useMemo(
     () => Boolean(user && accessToken),
-    [user, accessToken]
+    [user, accessToken],
   );
 
   // Important: keep this function identity stable unless auth context truly changes.
@@ -70,7 +70,7 @@ function useAuthFromStack() {
       const fresh = await u?.getAuthJson();
       return fresh?.accessToken ?? null;
     },
-    [authJsonQuery.data]
+    [authJsonQuery.data],
   );
 
   const authResult = useMemo(
@@ -79,7 +79,7 @@ function useAuthFromStack() {
       isAuthenticated,
       fetchAccessToken,
     }),
-    [isAuthenticated, isLoading, fetchAccessToken]
+    [isAuthenticated, isLoading, fetchAccessToken],
   );
   return authResult;
 }
@@ -91,11 +91,6 @@ function AuthenticatedOrSignIn({
   children: ReactNode;
   onReady: () => void;
 }) {
-  const user = useUser({ or: "return-null" });
-  const showSignIn = !user;
-
-  console.log("showSignIn", showSignIn);
-
   return (
     <>
       <SignInComponent />

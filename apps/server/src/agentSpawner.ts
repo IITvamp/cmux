@@ -9,7 +9,6 @@ import type {
   WorkerCreateTerminal,
   WorkerTerminalFailed,
 } from "@cmux/shared/worker-schemas";
-import { getApiEnvironmentsByIdVars } from "@cmux/www-openapi-client";
 import { parse as parseDotenv } from "dotenv";
 import { sanitizeTmuxSessionName } from "./sanitizeTmuxSessionName";
 import {
@@ -27,10 +26,13 @@ import {
 } from "./utils/requestContext";
 import { env } from "./utils/server-env";
 import { getWwwClient } from "./utils/wwwClient";
+import { getWwwOpenApiModule } from "./utils/wwwOpenApiModule";
 import { CmuxVSCodeInstance } from "./vscode/CmuxVSCodeInstance";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance";
 import { VSCodeInstance } from "./vscode/VSCodeInstance";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace";
+
+const { getApiEnvironmentsByIdVars } = await getWwwOpenApiModule();
 
 export interface AgentSpawnResult {
   agentName: string;
