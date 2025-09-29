@@ -132,15 +132,19 @@ const darkHighlightStyle = HighlightStyle.define([
 ]);
 
 const GITHUB_ADDITION_LINE_BG = "#dafbe1";
-const GITHUB_ADDITION_GUTTER_BG = "#aceebb";
-const GITHUB_ADDITION_TEXT_BG = "#aceebb";
+const GITHUB_ADDITION_GUTTER_BG = "#b8f0c8";
+const GITHUB_ADDITION_TEXT_BG = "#b8f0c8";
 const GITHUB_DELETION_LINE_BG = "#ffebe9";
-const GITHUB_DELETION_GUTTER_BG = "#ffcecb";
-const GITHUB_DELETION_TEXT_BG = "#ffcecb";
+const GITHUB_DELETION_GUTTER_BG = "#ffdcd7";
+const GITHUB_DELETION_TEXT_BG = "#ffdcd7";
 const GITHUB_DARK_ADDITION_LINE = "#2ea04326";
 const GITHUB_DARK_ADDITION_GUTTER = "#3fb9504d";
 const GITHUB_DARK_DELETION_LINE = "#f851491a";
 const GITHUB_DARK_DELETION_GUTTER = "#f851494d";
+const GITHUB_COLLAPSED_LIGHT_BG = "#f6f8fa";
+const GITHUB_COLLAPSED_LIGHT_TEXT = "#4b5563";
+const GITHUB_COLLAPSED_DARK_BG = "#1f2733";
+const GITHUB_COLLAPSED_DARK_TEXT = "#e5e7eb";
 
 function debugGitDiffViewerLog(
   message: string,
@@ -676,31 +680,31 @@ function createBaseExtensions(theme: string | undefined): Extension[] {
       },
       ".cm-change.cm-change-insert": {
         backgroundColor: isDark
-          ? "rgba(52, 211, 153, 0.22)"
+          ? GITHUB_DARK_ADDITION_LINE
           : GITHUB_ADDITION_TEXT_BG,
         textDecoration: "none",
       },
       ".cm-change.cm-change-delete": {
         backgroundColor: isDark
-          ? "rgba(252, 165, 165, 0.22)"
+          ? GITHUB_DARK_DELETION_LINE
           : GITHUB_DELETION_TEXT_BG,
         textDecoration: "none",
       },
       ".cm-mergeView ins.cm-insertedLine": {
         textDecoration: "none",
         backgroundColor: isDark
-          ? "rgba(52, 211, 153, 0.22)"
+          ? GITHUB_DARK_ADDITION_LINE
           : GITHUB_ADDITION_TEXT_BG,
       },
       ".cm-mergeView del.cm-deletedLine": {
         textDecoration: "none",
         backgroundColor: isDark
-          ? "rgba(252, 165, 165, 0.22)"
+          ? GITHUB_DARK_DELETION_LINE
           : GITHUB_DELETION_TEXT_BG,
       },
       ".cm-collapsedLines": {
-        backgroundColor: isDark ? "rgba(96, 165, 250, 0.24)" : "#ddf4ff",
-        color: isDark ? "#e5e7eb" : "#1f2937",
+        backgroundColor: isDark ? GITHUB_COLLAPSED_DARK_BG : GITHUB_COLLAPSED_LIGHT_BG,
+        color: isDark ? GITHUB_COLLAPSED_DARK_TEXT : GITHUB_COLLAPSED_LIGHT_TEXT,
         padding: "5px 5px 5px 10px",
         cursor: "pointer",
         backgroundImage: "none",
@@ -710,42 +714,42 @@ function createBaseExtensions(theme: string | undefined): Extension[] {
       },
       "&.cm-merge-b .cm-changedLine": {
         backgroundColor: isDark
-          ? "rgba(52, 211, 153, 0.12)"
+          ? GITHUB_DARK_ADDITION_LINE
           : GITHUB_ADDITION_LINE_BG,
       },
       "&.cm-merge-a .cm-changedLine": {
         backgroundColor: isDark
-          ? "rgba(252, 165, 165, 0.12)"
+          ? GITHUB_DARK_DELETION_LINE
           : GITHUB_DELETION_LINE_BG,
       },
       "&.cm-merge-b .cm-inlineChangedLine": {
         backgroundColor: isDark
-          ? "rgba(52, 211, 153, 0.12)"
+          ? GITHUB_DARK_ADDITION_LINE
           : GITHUB_ADDITION_LINE_BG,
       },
       "&.cm-merge-a .cm-inlineChangedLine": {
         backgroundColor: isDark
-          ? "rgba(252, 165, 165, 0.12)"
+          ? GITHUB_DARK_DELETION_LINE
           : GITHUB_DELETION_LINE_BG,
       },
       "& .cm-deletedChunk": {
         backgroundColor: isDark
-          ? "rgba(252, 165, 165, 0.12)"
+          ? GITHUB_DARK_DELETION_LINE
           : GITHUB_DELETION_LINE_BG,
       },
       "& .cm-insertedChunk": {
         backgroundColor: isDark
-          ? "rgba(52, 211, 153, 0.12)"
+          ? GITHUB_DARK_ADDITION_LINE
           : GITHUB_ADDITION_LINE_BG,
       },
       "&.cm-merge-b .cm-gutterElement.cm-changedLineGutter": {
         backgroundColor: isDark
-          ? "rgba(16, 185, 129, 0.24)"
+          ? GITHUB_DARK_ADDITION_GUTTER
           : GITHUB_ADDITION_GUTTER_BG,
       },
       "&.cm-merge-a .cm-gutterElement.cm-changedLineGutter": {
         backgroundColor: isDark
-          ? "rgba(248, 113, 113, 0.24)"
+          ? GITHUB_DARK_DELETION_GUTTER
           : GITHUB_DELETION_GUTTER_BG,
       },
       "&.cm-merge-b .cm-changedText": {
