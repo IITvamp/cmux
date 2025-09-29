@@ -24,7 +24,6 @@ export const stackClientApp = new StackClientApp({
 convexQueryClient.convexClient.setAuth(
   stackClientApp.getConvexClientAuth({ tokenStore: "cookie" }),
   (isAuthenticated) => {
-    console.log("yee", isAuthenticated);
     signalConvexAuthReady(isAuthenticated);
   },
 );
