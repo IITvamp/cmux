@@ -8,6 +8,7 @@ import {
   CLAUDE_OPUS_4_1_CONFIG,
   CLAUDE_OPUS_4_CONFIG,
   CLAUDE_SONNET_CONFIG,
+  CLAUDE_SONNET_4_5_CONFIG,
 } from "./providers/anthropic/configs";
 import {
   CURSOR_GPT_5_CONFIG,
@@ -91,6 +92,7 @@ export interface AgentConfig {
 
 export const AGENT_CONFIGS: AgentConfig[] = [
   CLAUDE_SONNET_CONFIG,
+  CLAUDE_SONNET_4_5_CONFIG,
   CLAUDE_OPUS_4_1_CONFIG,
   CLAUDE_OPUS_4_CONFIG,
   CODEX_GPT_5_CONFIG,
