@@ -79,3 +79,50 @@ export function gitDiffQueryOptions({
     enabled: Boolean(canonicalHeadRef) && Boolean(repoKey.trim()),
   });
 }
+
+export interface GitDiffSmartQuery {
+  taskRunId: string;
+  includeContents?: boolean;
+}
+
+export function gitDiffSmartQueryOptions({
+  taskRunId,
+  includeContents = true,
+}: GitDiffSmartQuery) {
+  const trimmedRunId = taskRunId.trim();
+
+  return queryOptions({
+    queryKey: [
+      "git-diff-smart",
+      trimmedRunId,
+      includeContents ? "with-contents" : "no-contents",
+    ],
+    queryFn: async () => {
+      const socket = await waitForConnectedSocket();
+      return await new Promise<ReplaceDiffEntry[]>((resolve, reject) => {
+        socket.emit(
+          "git-diff-smart",
+          {
+            taskRunId: trimmedRunId,
+            includeContents,
+          },
+          (
+            resp:
+              | { ok: true; diffs: ReplaceDiffEntry[] }
+              | { ok: false; error: string; diffs: [] }
+          ) => {
+            if (resp.ok) {
+              resolve(resp.diffs);
+            } else {
+              reject(
+                new Error(resp.error || "Failed to load run diffs")
+              );
+            }
+          }
+        );
+      });
+    },
+    staleTime: 10_000,
+    enabled: Boolean(trimmedRunId),
+  });
+}

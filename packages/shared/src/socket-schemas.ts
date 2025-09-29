@@ -116,6 +116,11 @@ export const GitRepoDiffRequestSchema = z.object({
   lastKnownMergeCommitSha: z.string().optional(),
 });
 
+export const GitDiffSmartRequestSchema = z.object({
+  taskRunId: typedZid("taskRuns"),
+  includeContents: z.boolean().optional(),
+});
+
 export const GitFileSchema = z.object({
   path: z.string(),
   status: z.enum(["added", "modified", "deleted", "renamed"]),
@@ -388,6 +393,7 @@ export type GitDiffResponse = z.infer<typeof GitDiffResponseSchema>;
 export type GitFileChanged = z.infer<typeof GitFileChangedSchema>;
 export type GitFullDiffRequest = z.infer<typeof GitFullDiffRequestSchema>;
 export type GitRepoDiffRequest = z.infer<typeof GitRepoDiffRequestSchema>;
+export type GitDiffSmartRequest = z.infer<typeof GitDiffSmartRequestSchema>;
 export type GitFullDiffResponse = z.infer<typeof GitFullDiffResponseSchema>;
 export type OpenInEditor = z.infer<typeof OpenInEditorSchema>;
 export type OpenInEditorError = z.infer<typeof OpenInEditorErrorSchema>;
@@ -430,6 +436,14 @@ export interface ClientToServerEvents {
   "git-status": (data: GitStatusRequest) => void;
   "git-diff": (
     data: z.infer<typeof GitRepoDiffRequestSchema>,
+    callback: (
+      response:
+        | { ok: true; diffs: import("./diff-types.js").ReplaceDiffEntry[] }
+        | { ok: false; error: string; diffs: [] }
+    ) => void
+  ) => void;
+  "git-diff-smart": (
+    data: z.infer<typeof GitDiffSmartRequestSchema>,
     callback: (
       response:
         | { ok: true; diffs: import("./diff-types.js").ReplaceDiffEntry[] }

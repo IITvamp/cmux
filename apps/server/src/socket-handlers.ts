@@ -2,6 +2,7 @@ import { api } from "@cmux/convex/api";
 import {
   ArchiveTaskSchema,
   GitFullDiffRequestSchema,
+  GitDiffSmartRequestSchema,
   GitHubCreateDraftPrSchema,
   GitHubFetchBranchesSchema,
   GitHubMergePrSchema,
@@ -32,6 +33,7 @@ import { spawnAllAgents } from "./agentSpawner";
 import { stopContainersForRuns } from "./archiveTask";
 import { execWithEnv } from "./execWithEnv";
 import { getGitDiff } from "./diffs/gitDiff";
+import { getRunDiffs } from "./diffs/getRunDiffs";
 import { GitDiffManager } from "./gitDiff";
 import { getRustTime } from "./native/core";
 import type { RealtimeServer } from "./realtime";
@@ -234,6 +236,29 @@ export function setupSocketHandlers(
         callback?.({ ok: true, diffs });
       } catch (error) {
         serverLogger.error("Error in git-diff:", error);
+        callback?.({
+          ok: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+          diffs: [],
+        });
+      }
+    });
+
+    socket.on("git-diff-smart", async (data, callback) => {
+      try {
+        const parsed = GitDiffSmartRequestSchema.parse(data);
+
+        const diffs = await getRunDiffs({
+          taskRunId: parsed.taskRunId,
+          teamSlugOrId: safeTeam,
+          gitDiffManager,
+          rt,
+          includeContents: parsed.includeContents ?? true,
+        });
+
+        callback?.({ ok: true, diffs });
+      } catch (error) {
+        serverLogger.error("Error in git-diff-smart:", error);
         callback?.({
           ok: false,
           error: error instanceof Error ? error.message : "Unknown error",

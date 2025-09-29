@@ -4,13 +4,12 @@ import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { useSocketSuspense } from "@/contexts/socket/use-socket";
 import { isElectron } from "@/lib/electron";
 import { cn } from "@/lib/utils";
-import { normalizeGitRef } from "@/lib/refWithOrigin";
-import { gitDiffQueryOptions } from "@/queries/git-diff";
+import { gitDiffSmartQueryOptions } from "@/queries/git-diff";
 import type { Doc, Id } from "@cmux/convex/dataModel";
 import type { TaskRunWithChildren } from "@/types/task";
 import { Skeleton } from "@heroui/react";
 import { useClipboard } from "@mantine/hooks";
-import { useMutation, useQueries } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import {
@@ -57,80 +56,21 @@ interface TaskDetailHeaderProps {
 
 const ENABLE_MERGE_BUTTON = false;
 
-type RepoDiffTarget = {
-  repoFullName: string;
-  baseRef?: string;
-  headRef?: string;
-};
-
 function AdditionsAndDeletions({
-  repos,
-  defaultBaseRef,
-  defaultHeadRef,
+  taskRunId,
 }: {
-  repos: RepoDiffTarget[];
-  defaultBaseRef?: string;
-  defaultHeadRef?: string;
+  taskRunId: Id<"taskRuns">;
 }) {
-  const repoConfigs = useMemo(() => {
-    const normalizedDefaults = {
-      base: normalizeGitRef(defaultBaseRef),
-      head: normalizeGitRef(defaultHeadRef),
-    };
-
-    const map = new Map<
-      string,
-      { repoFullName: string; baseRef?: string; headRef?: string }
-    >();
-    for (const repo of repos) {
-      const repoFullName = repo.repoFullName?.trim();
-      if (!repoFullName) {
-        continue;
-      }
-      const normalizedBaseRef =
-        normalizeGitRef(repo.baseRef) || normalizedDefaults.base;
-      const normalizedHeadRef =
-        normalizeGitRef(repo.headRef) || normalizedDefaults.head;
-      map.set(repoFullName, {
-        repoFullName,
-        baseRef: normalizedBaseRef || undefined,
-        headRef: normalizedHeadRef || undefined,
-      });
-    }
-
-    return Array.from(map.values());
-  }, [repos, defaultBaseRef, defaultHeadRef]);
-
-  const queries = useQueries({
-    queries: repoConfigs.map((config) => {
-      const headRef = config.headRef ?? "";
-      const options = gitDiffQueryOptions({
-        repoFullName: config.repoFullName,
-        baseRef: config.baseRef,
-        headRef,
-      });
-      return {
-        ...options,
-        enabled: options.enabled,
-      };
+  const query = useQuery({
+    ...gitDiffSmartQueryOptions({
+      taskRunId: String(taskRunId),
+      includeContents: false,
     }),
   });
 
-  const hasMissingHeadRef = repoConfigs.some((config) => !config.headRef);
+  const isLoading = query.isPending || query.isFetching;
 
-  const isLoading =
-    repoConfigs.length === 0 ||
-    hasMissingHeadRef ||
-    queries.some((query) => query.isPending || query.isFetching);
-
-  const firstError = queries.find((query, index) => {
-    if (!repoConfigs[index]?.headRef) {
-      return false;
-    }
-    return Boolean(query.error);
-  });
-
-  if (!isLoading && firstError?.error) {
+  if (!isLoading && query.isError) {
     return (
       <div className="flex items-center gap-2 text-[11px] ml-2 shrink-0">
         <span className="text-neutral-500 dark:text-neutral-400 font-medium select-none">
@@ -141,16 +81,11 @@ function AdditionsAndDeletions({
   }
 
   const totals =
-    !isLoading && queries.length > 0
-      ? queries.reduce(
-          (acc, query, index) => {
-            if (!repoConfigs[index]?.headRef) {
-              return acc;
-            }
-            for (const diff of query.data ?? []) {
-              acc.add += diff.additions ?? 0;
-              acc.del += diff.deletions ?? 0;
-            }
+    !isLoading && query.data
+      ? query.data.reduce(
+          (acc, diff) => {
+            acc.add += diff.additions ?? 0;
+            acc.del += diff.deletions ?? 0;
             return acc;
           },
           { add: 0, del: 0 },
@@ -205,18 +140,6 @@ export function TaskDetailHeader({
     [selectedRun?.worktreePath, task?.worktreePath],
   );
 
-  const normalizedBaseBranch = useMemo(() => {
-    const candidate = task?.baseBranch;
-    if (candidate && candidate.trim()) {
-      return normalizeGitRef(candidate);
-    }
-    return normalizeGitRef("main");
-  }, [task?.baseBranch]);
-  const normalizedHeadBranch = useMemo(
-    () => normalizeGitRef(selectedRun?.newBranch),
-    [selectedRun?.newBranch],
-  );
-
   const environmentRepos = useMemo<string[]>(() => {
     const repos = selectedRun?.environment?.selectedRepos ?? [];
     const trimmed = repos
@@ -235,16 +158,6 @@ export function TaskDetailHeader({
     }
     return Array.from(names);
   }, [task?.projectFullName, environmentRepos]);
-
-  const repoDiffTargets = useMemo<RepoDiffTarget[]>(() => {
-    const baseRef = normalizedBaseBranch || undefined;
-    const headRef = normalizedHeadBranch || undefined;
-    return repoFullNames.map((repoFullName) => ({
-      repoFullName,
-      baseRef,
-      headRef,
-    }));
-  }, [repoFullNames, normalizedBaseBranch, normalizedHeadBranch]);
 
   const dragStyle = isElectron
     ? ({ WebkitAppRegion: "drag" } as CSSProperties)
@@ -270,9 +183,7 @@ export function TaskDetailHeader({
             }
           >
             <AdditionsAndDeletions
-              repos={repoDiffTargets}
-              defaultBaseRef={normalizedBaseBranch || undefined}
-              defaultHeadRef={normalizedHeadBranch || undefined}
+              taskRunId={taskRunId}
             />
           </Suspense>
         </div>
@@ -311,7 +222,7 @@ export function TaskDetailHeader({
               taskRunId={taskRunId}
               prIsOpen={prIsOpen}
               prIsMerged={prIsMerged}
-              repoDiffTargets={repoDiffTargets}
+              repoFullNames={repoFullNames}
             />
           </Suspense>
 
@@ -493,13 +404,13 @@ function SocketActions({
   taskRunId,
   prIsOpen,
   prIsMerged,
-  repoDiffTargets,
+  repoFullNames: repoNamesFromTask,
 }: {
   selectedRun: TaskRunWithChildren | null;
   taskRunId: Id<"taskRuns">;
   prIsOpen: boolean;
   prIsMerged: boolean;
-  repoDiffTargets: RepoDiffTarget[];
+  repoFullNames: string[];
 }) {
   const { socket } = useSocketSuspense();
   const pullRequests = useMemo(
@@ -507,14 +418,19 @@ function SocketActions({
     [selectedRun?.pullRequests],
   );
 
-  const repoFullNames = useMemo(() => {
+  const baseRepoNames = useMemo(() => {
     const names = new Set<string>();
-    for (const target of repoDiffTargets) {
-      const trimmed = target.repoFullName?.trim();
+    for (const repoName of repoNamesFromTask) {
+      const trimmed = repoName?.trim();
       if (trimmed) {
         names.add(trimmed);
       }
     }
+    return Array.from(names);
+  }, [repoNamesFromTask]);
+
+  const repoFullNames = useMemo(() => {
+    const names = new Set(baseRepoNames);
     for (const pr of pullRequests) {
       const trimmed = pr.repoFullName?.trim();
       if (trimmed) {
@@ -522,34 +438,21 @@ function SocketActions({
       }
     }
     return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [repoDiffTargets, pullRequests]);
+  }, [baseRepoNames, pullRequests]);
 
   const pullRequestMap = useMemo(
     () => new Map(pullRequests.map((pr) => [pr.repoFullName, pr] as const)),
     [pullRequests],
   );
 
-  const diffQueries = useQueries({
-    queries: repoDiffTargets.map((target) => ({
-      ...gitDiffQueryOptions({
-        repoFullName: target.repoFullName,
-        baseRef: target.baseRef,
-        headRef: target.headRef ?? "",
-      }),
-      enabled:
-        Boolean(target.repoFullName?.trim()) && Boolean(target.headRef?.trim()),
-    })),
+  const runDiffQuery = useQuery({
+    ...gitDiffSmartQueryOptions({
+      taskRunId: String(taskRunId),
+      includeContents: false,
+    }),
   });
 
-  const hasChanges =
-    repoDiffTargets.length === 0
-      ? false
-      : diffQueries.some((query, index) => {
-          if (!repoDiffTargets[index]?.headRef) {
-            return false;
-          }
-          return (query.data ?? []).length > 0;
-        });
+  const hasChanges = (runDiffQuery.data?.length ?? 0) > 0;
 
   const openUrls = (prs: Array<{ url?: string | null }>) => {
     prs.forEach((pr) => {
