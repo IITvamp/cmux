@@ -202,12 +202,13 @@ function TaskTreeInner({
   }, [unarchive, task._id]);
 
   const inferredBranch = getTaskBranch(task);
+  // Build subtitle as: "<branch> • <owner/repo>" (repo after branch)
   const taskSecondaryParts: string[] = [];
-  if (inferredBranch) {
-    taskSecondaryParts.push(inferredBranch);
+  if (inferredBranch?.trim()) {
+    taskSecondaryParts.push(inferredBranch.trim());
   }
-  if (task.projectFullName) {
-    taskSecondaryParts.push(task.projectFullName);
+  if (task.projectFullName?.trim()) {
+    taskSecondaryParts.push(task.projectFullName.trim());
   }
   const taskSecondary = taskSecondaryParts.join(" • ");
 
@@ -315,7 +316,8 @@ function TaskTreeInner({
                   onToggle: handleToggle,
                   visible: canExpand,
                 }}
-                title={task.pullRequestTitle || task.text}
+                // Prefer PR title when available for workspace task title
+                title={(task.pullRequestTitle?.trim() || task.text).trim()}
                 titleClassName="text-[13px] text-neutral-900 dark:text-neutral-100"
                 secondary={taskSecondary || undefined}
                 meta={taskLeadingIcon || undefined}
