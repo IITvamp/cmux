@@ -1,10 +1,7 @@
-import "@/lib/monaco-environment";
-
 import { useTheme } from "@/components/theme/use-theme";
 import { isElectron } from "@/lib/electron";
 import { cn } from "@/lib/utils";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
-import { DiffEditor, type MonacoDiffEditor } from "@monaco-editor/react";
 import {
   ChevronDown,
   ChevronRight,
@@ -14,16 +11,49 @@ import {
   FilePlus,
   FileText,
 } from "lucide-react";
-import { type editor } from "monaco-editor";
 import {
   memo,
-  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+import { EditorState, type Extension } from "@codemirror/state";
+import {
+  EditorView,
+  highlightActiveLine,
+  highlightActiveLineGutter,
+  lineNumbers,
+} from "@codemirror/view";
+import { MergeView } from "@codemirror/merge";
+import { StreamLanguage } from "@codemirror/language";
+import { javascript } from "@codemirror/lang-javascript";
+import { json } from "@codemirror/lang-json";
+import { css as cssLanguage } from "@codemirror/lang-css";
+import { html as htmlLanguage } from "@codemirror/lang-html";
+import { markdown } from "@codemirror/lang-markdown";
+import { sql } from "@codemirror/lang-sql";
+import { python } from "@codemirror/lang-python";
+import { rust } from "@codemirror/lang-rust";
+import { go as goLanguage } from "@codemirror/lang-go";
+import { java as javaLanguage } from "@codemirror/lang-java";
+import { php as phpLanguage } from "@codemirror/lang-php";
+import { xml as xmlLanguage } from "@codemirror/lang-xml";
+import { yaml as yamlLanguage } from "@codemirror/lang-yaml";
+import { cpp } from "@codemirror/lang-cpp";
+import { shell } from "@codemirror/legacy-modes/mode/shell";
+import {
+  c as clikeC,
+  csharp as clikeCsharp,
+  kotlin as clikeKotlin,
+  scala as clikeScala,
+} from "@codemirror/legacy-modes/mode/clike";
+import { ruby as rubyLanguage } from "@codemirror/legacy-modes/mode/ruby";
+import { swift as swiftLanguage } from "@codemirror/legacy-modes/mode/swift";
+import { dockerFile as dockerfileLanguage } from "@codemirror/legacy-modes/mode/dockerfile";
+import { sass as legacySass } from "@codemirror/legacy-modes/mode/sass";
+import { toml as tomlLanguage } from "@codemirror/legacy-modes/mode/toml";
 import { kitties } from "./kitties";
 
 type FileDiffRowClassNames = {
@@ -58,8 +88,6 @@ type FileGroup = {
   patch?: string;
   isBinary: boolean;
 };
-
-type Disposable = { dispose: () => void };
 
 function debugGitDiffViewerLog(
   message: string,
@@ -119,7 +147,6 @@ export function GitDiffViewer({
   }, []);
 
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
-  const editorRefs = useRef<Record<string, editor.IStandaloneDiffEditor>>({});
 
   // Group diffs by file
   const fileGroups: FileGroup[] = useMemo(
@@ -209,8 +236,6 @@ export function GitDiffViewer({
     setExpandedFiles(new Set());
   };
 
-  // No per-run cache in refs mode
-
   const calculateEditorHeight = (oldContent: string, newContent: string) => {
     const oldLines = oldContent.split("\n").length;
     const newLines = newContent.split("\n").length;
@@ -259,14 +284,6 @@ export function GitDiffViewer({
             onToggle={() => toggleFile(file.filePath)}
             theme={theme}
             calculateEditorHeight={calculateEditorHeight}
-            setEditorRef={(ed) => {
-              const key = `refs:${file.filePath}`;
-              if (ed) {
-                editorRefs.current[key] = ed;
-              } else {
-                delete editorRefs.current[key];
-              }
-            }}
             classNames={classNames?.fileDiffRow}
           />
         ))}
@@ -295,8 +312,6 @@ interface FileDiffRowProps {
   onToggle: () => void;
   theme: string | undefined;
   calculateEditorHeight: (oldContent: string, newContent: string) => number;
-  setEditorRef: (ed: editor.IStandaloneDiffEditor | null) => void;
-  runId?: string;
   classNames?: {
     button?: string;
     container?: string;
@@ -309,35 +324,30 @@ function FileDiffRow({
   onToggle,
   theme,
   calculateEditorHeight,
-  setEditorRef,
-  runId,
   classNames,
 }: FileDiffRowProps) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const diffEditorRef = useRef<MonacoDiffEditor | null>(null);
-  const disposablesRef = useRef<Disposable[]>([]);
+  const mergeHostRef = useRef<HTMLDivElement | null>(null);
+  const mergeViewRef = useRef<MergeView | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
-  const setEditorRefRef = useRef(setEditorRef);
-  const filePathRef = useRef(file.filePath);
+  const animationFrameRef = useRef<number | null>(null);
 
-  const [editorHeight, setEditorHeight] = useState(() =>
+  const [isEditorVisible, setIsEditorVisible] = useState(false);
+  const [minimumHeight, setMinimumHeight] = useState(() =>
     Math.max(120, calculateEditorHeight(file.oldContent, file.newContent))
   );
-  const [isEditorVisible, setIsEditorVisible] = useState(false);
-
-  useEffect(() => {
-    setEditorRefRef.current = setEditorRef;
-  }, [setEditorRef]);
-
-  useEffect(() => {
-    filePathRef.current = file.filePath;
-  }, [file.filePath]);
 
   const shouldRenderEditor =
     isExpanded &&
     !file.isBinary &&
     file.status !== "deleted" &&
     file.status !== "renamed";
+
+  const baseExtensions = useMemo(() => createBaseExtensions(theme), [theme]);
+
+  const languageExtensions = useMemo(
+    () => getLanguageExtensions(file.filePath),
+    [file.filePath]
+  );
 
   useLayoutEffect(() => {
     if (!shouldRenderEditor) {
@@ -347,10 +357,7 @@ function FileDiffRow({
       120,
       calculateEditorHeight(file.oldContent, file.newContent)
     );
-    setEditorHeight((prev) => (prev === nextHeight ? prev : nextHeight));
-    if (containerRef.current) {
-      containerRef.current.style.height = `${nextHeight}px`;
-    }
+    setMinimumHeight((prev) => (prev === nextHeight ? prev : nextHeight));
   }, [
     shouldRenderEditor,
     file.oldContent,
@@ -358,211 +365,115 @@ function FileDiffRow({
     calculateEditorHeight,
   ]);
 
-  const clearDisposables = useCallback(() => {
-    for (const disposable of disposablesRef.current) {
-      try {
-        disposable.dispose();
-      } catch {
-        // ignore
+  useEffect(() => {
+    return () => {
+      if (animationFrameRef.current != null) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
       }
-    }
-    disposablesRef.current = [];
-    if (resizeObserverRef.current) {
-      resizeObserverRef.current.disconnect();
-      resizeObserverRef.current = null;
-    }
+    };
   }, []);
 
-  const cleanupEditor = useCallback(
-    ({
-      skipVisibilityReset = false,
-    }: { skipVisibilityReset?: boolean } = {}) => {
-      const hadEditor =
-        diffEditorRef.current !== null ||
-        disposablesRef.current.length > 0 ||
-        resizeObserverRef.current !== null;
-
-      clearDisposables();
-      diffEditorRef.current = null;
-      try {
-        setEditorRefRef.current?.(null);
-      } catch {
-        // ignore
+  useEffect(() => {
+    if (!shouldRenderEditor) {
+      if (resizeObserverRef.current) {
+        resizeObserverRef.current.disconnect();
+        resizeObserverRef.current = null;
       }
-      if (!skipVisibilityReset) {
-        setIsEditorVisible(false);
+      if (mergeViewRef.current) {
+        mergeViewRef.current.destroy();
+        mergeViewRef.current = null;
       }
-
-      if (hadEditor) {
-        debugGitDiffViewerLog("diff editor cleaned up", {
-          filePath: filePathRef.current,
-        });
+      if (mergeHostRef.current) {
+        mergeHostRef.current.textContent = "";
       }
-    },
-    [clearDisposables]
-  );
-
-  useEffect(
-    () => () => {
-      cleanupEditor({ skipVisibilityReset: true });
-    },
-    [cleanupEditor]
-  );
-
-  const resolvedTheme = theme === "dark" ? "vs-dark" : "light";
-
-  const diffEditorOptions = useMemo<editor.IDiffEditorConstructionOptions>(
-    () => ({
-      readOnly: true,
-      renderSideBySide: true,
-      minimap: { enabled: false },
-      scrollBeyondLastLine: false,
-      fontSize: 12,
-      lineHeight: 18,
-      fontFamily:
-        "'JetBrains Mono', 'SF Mono', Monaco, 'Courier New', monospace",
-      wordWrap: "on",
-      automaticLayout: false,
-      renderOverviewRuler: false,
-      scrollbar: {
-        vertical: "hidden",
-        horizontal: "auto",
-        verticalScrollbarSize: 8,
-        horizontalScrollbarSize: 8,
-        handleMouseWheel: true,
-        alwaysConsumeMouseWheel: false,
-      },
-      lineNumbers: "on",
-      renderLineHighlight: "none",
-      hideCursorInOverviewRuler: true,
-      overviewRulerBorder: false,
-      overviewRulerLanes: 0,
-      renderValidationDecorations: "off",
-      diffWordWrap: "on",
-      renderIndicators: true,
-      renderMarginRevertIcon: false,
-      lineDecorationsWidth: 12,
-      lineNumbersMinChars: 4,
-      glyphMargin: false,
-      folding: false,
-      contextmenu: false,
-      renderWhitespace: "selection",
-      guides: {
-        indentation: false,
-      },
-      padding: { top: 2, bottom: 2 },
-      hideUnchangedRegions: {
-        enabled: true,
-        revealLineCount: 3,
-        minimumLineCount: 50,
-        contextLineCount: 3,
-      },
-    }),
-    []
-  );
-
-  const { originalModelPath, modifiedModelPath } = useMemo(() => {
-    const encodedPath = encodeURIComponent(file.filePath);
-    const baseUri = `inmemory://diff/${runId ?? "_"}/${encodedPath}`;
-    return {
-      originalModelPath: `${baseUri}?side=original`,
-      modifiedModelPath: `${baseUri}?side=modified`,
-    };
-  }, [file.filePath, runId]);
-
-  const language = useMemo(
-    () => getLanguageFromPath(file.filePath),
-    [file.filePath]
-  );
-
-  const handleEditorMount = useCallback(
-    (editorInstance: MonacoDiffEditor) => {
       setIsEditorVisible(false);
-      diffEditorRef.current = editorInstance;
-      try {
-        setEditorRefRef.current?.(editorInstance);
-      } catch {
-        // ignore
+      return;
+    }
+
+    const host = mergeHostRef.current;
+    if (!host) {
+      return;
+    }
+
+    host.textContent = "";
+    setIsEditorVisible(false);
+
+    const extensions = [...baseExtensions, ...languageExtensions];
+
+    const merge = new MergeView({
+      a: {
+        doc: file.oldContent ?? "",
+        extensions: [...extensions],
+      },
+      b: {
+        doc: file.newContent ?? "",
+        extensions: [...extensions],
+      },
+      parent: host,
+      highlightChanges: true,
+      gutter: true,
+      collapseUnchanged: {
+        margin: 3,
+        minSize: 6,
+      },
+      diffConfig: {
+        scanLimit: 500,
+        timeout: 1500,
+      },
+    });
+
+    mergeViewRef.current = merge;
+
+    const measure = () => {
+      const dom = merge.dom;
+      const height = dom.getBoundingClientRect().height;
+      if (!Number.isFinite(height) || height <= 0) {
+        return;
       }
+      const next = Math.max(120, Math.ceil(height) + 12);
+      setMinimumHeight((prev) => (prev === next ? prev : next));
+    };
 
-      clearDisposables();
+    measure();
 
-      const modifiedEditor = editorInstance.getModifiedEditor();
-      const originalEditor = editorInstance.getOriginalEditor();
+    const observer = new ResizeObserver(measure);
+    observer.observe(merge.dom);
+    resizeObserverRef.current = observer;
 
-      const layoutEditor = (height: number) => {
-        const containerEl = containerRef.current;
-        if (!containerEl) {
-          if (!editorInstance.getContainerDomNode()) {
-            return;
-          }
-          editorInstance.layout();
-          return;
-        }
-        const width = containerEl.clientWidth;
-        if (width > 0) {
-          editorInstance.layout({ width, height });
-        } else {
-          editorInstance.layout();
-        }
-      };
+    animationFrameRef.current = requestAnimationFrame(() => {
+      setIsEditorVisible(true);
+      animationFrameRef.current = null;
+    });
 
-      const measure = () => {
-        if (diffEditorRef.current !== editorInstance) {
-          return;
-        }
-        const modifiedModel = modifiedEditor.getModel();
-        const originalModel = originalEditor.getModel();
-        if (
-          !modifiedModel ||
-          !originalModel ||
-          modifiedModel.isDisposed() ||
-          originalModel.isDisposed()
-        ) {
-          return;
-        }
-        const modifiedHeight = modifiedEditor.getContentHeight();
-        const originalHeight = originalEditor.getContentHeight();
-        const nextHeight = Math.max(
-          120,
-          Math.max(modifiedHeight, originalHeight) + 20
-        );
+    debugGitDiffViewerLog("merge editor mounted", {
+      filePath: file.filePath,
+      collapseUnchanged: true,
+    });
 
-        setEditorHeight((prev) => (prev === nextHeight ? prev : nextHeight));
-        setIsEditorVisible((prev) => (prev ? prev : true));
-        layoutEditor(nextHeight);
-      };
-
-      measure();
-
-      const disposables: Disposable[] = [
-        modifiedEditor.onDidContentSizeChange(measure),
-        originalEditor.onDidContentSizeChange(measure),
-        modifiedEditor.onDidChangeHiddenAreas(measure),
-        originalEditor.onDidChangeHiddenAreas(measure),
-      ];
-      const diffDisposable = editorInstance.onDidUpdateDiff?.(measure);
-      if (diffDisposable) {
-        disposables.push(diffDisposable);
+    return () => {
+      if (animationFrameRef.current != null) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
       }
-      disposablesRef.current = disposables;
-
-      if (containerRef.current) {
-        const observer = new ResizeObserver(() => {
-          measure();
-        });
-        observer.observe(containerRef.current);
-        resizeObserverRef.current = observer;
-      }
-
-      debugGitDiffViewerLog("diff editor mounted", {
+      observer.disconnect();
+      resizeObserverRef.current = null;
+      merge.destroy();
+      mergeViewRef.current = null;
+      host.textContent = "";
+      setIsEditorVisible(false);
+      debugGitDiffViewerLog("merge editor cleaned up", {
         filePath: file.filePath,
-        renderSideBySide: diffEditorOptions.renderSideBySide,
-        hideUnchangedRegions: diffEditorOptions.hideUnchangedRegions?.enabled,
       });
-    },
-    [clearDisposables, diffEditorOptions, file.filePath]
-  );
+    };
+  }, [
+    shouldRenderEditor,
+    file.oldContent,
+    file.newContent,
+    baseExtensions,
+    languageExtensions,
+    file.filePath,
+  ]);
 
   return (
     <div className={cn("bg-white dark:bg-neutral-900", classNames?.container)}>
@@ -626,27 +537,13 @@ function FileDiffRow({
             </div>
           ) : (
             <div
-              ref={containerRef}
               className="relative"
               style={{
-                height: editorHeight,
+                minHeight: minimumHeight,
                 visibility: isEditorVisible ? "visible" : "hidden",
               }}
             >
-              <DiffEditor
-                original={file.oldContent}
-                modified={file.newContent}
-                language={language}
-                originalModelPath={originalModelPath}
-                modifiedModelPath={modifiedModelPath}
-                options={diffEditorOptions}
-                theme={resolvedTheme}
-                height="100%"
-                width="100%"
-                onMount={handleEditorMount}
-                keepCurrentOriginalModel={true}
-                keepCurrentModifiedModel={true}
-              />
+              <div ref={mergeHostRef} className="h-full" />
             </div>
           )}
         </div>
@@ -661,7 +558,6 @@ const MemoFileDiffRow = memo(FileDiffRow, (prev, next) => {
   return (
     prev.isExpanded === next.isExpanded &&
     prev.theme === next.theme &&
-    prev.runId === next.runId &&
     a.filePath === b.filePath &&
     a.oldPath === b.oldPath &&
     a.status === b.status &&
@@ -674,38 +570,162 @@ const MemoFileDiffRow = memo(FileDiffRow, (prev, next) => {
   );
 });
 
-function getLanguageFromPath(path: string): string {
-  const ext = path.split(".").pop()?.toLowerCase();
-  const languageMap: Record<string, string> = {
-    ts: "typescript",
-    tsx: "typescript",
-    js: "javascript",
-    jsx: "javascript",
-    json: "json",
-    md: "markdown",
-    css: "css",
-    scss: "scss",
-    html: "html",
-    xml: "xml",
-    yaml: "yaml",
-    yml: "yaml",
-    py: "python",
-    go: "go",
-    rs: "rust",
-    java: "java",
-    c: "c",
-    cpp: "cpp",
-    cs: "csharp",
-    php: "php",
-    rb: "ruby",
-    swift: "swift",
-    kt: "kotlin",
-    scala: "scala",
-    sh: "shell",
-    bash: "shell",
-    sql: "sql",
-    dockerfile: "dockerfile",
-  };
+function createBaseExtensions(theme: string | undefined): Extension[] {
+  const isDark = theme === "dark";
+  const textColor = isDark ? "#e5e7eb" : "#1f2937";
+  const gutterColor = isDark ? "#9ca3af" : "#6b7280";
 
-  return languageMap[ext || ""] || "plaintext";
+  const baseTheme = EditorView.theme(
+    {
+      "&": {
+        fontFamily:
+          "'JetBrains Mono', 'SF Mono', Monaco, 'Courier New', monospace",
+        fontSize: "12px",
+        lineHeight: "18px",
+        backgroundColor: "transparent",
+        color: textColor,
+      },
+      ".cm-scroller": {
+        fontFamily:
+          "'JetBrains Mono', 'SF Mono', Monaco, 'Courier New', monospace",
+        lineHeight: "18px",
+      },
+      ".cm-content": {
+        padding: "2px 0",
+      },
+      ".cm-gutters": {
+        backgroundColor: "transparent",
+        border: "none",
+        color: gutterColor,
+      },
+      ".cm-gutterElement": {
+        padding: "0 8px",
+      },
+      ".cm-lineNumbers .cm-gutterElement": {
+        fontSize: "11px",
+      },
+      ".cm-activeLine": {
+        backgroundColor: isDark
+          ? "rgba(255, 255, 255, 0.04)"
+          : "rgba(15, 23, 42, 0.04)",
+      },
+      ".cm-activeLineGutter": {
+        backgroundColor: "transparent",
+        color: isDark ? "#d4d4d8" : "#4b5563",
+      },
+      ".cm-selectionBackground, & ::selection": {
+        backgroundColor: "rgba(148, 163, 184, 0.35)",
+      },
+      ".cm-mergeView": {
+        backgroundColor: "transparent",
+      },
+      ".cm-mergeView .cm-editor": {
+        backgroundColor: "transparent",
+      },
+      ".cm-change.cm-change-insert": {
+        backgroundColor: isDark
+          ? "rgba(34, 197, 94, 0.18)"
+          : "rgba(34, 197, 94, 0.16)",
+      },
+      ".cm-change.cm-change-delete": {
+        backgroundColor: isDark
+          ? "rgba(248, 113, 113, 0.18)"
+          : "rgba(248, 113, 113, 0.16)",
+      },
+      ".cm-panels": {
+        backgroundColor: "transparent",
+      },
+      ".cm-mergeView .cm-panels": {
+        backgroundColor: "transparent",
+      },
+    },
+    { dark: isDark }
+  );
+
+  return [
+    EditorState.readOnly.of(true),
+    EditorView.editable.of(false),
+    EditorView.lineWrapping,
+    highlightActiveLine(),
+    highlightActiveLineGutter(),
+    lineNumbers(),
+    baseTheme,
+  ];
+}
+
+function getLanguageExtensions(path: string): Extension[] {
+  const ext = path.split(".").pop()?.toLowerCase();
+  switch (ext) {
+    case "ts":
+      return [javascript({ typescript: true })];
+    case "tsx":
+      return [javascript({ typescript: true, jsx: true })];
+    case "js":
+      return [javascript()];
+    case "jsx":
+      return [javascript({ jsx: true })];
+    case "json":
+      return [json()];
+    case "md":
+    case "markdown":
+      return [markdown()];
+    case "css":
+      return [cssLanguage()];
+    case "scss":
+    case "sass":
+      return [StreamLanguage.define(legacySass)];
+    case "html":
+    case "htm":
+      return [htmlLanguage()];
+    case "xml":
+      return [xmlLanguage()];
+    case "yaml":
+    case "yml":
+      return [yamlLanguage()];
+    case "py":
+      return [python()];
+    case "rs":
+      return [rust()];
+    case "go":
+      return [goLanguage()];
+    case "java":
+      return [javaLanguage()];
+    case "php":
+      return [phpLanguage()];
+    case "sql":
+      return [sql()];
+    case "rb":
+      return [StreamLanguage.define(rubyLanguage)];
+    case "swift":
+      return [StreamLanguage.define(swiftLanguage)];
+    case "kt":
+    case "kts":
+      return [StreamLanguage.define(clikeKotlin)];
+    case "scala":
+      return [StreamLanguage.define(clikeScala)];
+    case "cs":
+    case "csharp":
+      return [StreamLanguage.define(clikeCsharp)];
+    case "c":
+    case "h":
+      return [StreamLanguage.define(clikeC)];
+    case "cpp":
+    case "cxx":
+    case "cc":
+    case "hpp":
+    case "hxx":
+    case "hh":
+      return [cpp()];
+    case "sh":
+    case "bash":
+    case "zsh":
+      return [StreamLanguage.define(shell)];
+    case "toml":
+      return [StreamLanguage.define(tomlLanguage)];
+    case "dockerfile":
+    case "docker":
+      return [StreamLanguage.define(dockerfileLanguage)];
+    default:
+      return [];
+  }
 }
