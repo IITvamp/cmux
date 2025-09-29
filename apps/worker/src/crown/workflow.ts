@@ -119,7 +119,6 @@ export async function handleWorkerTaskCompletion(
   log("INFO", "[AUTOCOMMIT] Git operations check", {
     taskRunId,
     hasGitRepo,
-    detectedGitPath,
     workspaceRoot: WORKSPACE_ROOT,
     gitDirExists: existsSync(join(detectedGitPath, ".git")),
     gitDirPath: join(detectedGitPath, ".git"),
