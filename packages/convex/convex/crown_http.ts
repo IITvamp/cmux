@@ -173,7 +173,6 @@ async function getOptionalWorkerAuth(
   if (!token) return null;
   return await ensureWorkerAuth(req);
 }
-
 async function loadTaskRunForWorker(
   ctx: ActionCtx,
   auth: WorkerAuthContext,

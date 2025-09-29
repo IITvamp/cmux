@@ -115,13 +115,10 @@ export async function handleWorkerTaskCompletion(
   }
 
   const hasGitRepo = existsSync(join(detectedGitPath, ".git"));
-  const hasProjectInfo = Boolean(info?.task?.projectFullName);
 
   log("INFO", "[AUTOCOMMIT] Git operations check", {
     taskRunId,
     hasGitRepo,
-    hasProjectInfo,
-    projectFullName: info?.task?.projectFullName,
     detectedGitPath,
     workspaceRoot: WORKSPACE_ROOT,
     gitDirExists: existsSync(join(detectedGitPath, ".git")),
@@ -286,16 +283,6 @@ export async function handleWorkerTaskCompletion(
       taskRunId,
       taskId: currentTaskId,
     });
-
-    await convexRequest(
-      "/api/crown/status",
-      runContext.token,
-      {
-        taskRunId,
-        status: "complete",
-      },
-      baseUrlOverride,
-    );
 
     const maxRetries = 3;
     let allComplete = false;

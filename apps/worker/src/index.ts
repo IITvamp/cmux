@@ -502,7 +502,7 @@ managementIO.on("connection", (socket) => {
                 if (!configSections.has(currentSection)) {
                   configSections.set(currentSection, new Map());
                 }
-                configSections.get(currentSection)!.set(key, value);
+                configSections.get(currentSection)?.set(key, value);
               }
             }
           }
@@ -515,7 +515,7 @@ managementIO.on("connection", (socket) => {
       if (!configSections.has("credential")) {
         configSections.set("credential", new Map());
       }
-      configSections.get("credential")!.set("helper", "store");
+      configSections.get("credential")?.set("helper", "store");
 
       // Create .git-credentials file if GitHub token is provided
       if (validated.githubToken) {
@@ -536,7 +536,7 @@ managementIO.on("connection", (socket) => {
             if (!configSections.has(section)) {
               configSections.set(section, new Map());
             }
-            configSections.get(section)!.set(configKey, value);
+            configSections.get(section)?.set(configKey, value);
           }
         }
       }
@@ -1073,10 +1073,17 @@ async function createTerminal(
             return;
           }
 
+          if (!options.taskRunId) {
+            log("ERROR", "Missing task run ID for crown workflow", {
+              taskRunId: options.taskRunId,
+            });
+            return;
+          }
+
           // Await the crown workflow directly
           try {
             await handleWorkerTaskCompletion({
-              taskRunId: options.taskRunId!,
+              taskRunId: options.taskRunId,
               token: taskRunToken,
               prompt: promptValue,
               convexUrl,

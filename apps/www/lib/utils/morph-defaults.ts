@@ -3,4 +3,4 @@
 // export const DEFAULT_MORPH_SNAPSHOT_ID = "snapshot_r6j3rkmo";
 // export const DEFAULT_MORPH_SNAPSHOT_ID = "snapshot_xo8ptbkl";
 // export const DEFAULT_MORPH_SNAPSHOT_ID = "snapshot_5ru3csya";
-export const DEFAULT_MORPH_SNAPSHOT_ID = "snapshot_1eiunt2x";
+export const DEFAULT_MORPH_SNAPSHOT_ID = "snapshot_wyx9suhc";
