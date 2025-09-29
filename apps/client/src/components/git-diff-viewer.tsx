@@ -1,10 +1,7 @@
-import "@/lib/monaco-environment";
-
 import { useTheme } from "@/components/theme/use-theme";
 import { isElectron } from "@/lib/electron";
 import { cn } from "@/lib/utils";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
-import { DiffEditor, type MonacoDiffEditor } from "@monaco-editor/react";
 import {
   ChevronDown,
   ChevronRight,
@@ -14,16 +11,12 @@ import {
   FilePlus,
   FileText,
 } from "lucide-react";
-import { type editor } from "monaco-editor";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { MergeView } from "@codemirror/merge";
 import {
-  memo,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+  createMergeBaseExtensions,
+  getLanguageExtensions,
+} from "@/lib/codemirror/merge-extensions";
 import { kitties } from "./kitties";
 
 type FileDiffRowClassNames = {
@@ -59,11 +52,9 @@ type FileGroup = {
   isBinary: boolean;
 };
 
-type Disposable = { dispose: () => void };
-
 function debugGitDiffViewerLog(
   message: string,
-  payload?: Record<string, unknown>
+  payload?: Record<string, unknown>,
 ) {
   if (!isElectron && import.meta.env.PROD) {
     return;
@@ -118,8 +109,9 @@ export function GitDiffViewer({
     return kitties[Math.floor(Math.random() * kitties.length)];
   }, []);
 
-  const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
-  const editorRefs = useRef<Record<string, editor.IStandaloneDiffEditor>>({});
+  const [expandedFiles, setExpandedFiles] = useState<Set<string>>(
+    () => new Set(diffs.map((diff) => diff.filePath)),
+  );
 
   // Group diffs by file
   const fileGroups: FileGroup[] = useMemo(
@@ -135,46 +127,8 @@ export function GitDiffViewer({
         patch: diff.patch,
         isBinary: diff.isBinary,
       })),
-    [diffs]
+    [diffs],
   );
-
-  // Maintain expansion state across refreshes:
-  // - On first load: expand all
-  // - On subsequent diffs changes: preserve existing expansions, expand only truly new files
-  //   (detected via previous file list, not by expansion set)
-  const prevFilesRef = useRef<Set<string> | null>(null);
-  useEffect(() => {
-    const nextPathsArr = diffs.map((d) => d.filePath);
-    const nextPaths = new Set(nextPathsArr);
-    debugGitDiffViewerLog("recomputing expanded files", {
-      incomingCount: nextPaths.size,
-      previousCount: prevFilesRef.current?.size ?? 0,
-    });
-    setExpandedFiles((prev) => {
-      // First load: expand everything
-      if (prevFilesRef.current == null) {
-        debugGitDiffViewerLog("initial expansion state", {
-          expandedCount: nextPaths.size,
-        });
-        return new Set(nextPaths);
-      }
-      const next = new Set<string>();
-      // Keep expansions that still exist
-      for (const p of prev) {
-        if (nextPaths.has(p)) next.add(p);
-      }
-      // Expand only files not seen before (true additions)
-      for (const p of nextPaths) {
-        if (!prevFilesRef.current.has(p)) next.add(p);
-      }
-      debugGitDiffViewerLog("updated expansion state", {
-        expandedCount: next.size,
-      });
-      return next;
-    });
-    // Update the seen file set after computing the next expansion state
-    prevFilesRef.current = nextPaths;
-  }, [diffs]);
 
   const toggleFile = (filePath: string) => {
     setExpandedFiles((prev) => {
@@ -209,16 +163,6 @@ export function GitDiffViewer({
     setExpandedFiles(new Set());
   };
 
-  // No per-run cache in refs mode
-
-  const calculateEditorHeight = (oldContent: string, newContent: string) => {
-    const oldLines = oldContent.split("\n").length;
-    const newLines = newContent.split("\n").length;
-    const maxLines = Math.max(oldLines, newLines);
-    // approximate using compact line height of 18px + small padding
-    return Math.max(100, maxLines * 18 + 24);
-  };
-
   // Compute totals consistently before any conditional early-returns
   const totalAdditions = diffs.reduce((sum, d) => sum + d.additions, 0);
   const totalDeletions = diffs.reduce((sum, d) => sum + d.deletions, 0);
@@ -250,7 +194,8 @@ export function GitDiffViewer({
   return (
     <div className="grow bg-white dark:bg-neutral-900">
       {/* Diff sections */}
-      <div className="">
+      <div className="flex flex-col -space-y-px">
+        {/* - space-y-px is to account for the border between each file diff row */}
         {fileGroups.map((file) => (
           <MemoFileDiffRow
             key={`refs:${file.filePath}`}
@@ -258,21 +203,10 @@ export function GitDiffViewer({
             isExpanded={expandedFiles.has(file.filePath)}
             onToggle={() => toggleFile(file.filePath)}
             theme={theme}
-            calculateEditorHeight={calculateEditorHeight}
-            setEditorRef={(ed) => {
-              const key = `refs:${file.filePath}`;
-              if (ed) {
-                editorRefs.current[key] = ed;
-              } else {
-                delete editorRefs.current[key];
-              }
-            }}
             classNames={classNames?.fileDiffRow}
           />
         ))}
-
         <hr className="border-neutral-200 dark:border-neutral-800" />
-
         {/* End-of-diff message */}
         <div className="px-3 py-6 text-center">
           <span className="text-xs text-neutral-500 dark:text-neutral-400 select-none">
@@ -294,9 +228,6 @@ interface FileDiffRowProps {
   isExpanded: boolean;
   onToggle: () => void;
   theme: string | undefined;
-  calculateEditorHeight: (oldContent: string, newContent: string) => number;
-  setEditorRef: (ed: editor.IStandaloneDiffEditor | null) => void;
-  runId?: string;
   classNames?: {
     button?: string;
     container?: string;
@@ -308,30 +239,10 @@ function FileDiffRow({
   isExpanded,
   onToggle,
   theme,
-  calculateEditorHeight,
-  setEditorRef,
-  runId,
   classNames,
 }: FileDiffRowProps) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const diffEditorRef = useRef<MonacoDiffEditor | null>(null);
-  const disposablesRef = useRef<Disposable[]>([]);
-  const resizeObserverRef = useRef<ResizeObserver | null>(null);
-  const setEditorRefRef = useRef(setEditorRef);
-  const filePathRef = useRef(file.filePath);
-
-  const [editorHeight, setEditorHeight] = useState(() =>
-    Math.max(120, calculateEditorHeight(file.oldContent, file.newContent))
-  );
-  const [isEditorVisible, setIsEditorVisible] = useState(false);
-
-  useEffect(() => {
-    setEditorRefRef.current = setEditorRef;
-  }, [setEditorRef]);
-
-  useEffect(() => {
-    filePathRef.current = file.filePath;
-  }, [file.filePath]);
+  const mergeHostRef = useRef<HTMLDivElement | null>(null);
+  const mergeViewRef = useRef<MergeView | null>(null);
 
   const shouldRenderEditor =
     isExpanded &&
@@ -339,238 +250,94 @@ function FileDiffRow({
     file.status !== "deleted" &&
     file.status !== "renamed";
 
-  useLayoutEffect(() => {
+  const baseExtensions = useMemo(
+    () => createMergeBaseExtensions(theme),
+    [theme],
+  );
+
+  const languageExtensions = useMemo(
+    () => getLanguageExtensions(file.filePath),
+    [file.filePath],
+  );
+
+  useEffect(() => {
     if (!shouldRenderEditor) {
+      if (mergeViewRef.current) {
+        mergeViewRef.current.destroy();
+        mergeViewRef.current = null;
+      }
+      if (mergeHostRef.current) {
+        mergeHostRef.current.textContent = "";
+      }
       return;
     }
-    const nextHeight = Math.max(
-      120,
-      calculateEditorHeight(file.oldContent, file.newContent)
-    );
-    setEditorHeight((prev) => (prev === nextHeight ? prev : nextHeight));
-    if (containerRef.current) {
-      containerRef.current.style.height = `${nextHeight}px`;
+
+    const host = mergeHostRef.current;
+    if (!host) {
+      return;
     }
+
+    host.textContent = "";
+
+    const extensions = [...baseExtensions, ...languageExtensions];
+
+    const now = performance.now();
+    const merge = new MergeView({
+      a: {
+        doc: file.oldContent ?? "",
+        extensions: [...extensions],
+      },
+      b: {
+        doc: file.newContent ?? "",
+        extensions: [...extensions],
+      },
+      parent: host,
+      highlightChanges: true,
+      gutter: true,
+      collapseUnchanged: {
+        margin: 3,
+        minSize: 6,
+      },
+      diffConfig: {
+        scanLimit: 500,
+        timeout: 1500,
+      },
+    });
+
+    mergeViewRef.current = merge;
+
+    debugGitDiffViewerLog(
+      `merge editor mounted after ${performance.now() - now}ms`,
+      {
+        filePath: file.filePath,
+        collapseUnchanged: true,
+      },
+    );
+
+    return () => {
+      merge.destroy();
+      mergeViewRef.current = null;
+      host.textContent = "";
+      debugGitDiffViewerLog("merge editor cleaned up", {
+        filePath: file.filePath,
+      });
+    };
   }, [
     shouldRenderEditor,
     file.oldContent,
     file.newContent,
-    calculateEditorHeight,
+    baseExtensions,
+    languageExtensions,
+    file.filePath,
   ]);
-
-  const clearDisposables = useCallback(() => {
-    for (const disposable of disposablesRef.current) {
-      try {
-        disposable.dispose();
-      } catch {
-        // ignore
-      }
-    }
-    disposablesRef.current = [];
-    if (resizeObserverRef.current) {
-      resizeObserverRef.current.disconnect();
-      resizeObserverRef.current = null;
-    }
-  }, []);
-
-  const cleanupEditor = useCallback(
-    ({
-      skipVisibilityReset = false,
-    }: { skipVisibilityReset?: boolean } = {}) => {
-      const hadEditor =
-        diffEditorRef.current !== null ||
-        disposablesRef.current.length > 0 ||
-        resizeObserverRef.current !== null;
-
-      clearDisposables();
-      diffEditorRef.current = null;
-      try {
-        setEditorRefRef.current?.(null);
-      } catch {
-        // ignore
-      }
-      if (!skipVisibilityReset) {
-        setIsEditorVisible(false);
-      }
-
-      if (hadEditor) {
-        debugGitDiffViewerLog("diff editor cleaned up", {
-          filePath: filePathRef.current,
-        });
-      }
-    },
-    [clearDisposables]
-  );
-
-  useEffect(
-    () => () => {
-      cleanupEditor({ skipVisibilityReset: true });
-    },
-    [cleanupEditor]
-  );
-
-  const resolvedTheme = theme === "dark" ? "vs-dark" : "light";
-
-  const diffEditorOptions = useMemo<editor.IDiffEditorConstructionOptions>(
-    () => ({
-      readOnly: true,
-      renderSideBySide: true,
-      minimap: { enabled: false },
-      scrollBeyondLastLine: false,
-      fontSize: 12,
-      lineHeight: 18,
-      fontFamily:
-        "'JetBrains Mono', 'SF Mono', Monaco, 'Courier New', monospace",
-      wordWrap: "on",
-      automaticLayout: false,
-      renderOverviewRuler: false,
-      scrollbar: {
-        vertical: "hidden",
-        horizontal: "auto",
-        verticalScrollbarSize: 8,
-        horizontalScrollbarSize: 8,
-        handleMouseWheel: true,
-        alwaysConsumeMouseWheel: false,
-      },
-      lineNumbers: "on",
-      renderLineHighlight: "none",
-      hideCursorInOverviewRuler: true,
-      overviewRulerBorder: false,
-      overviewRulerLanes: 0,
-      renderValidationDecorations: "off",
-      diffWordWrap: "on",
-      renderIndicators: true,
-      renderMarginRevertIcon: false,
-      lineDecorationsWidth: 12,
-      lineNumbersMinChars: 4,
-      glyphMargin: false,
-      folding: false,
-      contextmenu: false,
-      renderWhitespace: "selection",
-      guides: {
-        indentation: false,
-      },
-      padding: { top: 2, bottom: 2 },
-      hideUnchangedRegions: {
-        enabled: true,
-        revealLineCount: 3,
-        minimumLineCount: 50,
-        contextLineCount: 3,
-      },
-    }),
-    []
-  );
-
-  const { originalModelPath, modifiedModelPath } = useMemo(() => {
-    const encodedPath = encodeURIComponent(file.filePath);
-    const baseUri = `inmemory://diff/${runId ?? "_"}/${encodedPath}`;
-    return {
-      originalModelPath: `${baseUri}?side=original`,
-      modifiedModelPath: `${baseUri}?side=modified`,
-    };
-  }, [file.filePath, runId]);
-
-  const language = useMemo(
-    () => getLanguageFromPath(file.filePath),
-    [file.filePath]
-  );
-
-  const handleEditorMount = useCallback(
-    (editorInstance: MonacoDiffEditor) => {
-      setIsEditorVisible(false);
-      diffEditorRef.current = editorInstance;
-      try {
-        setEditorRefRef.current?.(editorInstance);
-      } catch {
-        // ignore
-      }
-
-      clearDisposables();
-
-      const modifiedEditor = editorInstance.getModifiedEditor();
-      const originalEditor = editorInstance.getOriginalEditor();
-
-      const layoutEditor = (height: number) => {
-        const containerEl = containerRef.current;
-        if (!containerEl) {
-          if (!editorInstance.getContainerDomNode()) {
-            return;
-          }
-          editorInstance.layout();
-          return;
-        }
-        const width = containerEl.clientWidth;
-        if (width > 0) {
-          editorInstance.layout({ width, height });
-        } else {
-          editorInstance.layout();
-        }
-      };
-
-      const measure = () => {
-        if (diffEditorRef.current !== editorInstance) {
-          return;
-        }
-        const modifiedModel = modifiedEditor.getModel();
-        const originalModel = originalEditor.getModel();
-        if (
-          !modifiedModel ||
-          !originalModel ||
-          modifiedModel.isDisposed() ||
-          originalModel.isDisposed()
-        ) {
-          return;
-        }
-        const modifiedHeight = modifiedEditor.getContentHeight();
-        const originalHeight = originalEditor.getContentHeight();
-        const nextHeight = Math.max(
-          120,
-          Math.max(modifiedHeight, originalHeight) + 20
-        );
-
-        setEditorHeight((prev) => (prev === nextHeight ? prev : nextHeight));
-        setIsEditorVisible((prev) => (prev ? prev : true));
-        layoutEditor(nextHeight);
-      };
-
-      measure();
-
-      const disposables: Disposable[] = [
-        modifiedEditor.onDidContentSizeChange(measure),
-        originalEditor.onDidContentSizeChange(measure),
-        modifiedEditor.onDidChangeHiddenAreas(measure),
-        originalEditor.onDidChangeHiddenAreas(measure),
-      ];
-      const diffDisposable = editorInstance.onDidUpdateDiff?.(measure);
-      if (diffDisposable) {
-        disposables.push(diffDisposable);
-      }
-      disposablesRef.current = disposables;
-
-      if (containerRef.current) {
-        const observer = new ResizeObserver(() => {
-          measure();
-        });
-        observer.observe(containerRef.current);
-        resizeObserverRef.current = observer;
-      }
-
-      debugGitDiffViewerLog("diff editor mounted", {
-        filePath: file.filePath,
-        renderSideBySide: diffEditorOptions.renderSideBySide,
-        hideUnchangedRegions: diffEditorOptions.hideUnchangedRegions?.enabled,
-      });
-    },
-    [clearDisposables, diffEditorOptions, file.filePath]
-  );
 
   return (
     <div className={cn("bg-white dark:bg-neutral-900", classNames?.container)}>
       <button
         onClick={onToggle}
         className={cn(
-          "w-full px-3 py-1.5 flex items-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors text-left group pt-1 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-800 sticky z-[var(--z-sticky-low)]",
-          classNames?.button
+          "w-full px-3 py-1.5 flex items-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors text-left group pt-1 bg-white dark:bg-neutral-900 border-y border-neutral-200 dark:border-neutral-800 sticky z-[var(--z-sticky-low)]",
+          classNames?.button,
         )}
       >
         <div className="text-neutral-400 dark:text-neutral-500 group-hover:text-neutral-600 dark:group-hover:text-neutral-400">
@@ -606,7 +373,7 @@ function FileDiffRow({
       </button>
 
       {isExpanded && (
-        <div className="border-t border-neutral-200 dark:border-neutral-800 overflow-hidden">
+        <div className="overflow-hidden">
           {file.status === "renamed" ? (
             <div className="px-3 py-6 text-center text-neutral-500 dark:text-neutral-400 text-xs bg-neutral-50 dark:bg-neutral-900/50 space-y-2">
               <p className="select-none">File was renamed.</p>
@@ -625,28 +392,8 @@ function FileDiffRow({
               File was deleted
             </div>
           ) : (
-            <div
-              ref={containerRef}
-              className="relative"
-              style={{
-                height: editorHeight,
-                visibility: isEditorVisible ? "visible" : "hidden",
-              }}
-            >
-              <DiffEditor
-                original={file.oldContent}
-                modified={file.newContent}
-                language={language}
-                originalModelPath={originalModelPath}
-                modifiedModelPath={modifiedModelPath}
-                options={diffEditorOptions}
-                theme={resolvedTheme}
-                height="100%"
-                width="100%"
-                onMount={handleEditorMount}
-                keepCurrentOriginalModel={true}
-                keepCurrentModifiedModel={true}
-              />
+            <div className="relative">
+              <div ref={mergeHostRef} className="h-full" />
             </div>
           )}
         </div>
@@ -661,7 +408,6 @@ const MemoFileDiffRow = memo(FileDiffRow, (prev, next) => {
   return (
     prev.isExpanded === next.isExpanded &&
     prev.theme === next.theme &&
-    prev.runId === next.runId &&
     a.filePath === b.filePath &&
     a.oldPath === b.oldPath &&
     a.status === b.status &&
@@ -673,39 +419,3 @@ const MemoFileDiffRow = memo(FileDiffRow, (prev, next) => {
     a.newContent === b.newContent
   );
 });
-
-function getLanguageFromPath(path: string): string {
-  const ext = path.split(".").pop()?.toLowerCase();
-  const languageMap: Record<string, string> = {
-    ts: "typescript",
-    tsx: "typescript",
-    js: "javascript",
-    jsx: "javascript",
-    json: "json",
-    md: "markdown",
-    css: "css",
-    scss: "scss",
-    html: "html",
-    xml: "xml",
-    yaml: "yaml",
-    yml: "yaml",
-    py: "python",
-    go: "go",
-    rs: "rust",
-    java: "java",
-    c: "c",
-    cpp: "cpp",
-    cs: "csharp",
-    php: "php",
-    rb: "ruby",
-    swift: "swift",
-    kt: "kotlin",
-    scala: "scala",
-    sh: "shell",
-    bash: "shell",
-    sql: "sql",
-    dockerfile: "dockerfile",
-  };
-
-  return languageMap[ext || ""] || "plaintext";
-}
