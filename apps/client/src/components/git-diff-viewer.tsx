@@ -318,9 +318,6 @@ function FileDiffRow({
       merge.destroy();
       mergeViewRef.current = null;
       host.textContent = "";
-      debugGitDiffViewerLog("merge editor cleaned up", {
-        filePath: file.filePath,
-      });
     };
   }, [
     shouldRenderEditor,

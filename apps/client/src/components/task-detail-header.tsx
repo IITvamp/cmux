@@ -535,7 +535,6 @@ function SocketActions({
         repoFullName: target.repoFullName,
         baseRef: target.baseRef,
         headRef: target.headRef ?? "",
-        includeContents: false,
       }),
       enabled:
         Boolean(target.repoFullName?.trim()) && Boolean(target.headRef?.trim()),
