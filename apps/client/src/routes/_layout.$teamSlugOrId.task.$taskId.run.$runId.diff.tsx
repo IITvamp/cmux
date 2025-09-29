@@ -173,7 +173,7 @@ export const Route = createFileRoute(
           (branch) => branch.name === task.baseBranch,
         );
 
-        const prefetches = Array.from(targetRepos).map((repoFullName) => {
+        const prefetches = Array.from(targetRepos).map(async (repoFullName) => {
           const metadata =
             trimmedProjectFullName && repoFullName === trimmedProjectFullName
               ? baseBranchMeta
