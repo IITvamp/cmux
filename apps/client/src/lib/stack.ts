@@ -21,51 +21,13 @@ export const stackClientApp = new StackClientApp({
   },
 });
 
-cachedGetUser(stackClientApp).then(async (user) => {
-  if (!user) {
-    console.warn("[StackAuth] No user; convex auth not ready");
-    signalConvexAuthReady(false);
-    return;
-  }
-  const authJson = await user.getAuthJson();
-  if (!authJson.accessToken) {
-    console.warn("[StackAuth] No access token; convex auth not ready");
-    signalConvexAuthReady(false);
-    return;
-  }
-  let isFirstTime = true;
-  convexQueryClient.convexClient.setAuth(
-    async ({ forceRefreshToken }) => {
-      // First time we get the auth token, we use the cached one. In subsequent calls, we call stack to get the latest auth token.
-      if (isFirstTime) {
-        isFirstTime = false;
-        return authJson.accessToken;
-      }
-      if (forceRefreshToken) {
-        const user = await stackClientApp.getUser();
-        if (!user) {
-          throw new Error("User not found");
-        }
-        const authJson = await user.getAuthJson();
-        const accessToken = authJson.accessToken;
-        if (!accessToken) {
-          throw new Error("No access token");
-        }
-        return accessToken;
-      }
-      const newAuthJson = await user.getAuthJson();
-      if (!newAuthJson.accessToken) {
-        console.warn("[StackAuth] No access token; convex auth not ready");
-        signalConvexAuthReady(false);
-        return;
-      }
-      return newAuthJson.accessToken;
-    },
-    (isAuthenticated) => {
-      signalConvexAuthReady(isAuthenticated);
-    }
-  );
-});
+convexQueryClient.convexClient.setAuth(
+  stackClientApp.getConvexClientAuth({ tokenStore: "cookie" }),
+  (isAuthenticated) => {
+    console.log("yee", isAuthenticated);
+    signalConvexAuthReady(isAuthenticated);
+  },
+);
 
 const fetchWithAuth = (async (request: Request) => {
   const user = await cachedGetUser(stackClientApp);

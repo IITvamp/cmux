@@ -26,7 +26,8 @@
   },
   "dependencies": {
     "@convex-dev/migrations": "^0.2.9",
-    "@stackframe/js": "^2.8.36",
+    "@stackframe/js": "^2.8.41",
+    "@stackframe/stack": "^2.8.41",
     "@t3-oss/env-core": "^0.13.8",
     "convex": "1.27.1",
     "convex-helpers": "^0.1.104",
