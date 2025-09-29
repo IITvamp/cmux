@@ -774,6 +774,7 @@ function SocketActions({
             isMerging ||
             (!prIsOpen && !hasChanges)
           }
+          prCount={repoFullNames.length}
         />
       )}
       {!prIsOpen && !prIsMerged && ENABLE_MERGE_BUTTON && (

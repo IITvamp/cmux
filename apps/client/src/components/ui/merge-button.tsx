@@ -10,6 +10,7 @@ interface MergeButtonProps {
   isOpen?: boolean;
   className?: string;
   disabled?: boolean;
+  prCount?: number;
 }
 
 const mergeOptions = [
@@ -38,6 +39,7 @@ export function MergeButton({
   isOpen = false,
   className,
   disabled = false,
+  prCount = 1,
 }: MergeButtonProps) {
   const [selectedMethod, setSelectedMethod] = useState<MergeMethod>("squash");
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -61,7 +63,7 @@ export function MergeButton({
         )}
       >
         <GitPullRequest className="w-3.5 h-3.5" />
-        Open PRs
+        {prCount === 1 ? "Open PR" : "Open PRs"}
       </button>
     );
   }
