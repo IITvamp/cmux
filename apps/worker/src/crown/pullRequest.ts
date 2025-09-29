@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import { log } from "../logger";
 import { execAsync, WORKSPACE_ROOT } from "./utils";
 import type {
@@ -26,22 +28,22 @@ function mapGhState(
   return "unknown";
 }
 
-type GhPrCreateResponse = {
-  url?: string;
-  number?: number | string;
-  state?: string;
-  isDraft?: boolean;
-};
+const ghPrCreateResponseSchema = z
+  .object({
+    url: z.string(),
+    number: z.union([z.number(), z.string()]).optional(),
+    state: z.string().optional(),
+    isDraft: z.boolean().optional(),
+  });
+
+type GhPrCreateResponse = z.infer<typeof ghPrCreateResponseSchema>;
 
 function parseGhPrCreateResponse(input: unknown): GhPrCreateResponse | null {
-  if (!input || typeof input !== "object") {
+  const result = ghPrCreateResponseSchema.safeParse(input);
+  if (!result.success) {
     return null;
   }
-  const candidate = input as GhPrCreateResponse;
-  if (typeof candidate.url !== "string") {
-    return null;
-  }
-  return candidate;
+  return result.data;
 }
 
 export async function createPullRequestIfEnabled(options: {
