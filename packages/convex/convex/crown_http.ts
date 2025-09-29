@@ -1,3 +1,9 @@
+import type {
+  CrownWorkerCheckResponse,
+  WorkerAllRunsCompleteResponse,
+  WorkerRunStatus,
+  WorkerTaskRunResponse,
+} from "@cmux/shared";
 import { z } from "zod";
 import {
   verifyTaskRunToken,
@@ -254,7 +260,7 @@ export const crownEvaluate = httpAction(async (ctx, req) => {
 
   if (!workerAuth) {
     const stackAuthError = ensureStackAuth(req);
-    if (stackAuthError) return stackAuthError;
+    if (stackAuthError) throw stackAuthError;
   }
 
   const parsed = await ensureJsonRequest(req);
@@ -301,7 +307,7 @@ export const crownSummarize = httpAction(async (ctx, req) => {
 
   if (!workerAuth) {
     const stackAuthError = ensureStackAuth(req);
-    if (stackAuthError) return stackAuthError;
+    if (stackAuthError) throw stackAuthError;
   }
 
   const parsed = await ensureJsonRequest(req);
@@ -398,7 +404,7 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
       }
     );
 
-    return jsonResponse({
+    const response: WorkerTaskRunResponse = {
       ok: true,
       taskRun: {
         id: taskRun._id,
@@ -421,7 +427,8 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
             reviewPeriodMinutes: containerSettings.reviewPeriodMinutes,
           }
         : null,
-    });
+    };
+    return jsonResponse(response);
   }
 
   // For "all-complete" check, check if all runs for a task are complete
@@ -471,12 +478,13 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
       statuses,
     });
 
-    return jsonResponse({
+    const response: WorkerAllRunsCompleteResponse = {
       ok: true,
       taskId,
       allComplete,
       statuses,
-    });
+    };
+    return jsonResponse(response);
   }
 
   // Default crown check logic
@@ -563,14 +571,14 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
 
   const runsPayload = runsForTeam.map((run) => ({
     id: run._id,
-    status: run.status,
+    status: run.status as WorkerRunStatus,
     agentName: run.agentName ?? null,
     newBranch: run.newBranch ?? null,
     exitCode: run.exitCode ?? null,
     completedAt: run.completedAt ?? null,
   }));
 
-  return jsonResponse({
+  const response: CrownWorkerCheckResponse = {
     ok: true,
     taskId,
     allRunsFinished,
@@ -592,7 +600,8 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
       autoPrEnabled: workspaceSettings?.autoPrEnabled ?? false,
     },
     runs: runsPayload,
-  });
+  };
+  return jsonResponse(response);
 });
 
 export const crownWorkerFinalize = httpAction(async (ctx, req) => {
@@ -736,7 +745,7 @@ export const crownWorkerComplete = httpAction(async (ctx, req) => {
     }
   );
 
-  return jsonResponse({
+  const response: WorkerTaskRunResponse = {
     ok: true,
     taskRun: updatedRun
       ? {
@@ -761,7 +770,8 @@ export const crownWorkerComplete = httpAction(async (ctx, req) => {
           reviewPeriodMinutes: containerSettings.reviewPeriodMinutes,
         }
       : null,
-  });
+  };
+  return jsonResponse(response);
 });
 
 export const crownWorkerScheduleStop = httpAction(async (ctx, req) => {
