@@ -3,6 +3,7 @@ import { Dropdown } from "@/components/ui/dropdown";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { useSocketSuspense } from "@/contexts/socket/use-socket";
 import { isElectron } from "@/lib/electron";
+import { cn } from "@/lib/utils";
 import { normalizeGitRef } from "@/lib/refWithOrigin";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
 import type { Doc, Id } from "@cmux/convex/dataModel";
@@ -705,46 +706,52 @@ function SocketActions({
 
   const hasAnyRemotePr = pullRequests.some((pr) => pr.url);
 
-  const repoDropdown =
-    repoFullNames.length > 1 ? (
-      <Dropdown.Root>
-        <Dropdown.Trigger
-          className="flex items-center justify-center rounded border border-neutral-300 bg-white px-1.5 py-1 text-xs text-neutral-600 shadow-sm hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
-          aria-label="View PRs by repository"
-        >
-          <ChevronDown className="h-3 w-3" />
-        </Dropdown.Trigger>
-        <Dropdown.Portal>
-          <Dropdown.Positioner sideOffset={5}>
-            <Dropdown.Popup className="min-w-[200px]">
-              <Dropdown.Arrow />
-              {repoFullNames.map((repoName) => {
-                const pr = pullRequestMap.get(repoName);
-                const hasUrl = Boolean(pr?.url);
-                return (
-                  <Dropdown.Item
-                    key={repoName}
-                    disabled={!hasUrl}
-                    onClick={() => {
-                      if (pr?.url) {
-                        window.open(pr.url, "_blank", "noopener,noreferrer");
-                      }
-                    }}
-                  >
-                    <span className="flex w-full items-center justify-between gap-2">
-                      <span className="truncate">{repoName}</span>
-                      <span className="text-[10px] uppercase text-neutral-400">
-                        {pr?.state ?? "none"}
-                      </span>
+  const renderRepoDropdown = () => (
+    <Dropdown.Root>
+      <Dropdown.Trigger
+        aria-label="View PRs by repository"
+        className={cn(
+          "flex items-center justify-center px-2 py-1 h-[26px]",
+          "bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white",
+          "border border-neutral-300 dark:border-neutral-700",
+          "rounded-r hover:bg-neutral-300 dark:hover:bg-neutral-700",
+          "disabled:opacity-60 disabled:cursor-not-allowed"
+        )}
+        disabled={repoFullNames.every((repoName) => !pullRequestMap.get(repoName)?.url)}
+      >
+        <ChevronDown className="w-3.5 h-3.5" />
+      </Dropdown.Trigger>
+      <Dropdown.Portal>
+        <Dropdown.Positioner sideOffset={5}>
+          <Dropdown.Popup className="min-w-[200px]">
+            <Dropdown.Arrow />
+            {repoFullNames.map((repoName) => {
+              const pr = pullRequestMap.get(repoName);
+              const hasUrl = Boolean(pr?.url);
+              return (
+                <Dropdown.Item
+                  key={repoName}
+                  disabled={!hasUrl}
+                  onClick={() => {
+                    if (pr?.url) {
+                      window.open(pr.url, "_blank", "noopener,noreferrer");
+                    }
+                  }}
+                >
+                  <span className="flex w-full items-center justify-between gap-2">
+                    <span className="truncate">{repoName}</span>
+                    <span className="text-[10px] uppercase text-neutral-400">
+                      {pr?.state ?? "none"}
                     </span>
-                  </Dropdown.Item>
-                );
-              })}
-            </Dropdown.Popup>
-          </Dropdown.Positioner>
-        </Dropdown.Portal>
-      </Dropdown.Root>
-    ) : null;
+                  </span>
+                </Dropdown.Item>
+              );
+            })}
+          </Dropdown.Popup>
+        </Dropdown.Positioner>
+      </Dropdown.Portal>
+    </Dropdown.Root>
+  );
 
   return (
     <>
@@ -779,7 +786,19 @@ function SocketActions({
         </button>
       )}
       {hasAnyRemotePr ? (
-        <div className="flex items-center gap-1">
+        repoFullNames.length > 1 ? (
+          <div className="flex items-stretch">
+            <button
+              onClick={handleViewPRs}
+              className="flex items-center gap-1.5 px-3 py-1 h-[26px] bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 border-r-0 rounded-l hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+              disabled={isOpeningPr || isCreatingPr || isMerging}
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              View PRs
+            </button>
+            {renderRepoDropdown()}
+          </div>
+        ) : (
           <button
             onClick={handleViewPRs}
             className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
@@ -788,8 +807,7 @@ function SocketActions({
             <ExternalLink className="w-3.5 h-3.5" />
             View PRs
           </button>
-          {repoDropdown}
-        </div>
+        )
       ) : (
         <button
           onClick={handleOpenDraftPRs}
