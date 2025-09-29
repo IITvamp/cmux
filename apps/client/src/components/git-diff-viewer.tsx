@@ -27,7 +27,13 @@ import {
   lineNumbers,
 } from "@codemirror/view";
 import { MergeView } from "@codemirror/merge";
-import { StreamLanguage } from "@codemirror/language";
+import {
+  StreamLanguage,
+  HighlightStyle,
+  defaultHighlightStyle,
+  syntaxHighlighting,
+} from "@codemirror/language";
+import { tags as t } from "@lezer/highlight";
 import { javascript } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
 import { css as cssLanguage } from "@codemirror/lang-css";
@@ -88,6 +94,49 @@ type FileGroup = {
   patch?: string;
   isBinary: boolean;
 };
+
+const darkHighlightStyle = HighlightStyle.define([
+  {
+    tag: [t.keyword, t.controlKeyword, t.operatorKeyword, t.moduleKeyword],
+    color: "#f472b6",
+  },
+  {
+    tag: [t.typeName, t.className, t.tagName, t.attributeName],
+    color: "#38bdf8",
+  },
+  {
+    tag: [t.string, t.special(t.string), t.character],
+    color: "#fbbf24",
+  },
+  {
+    tag: [t.number, t.bool, t.null, t.atom],
+    color: "#facc15",
+  },
+  {
+    tag: [t.function(t.variableName), t.function(t.propertyName)],
+    color: "#c4b5fd",
+  },
+  {
+    tag: t.propertyName,
+    color: "#5eead4",
+  },
+  {
+    tag: t.comment,
+    color: "#9ca3af",
+    fontStyle: "italic",
+  },
+  {
+    tag: [t.operator, t.punctuation],
+    color: "#fb7185",
+  },
+]);
+
+const GITHUB_ADDITION_LINE_BG = "#dafbe1";
+const GITHUB_ADDITION_GUTTER_BG = "#aceebb";
+const GITHUB_ADDITION_TEXT_BG = "#aceebb";
+const GITHUB_DELETION_LINE_BG = "#ffebe9";
+const GITHUB_DELETION_GUTTER_BG = "#ffcecb";
+const GITHUB_DELETION_TEXT_BG = "#ffcecb";
 
 function debugGitDiffViewerLog(
   message: string,
@@ -624,13 +673,81 @@ function createBaseExtensions(theme: string | undefined): Extension[] {
       },
       ".cm-change.cm-change-insert": {
         backgroundColor: isDark
-          ? "rgba(34, 197, 94, 0.18)"
-          : "rgba(34, 197, 94, 0.16)",
+          ? "rgba(52, 211, 153, 0.22)"
+          : GITHUB_ADDITION_TEXT_BG,
+        textDecoration: "none",
       },
       ".cm-change.cm-change-delete": {
         backgroundColor: isDark
-          ? "rgba(248, 113, 113, 0.18)"
-          : "rgba(248, 113, 113, 0.16)",
+          ? "rgba(252, 165, 165, 0.22)"
+          : GITHUB_DELETION_TEXT_BG,
+        textDecoration: "none",
+      },
+      ".cm-mergeView ins.cm-insertedLine": {
+        textDecoration: "none",
+        backgroundColor: isDark ? "rgba(52, 211, 153, 0.22)" : GITHUB_ADDITION_TEXT_BG,
+      },
+      ".cm-mergeView del.cm-deletedLine": {
+        textDecoration: "none",
+        backgroundColor: isDark ? "rgba(252, 165, 165, 0.22)" : GITHUB_DELETION_TEXT_BG,
+      },
+      "&.cm-merge-b .cm-changedLine": {
+        backgroundColor: isDark
+          ? "rgba(52, 211, 153, 0.12)"
+          : GITHUB_ADDITION_LINE_BG,
+      },
+      "&.cm-merge-a .cm-changedLine": {
+        backgroundColor: isDark
+          ? "rgba(252, 165, 165, 0.12)"
+          : GITHUB_DELETION_LINE_BG,
+      },
+      "&.cm-merge-b .cm-inlineChangedLine": {
+        backgroundColor: isDark
+          ? "rgba(52, 211, 153, 0.12)"
+          : GITHUB_ADDITION_LINE_BG,
+      },
+      "&.cm-merge-a .cm-inlineChangedLine": {
+        backgroundColor: isDark
+          ? "rgba(252, 165, 165, 0.12)"
+          : GITHUB_DELETION_LINE_BG,
+      },
+      "& .cm-deletedChunk": {
+        backgroundColor: isDark
+          ? "rgba(252, 165, 165, 0.12)"
+          : GITHUB_DELETION_LINE_BG,
+      },
+      "& .cm-insertedChunk": {
+        backgroundColor: isDark
+          ? "rgba(52, 211, 153, 0.12)"
+          : GITHUB_ADDITION_LINE_BG,
+      },
+      "&.cm-merge-b .cm-gutterElement.cm-changedLineGutter": {
+        backgroundColor: isDark
+          ? "rgba(16, 185, 129, 0.24)"
+          : GITHUB_ADDITION_GUTTER_BG,
+      },
+      "&.cm-merge-a .cm-gutterElement.cm-changedLineGutter": {
+        backgroundColor: isDark
+          ? "rgba(248, 113, 113, 0.24)"
+          : GITHUB_DELETION_GUTTER_BG,
+      },
+      "&.cm-merge-b .cm-changedText": {
+        backgroundImage: `linear-gradient(${isDark ? "rgba(45, 212, 191, 0.6)" : GITHUB_ADDITION_TEXT_BG}, ${
+          isDark ? "rgba(45, 212, 191, 0.6)" : GITHUB_ADDITION_TEXT_BG
+        })`,
+        backgroundSize: "100% 2px",
+        backgroundRepeat: "no-repeat",
+        backgroundPosition: "0 100%",
+        textDecoration: "none",
+      },
+      "&.cm-merge-a .cm-changedText": {
+        backgroundImage: `linear-gradient(${isDark ? "rgba(248, 113, 113, 0.65)" : GITHUB_DELETION_TEXT_BG}, ${
+          isDark ? "rgba(248, 113, 113, 0.65)" : GITHUB_DELETION_TEXT_BG
+        })`,
+        backgroundSize: "100% 2px",
+        backgroundRepeat: "no-repeat",
+        backgroundPosition: "0 100%",
+        textDecoration: "none",
       },
       ".cm-panels": {
         backgroundColor: "transparent",
@@ -649,6 +766,10 @@ function createBaseExtensions(theme: string | undefined): Extension[] {
     highlightActiveLine(),
     highlightActiveLineGutter(),
     lineNumbers(),
+    syntaxHighlighting(
+      isDark ? darkHighlightStyle : defaultHighlightStyle,
+      { fallback: true }
+    ),
     baseTheme,
   ];
 }
