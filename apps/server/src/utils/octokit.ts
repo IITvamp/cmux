@@ -1,5 +1,8 @@
 import { Octokit } from "octokit";
 
+const MAX_RATE_LIMIT_RETRIES = 5;
+const MAX_RATE_LIMIT_WAIT_SECONDS = 15;
+
 type ThrottleOptions = {
   method?: string;
   url?: string;
@@ -19,9 +22,10 @@ export function getOctokit(token: string): Octokit {
         _octokit: Octokit,
         retryCount: number
       ) => {
-        const maxRetries = 2;
-        const maxWaitSeconds = 15; // avoid huge waits in tests
-        if (retryCount < maxRetries && retryAfter <= maxWaitSeconds) {
+        if (
+          retryCount < MAX_RATE_LIMIT_RETRIES &&
+          retryAfter <= MAX_RATE_LIMIT_WAIT_SECONDS
+        ) {
           console.warn(
             `GitHub rate limit on ${options.method} ${options.url}. Retrying after ${retryAfter}s (retry #${retryCount + 1}).`
           );
@@ -36,9 +40,10 @@ export function getOctokit(token: string): Octokit {
         _octokit: Octokit,
         retryCount: number
       ) => {
-        const maxRetries = 2;
-        const maxWaitSeconds = 15; // avoid huge waits in tests
-        if (retryCount < maxRetries && retryAfter <= maxWaitSeconds) {
+        if (
+          retryCount < MAX_RATE_LIMIT_RETRIES &&
+          retryAfter <= MAX_RATE_LIMIT_WAIT_SECONDS
+        ) {
           console.warn(
             `GitHub secondary rate limit on ${options.method} ${options.url}. Retrying after ${retryAfter}s (retry #${retryCount + 1}).`
           );
