@@ -1,12 +1,15 @@
 import { RunDiffSection } from "@/components/RunDiffSection";
+import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { Dropdown } from "@/components/ui/dropdown";
 import { normalizeGitRef } from "@/lib/refWithOrigin";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
-import { useQuery as useRQ } from "@tanstack/react-query";
+import { useMutation, useQuery as useRQ } from "@tanstack/react-query";
 import { useQuery as useConvexQuery } from "convex/react";
 import { ExternalLink } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
+import { client as wwwOpenAPIClient } from "@cmux/www-openapi-client/client.gen";
+import { toast } from "sonner";
 
 type PullRequestDetailViewProps = {
   teamSlugOrId: string;
@@ -94,6 +97,39 @@ export function PullRequestDetailView({
 
   const [diffControls, setDiffControls] = useState<DiffControls | null>(null);
 
+  const mergePrMutation = useMutation({
+    mutationFn: async (method: MergeMethod) => {
+      const url = `/api/integrations/github/prs/${owner}/${repo}/${number}/merge`;
+      const res = await wwwOpenAPIClient.post({
+        url,
+        headers: { "Content-Type": "application/json" },
+        body: { team: teamSlugOrId, method },
+      });
+      if (res.error) {
+        // Attempt to read response text for context
+        const text = await res.response.text();
+        throw new Error(text || `HTTP ${res.response.status}`);
+      }
+      return res.data as unknown as { merged: boolean; sha?: string; message?: string; html_url?: string };
+    },
+    onMutate: (method) => {
+      return toast.loading(
+        method === "squash"
+          ? "Squashing and merging PR..."
+          : method === "rebase"
+            ? "Rebasing and merging PR..."
+            : "Merging PR...",
+      );
+    },
+    onSuccess: async (_data, _vars, toastId) => {
+      toast.success("Pull request merged", { id: toastId });
+    },
+    onError: (error, _vars, toastId) => {
+      const msg = error instanceof Error ? error.message : String(error);
+      toast.error("Failed to merge PR", { id: toastId, description: msg.slice(0, 500) });
+    },
+  });
+
   if (!currentPR) {
     return (
       <div className="h-full w-full flex items-center justify-center text-neutral-500 dark:text-neutral-400">
@@ -151,6 +187,14 @@ export function PullRequestDetailView({
                     Open
                   </span>
                 )}
+                {!currentPR.merged ? (
+                  <MergeButton
+                    isOpen
+                    prCount={1}
+                    disabled={mergePrMutation.isPending}
+                    onMerge={(method) => mergePrMutation.mutate(method)}
+                  />
+                ) : null}
                 {currentPR.htmlUrl ? (
                   <a
                     className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none whitespace-nowrap"

@@ -234,3 +234,188 @@ githubPrsRouter.openapi(
     }
   }
 );
+
+// Merge a single pull request by owner/repo/number using the team's active installation
+const MergeParams = z
+  .object({
+    owner: z.string().min(1),
+    repo: z.string().min(1),
+    number: z.coerce.number().int().positive(),
+  })
+  .openapi("GithubPrMergeParams");
+
+const MergeBody = z
+  .object({
+    team: z.string().min(1).openapi({ description: "Team slug or UUID" }),
+    method: z
+      .enum(["squash", "rebase", "merge"]) // GitHub merge methods
+      .openapi({ description: "Merge strategy" }),
+  })
+  .openapi("GithubPrMergeBody");
+
+const MergeResponse = z
+  .object({
+    merged: z.boolean(),
+    sha: z.string().optional(),
+    message: z.string().optional(),
+    html_url: z.string().url().optional(),
+  })
+  .openapi("GithubPrMergeResponse");
+
+githubPrsRouter.openapi(
+  createRoute({
+    method: "post" as const,
+    path: "/integrations/github/prs/{owner}/{repo}/{number}/merge",
+    tags: ["Integrations"],
+    summary: "Merge a GitHub pull request for a team",
+    request: {
+      params: MergeParams,
+      body: {
+        content: {
+          "application/json": { schema: MergeBody },
+        },
+        required: true, // enforce Content-Type validation
+      },
+    },
+    responses: {
+      200: {
+        description: "OK",
+        content: { "application/json": { schema: MergeResponse } },
+      },
+      400: { description: "Bad request" },
+      401: { description: "Unauthorized" },
+      404: { description: "Not found" },
+      501: { description: "Not configured" },
+    },
+  }),
+  async (c) => {
+    const accessToken = await getAccessTokenFromRequest(c.req.raw);
+    if (!accessToken) return c.text("Unauthorized", 401);
+
+    const { owner, repo, number } = c.req.valid("param");
+    const { team, method } = c.req.valid("json");
+
+    // Fetch provider connections for this team using Convex (enforces membership)
+    const convex = getConvex({ accessToken });
+    const connections = await convex.query(api.github.listProviderConnections, {
+      teamSlugOrId: team,
+    });
+
+    type Conn = {
+      installationId: number;
+      accountLogin?: string | null;
+      isActive?: boolean | null;
+    };
+
+    // Choose the GitHub App installation matching the repo owner if available, otherwise any active
+    const normalizedOwner = owner.toLowerCase();
+    const target = (connections as Conn[]).find(
+      (co: Conn) =>
+        co.isActive !== false &&
+        (co.accountLogin ?? "").toLowerCase() === normalizedOwner,
+    )
+      ?? (connections as Conn[]).find((co: Conn) => co.isActive !== false);
+
+    if (!target) return c.text("Installation not found for team", 404);
+
+    const octokit = new Octokit({
+      authStrategy: createAppAuth,
+      auth: {
+        appId: env.CMUX_GITHUB_APP_ID,
+        privateKey: githubPrivateKey,
+        installationId: target.installationId,
+      },
+    });
+
+    // Load PR details
+    const prRes = await octokit.request(
+      "GET /repos/{owner}/{repo}/pulls/{pull_number}",
+      { owner, repo, pull_number: number },
+    );
+
+    const pr = prRes.data as unknown as {
+      id?: number;
+      number: number;
+      state?: string;
+      draft?: boolean;
+      merged_at?: string | null;
+      node_id?: string;
+      base?: { ref?: string; sha?: string; repo?: { id?: number } };
+      head?: { ref?: string; sha?: string };
+      html_url?: string;
+      title?: string;
+    };
+
+    // If draft, mark ready using GraphQL mutation (REST draft toggle can be finicky)
+    if (pr.draft && pr.node_id) {
+      const mutation = `
+        mutation($pullRequestId: ID!) {
+          markPullRequestReadyForReview(input: { pullRequestId: $pullRequestId }) {
+            pullRequest { id isDraft }
+          }
+        }
+      `;
+      try {
+        await octokit.graphql(mutation, { pullRequestId: pr.node_id });
+      } catch (_e) {
+        // If marking ready fails, continue to attempt merge; GitHub may accept merge on draft in some states
+      }
+    }
+
+    // If closed but not merged, try reopening
+    if ((pr.state ?? "").toLowerCase() === "closed" && !pr.merged_at) {
+      try {
+        await octokit.rest.pulls.update({
+          owner,
+          repo,
+          pull_number: number,
+          state: "open",
+        });
+      } catch (_e) {
+        // ignore reopen failure; merge might still succeed if already open
+      }
+    }
+
+    // Attempt merge
+    const mergeRes = await octokit.rest.pulls.merge({
+      owner,
+      repo,
+      pull_number: number,
+      merge_method: method,
+      commit_title: pr.title && pr.title.length > 0 ? pr.title.slice(0, 72) : undefined,
+      commit_message: `Merged by cmux via PR view for ${owner}/${repo}#${number}.`,
+    });
+
+    // Upsert back into Convex to update the UI reactively
+    const mergedAt = (mergeRes.data as unknown as { merged_at?: string | null }).merged_at;
+    const now = Date.now();
+    await convex.mutation(api.github_prs.upsertFromServer, {
+      teamSlugOrId: team,
+      installationId: target.installationId,
+      repoFullName: `${owner}/${repo}`,
+      number,
+      record: {
+        providerPrId: pr.id,
+        repositoryId: pr.base?.repo?.id,
+        title: pr.title ?? "",
+        state: "closed", // a merged PR is closed
+        merged: true,
+        draft: false,
+        htmlUrl: pr.html_url ?? undefined,
+        baseRef: pr.base?.ref ?? undefined,
+        headRef: pr.head?.ref ?? undefined,
+        baseSha: pr.base?.sha ?? undefined,
+        headSha: pr.head?.sha ?? undefined,
+        updatedAt: now,
+        mergedAt: mergedAt ? Date.parse(mergedAt) : now,
+      },
+    });
+
+    return c.json({
+      merged: Boolean(mergeRes.data.merged),
+      sha: mergeRes.data.sha,
+      message: mergeRes.data.message,
+      html_url: (mergeRes.data as unknown as { html_url?: string }).html_url,
+    });
+  },
+);
