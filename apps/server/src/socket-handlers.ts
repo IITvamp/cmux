@@ -1,5 +1,4 @@
 import { api } from "@cmux/convex/api";
-import type { Doc } from "@cmux/convex/dataModel";
 import {
   ArchiveTaskSchema,
   GitFullDiffRequestSchema,
@@ -18,10 +17,7 @@ import {
   type FileInfo,
 } from "@cmux/shared";
 import {
-  reconcilePullRequestRecords,
-  type AggregatePullRequestSummary,
   type PullRequestActionResult,
-  type RunPullRequestState,
   type StoredPullRequestInfo,
 } from "@cmux/shared/pull-request-state";
 import fuzzysort from "fuzzysort";
@@ -49,11 +45,9 @@ import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken";
 import {
   createDraftPr,
   createReadyPr,
-  fetchPrByHead,
   fetchPrDetail,
   markPrReady,
   mergePr,
-  parseRepoFromUrl,
   reopenPr,
 } from "./utils/githubPr";
 import { getOctokit } from "./utils/octokit";
@@ -62,196 +56,16 @@ import { refreshGitHubData } from "./utils/refreshGitHubData";
 import { runWithAuth, runWithAuthToken } from "./utils/requestContext";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance";
 import { getProjectPaths } from "./workspace";
+import {
+  collectRepoFullNamesForRun,
+  EMPTY_AGGREGATE,
+  loadPullRequestDetail,
+  persistPullRequestResults,
+  splitRepoFullName,
+  toPullRequestActionResult,
+} from "./pullRequestState";
 
 const execAsync = promisify(exec);
-
-type TaskDoc = Doc<"tasks">;
-type TaskRunDoc = Doc<"taskRuns">;
-
-type PersistedPullRequestState = {
-  records: StoredPullRequestInfo[];
-  aggregate: AggregatePullRequestSummary;
-};
-
-const EMPTY_AGGREGATE: AggregatePullRequestSummary = {
-  state: "none",
-  isDraft: false,
-  mergeStatus: "none",
-};
-
-async function collectRepoFullNamesForRun(
-  run: TaskRunDoc,
-  task: TaskDoc,
-  teamSlugOrId: string
-): Promise<string[]> {
-  const repos = new Set<string>();
-  const project = task.projectFullName?.trim();
-  if (project) {
-    repos.add(project);
-  }
-  if (run.environmentId) {
-    try {
-      const environment = await getConvex().query(api.environments.get, {
-        teamSlugOrId,
-        id: run.environmentId,
-      });
-      environment?.selectedRepos?.forEach((repo) => {
-        const trimmed = typeof repo === "string" ? repo.trim() : "";
-        if (trimmed) {
-          repos.add(trimmed);
-        }
-      });
-    } catch (error) {
-      serverLogger.error(
-        "Failed to load environment repos for run",
-        error
-      );
-    }
-  }
-  return Array.from(repos);
-}
-
-function mapGitHubStateToRunState({
-  state,
-  draft,
-  merged,
-}: {
-  state?: string;
-  draft?: boolean;
-  merged?: boolean;
-}): RunPullRequestState {
-  if (merged) {
-    return "merged";
-  }
-  if (draft) {
-    return "draft";
-  }
-  const normalized = (state ?? "").toLowerCase();
-  if (normalized === "open") {
-    return "open";
-  }
-  if (normalized === "closed") {
-    return "closed";
-  }
-  if (!normalized) {
-    return "none";
-  }
-  return "unknown";
-}
-
-function toPullRequestActionResult(
-  repoFullName: string,
-  data: {
-    html_url?: string;
-    number?: number;
-    state?: string;
-    draft?: boolean;
-    merged_at?: string | null;
-  }
-): PullRequestActionResult {
-  const merged = Boolean(data.merged_at);
-  return {
-    repoFullName,
-    url: data.html_url,
-    number: data.number,
-    state: mapGitHubStateToRunState({
-      state: data.state,
-      draft: data.draft,
-      merged,
-    }),
-    isDraft: data.draft,
-  };
-}
-
-function splitRepoFullName(repoFullName: string): { owner: string; repo: string } | null {
-  const [owner, repo] = repoFullName.split("/");
-  if (!owner || !repo) {
-    return null;
-  }
-  return { owner, repo };
-}
-
-async function loadPullRequestDetail({
-  token,
-  repoFullName,
-  owner,
-  repo,
-  branchName,
-  number,
-}: {
-  token: string;
-  repoFullName: string;
-  owner: string;
-  repo: string;
-  branchName: string;
-  number?: number;
-}): Promise<Awaited<ReturnType<typeof fetchPrDetail>> | null> {
-  let detail: Awaited<ReturnType<typeof fetchPrDetail>> | null = null;
-
-  if (number) {
-    try {
-      detail = await fetchPrDetail(token, owner, repo, number);
-    } catch (error) {
-      serverLogger.warn(
-        `[PullRequest] Failed to fetch PR detail for ${repoFullName}#${number}: ${String(error)}`
-      );
-    }
-  }
-
-  if (!detail) {
-    try {
-      const basic = await fetchPrByHead(token, owner, repo, owner, branchName);
-      if (basic) {
-        detail = await fetchPrDetail(token, owner, repo, basic.number);
-      }
-    } catch (error) {
-      serverLogger.warn(
-        `[PullRequest] Failed to locate PR by branch for ${repoFullName}: ${String(error)}`
-      );
-    }
-  }
-
-  return detail;
-}
-
-async function persistPullRequestResults({
-  teamSlugOrId,
-  run,
-  task,
-  repoFullNames,
-  results,
-}: {
-  teamSlugOrId: string;
-  run: TaskRunDoc;
-  task: TaskDoc;
-  repoFullNames: readonly string[];
-  results: PullRequestActionResult[];
-}): Promise<PersistedPullRequestState> {
-  const existing = (run.pullRequests as StoredPullRequestInfo[] | undefined) ?? [];
-  const { records, aggregate } = reconcilePullRequestRecords({
-    existing,
-    updates: results,
-    repoFullNames,
-  });
-
-  await getConvex().mutation(api.taskRuns.updatePullRequestState, {
-    teamSlugOrId,
-    id: run._id,
-    state: aggregate.state,
-    isDraft: aggregate.isDraft,
-    number: aggregate.number,
-    url: aggregate.url,
-    pullRequests: records,
-  });
-
-  await getConvex().mutation(api.tasks.updateMergeStatus, {
-    teamSlugOrId,
-    id: task._id,
-    mergeStatus: aggregate.mergeStatus,
-  });
-
-  return { records, aggregate };
-}
 
 const GitSocketDiffRequestSchema = z.object({
   headRef: z.string(),
@@ -268,7 +82,7 @@ const GitSocketDiffRequestSchema = z.object({
 export function setupSocketHandlers(
   rt: RealtimeServer,
   gitDiffManager: GitDiffManager,
-  defaultRepo?: GitRepoInfo | null
+  defaultRepo?: GitRepoInfo | null,
 ) {
   let hasRefreshedGithub = false;
   let dockerEventsStarted = false;
@@ -320,7 +134,7 @@ export function setupSocketHandlers(
       };
       serverLogger.info(
         `Sending default-repo to new client ${socket.id}:`,
-        defaultRepoData
+        defaultRepoData,
       );
       socket.emit("default-repo", defaultRepoData);
     }
@@ -350,7 +164,7 @@ export function setupSocketHandlers(
       runWithAuth(initialToken, initialAuthJson, () => {
         if (!initialTeam) {
           serverLogger.warn(
-            "No team provided on socket handshake; skipping initial GitHub refresh"
+            "No team provided on socket handshake; skipping initial GitHub refresh",
           );
           return;
         }
@@ -363,14 +177,14 @@ export function setupSocketHandlers(
         dockerEventsStarted = true;
         runWithAuth(initialToken, initialAuthJson, () => {
           serverLogger.info(
-            "Starting Docker container state sync after authenticated connect"
+            "Starting Docker container state sync after authenticated connect",
           );
           DockerVSCodeInstance.startContainerStateSync();
         });
       }
     } else if (!initialToken) {
       serverLogger.info(
-        "Skipping initial GitHub refresh: no auth token on connect"
+        "Skipping initial GitHub refresh: no auth token on connect",
       );
     }
 
@@ -384,7 +198,7 @@ export function setupSocketHandlers(
           !parsed.originPathOverride
         ) {
           throw new Error(
-            "repoFullName, repoUrl, or originPathOverride is required"
+            "repoFullName, repoUrl, or originPathOverride is required",
           );
         }
 
@@ -412,7 +226,7 @@ export function setupSocketHandlers(
             });
           } catch (e) {
             serverLogger.warn(
-              `Failed to start watcher for ${parsed.originPathOverride}: ${String(e)}`
+              `Failed to start watcher for ${parsed.originPathOverride}: ${String(e)}`,
             );
           }
         }
@@ -490,7 +304,7 @@ export function setupSocketHandlers(
       if (!taskDataParseResult.success) {
         serverLogger.error(
           "Task data failed schema validation:",
-          taskDataParseResult.error
+          taskDataParseResult.error,
         );
         callback({
           taskId: data.taskId,
@@ -518,7 +332,7 @@ export function setupSocketHandlers(
           } catch (e) {
             serverLogger.warn(
               "Failed to verify Docker status before start-task",
-              e
+              e,
             );
             callback({
               taskId,
@@ -534,7 +348,7 @@ export function setupSocketHandlers(
         try {
           generatedTitle = await getPRTitleFromTaskDescription(
             taskData.taskDescription,
-            safeTeam
+            safeTeam,
           );
           // Persist to Convex immediately
           await getConvex().mutation(api.tasks.setPullRequestTitle, {
@@ -546,7 +360,7 @@ export function setupSocketHandlers(
         } catch (e) {
           serverLogger.error(
             `[Server] Failed generating/saving early PR title:`,
-            e
+            e,
           );
         }
 
@@ -564,12 +378,12 @@ export function setupSocketHandlers(
             theme: taskData.theme,
             environmentId: taskData.environmentId,
           },
-          safeTeam
+          safeTeam,
         );
 
         // Check if at least one agent spawned successfully
         const successfulAgents = agentResults.filter(
-          (result) => result.success
+          (result) => result.success,
         );
         if (successfulAgents.length === 0) {
           const errors = agentResults
@@ -587,16 +401,16 @@ export function setupSocketHandlers(
         agentResults.forEach((result) => {
           if (result.success) {
             serverLogger.info(
-              `Successfully spawned ${result.agentName} with terminal ${result.terminalId}`
+              `Successfully spawned ${result.agentName} with terminal ${result.terminalId}`,
             );
             if (result.vscodeUrl) {
               serverLogger.info(
-                `VSCode URL for ${result.agentName}: ${result.vscodeUrl}`
+                `VSCode URL for ${result.agentName}: ${result.vscodeUrl}`,
               );
             }
           } else {
             serverLogger.error(
-              `Failed to spawn ${result.agentName}: ${result.error}`
+              `Failed to spawn ${result.agentName}: ${result.error}`,
             );
           }
         });
@@ -623,12 +437,12 @@ export function setupSocketHandlers(
                 workspacePath: primaryAgent.worktreePath,
                 filePath: changedPath,
               });
-            }
+            },
           );
         } catch (error) {
           serverLogger.warn(
             "Could not set up file watching for workspace:",
-            error
+            error,
           );
           // Continue without file watching
         }
@@ -691,7 +505,11 @@ export function setupSocketHandlers(
           return;
         }
 
-        const repoFullNames = await collectRepoFullNamesForRun(run, task, safeTeam);
+        const repoFullNames = await collectRepoFullNamesForRun(
+          run,
+          task,
+          safeTeam,
+        );
         if (repoFullNames.length === 0) {
           callback({
             success: true,
@@ -702,9 +520,9 @@ export function setupSocketHandlers(
         }
 
         const existingByRepo = new Map(
-          ((run.pullRequests as StoredPullRequestInfo[] | undefined) ?? []).map(
-            (record) => [record.repoFullName, record] as const
-          )
+          (run.pullRequests ?? []).map(
+            (record) => [record.repoFullName, record] as const,
+          ),
         );
 
         const results = await Promise.all(
@@ -738,7 +556,8 @@ export function setupSocketHandlers(
 
               return toPullRequestActionResult(repoFullName, detail);
             } catch (error) {
-              const message = error instanceof Error ? error.message : String(error);
+              const message =
+                error instanceof Error ? error.message : String(error);
               return {
                 repoFullName,
                 url: undefined,
@@ -748,7 +567,7 @@ export function setupSocketHandlers(
                 error: message,
               } satisfies PullRequestActionResult;
             }
-          })
+          }),
         );
 
         const persisted = await persistPullRequestResults({
@@ -824,7 +643,11 @@ export function setupSocketHandlers(
           return;
         }
 
-        const repoFullNames = await collectRepoFullNamesForRun(run, task, safeTeam);
+        const repoFullNames = await collectRepoFullNamesForRun(
+          run,
+          task,
+          safeTeam,
+        );
         if (repoFullNames.length === 0) {
           callback({
             success: false,
@@ -841,9 +664,9 @@ export function setupSocketHandlers(
         const commitMessage = `Merged by cmux for task ${String(task._id)}.`;
 
         const existingByRepo = new Map(
-          ((run.pullRequests as StoredPullRequestInfo[] | undefined) ?? []).map(
-            (record) => [record.repoFullName, record] as const
-          )
+          (run.pullRequests ?? []).map(
+            (record) => [record.repoFullName, record] as const,
+          ),
         );
 
         const results = await Promise.all(
@@ -873,22 +696,39 @@ export function setupSocketHandlers(
                 try {
                   await markPrReady(githubToken, owner, repo, detail.number);
                 } catch (error) {
-                  const message = error instanceof Error ? error.message : String(error);
+                  const message =
+                    error instanceof Error ? error.message : String(error);
                   throw new Error(
-                    `Failed to mark PR #${detail.number} as ready before merge: ${message}`
+                    `Failed to mark PR #${detail.number} as ready before merge: ${message}`,
                   );
                 }
-                detail = await fetchPrDetail(githubToken, owner, repo, detail.number);
+                detail = await fetchPrDetail(
+                  githubToken,
+                  owner,
+                  repo,
+                  detail.number,
+                );
               }
 
-              if ((detail.state ?? "").toLowerCase() === "closed" && !detail.merged_at) {
+              if (
+                (detail.state ?? "").toLowerCase() === "closed" &&
+                !detail.merged_at
+              ) {
                 try {
                   await reopenPr(githubToken, owner, repo, detail.number);
                 } catch (error) {
-                  const message = error instanceof Error ? error.message : String(error);
-                  throw new Error(`Failed to reopen PR #${detail.number}: ${message}`);
+                  const message =
+                    error instanceof Error ? error.message : String(error);
+                  throw new Error(
+                    `Failed to reopen PR #${detail.number}: ${message}`,
+                  );
                 }
-                detail = await fetchPrDetail(githubToken, owner, repo, detail.number);
+                detail = await fetchPrDetail(
+                  githubToken,
+                  owner,
+                  repo,
+                  detail.number,
+                );
               }
 
               try {
@@ -899,18 +739,21 @@ export function setupSocketHandlers(
                   detail.number,
                   method,
                   truncatedTitle,
-                  commitMessage
+                  commitMessage,
                 );
               } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                throw new Error(`Failed to merge PR #${detail.number}: ${message}`);
+                const message =
+                  error instanceof Error ? error.message : String(error);
+                throw new Error(
+                  `Failed to merge PR #${detail.number}: ${message}`,
+                );
               }
 
               const mergedDetail = await fetchPrDetail(
                 githubToken,
                 owner,
                 repo,
-                detail.number
+                detail.number,
               );
 
               return toPullRequestActionResult(repoFullName, {
@@ -918,7 +761,8 @@ export function setupSocketHandlers(
                 merged_at: mergedDetail.merged_at ?? new Date().toISOString(),
               });
             } catch (error) {
-              const message = error instanceof Error ? error.message : String(error);
+              const message =
+                error instanceof Error ? error.message : String(error);
               return {
                 repoFullName,
                 url: undefined,
@@ -928,7 +772,7 @@ export function setupSocketHandlers(
                 error: message,
               } satisfies PullRequestActionResult;
             }
-          })
+          }),
         );
 
         const persisted = await persistPullRequestResults({
@@ -991,17 +835,17 @@ export function setupSocketHandlers(
             head: branchName,
           });
 
-          const existingRecords = (run.pullRequests as StoredPullRequestInfo[] | undefined) ?? [];
+          const existingRecords = run.pullRequests ?? [];
           const updatedRecords: StoredPullRequestInfo[] =
             existingRecords.length > 0
-              ? existingRecords.map<StoredPullRequestInfo>((record) =>
+              ? existingRecords.map((record) =>
                   record.repoFullName === repoFullName
                     ? {
                         ...record,
                         state: "merged",
                         isDraft: false,
                       }
-                    : record
+                    : record,
                 )
               : [
                   {
@@ -1127,7 +971,7 @@ export function setupSocketHandlers(
             }
           } else {
             serverLogger.error(
-              `Error opening ${editor}: process exited with code ${code}`
+              `Error opening ${editor}: process exited with code ${code}`,
             );
             const error = `Failed to open ${editor}: process exited with code ${code}`;
             socket.emit("open-in-editor-error", { error });
@@ -1188,7 +1032,7 @@ export function setupSocketHandlers(
         await repoManager.ensureRepository(
           repoUrl,
           projectPaths.originPath,
-          baseBranch
+          baseBranch,
         );
 
         // For clarity downstream, compute a proper worktreeInfo keyed by baseBranch
@@ -1204,7 +1048,7 @@ export function setupSocketHandlers(
         } catch {
           serverLogger.error(
             "Origin directory does not exist:",
-            worktreeInfo.originPath
+            worktreeInfo.originPath,
           );
           socket.emit("list-files-response", {
             files: [],
@@ -1232,7 +1076,7 @@ export function setupSocketHandlers(
 
         async function walkDir(
           dir: string,
-          baseDir: string
+          baseDir: string,
         ): Promise<FileInfo[]> {
           const files: FileInfo[] = [];
 
@@ -1247,7 +1091,7 @@ export function setupSocketHandlers(
               const shouldIgnore = ignoredPatterns.some(
                 (pattern) =>
                   minimatch(relativePath, pattern) ||
-                  minimatch(fullPath, pattern)
+                  minimatch(fullPath, pattern),
               );
 
               if (shouldIgnore) continue;
@@ -1287,7 +1131,7 @@ export function setupSocketHandlers(
         // List files from the origin directory
         let fileList = await walkDir(
           worktreeInfo.originPath,
-          worktreeInfo.originPath
+          worktreeInfo.originPath,
         );
 
         // Apply fuzzysort fuzzy matching if pattern is provided
@@ -1343,7 +1187,7 @@ export function setupSocketHandlers(
           execWithEnv("whoami").then((r) => r.stdout),
           execWithEnv("echo $HOME").then((r) => r.stdout),
           execWithEnv('ls -la ~/.config/gh/ || echo "No gh config"').then(
-            (r) => r.stdout
+            (r) => r.stdout,
           ),
         ]);
 
@@ -1395,14 +1239,14 @@ export function setupSocketHandlers(
           runWithAuthToken(initialToken, () =>
             refreshGitHubData({ teamSlugOrId }).catch((error) => {
               serverLogger.error("Background refresh failed:", error);
-            })
+            }),
           );
           return;
         }
 
         // If no repos exist, do a full fetch
         await runWithAuthToken(initialToken, () =>
-          refreshGitHubData({ teamSlugOrId })
+          refreshGitHubData({ teamSlugOrId }),
         );
         const reposByOrg = await getConvex().query(api.github.getReposByOrg, {
           teamSlugOrId,
@@ -1486,12 +1330,12 @@ Please address the issue mentioned in the comment above.`;
               "codex/gpt-5",
             ],
           },
-          safeTeam
+          safeTeam,
         );
 
         // Check if at least one agent spawned successfully
         const successfulAgents = agentResults.filter(
-          (result) => result.success
+          (result) => result.success,
         );
 
         if (successfulAgents.length === 0) {
@@ -1603,7 +1447,11 @@ Please address the issue mentioned in the comment above.`;
           return;
         }
 
-        const repoFullNames = await collectRepoFullNamesForRun(run, task, safeTeam);
+        const repoFullNames = await collectRepoFullNamesForRun(
+          run,
+          task,
+          safeTeam,
+        );
         if (repoFullNames.length === 0) {
           callback({
             success: false,
@@ -1618,14 +1466,16 @@ Please address the issue mentioned in the comment above.`;
         const title = task.pullRequestTitle || task.text || "cmux changes";
         const truncatedTitle =
           title.length > 72 ? `${title.slice(0, 69)}...` : title;
-        const body = task.text || `## Summary
+        const body =
+          task.text ||
+          `## Summary
 
 ${title}`;
 
         const existingByRepo = new Map(
-          ((run.pullRequests as PullRequestActionResult[] | undefined) ?? []).map(
-            (record) => [record.repoFullName, record] as const
-          )
+          (run.pullRequests ?? []).map(
+            (record) => [record.repoFullName, record] as const,
+          ),
         );
 
         const results = await Promise.all(
@@ -1656,14 +1506,14 @@ ${title}`;
                   truncatedTitle,
                   branchName,
                   baseBranch,
-                  body
+                  body,
                 );
                 detail =
                   (await fetchPrDetail(
                     githubToken,
                     owner,
                     repo,
-                    created.number
+                    created.number,
                   ).catch(() => null)) ??
                   ({
                     ...created,
@@ -1673,7 +1523,8 @@ ${title}`;
 
               return toPullRequestActionResult(repoFullName, detail);
             } catch (error) {
-              const message = error instanceof Error ? error.message : String(error);
+              const message =
+                error instanceof Error ? error.message : String(error);
               return {
                 repoFullName,
                 url: undefined,
@@ -1683,7 +1534,7 @@ ${title}`;
                 error: message,
               } satisfies PullRequestActionResult;
             }
-          })
+          }),
         );
 
         const persisted = await persistPullRequestResults({
@@ -1770,7 +1621,11 @@ ${title}`;
           return;
         }
 
-        const repoFullNames = await collectRepoFullNamesForRun(run, task, safeTeam);
+        const repoFullNames = await collectRepoFullNamesForRun(
+          run,
+          task,
+          safeTeam,
+        );
         if (repoFullNames.length === 0) {
           callback({
             success: false,
@@ -1785,14 +1640,16 @@ ${title}`;
         const title = task.pullRequestTitle || task.text || "cmux changes";
         const truncatedTitle =
           title.length > 72 ? `${title.slice(0, 69)}...` : title;
-        const body = task.text || `## Summary
+        const body =
+          task.text ||
+          `## Summary
 
 ${title}`;
 
         const existingByRepo = new Map(
-          ((run.pullRequests as StoredPullRequestInfo[] | undefined) ?? []).map(
-            (record) => [record.repoFullName, record] as const
-          )
+          (run.pullRequests ?? []).map(
+            (record) => [record.repoFullName, record] as const,
+          ),
         );
 
         const results = await Promise.all(
@@ -1823,14 +1680,14 @@ ${title}`;
                   truncatedTitle,
                   branchName,
                   baseBranch,
-                  body
+                  body,
                 );
                 detail =
                   (await fetchPrDetail(
                     githubToken,
                     owner,
                     repo,
-                    created.number
+                    created.number,
                   ).catch(() => null)) ??
                   ({
                     ...created,
@@ -1840,27 +1697,42 @@ ${title}`;
                 try {
                   await markPrReady(githubToken, owner, repo, detail.number);
                 } catch (error) {
-                  const message = error instanceof Error ? error.message : String(error);
-                  if (message.includes("not found") || message.includes("404")) {
+                  const message =
+                    error instanceof Error ? error.message : String(error);
+                  if (
+                    message.includes("not found") ||
+                    message.includes("404")
+                  ) {
                     throw new Error(
-                      `Pull request #${detail.number} not found. It may have been deleted or you may not have access.`
+                      `Pull request #${detail.number} not found. It may have been deleted or you may not have access.`,
                     );
                   }
-                  if (message.includes("Permission denied") || message.includes("403")) {
+                  if (
+                    message.includes("Permission denied") ||
+                    message.includes("403")
+                  ) {
                     throw new Error(
-                      `Permission denied when marking PR #${detail.number} as ready. Check GitHub token permissions.`
+                      `Permission denied when marking PR #${detail.number} as ready. Check GitHub token permissions.`,
                     );
                   }
-                  if (message.includes("Authentication failed") || message.includes("401")) {
+                  if (
+                    message.includes("Authentication failed") ||
+                    message.includes("401")
+                  ) {
                     throw new Error(
-                      `Authentication failed when marking PR #${detail.number} as ready. Verify GitHub token.`
+                      `Authentication failed when marking PR #${detail.number} as ready. Verify GitHub token.`,
                     );
                   }
                   serverLogger.warn(
-                    `[OpenPR] Continuing despite error when marking PR ready: ${message}`
+                    `[OpenPR] Continuing despite error when marking PR ready: ${message}`,
                   );
                 }
-                detail = await fetchPrDetail(githubToken, owner, repo, detail.number);
+                detail = await fetchPrDetail(
+                  githubToken,
+                  owner,
+                  repo,
+                  detail.number,
+                );
               }
 
               if (
@@ -1871,19 +1743,30 @@ ${title}`;
                 try {
                   await reopenPr(githubToken, owner, repo, detail.number);
                 } catch (error) {
-                  const message = error instanceof Error ? error.message : String(error);
-                  throw new Error(`Failed to reopen PR #${detail.number}: ${message}`);
+                  const message =
+                    error instanceof Error ? error.message : String(error);
+                  throw new Error(
+                    `Failed to reopen PR #${detail.number}: ${message}`,
+                  );
                 }
-                detail = await fetchPrDetail(githubToken, owner, repo, detail.number);
+                detail = await fetchPrDetail(
+                  githubToken,
+                  owner,
+                  repo,
+                  detail.number,
+                );
               }
 
               if (!detail) {
-                throw new Error("Pull request not found or could not be created");
+                throw new Error(
+                  "Pull request not found or could not be created",
+                );
               }
 
               return toPullRequestActionResult(repoFullName, detail);
             } catch (error) {
-              const message = error instanceof Error ? error.message : String(error);
+              const message =
+                error instanceof Error ? error.message : String(error);
               return {
                 repoFullName,
                 url: undefined,
@@ -1893,7 +1776,7 @@ ${title}`;
                 error: message,
               } satisfies PullRequestActionResult;
             }
-          })
+          }),
         );
 
         const persisted = await persistPullRequestResults({
@@ -1953,11 +1836,11 @@ ${title}`;
 
         if (failed > 0) {
           serverLogger.warn(
-            `Archived task ${taskId}: ${successful} containers stopped, ${failed} failed`
+            `Archived task ${taskId}: ${successful} containers stopped, ${failed} failed`,
           );
         } else {
           serverLogger.info(
-            `Successfully archived task ${taskId}: all ${successful} containers stopped`
+            `Successfully archived task ${taskId}: all ${successful} containers stopped`,
           );
         }
 
