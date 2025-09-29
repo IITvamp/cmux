@@ -7,6 +7,10 @@ import { useQuery as useRQ } from "@tanstack/react-query";
 import { useQuery as useConvexQuery } from "convex/react";
 import { ExternalLink } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
+import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
+import { toast } from "sonner";
+import { client as wwwClient } from "@cmux/www-openapi-client/client.gen";
+import { postApiIntegrationsGithubPrsBackfill } from "@cmux/www-openapi-client";
 
 type PullRequestDetailViewProps = {
   teamSlugOrId: string;
@@ -93,6 +97,7 @@ export function PullRequestDetailView({
   }, [prs, owner, repo, number]);
 
   const [diffControls, setDiffControls] = useState<DiffControls | null>(null);
+  const [isMerging, setIsMerging] = useState(false);
 
   if (!currentPR) {
     return (
@@ -105,6 +110,62 @@ export function PullRequestDetailView({
   const gitDiffViewerClassNames = {
     fileDiffRow: { button: "top-[56px]" },
   } as const;
+
+  const handleMerge = async (method: MergeMethod) => {
+    if (!currentPR) return;
+    if (currentPR.state !== "open" || currentPR.merged) return;
+    const numberInt = Number(number);
+    const repoFullName = currentPR.repoFullName || `${owner}/${repo}`;
+    setIsMerging(true);
+    const toastId = toast.loading(
+      `Merging PR${method ? ` (${method})` : ""}...`
+    );
+    try {
+      const { data, error } = await wwwClient.post({
+        url: "/api/integrations/github/prs/merge",
+        headers: { "Content-Type": "application/json" },
+        body: {
+          team: teamSlugOrId,
+          owner,
+          repo,
+          number: numberInt,
+          method,
+        },
+        // Ensure JSON response parse
+        parseAs: "json",
+      });
+
+      if (error) {
+        throw new Error(
+          typeof error === "string"
+            ? error
+            : (error as { message?: unknown })?.message &&
+              typeof (error as { message?: unknown }).message === "string"
+            ? String((error as { message?: unknown }).message)
+            : "Failed to merge PR",
+        );
+      }
+
+      // Best-effort: backfill to refresh Convex state for this PR
+      const url = currentPR.htmlUrl ?? `https://github.com/${owner}/${repo}/pull/${numberInt}`;
+      try {
+        await postApiIntegrationsGithubPrsBackfill({
+          body: { team: teamSlugOrId, url },
+          throwOnError: false,
+        });
+      } catch {
+        // ignore
+      }
+
+      toast.success("PR merged", { id: toastId });
+    } catch (e) {
+      const message =
+        e instanceof Error ? e.message : typeof e === "string" ? e : "Failed to merge PR";
+      toast.error(message, { id: toastId });
+    } finally {
+      setIsMerging(false);
+    }
+  };
 
   return (
     <div className="flex flex-1 min-h-0 flex-col">
@@ -151,6 +212,14 @@ export function PullRequestDetailView({
                     Open
                   </span>
                 )}
+                {currentPR.state === "open" && !currentPR.merged ? (
+                  <MergeButton
+                    onMerge={handleMerge}
+                    isOpen
+                    disabled={isMerging}
+                    prCount={1}
+                  />
+                ) : null}
                 {currentPR.htmlUrl ? (
                   <a
                     className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none whitespace-nowrap"

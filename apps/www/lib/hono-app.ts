@@ -18,6 +18,7 @@ import {
   teamsRouter,
   usersRouter,
 } from "@/lib/routes/index";
+import { githubPrsMergeRouter } from "@/lib/routes/github.prs.merge.route";
 import { stackServerApp } from "@/lib/utils/stack";
 import { swaggerUI } from "@hono/swagger-ui";
 import { OpenAPIHono } from "@hono/zod-openapi";
@@ -100,6 +101,7 @@ app.route("/", githubPrsPatchRouter);
 app.route("/", githubPrsFilesRouter);
 app.route("/", githubPrsFileContentsRouter);
 app.route("/", githubPrsFileContentsBatchRouter);
+app.route("/", githubPrsMergeRouter);
 app.route("/", morphRouter);
 app.route("/", environmentsRouter);
 app.route("/", sandboxesRouter);
