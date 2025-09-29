@@ -281,6 +281,7 @@ function FileDiffRow({
 
     const extensions = [...baseExtensions, ...languageExtensions];
 
+    const now = performance.now();
     const merge = new MergeView({
       a: {
         doc: file.oldContent ?? "",
@@ -305,10 +306,13 @@ function FileDiffRow({
 
     mergeViewRef.current = merge;
 
-    debugGitDiffViewerLog("merge editor mounted", {
-      filePath: file.filePath,
-      collapseUnchanged: true,
-    });
+    debugGitDiffViewerLog(
+      `merge editor mounted after ${performance.now() - now}ms`,
+      {
+        filePath: file.filePath,
+        collapseUnchanged: true,
+      },
+    );
 
     return () => {
       merge.destroy();
