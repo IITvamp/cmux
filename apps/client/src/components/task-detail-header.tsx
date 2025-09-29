@@ -590,10 +590,26 @@ function SocketActions({
     return `${successCount}/${total} repositories updated`;
   };
 
+  const hasMultipleRepos = repoFullNames.length > 1;
+  const viewLabel = hasMultipleRepos ? "View PRs" : "View PR";
+  const openingLabel = hasMultipleRepos ? "Opening PRs..." : "Opening PR...";
+  const openedLabel = hasMultipleRepos ? "PRs updated" : "PR updated";
+  const openingDraftLabel = hasMultipleRepos
+    ? "Creating draft PRs..."
+    : "Creating draft PR...";
+  const openedDraftLabel = hasMultipleRepos
+    ? "Draft PRs updated"
+    : "Draft PR updated";
+  const mergeLoadingLabel = (method: MergeMethod) =>
+    hasMultipleRepos
+      ? `Merging PRs (${method})...`
+      : `Merging PR (${method})...`;
+  const mergedLabel = hasMultipleRepos ? "PRs merged" : "PR merged";
+
   const handleOpenPRs = () => {
     if (!socket) return;
     setIsOpeningPr(true);
-    const toastId = toast.loading("Opening PRs...");
+    const toastId = toast.loading(openingLabel);
     socket.emit("github-open-pr", { taskRunId }, (resp) => {
       setIsOpeningPr(false);
       if (resp.success) {
@@ -603,7 +619,7 @@ function SocketActions({
         if (actionable.length > 0) {
           openUrls(actionable);
         }
-        toast.success("PRs updated", {
+        toast.success(openedLabel, {
           id: toastId,
           description: summarizeResults(resp.results),
           action:
@@ -627,7 +643,7 @@ function SocketActions({
   const handleOpenDraftPRs = () => {
     if (!socket) return;
     setIsCreatingPr(true);
-    const toastId = toast.loading("Creating draft PRs...");
+    const toastId = toast.loading(openingDraftLabel);
     socket.emit("github-create-draft-pr", { taskRunId }, (resp) => {
       setIsCreatingPr(false);
       if (resp.success) {
@@ -637,7 +653,7 @@ function SocketActions({
         if (actionable.length > 0) {
           openUrls(actionable);
         }
-        toast.success("Draft PRs updated", {
+        toast.success(openedDraftLabel, {
           id: toastId,
           description: summarizeResults(resp.results),
           action:
@@ -670,11 +686,11 @@ function SocketActions({
   const handleMerge = (method: MergeMethod) => {
     if (!socket) return;
     setIsMerging(true);
-    const toastId = toast.loading(`Merging PRs (${method})...`);
+    const toastId = toast.loading(mergeLoadingLabel(method));
     socket.emit("github-merge-pr", { taskRunId, method }, (resp) => {
       setIsMerging(false);
       if (resp.success) {
-        toast.success("PRs merged", {
+        toast.success(mergedLabel, {
           id: toastId,
           description: summarizeResults(resp.results),
         });
@@ -715,7 +731,7 @@ function SocketActions({
   const renderRepoDropdown = () => (
     <Dropdown.Root>
       <Dropdown.Trigger
-        aria-label="View PRs by repository"
+        aria-label={`${viewLabel} by repository`}
         className={cn(
           "flex items-center justify-center px-2 py-1 h-[26px]",
           "bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white",
@@ -788,7 +804,7 @@ function SocketActions({
         </button>
       )}
       {hasAnyRemotePr ? (
-        repoFullNames.length > 1 ? (
+        hasMultipleRepos ? (
           <div className="flex items-stretch">
             <button
               onClick={handleViewPRs}
@@ -796,7 +812,7 @@ function SocketActions({
               disabled={isOpeningPr || isCreatingPr || isMerging}
             >
               <ExternalLink className="w-3.5 h-3.5" />
-              View PRs
+              {viewLabel}
             </button>
             {renderRepoDropdown()}
           </div>
@@ -807,7 +823,7 @@ function SocketActions({
             disabled={isOpeningPr || isCreatingPr || isMerging}
           >
             <ExternalLink className="w-3.5 h-3.5" />
-            View PRs
+            {viewLabel}
           </button>
         )
       ) : (
