@@ -118,10 +118,94 @@ async function resolveMergeBase(
 // Track the current multi-diff editor URI
 let _currentMultiDiffUri: string | null = null;
 
+const MULTI_DIFF_LABEL_PREFIX = "All Changes vs";
+
+type FocusState =
+  | {
+      kind: "textEditor";
+      document: vscode.TextDocument;
+      selections: vscode.Selection[];
+      viewColumn: vscode.ViewColumn | undefined;
+    }
+  | { kind: "terminal"; terminal: vscode.Terminal };
+
+function captureFocusState(): FocusState | null {
+  const activeEditor = vscode.window.activeTextEditor;
+  if (activeEditor) {
+    return {
+      kind: "textEditor",
+      document: activeEditor.document,
+      selections: activeEditor.selections.map(
+        (selection) => new vscode.Selection(selection.anchor, selection.active)
+      ),
+      viewColumn: activeEditor.viewColumn,
+    };
+  }
+
+  const activeTerminal = vscode.window.activeTerminal;
+  if (activeTerminal) {
+    return { kind: "terminal", terminal: activeTerminal };
+  }
+
+  return null;
+}
+
+async function restoreFocusState(state: FocusState | null) {
+  if (!state) {
+    return;
+  }
+
+  if (state.kind === "textEditor") {
+    if (state.document.isClosed) {
+      return;
+    }
+
+    const editor = await vscode.window.showTextDocument(state.document, {
+      viewColumn: state.viewColumn,
+      preserveFocus: false,
+    });
+
+    if (state.selections.length > 0) {
+      editor.selections = state.selections;
+      editor.revealRange(state.selections[0]);
+    }
+
+    return;
+  }
+
+  state.terminal.show();
+}
+
+function findExistingMultiDiffTab():
+  | { tab: vscode.Tab; group: vscode.TabGroup }
+  | null {
+  for (const group of vscode.window.tabGroups.all) {
+    const matchingTab = group.tabs.find((tab) =>
+      tab.label?.startsWith(MULTI_DIFF_LABEL_PREFIX)
+    );
+    if (matchingTab) {
+      return { tab: matchingTab, group };
+    }
+  }
+  return null;
+}
+
+function isMultiDiffTabOpen(): boolean {
+  return findExistingMultiDiffTab() !== null;
+}
+
+interface OpenMultiDiffOptions {
+  preserveFocus?: boolean;
+  silent?: boolean;
+}
+
 async function openMultiDiffEditor(
   baseRef?: string,
-  useMergeBase: boolean = true
+  useMergeBase: boolean = true,
+  { preserveFocus = false, silent = false }: OpenMultiDiffOptions = {}
 ) {
+  const focusState = preserveFocus ? captureFocusState() : null;
+
   log("=== openMultiDiffEditor called ===");
   log("baseRef:", baseRef);
   log("useMergeBase:", useMergeBase);
@@ -211,19 +295,10 @@ async function openMultiDiffEditor(
 
     // Check if we have an existing multi-diff editor open
     const multiDiffUriString = multiDiffSourceUri.toString();
-    const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs);
-    const existingTab = tabs.find(
-      (tab) => tab.label && tab.label.includes("All Changes vs")
-    );
-
-    if (existingTab) {
-      // Try to activate the existing tab first to preserve position
-      // This helps maintain scroll position and user context
-      const tabGroup = vscode.window.tabGroups.all.find((g) =>
-        g.tabs.includes(existingTab)
-      );
-      if (tabGroup) {
-        // Make sure the tab is active before updating
+    const existingTabInfo = findExistingMultiDiffTab();
+    if (!preserveFocus && existingTabInfo) {
+      const { tab: existingTab, group } = existingTabInfo;
+      if (group.activeTab !== existingTab) {
         await vscode.commands.executeCommand(
           "workbench.action.focusActiveEditorGroup"
         );
@@ -242,7 +317,7 @@ async function openMultiDiffEditor(
     });
 
     log("Multi-diff editor opened successfully");
-    if (files.length > 0) {
+    if (!silent && files.length > 0) {
       vscode.window.showInformationMessage(
         `Showing ${files.length} file(s) changed vs ${baseBranchName}`
       );
@@ -256,6 +331,10 @@ async function openMultiDiffEditor(
       );
     } else {
       vscode.window.showErrorMessage("Failed to open changes");
+    }
+  } finally {
+    if (preserveFocus) {
+      await restoreFocusState(focusState);
     }
   }
 }
@@ -534,8 +613,15 @@ export function activate(context: vscode.ExtensionContext) {
 
               // Set new timer to refresh after 500ms of no changes
               refreshDebounceTimer = setTimeout(async () => {
+                if (!isMultiDiffTabOpen()) {
+                  log("Skipping diff auto-refresh; tab not open");
+                  return;
+                }
                 log("Auto-refreshing diff view due to file changes");
-                await openMultiDiffEditor(undefined, true);
+                await openMultiDiffEditor(undefined, true, {
+                  preserveFocus: true,
+                  silent: true,
+                });
               }, 500);
             };
 
