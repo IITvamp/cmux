@@ -284,6 +284,14 @@ export const GitHubMergePrSchema = z.object({
   method: z.enum(["squash", "rebase", "merge"]),
 });
 
+// Merge PR directly by repo and number (outside task context)
+export const GitHubMergePrDirectSchema = z.object({
+  owner: z.string(),
+  repo: z.string(),
+  number: z.number().int().positive(),
+  method: z.enum(["squash", "rebase", "merge"]),
+});
+
 // Merge branch directly
 export const GitHubMergeBranchSchema = z.object({
   taskRunId: typedZid("taskRuns"),
@@ -403,6 +411,7 @@ export type GitHubCreateDraftPr = z.infer<typeof GitHubCreateDraftPrSchema>;
 export type GitHubOpenPr = z.infer<typeof GitHubOpenPrSchema>;
 export type GitHubSyncPrState = z.infer<typeof GitHubSyncPrStateSchema>;
 export type GitHubMergePr = z.infer<typeof GitHubMergePrSchema>;
+export type GitHubMergePrDirect = z.infer<typeof GitHubMergePrDirectSchema>;
 export type GitHubMergeBranch = z.infer<typeof GitHubMergeBranchSchema>;
 export type ArchiveTask = z.infer<typeof ArchiveTaskSchema>;
 export type SpawnFromComment = z.infer<typeof SpawnFromCommentSchema>;
@@ -484,6 +493,17 @@ export interface ClientToServerEvents {
   // Merge PR with selected method
   "github-merge-pr": (
     data: GitHubMergePr,
+    callback: (response: {
+      success: boolean;
+      merged?: boolean;
+      state?: string;
+      url?: string;
+      error?: string;
+    }) => void
+  ) => void;
+  // Merge PR directly by repo/number
+  "github-merge-pr-direct": (
+    data: GitHubMergePrDirect,
     callback: (response: {
       success: boolean;
       merged?: boolean;

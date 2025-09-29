@@ -1,12 +1,15 @@
 import { RunDiffSection } from "@/components/RunDiffSection";
 import { Dropdown } from "@/components/ui/dropdown";
+import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
+import { useSocket } from "@/contexts/socket/use-socket";
 import { normalizeGitRef } from "@/lib/refWithOrigin";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
 import { useQuery as useRQ } from "@tanstack/react-query";
 import { useQuery as useConvexQuery } from "convex/react";
 import { ExternalLink } from "lucide-react";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 type PullRequestDetailViewProps = {
   teamSlugOrId: string;
@@ -79,6 +82,7 @@ export function PullRequestDetailView({
   repo,
   number,
 }: PullRequestDetailViewProps) {
+  const { socket } = useSocket();
   const prs = useConvexQuery(api.github_prs.listPullRequests, {
     teamSlugOrId,
     state: "all",
@@ -93,6 +97,7 @@ export function PullRequestDetailView({
   }, [prs, owner, repo, number]);
 
   const [diffControls, setDiffControls] = useState<DiffControls | null>(null);
+  const [isMerging, setIsMerging] = useState(false);
 
   if (!currentPR) {
     return (
@@ -105,6 +110,50 @@ export function PullRequestDetailView({
   const gitDiffViewerClassNames = {
     fileDiffRow: { button: "top-[56px]" },
   } as const;
+
+  // Query diffs to enable/disable merge appropriately
+  const diffsQuery = useRQ({
+    ...gitDiffQueryOptions({
+      repoFullName: currentPR.repoFullName,
+      baseRef: normalizeGitRef(currentPR.baseRef || ""),
+      headRef: normalizeGitRef(currentPR.headRef || ""),
+    }),
+    enabled: Boolean(currentPR.repoFullName && currentPR.baseRef && currentPR.headRef),
+  });
+
+  useEffect(() => {
+    if (diffsQuery.isError) {
+      const err = diffsQuery.error as unknown;
+      const msg = err instanceof Error ? err.message : String(err ?? "");
+      toast.error("Failed to load diffs", { description: msg });
+    }
+  }, [diffsQuery.isError, diffsQuery.error]);
+
+  const handleMerge = async (method: MergeMethod) => {
+    if (!socket || !currentPR) return;
+    setIsMerging(true);
+    const toastId = toast.loading(`Merging PR (${method})...`);
+    await new Promise<void>((resolve) => {
+      socket.emit(
+        "github-merge-pr-direct",
+        {
+          owner,
+          repo,
+          number: Number(currentPR.number),
+          method,
+        },
+        (resp: { success: boolean; merged?: boolean; url?: string; error?: string }) => {
+          setIsMerging(false);
+          if (resp.success) {
+            toast.success("PR merged", { id: toastId, description: resp.url });
+          } else {
+            toast.error("Failed to merge PR", { id: toastId, description: resp.error });
+          }
+          resolve();
+        }
+      );
+    });
+  };
 
   return (
     <div className="flex flex-1 min-h-0 flex-col">
@@ -151,6 +200,16 @@ export function PullRequestDetailView({
                     Open
                   </span>
                 )}
+                {!currentPR.merged && !currentPR.draft && currentPR.state === "open" ? (
+                  <MergeButton
+                    onMerge={handleMerge}
+                    isOpen={true}
+                    disabled={
+                      isMerging || diffsQuery.isFetching || diffsQuery.isPending ||
+                      !currentPR.repoFullName || !currentPR.baseRef || !currentPR.headRef
+                    }
+                  />
+                ) : null}
                 {currentPR.htmlUrl ? (
                   <a
                     className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none whitespace-nowrap"

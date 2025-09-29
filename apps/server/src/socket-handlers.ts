@@ -6,6 +6,7 @@ import {
   GitHubFetchBranchesSchema,
   GitHubFetchReposSchema,
   GitHubMergeBranchSchema,
+  GitHubMergePrDirectSchema,
   ListFilesRequestSchema,
   OpenInEditorSchema,
   SpawnFromCommentSchema,
@@ -758,6 +759,79 @@ export function setupSocketHandlers(
         }
       } catch (error) {
         serverLogger.error("Error merging PR:", error);
+        callback({
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    });
+
+    // Merge PR directly by repo/number
+    socket.on("github-merge-pr-direct", async (data, callback) => {
+      try {
+        const { owner, repo, number, method } = GitHubMergePrDirectSchema.parse(data);
+
+        const githubToken = await getGitHubTokenFromKeychain();
+        if (!githubToken) {
+          return callback({
+            success: false,
+            error: "GitHub token is not configured",
+          });
+        }
+
+        // Ensure PR is open and not draft
+        const detail = await fetchPrDetail(githubToken, owner, repo, number);
+        if (detail.draft) {
+          try {
+            await markPrReady(githubToken, owner, repo, number);
+            serverLogger.info(
+              `[MergePRDirect] Marked PR #${number} as ready for review`
+            );
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            // Check if it's a 404 error
+            if (msg.includes("not found") || msg.includes("404")) {
+              return callback({
+                success: false,
+                error: `Pull request #${number} not found. It may have been deleted.`,
+              });
+            }
+            return callback({
+              success: false,
+              error: `PR is draft and could not be made ready: ${msg}`,
+            });
+          }
+        }
+        if (detail.state === "closed") {
+          try {
+            await reopenPr(githubToken, owner, repo, number);
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            return callback({
+              success: false,
+              error: `PR is closed and could not be reopened: ${msg}`,
+            });
+          }
+        }
+
+        const res = await mergePr(
+          githubToken,
+          owner,
+          repo,
+          number,
+          method,
+          undefined,
+          undefined
+        );
+
+        callback({
+          success: true,
+          merged: !!res.merged,
+          state: "merged",
+          url: detail.html_url,
+        });
+      } catch (error) {
+        serverLogger.error("Error merging PR (direct):", error);
         callback({
           success: false,
           error: error instanceof Error ? error.message : "Unknown error",
