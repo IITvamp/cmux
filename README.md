@@ -44,3 +44,7 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+Open source blossoms
+Collaborators unite
+Innovation flows

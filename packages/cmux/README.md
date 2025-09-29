@@ -51,3 +51,7 @@ cmux is part of the cmux project. See the main repository for development instru
 ## License
 
 MIT
+
+Open source blossoms
+Collaborators unite
+Innovation flows
