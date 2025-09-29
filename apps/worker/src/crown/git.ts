@@ -19,6 +19,7 @@ type ExecError = Error & {
 let gitRepoPath: string | null = null;
 const branchDiffCache = new Map<string, string>();
 
+
 export async function detectGitRepoPath(): Promise<string> {
   if (gitRepoPath) {
     return gitRepoPath;
@@ -99,56 +100,54 @@ export async function runGitCommand(
   }
 }
 
-export async function fetchRemoteRef(ref: string): Promise<boolean> {
-  if (!ref) return false;
-  const attempts = 3;
-  const remoteBranch = ref.replace(/^origin\//, "");
+export async function fetchRemoteRef(ref: string | null): Promise<boolean> {
+  if (!ref) {
+    return false;
+  }
+
+  const trimmedRef = ref.trim();
+  if (!trimmedRef) {
+    return false;
+  }
+
+  // Simplified: just work with origin remote for now
+  // Strip "origin/" prefix if present to get the branch name
+  const remoteBranch = trimmedRef.replace(/^origin\//, "");
   const verifyRef = `refs/remotes/origin/${remoteBranch}`;
   const fetchCommand = `git fetch --no-tags --prune origin refs/heads/${remoteBranch}:${verifyRef}`;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const attemptNumber = attempt + 1;
-    log("DEBUG", "Fetching remote ref", {
-      ref,
-      attempt: attemptNumber,
-      attempts,
-    });
 
-    const result = await runGitCommand(fetchCommand);
+  log("DEBUG", "Fetching remote ref", { ref: trimmedRef, remoteBranch });
 
-    if (result) {
-      const trimmedStdout = result.stdout.trim();
-      if (trimmedStdout.length > 0) {
-        log("DEBUG", "git fetch output", {
-          ref,
-          output: trimmedStdout.slice(0, 160),
-        });
-      }
-      const verifyResult = await runGitCommand(
-        `git rev-parse --verify --quiet ${verifyRef}`
-      );
+  const result = await runGitCommandSafe(fetchCommand, true);
 
-      if (verifyResult?.stdout.trim()) {
-        log("INFO", "Remote ref verified", {
-          ref,
-          attempt: attemptNumber,
-          commit: verifyResult.stdout.trim(),
-        });
-        return true;
-      }
-
-      log("WARN", "Remote ref still missing after fetch attempt", {
-        ref,
-        attempt: attemptNumber,
-      });
-    } else {
-      log("WARN", "git fetch failed for ref", {
-        ref,
-        attempt: attemptNumber,
-      });
-    }
-    await sleep(1000);
+  if (!result) {
+    log("WARN", "git fetch failed for ref", { ref: trimmedRef });
+    return false;
   }
-  log("ERROR", "Failed to fetch remote ref after retries", { ref, attempts });
+
+  const trimmedStdout = result.stdout?.trim();
+  if (trimmedStdout && trimmedStdout.length > 0) {
+    log("DEBUG", "git fetch output", {
+      ref: trimmedRef,
+      output: trimmedStdout.slice(0, 160),
+    });
+  }
+
+  // Verify the ref was fetched
+  const verifyResult = await runGitCommandSafe(
+    `git rev-parse --verify --quiet ${verifyRef}`,
+    true
+  );
+
+  if (verifyResult?.stdout?.trim()) {
+    log("INFO", "Remote ref verified", {
+      ref: trimmedRef,
+      commit: verifyResult.stdout.trim(),
+    });
+    return true;
+  }
+
+  log("WARN", "Remote ref missing after fetch", { ref: trimmedRef });
   return false;
 }
 
@@ -180,12 +179,19 @@ export async function collectDiffForRun(
     baseBranch: sanitizedBase,
     branch,
   });
+
+  // Fetch both the base and feature branches
   await fetchRemoteRef(sanitizedBase);
   await fetchRemoteRef(branch);
+
+  // Prepare refs for the diff script
+  // Ensure they have origin/ prefix for the script
   const baseRef = sanitizedBase.startsWith("origin/")
     ? sanitizedBase
     : `origin/${sanitizedBase}`;
-  const branchRef = branch.startsWith("origin/") ? branch : `origin/${branch}`;
+  const branchRef = branch.startsWith("origin/")
+    ? branch
+    : `origin/${branch}`;
 
   try {
     const { stdout } = await execAsync(
@@ -293,13 +299,13 @@ export async function captureRelevantDiff(): Promise<string> {
 }
 
 export function buildCommitMessage({
-  taskText,
+  prompt,
   agentName,
 }: {
-  taskText: string;
+  prompt: string;
   agentName: string;
 }): string {
-  const baseLine = taskText.trim().split("\n")[0] ?? "task";
+  const baseLine = prompt.trim().split("\n")[0] ?? "task";
   const subject =
     baseLine.length > 60 ? `${baseLine.slice(0, 57)}...` : baseLine;
   const sanitizedAgent = agentName.replace(/[^a-zA-Z0-9_-]/g, "-");

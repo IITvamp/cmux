@@ -27,7 +27,7 @@ http.route({
 });
 
 http.route({
-  path: "/api/crown/evaluate",
+  path: "/api/crown/evaluate-agents",
   method: "POST",
   handler: crownEvaluate,
 });

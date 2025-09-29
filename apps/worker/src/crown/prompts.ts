@@ -1,20 +1,20 @@
 
-export function buildPullRequestTitle(taskText: string): string {
-  const base = taskText.trim() || "cmux changes";
+export function buildPullRequestTitle(prompt: string): string {
+  const base = prompt.trim() || "cmux changes";
   const title = `[Crown] ${base}`;
   return title.length > 72 ? `${title.slice(0, 69)}...` : title;
 }
 
 export function buildPullRequestBody({
   summary,
-  taskText,
+  prompt,
   agentName,
   branch,
   taskId,
   runId,
 }: {
   summary?: string;
-  taskText: string;
+  prompt: string;
   agentName: string;
   branch: string;
   taskId: string;
@@ -24,7 +24,7 @@ export function buildPullRequestBody({
   return `## 🏆 Crown Winner: ${agentName}
 
 ### Task Description
-${taskText}
+${prompt}
 
 ### Summary
 ${bodySummary}

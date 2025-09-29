@@ -3,48 +3,58 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { generateObject } from "ai";
 import { ConvexError, v } from "convex/values";
-import { z } from "zod";
+import {
+  CrownEvaluationResponseSchema,
+  CrownSummarizationResponseSchema,
+  type CrownEvaluationCandidate,
+  type CrownEvaluationResponse,
+  type CrownSummarizationResponse,
+} from "../../../shared/src/convex-safe";
 import { env } from "../../_shared/convex-env";
 import { action } from "../_generated/server";
 
 const MODEL_NAME = "claude-3-5-sonnet-20241022";
 
-export const CrownEvaluationResponseSchema = z.object({
-  winner: z.number().int().min(0),
-  reason: z.string(),
+const CrownEvaluationCandidateValidator = v.object({
+  runId: v.optional(v.string()),
+  agentName: v.optional(v.string()),
+  modelName: v.optional(v.string()),
+  gitDiff: v.string(),
+  newBranch: v.optional(v.union(v.string(), v.null())),
+  index: v.optional(v.number()),
 });
-
-export type CrownEvaluationResponse = z.infer<
-  typeof CrownEvaluationResponseSchema
->;
-
-export const CrownSummarizationResponseSchema = z.object({
-  summary: z.string(),
-});
-
-export type CrownSummarizationResponse = z.infer<
-  typeof CrownSummarizationResponseSchema
->;
 
 export async function performCrownEvaluation(
   apiKey: string,
-  taskText: string,
-  candidates: Array<{
-    modelName: string;
-    gitDiff: string;
-    index: number;
-  }>,
+  prompt: string,
+  candidates: CrownEvaluationCandidate[],
 ): Promise<CrownEvaluationResponse> {
   const anthropic = createAnthropic({ apiKey });
 
+  const normalizedCandidates = candidates.map((candidate, idx) => {
+    const resolvedIndex = candidate.index ?? idx;
+    return {
+      index: resolvedIndex,
+      runId: candidate.runId,
+      agentName: candidate.agentName,
+      modelName:
+        candidate.modelName ??
+        candidate.agentName ??
+        (candidate.runId ? `run-${candidate.runId}` : undefined) ??
+        `candidate-${resolvedIndex}`,
+      gitDiff: candidate.gitDiff,
+      newBranch: candidate.newBranch ?? null,
+    };
+  });
+
   const evaluationData = {
-    task: taskText,
-    implementations: candidates,
+    prompt,
+    candidates: normalizedCandidates,
   };
 
-  const prompt = `You are evaluating code implementations from different AI models.
+  const anthropicPrompt = `You are evaluating code implementations from different AI models.
 
-Here are the implementations to evaluate:
+Here are the candidates to evaluate:
 ${JSON.stringify(evaluationData, null, 2)}
 
 NOTE: The git diffs shown contain only actual code changes. Lock files, build artifacts, and other non-essential files have been filtered out.
@@ -70,7 +80,7 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
       schema: CrownEvaluationResponseSchema,
       system:
         "You select the best implementation from structured diff inputs and explain briefly why.",
-      prompt,
+      prompt: anthropicPrompt,
       temperature: 0,
       maxRetries: 2,
     });
@@ -84,12 +94,12 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
 
 export async function performCrownSummarization(
   apiKey: string,
-  taskText: string,
+  prompt: string,
   gitDiff: string,
 ): Promise<CrownSummarizationResponse> {
   const anthropic = createAnthropic({ apiKey });
 
-  const prompt = `You are an expert reviewer summarizing a pull request.
+  const anthropicPrompt = `You are an expert reviewer summarizing a pull request.
 
 GOAL
 - Explain succinctly what changed and why.
@@ -98,7 +108,7 @@ GOAL
 
 CONTEXT
 - User's original request:
-${taskText}
+${prompt}
 - Relevant diffs (unified):
 ${gitDiff || "<no code changes captured>"}
 
@@ -122,7 +132,7 @@ OUTPUT FORMAT (Markdown)
       schema: CrownSummarizationResponseSchema,
       system:
         "You are an expert reviewer summarizing pull requests. Provide a clear, concise summary following the requested format.",
-      prompt,
+      prompt: anthropicPrompt,
       temperature: 0,
       maxRetries: 2,
     });
@@ -136,14 +146,8 @@ OUTPUT FORMAT (Markdown)
 
 export const evaluate = action({
   args: {
-    taskText: v.string(),
-    candidates: v.array(
-      v.object({
-        modelName: v.string(),
-        gitDiff: v.string(),
-        index: v.number(),
-      }),
-    ),
+    prompt: v.string(),
+    candidates: v.array(CrownEvaluationCandidateValidator),
     teamSlugOrId: v.string(),
   },
   handler: async (_ctx, args) => {
@@ -151,13 +155,13 @@ export const evaluate = action({
     const apiKey = env.ANTHROPIC_API_KEY;
 
     // Perform the evaluation
-    return performCrownEvaluation(apiKey, args.taskText, args.candidates);
+    return performCrownEvaluation(apiKey, args.prompt, args.candidates);
   },
 });
 
 export const summarize = action({
   args: {
-    taskText: v.string(),
+    prompt: v.string(),
     gitDiff: v.string(),
     teamSlugOrId: v.string(),
   },
@@ -166,6 +170,6 @@ export const summarize = action({
     const apiKey = env.ANTHROPIC_API_KEY;
 
     // Perform the summarization
-    return performCrownSummarization(apiKey, args.taskText, args.gitDiff);
+    return performCrownSummarization(apiKey, args.prompt, args.gitDiff);
   },
 });

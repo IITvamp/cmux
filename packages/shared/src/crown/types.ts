@@ -1,87 +1,211 @@
-export type WorkerRunStatus = "pending" | "running" | "completed" | "failed";
+import { z } from "zod";
 
-export type WorkerRunContext = {
-  token: string;
-  prompt: string;
-  agentModel?: string;
-  teamId?: string;
-  taskId?: string;
-  convexUrl?: string;
-};
+export const WorkerRunStatusSchema = z.enum([
+  "pending",
+  "running",
+  "completed",
+  "failed",
+]);
+export type WorkerRunStatus = z.infer<typeof WorkerRunStatusSchema>;
 
-export type CrownWorkerCheckResponse = {
-  ok: true;
-  taskId: string;
-  allRunsFinished: boolean;
-  allWorkersReported: boolean;
-  shouldEvaluate: boolean;
-  singleRunWinnerId: string | null;
-  existingEvaluation: null | {
-    winnerRunId: string;
-    evaluatedAt: number;
-  };
-  task: {
-    text: string;
-    crownEvaluationError: string | null;
-    isCompleted: boolean;
-    baseBranch: string | null;
-    projectFullName: string | null;
-    autoPrEnabled: boolean;
-  };
-  runs: Array<{
-    id: string;
-    status: WorkerRunStatus;
-    agentName: string | null;
-    newBranch: string | null;
-    exitCode: number | null;
-    completedAt: number | null;
-  }>;
-};
+export const WorkerRunContextSchema = z.object({
+  token: z.string(),
+  prompt: z.string(),
+  agentModel: z.string().optional(),
+  teamId: z.string().optional(),
+  taskId: z.string().optional(),
+  convexUrl: z.string().optional(),
+});
+export type WorkerRunContext = z.infer<typeof WorkerRunContextSchema>;
 
-export type WorkerTaskRunDescriptor = {
-  id: string;
-  taskId: string;
-  teamId: string;
-  newBranch: string | null;
-  agentName: string | null;
-};
+export const CrownWorkerCheckResponseSchema = z.object({
+  ok: z.literal(true),
+  taskId: z.string(),
+  allRunsFinished: z.boolean(),
+  allWorkersReported: z.boolean(),
+  shouldEvaluate: z.boolean(),
+  singleRunWinnerId: z.string().nullable(),
+  existingEvaluation: z
+    .object({
+      winnerRunId: z.string(),
+      evaluatedAt: z.number(),
+    })
+    .nullable(),
+  task: z.object({
+    text: z.string(),
+    crownEvaluationError: z.string().nullable(),
+    isCompleted: z.boolean(),
+    baseBranch: z.string().nullable(),
+    projectFullName: z.string().nullable(),
+    autoPrEnabled: z.boolean(),
+  }),
+  runs: z.array(
+    z.object({
+      id: z.string(),
+      status: WorkerRunStatusSchema,
+      agentName: z.string().nullable(),
+      newBranch: z.string().nullable(),
+      exitCode: z.number().nullable(),
+      completedAt: z.number().nullable(),
+    }),
+  ),
+});
+export type CrownWorkerCheckResponse = z.infer<
+  typeof CrownWorkerCheckResponseSchema
+>;
 
-export type WorkerTaskRunResponse = {
-  ok: boolean;
-  taskRun: WorkerTaskRunDescriptor | null;
-  task: { id: string; text: string; projectFullName?: string | null } | null;
-};
+export const WorkerTaskRunDescriptorSchema = z.object({
+  id: z.string(),
+  taskId: z.string(),
+  teamId: z.string(),
+  newBranch: z.string().nullable(),
+  agentName: z.string().nullable(),
+});
+export type WorkerTaskRunDescriptor = z.infer<
+  typeof WorkerTaskRunDescriptorSchema
+>;
 
-export type WorkerAllRunsCompleteResponse = {
-  ok: boolean;
-  taskId: string;
-  allComplete: boolean;
-  statuses: Array<{ id: string; status: string }>;
-};
+export const WorkerTaskRunResponseSchema = z.object({
+  ok: z.boolean(),
+  taskRun: WorkerTaskRunDescriptorSchema.nullable(),
+  task: z
+    .object({
+      id: z.string(),
+      text: z.string(),
+      projectFullName: z.string().nullable().optional(),
+    })
+    .nullable(),
+});
+export type WorkerTaskRunResponse = z.infer<typeof WorkerTaskRunResponseSchema>;
 
-export type CandidateData = {
-  runId: string;
-  agentName: string;
-  gitDiff: string;
-  newBranch: string | null;
-};
+export const WorkerAllRunsCompleteResponseSchema = z.object({
+  ok: z.boolean(),
+  taskId: z.string(),
+  allComplete: z.boolean(),
+  statuses: z.array(
+    z.object({
+      id: z.string(),
+      status: z.string(),
+    }),
+  ),
+});
+export type WorkerAllRunsCompleteResponse = z.infer<
+  typeof WorkerAllRunsCompleteResponseSchema
+>;
 
-export type CrownEvaluationResponse = {
-  winner: number;
-  reason: string;
-};
+export const CandidateDataSchema = z.object({
+  runId: z.string(),
+  agentName: z.string(),
+  gitDiff: z.string(),
+  newBranch: z.string().nullable(),
+});
+export type CandidateData = z.infer<typeof CandidateDataSchema>;
 
-export type CrownSummarizationResponse = {
-  summary: string;
-};
+export const CrownEvaluationResponseSchema = z.object({
+  winner: z.number().int().min(0),
+  reason: z.string(),
+});
+export type CrownEvaluationResponse = z.infer<
+  typeof CrownEvaluationResponseSchema
+>;
 
-export type PullRequestMetadata = {
-  pullRequest?: {
-    url: string;
-    isDraft?: boolean;
-    state?: "none" | "draft" | "open" | "merged" | "closed" | "unknown";
-    number?: number;
-  };
-  title?: string;
-  description?: string;
-};
+export const CrownSummarizationResponseSchema = z.object({
+  summary: z.string(),
+});
+export type CrownSummarizationResponse = z.infer<
+  typeof CrownSummarizationResponseSchema
+>;
+
+export const PullRequestMetadataSchema = z.object({
+  pullRequest: z
+    .object({
+      url: z.url(),
+      isDraft: z.boolean().optional(),
+      state: z
+        .enum(["none", "draft", "open", "merged", "closed", "unknown"])
+        .optional(),
+      number: z.number().int().optional(),
+    })
+    .optional(),
+  title: z.string().optional(),
+  description: z.string().optional(),
+});
+export type PullRequestMetadata = z.infer<typeof PullRequestMetadataSchema>;
+
+export const CrownEvaluationCandidateSchema = z.object({
+  runId: z.string().optional(),
+  agentName: z.string().optional(),
+  modelName: z.string().optional(),
+  gitDiff: z.string(),
+  newBranch: z.string().nullable().optional(),
+  index: z.number().optional(),
+});
+export type CrownEvaluationCandidate = z.infer<
+  typeof CrownEvaluationCandidateSchema
+>;
+
+export const CrownEvaluationRequestSchema = z.object({
+  prompt: z.string(),
+  candidates: z.array(CrownEvaluationCandidateSchema).min(1),
+  teamSlugOrId: z.string(),
+});
+export type CrownEvaluationRequest = z.infer<
+  typeof CrownEvaluationRequestSchema
+>;
+
+export const CrownEvaluationPromptSchema = z.object({
+  prompt: z.string(),
+  teamSlugOrId: z.string(),
+});
+
+export const CrownSummarizationRequestSchema = z.object({
+  prompt: z.string(),
+  gitDiff: z.string(),
+  teamSlugOrId: z.string().optional(),
+});
+export type CrownSummarizationRequest = z.infer<
+  typeof CrownSummarizationRequestSchema
+>;
+
+export const CrownSummarizationPromptSchema = z.object({
+  prompt: z.string(),
+  teamSlugOrId: z.string(),
+});
+
+export const WorkerCheckSchema = z.object({
+  taskId: z.string().optional(),
+  taskRunId: z.string().optional(),
+  checkType: z.enum(["info", "all-complete", "crown"]).optional(),
+});
+
+export const WorkerFinalizeSchema = z.object({
+  taskId: z.string(),
+  winnerRunId: z.string(),
+  reason: z.string(),
+  evaluationPrompt: z.string(),
+  evaluationResponse: z.string(),
+  candidateRunIds: z.array(z.string()).min(1),
+  summary: z.string().optional(),
+  pullRequest: z
+    .object({
+      url: z.string().url(),
+      isDraft: z.boolean().optional(),
+      state: z
+        .enum(["none", "draft", "open", "merged", "closed", "unknown"])
+        .optional(),
+      number: z.number().int().optional(),
+    })
+    .optional(),
+  pullRequestTitle: z.string().optional(),
+  pullRequestDescription: z.string().optional(),
+});
+
+export const WorkerCompleteRequestSchema = z.object({
+  taskRunId: z.string(),
+  exitCode: z.number().optional(),
+});
+
+export const WorkerScheduleRequestSchema = z.object({
+  taskRunId: z.string(),
+  scheduledStopAt: z.number().optional(),
+});

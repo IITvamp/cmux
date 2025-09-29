@@ -127,7 +127,7 @@ export async function handleWorkerTaskCompletion(
       reason: !hasProjectInfo ? "environment-mode" : "no-git-repo",
     });
   } else {
-    const taskTextForCommit =
+    const promptForCommit =
       info?.task?.text ?? runContext.prompt ?? "cmux task";
 
     const diffForCommit = await captureRelevantDiff();
@@ -137,7 +137,7 @@ export async function handleWorkerTaskCompletion(
     });
 
     const commitMessage = buildCommitMessage({
-      taskText: taskTextForCommit,
+      prompt: promptForCommit,
       agentName: agentModel ?? runContext.agentModel ?? "cmux-agent",
     });
 
@@ -461,7 +461,7 @@ export async function handleWorkerTaskCompletion(
           "/api/crown/summarize",
           runContext.token,
           {
-            taskText:
+            prompt:
               checkResponse.task?.text || "Task description not available",
             gitDiff: candidate.gitDiff,
             teamSlugOrId: runContext.teamId,
@@ -548,7 +548,7 @@ export async function handleWorkerTaskCompletion(
     }
 
     // Extract task text after validation for type safety
-    const taskText = checkResponse.task.text;
+    const promptText = checkResponse.task.text;
 
     // Extra validation before making the request
     if (candidates.length === 0) {
@@ -563,11 +563,15 @@ export async function handleWorkerTaskCompletion(
     }
 
     // Final validation before sending request
-    if (!taskText || typeof taskText !== "string" || taskText.length === 0) {
+    if (
+      !promptText ||
+      typeof promptText !== "string" ||
+      promptText.length === 0
+    ) {
       log("ERROR", "Task text is invalid despite earlier checks", {
         taskRunId,
-        taskTextType: typeof taskText,
-        taskTextLength: taskText?.length,
+        promptType: typeof promptText,
+        promptLength: promptText?.length,
       });
       return;
     }
@@ -593,14 +597,14 @@ export async function handleWorkerTaskCompletion(
 
     log("INFO", "Preparing crown evaluation request", {
       taskRunId,
-      hasTaskText: true,
-      taskTextPreview: taskText.slice(0, 100),
+      hasPrompt: true,
+      promptPreview: promptText.slice(0, 100),
       candidatesCount: candidates.length,
       teamId: runContext.teamId,
     });
 
     const requestBody = {
-      taskText,
+      prompt: promptText,
       candidates,
       teamSlugOrId: runContext.teamId,
     };
@@ -610,13 +614,13 @@ export async function handleWorkerTaskCompletion(
       taskRunId,
       bodyKeys: Object.keys(requestBody),
       hasAllRequiredFields:
-        !!requestBody.taskText &&
+        !!requestBody.prompt &&
         !!requestBody.candidates &&
         !!requestBody.teamSlugOrId,
     });
 
     const evaluationResponse = await convexRequest<CrownEvaluationResponse>(
-      "/api/crown/evaluate",
+      "/api/crown/evaluate-agents",
       runContext.token,
       requestBody,
       baseUrlOverride,
@@ -652,7 +656,7 @@ export async function handleWorkerTaskCompletion(
       "/api/crown/summarize",
       runContext.token,
       {
-        taskText,
+        prompt: promptText,
         gitDiff: winnerCandidate.gitDiff,
         teamSlugOrId: runContext.teamId,
       },
@@ -686,7 +690,7 @@ export async function handleWorkerTaskCompletion(
         taskId: checkResponse.taskId,
         winnerRunId: winnerCandidate.runId,
         reason,
-        evaluationPrompt: `Task: ${taskText}\nCandidates: ${JSON.stringify(candidates)}`,
+        evaluationPrompt: `Task: ${promptText}\nCandidates: ${JSON.stringify(candidates)}`,
         evaluationResponse: JSON.stringify(
           evaluationResponse ?? {
             winner: candidates.indexOf(winnerCandidate),

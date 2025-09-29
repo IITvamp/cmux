@@ -75,7 +75,7 @@ export async function createPullRequestIfEnabled(options: {
   const prTitle = buildPullRequestTitle(check.task.text);
   const prBody = buildPullRequestBody({
     summary,
-    taskText: check.task.text,
+    prompt: check.task.text,
     agentName: winner.agentName,
     branch,
     taskId: context.taskId ?? check.taskId,

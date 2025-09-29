@@ -1,431 +1,27 @@
 import {
+  CrownEvaluationRequestSchema,
+  CrownSummarizationRequestSchema,
+  WorkerCheckSchema,
+  WorkerCompleteRequestSchema,
+  WorkerFinalizeSchema,
+  WorkerScheduleRequestSchema,
   verifyTaskRunToken,
+  type CrownEvaluationRequest,
   type CrownWorkerCheckResponse,
   type TaskRunTokenPayload,
   type WorkerAllRunsCompleteResponse,
   type WorkerRunStatus,
   type WorkerTaskRunResponse,
 } from "../../shared/src/convex-safe";
-import { z } from "zod";
 import { env } from "../_shared/convex-env";
 import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { httpAction } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
 
-const JSON_HEADERS = { "content-type": "application/json" } as const;
-
-const CrownEvaluationCandidateSchema = z.object({
-  runId: z.string().optional(),
-  agentName: z.string().optional(),
-  modelName: z.string().optional(),
-  gitDiff: z.string(),
-  newBranch: z.string().optional(),
-  index: z.number().optional(),
-});
-
-const CrownEvaluationRequestSchema = z.object({
-  taskText: z.string(),
-  candidates: z.array(CrownEvaluationCandidateSchema).min(1),
-  teamSlugOrId: z.string(),
-});
-
-const CrownEvaluationPromptSchema = z.object({
-  prompt: z.string(),
-  teamSlugOrId: z.string(),
-});
-
-const CrownSummarizationRequestSchema = z.object({
-  taskText: z.string(),
-  gitDiff: z.string(),
-  teamSlugOrId: z.string().optional(),
-});
-
-const CrownSummarizationPromptSchema = z.object({
-  prompt: z.string(),
-  teamSlugOrId: z.string(),
-});
-
-const WorkerCheckSchema = z.object({
-  taskId: z.string().optional(),
-  taskRunId: z.string().optional(),
-  checkType: z.enum(["info", "all-complete", "crown"]).optional(),
-});
-
-const WorkerFinalizeSchema = z.object({
-  taskId: z.string(),
-  winnerRunId: z.string(),
-  reason: z.string(),
-  evaluationPrompt: z.string(),
-  evaluationResponse: z.string(),
-  candidateRunIds: z.array(z.string()).min(1),
-  summary: z.string().optional(),
-  pullRequest: z
-    .object({
-      url: z.url(),
-      isDraft: z.boolean().optional(),
-      state: z
-        .union([
-          z.literal("none"),
-          z.literal("draft"),
-          z.literal("open"),
-          z.literal("merged"),
-          z.literal("closed"),
-          z.literal("unknown"),
-        ])
-        .optional(),
-      number: z.number().int().optional(),
-    })
-    .optional(),
-  pullRequestTitle: z.string().optional(),
-  pullRequestDescription: z.string().optional(),
-});
-
-const WorkerCompleteRequestSchema = z.object({
-  taskRunId: z.string(),
-  exitCode: z.number().optional(),
-});
-
-const WorkerScheduleRequestSchema = z.object({
-  taskRunId: z.string(),
-  scheduledStopAt: z.number().optional(),
-});
-
-type CrownEvaluationRequest = z.infer<typeof CrownEvaluationRequestSchema>;
-type CrownEvaluationCandidate = z.infer<typeof CrownEvaluationCandidateSchema>;
-
-type ParseEvaluationRequestResult =
-  | { ok: true; data: CrownEvaluationRequest }
-  | { ok: false; errors: Array<{ message: string; details?: unknown }> };
-
-type CrownSummarizationRequest = z.infer<typeof CrownSummarizationRequestSchema>;
-
-type ParseSummarizationRequestResult =
-  | { ok: true; data: CrownSummarizationRequest }
-  | { ok: false; errors: Array<{ message: string; details?: unknown }> };
-
-function parseEvaluationRequestBody(
-  json: unknown,
-): ParseEvaluationRequestResult {
-  const legacy = CrownEvaluationRequestSchema.safeParse(json);
-  if (legacy.success) {
-    return { ok: true, data: legacy.data };
-  }
-
-  const errors: Array<{ message: string; details?: unknown }> = [
-    { message: "legacy_schema_failed", details: legacy.error },
-  ];
-
-  const promptPayload = CrownEvaluationPromptSchema.safeParse(json);
-  if (!promptPayload.success) {
-    errors.push({
-      message: "prompt_schema_failed",
-      details: promptPayload.error,
-    });
-    return { ok: false, errors };
-  }
-
-  const converted = convertPromptPayload(
-    promptPayload.data.prompt,
-    promptPayload.data.teamSlugOrId,
-  );
-  if (!converted.ok) {
-    errors.push(converted.error);
-    return { ok: false, errors };
-  }
-
-  return { ok: true, data: converted.data };
-}
-
-function convertPromptPayload(
-  prompt: string,
-  teamSlugOrId: string,
-):
-  | { ok: true; data: CrownEvaluationRequest }
-  | { ok: false; error: { message: string; details?: unknown } } {
-  const jsonBlock = extractFirstJsonObject(prompt);
-  if (!jsonBlock) {
-    return { ok: false, error: { message: "prompt_missing_json_block" } };
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonBlock);
-  } catch (error) {
-    return {
-      ok: false,
-      error: {
-        message: "prompt_json_parse_failed",
-        details: { error, jsonBlock },
-      },
-    };
-  }
-
-  if (!parsed || typeof parsed !== "object") {
-    return {
-      ok: false,
-      error: {
-        message: "prompt_json_not_object",
-        details: { parsedType: typeof parsed },
-      },
-    };
-  }
-
-  const record = parsed as Record<string, unknown>;
-  const taskTextValue = record.task ?? record.taskText;
-  if (typeof taskTextValue !== "string" || taskTextValue.trim() === "") {
-    return { ok: false, error: { message: "prompt_missing_task_text" } };
-  }
-
-  const rawCandidates = Array.isArray(record.implementations)
-    ? record.implementations
-    : Array.isArray(record.candidates)
-      ? record.candidates
-      : null;
-
-  if (!rawCandidates || rawCandidates.length === 0) {
-    return { ok: false, error: { message: "prompt_missing_candidates" } };
-  }
-
-  const candidates: CrownEvaluationCandidate[] = [];
-  for (let i = 0; i < rawCandidates.length; i++) {
-    const rawCandidate = rawCandidates[i];
-    if (!rawCandidate || typeof rawCandidate !== "object") {
-      return {
-        ok: false,
-        error: {
-          message: "prompt_candidate_not_object",
-          details: { index: i },
-        },
-      };
-    }
-
-    const candidateRecord = rawCandidate as Record<string, unknown>;
-    const gitDiffValue = candidateRecord.gitDiff;
-    if (typeof gitDiffValue !== "string") {
-      return {
-        ok: false,
-        error: {
-          message: "prompt_candidate_missing_git_diff",
-          details: { index: i },
-        },
-      };
-    }
-
-    candidates.push({
-      gitDiff: gitDiffValue,
-      runId:
-        typeof candidateRecord.runId === "string"
-          ? candidateRecord.runId
-          : undefined,
-      agentName:
-        typeof candidateRecord.agentName === "string"
-          ? candidateRecord.agentName
-          : undefined,
-      modelName:
-        typeof candidateRecord.modelName === "string"
-          ? candidateRecord.modelName
-          : undefined,
-      newBranch:
-        typeof candidateRecord.newBranch === "string"
-          ? candidateRecord.newBranch
-          : undefined,
-      index:
-        typeof candidateRecord.index === "number"
-          ? candidateRecord.index
-          : undefined,
-    });
-  }
-
-  const normalized = CrownEvaluationRequestSchema.safeParse({
-    taskText: taskTextValue,
-    candidates,
-    teamSlugOrId,
-  });
-
-  if (!normalized.success) {
-    return {
-      ok: false,
-      error: {
-        message: "prompt_conversion_failed_validation",
-        details: normalized.error,
-      },
-    };
-  }
-
-  return { ok: true, data: normalized.data };
-}
-
-function parseSummarizationRequestBody(
-  json: unknown,
-): ParseSummarizationRequestResult {
-  const legacy = CrownSummarizationRequestSchema.safeParse(json);
-  if (legacy.success) {
-    return { ok: true, data: legacy.data };
-  }
-
-  const errors: Array<{ message: string; details?: unknown }> = [
-    { message: "legacy_schema_failed", details: legacy.error },
-  ];
-
-  const promptPayload = CrownSummarizationPromptSchema.safeParse(json);
-  if (!promptPayload.success) {
-    errors.push({
-      message: "prompt_schema_failed",
-      details: promptPayload.error,
-    });
-    return { ok: false, errors };
-  }
-
-  const converted = convertSummarizationPrompt(
-    promptPayload.data.prompt,
-    promptPayload.data.teamSlugOrId,
-  );
-
-  if (!converted.ok) {
-    errors.push(converted.error);
-    return { ok: false, errors };
-  }
-
-  return { ok: true, data: converted.data };
-}
-
-function convertSummarizationPrompt(
-  prompt: string,
-  teamSlugOrId: string,
-):
-  | { ok: true; data: CrownSummarizationRequest }
-  | { ok: false; error: { message: string; details?: unknown } } {
-  const jsonBlock = extractFirstJsonObject(prompt);
-  if (!jsonBlock) {
-    return { ok: false, error: { message: "prompt_missing_json_block" } };
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonBlock);
-  } catch (error) {
-    return {
-      ok: false,
-      error: {
-        message: "prompt_json_parse_failed",
-        details: { error, jsonBlock },
-      },
-    };
-  }
-
-  if (!parsed || typeof parsed !== "object") {
-    return {
-      ok: false,
-      error: {
-        message: "prompt_json_not_object",
-        details: { parsedType: typeof parsed },
-      },
-    };
-  }
-
-  const record = parsed as Record<string, unknown>;
-
-  const taskTextCandidates = [
-    record.taskText,
-    record.task,
-    record.request,
-    record.description,
-    record.title,
-  ];
-  const taskTextValue = taskTextCandidates.find((value): value is string => {
-    return typeof value === "string" && value.trim() !== "";
-  });
-  if (!taskTextValue) {
-    return { ok: false, error: { message: "prompt_missing_task_text" } };
-  }
-
-  const diffCandidates = [
-    record.gitDiff,
-    record.diff,
-    record.diffText,
-    record.git_diff,
-    record.diffSummary,
-    record.branchDiff,
-  ];
-  const gitDiffValue = diffCandidates.find(
-    (value): value is string => typeof value === "string",
-  );
-  if (!gitDiffValue) {
-    return { ok: false, error: { message: "prompt_missing_git_diff" } };
-  }
-
-  const normalized = CrownSummarizationRequestSchema.safeParse({
-    taskText: taskTextValue,
-    gitDiff: gitDiffValue,
-    teamSlugOrId,
-  });
-
-  if (!normalized.success) {
-    return {
-      ok: false,
-      error: {
-        message: "prompt_conversion_failed_validation",
-        details: normalized.error,
-      },
-    };
-  }
-
-  return { ok: true, data: normalized.data };
-}
-
-function extractFirstJsonObject(text: string): string | null {
-  const start = text.indexOf("{");
-  if (start === -1) return null;
-
-  let depth = 0;
-  let inString = false;
-  let isEscaped = false;
-
-  for (let i = start; i < text.length; i++) {
-    const char = text[i];
-
-    if (inString) {
-      if (isEscaped) {
-        isEscaped = false;
-      } else if (char === "\\") {
-        isEscaped = true;
-      } else if (char === '"') {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (char === '"') {
-      inString = true;
-      continue;
-    }
-
-    if (char === "{") {
-      depth += 1;
-    } else if (char === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        return text.slice(start, i + 1);
-      }
-    }
-  }
-
-  return null;
-}
-
-function buildEvaluationCandidates(
-  candidates: CrownEvaluationCandidate[],
-): Array<{ modelName: string; gitDiff: string; index: number }> {
-  return candidates.map((candidate, index) => ({
-    modelName:
-      candidate.agentName ??
-      candidate.modelName ??
-      `candidate-${candidate.index ?? index}`,
-    gitDiff: candidate.gitDiff,
-    index: candidate.index ?? index,
-  }));
-}
+const JSON_HEADERS = {
+  "Content-Type": "application/json",
+};
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
@@ -641,20 +237,20 @@ export const crownEvaluate = httpAction(async (ctx, req) => {
     body: JSON.stringify(parsed.json),
   });
 
-  const evaluationPayload = parseEvaluationRequestBody(parsed.json);
-  if (!evaluationPayload.ok) {
+  const validation = CrownEvaluationRequestSchema.safeParse(parsed.json);
+  if (!validation.success) {
     console.warn("[convex.crown] Invalid evaluation payload", {
-      errors: evaluationPayload.errors,
+      errors: validation.error.issues,
       receivedBody: parsed.json,
     });
     return jsonResponse({ code: 400, message: "Invalid input" }, 400);
   }
 
-  const normalizedEvaluation = evaluationPayload.data;
+  const data: CrownEvaluationRequest = validation.data;
 
   const teamSlugOrId = workerAuth
     ? workerAuth.payload.teamId
-    : normalizedEvaluation.teamSlugOrId;
+    : data.teamSlugOrId;
 
   if (!teamSlugOrId) {
     return jsonResponse(
@@ -669,76 +265,23 @@ export const crownEvaluate = httpAction(async (ctx, req) => {
   }
 
   try {
-    const candidates = buildEvaluationCandidates(
-      normalizedEvaluation.candidates,
-    );
+    const candidates = data.candidates.map((candidate, index) => ({
+      modelName:
+        candidate.agentName ??
+        candidate.modelName ??
+        `candidate-${candidate.index ?? index}`,
+      gitDiff: candidate.gitDiff,
+      index: candidate.index ?? index,
+    }));
 
     const result = await ctx.runAction(api.crown.actions.evaluate, {
-      taskText: normalizedEvaluation.taskText,
+      prompt: data.prompt,
       candidates,
       teamSlugOrId,
     });
     return jsonResponse(result);
   } catch (error) {
     console.error("[convex.crown] Evaluation error", error);
-    return jsonResponse({ code: 500, message: "Evaluation failed" }, 500);
-  }
-});
-
-export const crownSingleRun = httpAction(async (ctx, req) => {
-  const workerAuthResult = await getOptionalWorkerAuth(req);
-  if (workerAuthResult instanceof Response) return workerAuthResult;
-  const workerAuth = workerAuthResult;
-
-  if (!workerAuth) {
-    const stackAuthError = ensureStackAuth(req);
-    if (stackAuthError) throw stackAuthError;
-  }
-
-  const parsed = await ensureJsonRequest(req);
-  if (parsed instanceof Response) return parsed;
-
-  const evaluationPayload = parseEvaluationRequestBody(parsed.json);
-  if (!evaluationPayload.ok) {
-    console.warn("[convex.crown] Invalid single-run payload", {
-      errors: evaluationPayload.errors,
-      receivedBody: parsed.json,
-    });
-    return jsonResponse({ code: 400, message: "Invalid input" }, 400);
-  }
-
-  const normalizedEvaluation = evaluationPayload.data;
-
-  const teamSlugOrId = workerAuth
-    ? workerAuth.payload.teamId
-    : normalizedEvaluation.teamSlugOrId;
-
-  if (!teamSlugOrId) {
-    return jsonResponse(
-      { code: 400, message: "teamSlugOrId is required" },
-      400,
-    );
-  }
-
-  if (!workerAuth) {
-    const membership = await ensureTeamMembership(ctx, teamSlugOrId);
-    if (membership instanceof Response) return membership;
-  }
-
-  // For single run, we still evaluate but with only one candidate
-  try {
-    const candidates = buildEvaluationCandidates(
-      normalizedEvaluation.candidates,
-    );
-
-    const result = await ctx.runAction(api.crown.actions.evaluate, {
-      taskText: normalizedEvaluation.taskText,
-      candidates,
-      teamSlugOrId,
-    });
-    return jsonResponse(result);
-  } catch (error) {
-    console.error("[convex.crown] Single-run evaluation error", error);
     return jsonResponse({ code: 500, message: "Evaluation failed" }, 500);
   }
 });
@@ -755,19 +298,18 @@ export const crownSummarize = httpAction(async (ctx, req) => {
 
   const parsed = await ensureJsonRequest(req);
   if (parsed instanceof Response) return parsed;
-
-  const summarizationPayload = parseSummarizationRequestBody(parsed.json);
-  if (!summarizationPayload.ok) {
+  const validation = CrownSummarizationRequestSchema.safeParse(parsed.json);
+  if (!validation.success) {
     console.warn("[convex.crown] Invalid summarization payload", {
-      errors: summarizationPayload.errors,
+      errors: validation.error,
       receivedBody: parsed.json,
     });
     return jsonResponse({ code: 400, message: "Invalid input" }, 400);
   }
 
-  const normalizedSummarization = summarizationPayload.data;
+  const data = validation.data;
 
-  let teamSlugOrId = normalizedSummarization.teamSlugOrId;
+  let teamSlugOrId = data.teamSlugOrId;
   if (workerAuth) {
     teamSlugOrId = workerAuth.payload.teamId;
   } else {
@@ -785,8 +327,8 @@ export const crownSummarize = httpAction(async (ctx, req) => {
 
   try {
     const result = await ctx.runAction(api.crown.actions.summarize, {
-      taskText: normalizedSummarization.taskText,
-      gitDiff: normalizedSummarization.gitDiff,
+      prompt: data.prompt,
+      gitDiff: data.gitDiff,
       teamSlugOrId,
     });
     return jsonResponse(result);
