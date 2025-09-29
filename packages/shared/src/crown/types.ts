@@ -50,11 +50,6 @@ export type WorkerTaskRunResponse = {
   ok: boolean;
   taskRun: WorkerTaskRunDescriptor | null;
   task: { id: string; text: string; projectFullName?: string | null } | null;
-  containerSettings: {
-    autoCleanupEnabled: boolean;
-    stopImmediatelyOnCompletion: boolean;
-    reviewPeriodMinutes: number;
-  } | null;
 };
 
 export type WorkerAllRunsCompleteResponse = {

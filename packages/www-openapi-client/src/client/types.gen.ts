@@ -391,6 +391,8 @@ export type StartSandboxBody = {
     metadata?: {
         [key: string]: string;
     };
+    taskRunId?: string;
+    taskRunJwt?: string;
     repoUrl?: string;
     branch?: string;
     newBranch?: string;

@@ -1,5 +1,7 @@
-import type { TaskRunTokenPayload } from "@/lib/utils/task-run-token";
-import { verifyTaskRunToken } from "@/lib/utils/task-run-token";
+import {
+  verifyTaskRunToken,
+  type TaskRunTokenPayload,
+} from "@cmux/shared";
 import { env } from "@/lib/utils/www-env";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -22,7 +24,7 @@ async function requireTaskRunToken(
     throw new Error("Missing CMUX token");
   }
 
-  return verifyTaskRunToken(token);
+  return verifyTaskRunToken(token, env.CMUX_TASK_RUN_JWT_SECRET);
 }
 
 function getIsOAuthToken(token: string) {

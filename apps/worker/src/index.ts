@@ -18,11 +18,8 @@ import type { Id } from "@cmux/convex/dataModel";
 
 import { getWorkerServerSocketOptions } from "@cmux/shared/node/socket";
 import { startAmpProxy } from "@cmux/shared/src/providers/amp/start-amp-proxy.ts";
-import {
-  registerTaskRunContext,
-  handleWorkerTaskCompletion,
-  hasTaskRunContext,
-} from "./crown/workflow";
+import { handleWorkerTaskCompletion } from "./crown/workflow";
+import type { WorkerRunContext } from "./crown/types";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import * as xtermHeadless from "@xterm/headless";
 import express from "express";
@@ -860,23 +857,22 @@ async function createTerminal(
     startupCommands = [],
   } = options;
 
-  const envRecord = env as Record<string, string>;
-  const taskRunToken = envRecord["CMUX_TASK_RUN_JWT"];
-  const convexUrl = envRecord["NEXT_PUBLIC_CONVEX_URL"];
+  const envRecord = env;
+  const taskRunToken = envRecord.CMUX_TASK_RUN_JWT;
+  const convexUrl = envRecord.NEXT_PUBLIC_CONVEX_URL;
+  const promptValue = envRecord["CMUX_PROMPT"] ?? envRecord["PROMPT"] ?? "";
 
-  if (convexUrl) {
-    process.env.NEXT_PUBLIC_CONVEX_URL = convexUrl;
-  }
-
+  let taskRunContext: WorkerRunContext | null = null;
   if (options.taskRunId && taskRunToken) {
-    const promptValue = envRecord["CMUX_PROMPT"] ?? envRecord["PROMPT"] ?? "";
-    registerTaskRunContext(options.taskRunId, {
+    taskRunContext = {
       token: taskRunToken,
       prompt: promptValue,
       agentModel: options.agentModel,
       convexUrl,
-    });
+    };
   }
+
+  let shouldTrackExitCode = Boolean(options.taskRunId && taskRunContext);
 
   const shell = command || (platform() === "win32" ? "powershell.exe" : "bash");
 
@@ -1074,13 +1070,6 @@ async function createTerminal(
             `Completion detector resolved for task ${options.taskRunId}`
           );
 
-          emitToMainServer("worker:task-complete", {
-            workerId: WORKER_ID,
-            taskRunId: options.taskRunId!,
-            agentModel: options.agentModel,
-            elapsedMs: Date.now() - processStartTime,
-          });
-
           log(
             "INFO",
             `Starting crown evaluation for task ${options.taskRunId}`,
@@ -1091,13 +1080,28 @@ async function createTerminal(
             }
           );
 
+          if (!taskRunContext) {
+            shouldTrackExitCode = false;
+            log("ERROR", "Missing task run context for crown workflow", {
+              taskRunId: options.taskRunId,
+              hasToken: Boolean(taskRunToken),
+            });
+            return;
+          }
+
           // Retrieve the exit code if the process has already exited
           const storedExitCode = processExitCodes.get(options.taskRunId!);
 
           // Await the crown workflow directly
           try {
-            await handleWorkerTaskCompletion(options.taskRunId!, {
-              agentModel: options.agentModel,
+            await handleWorkerTaskCompletion({
+              taskRunId: options.taskRunId!,
+              token: taskRunContext.token,
+              prompt: taskRunContext.prompt,
+              convexUrl: taskRunContext.convexUrl,
+              agentModel: options.agentModel ?? taskRunContext.agentModel,
+              teamId: taskRunContext.teamId,
+              taskId: taskRunContext.taskId,
               elapsedMs: Date.now() - processStartTime,
               exitCode: storedExitCode ?? 0,
             });
@@ -1111,6 +1115,8 @@ async function createTerminal(
             if (options.taskRunId) {
               processExitCodes.delete(options.taskRunId);
             }
+            shouldTrackExitCode = false;
+            taskRunContext = null;
           } catch (error) {
             log(
               "ERROR",
@@ -1126,6 +1132,8 @@ async function createTerminal(
             if (options.taskRunId) {
               processExitCodes.delete(options.taskRunId);
             }
+            shouldTrackExitCode = false;
+            taskRunContext = null;
           }
         })
         .catch((e) => {
@@ -1175,9 +1183,12 @@ async function createTerminal(
     });
 
     if (options.taskRunId) {
-      if (hasTaskRunContext(options.taskRunId)) {
+      if (shouldTrackExitCode) {
         processExitCodes.set(options.taskRunId, exitCode);
-        log("INFO", `Stored exit code ${exitCode} for task ${options.taskRunId}`);
+        log(
+          "INFO",
+          `Stored exit code ${exitCode} for task ${options.taskRunId}`
+        );
       } else if (processExitCodes.delete(options.taskRunId)) {
         log(
           "INFO",
@@ -1185,13 +1196,6 @@ async function createTerminal(
         );
       }
     }
-
-    // Still emit to main server for backwards compatibility/logging
-    emitToMainServer("worker:terminal-exit", {
-      workerId: WORKER_ID,
-      terminalId,
-      exitCode,
-    });
   });
 
   childProcess.on("error", (error) => {

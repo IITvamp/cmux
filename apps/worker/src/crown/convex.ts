@@ -1,5 +1,4 @@
 import { log } from "../logger";
-import { sleep } from "./utils";
 
 function getConvexBaseUrl(override?: string): string | null {
   const url = override ?? process.env.NEXT_PUBLIC_CONVEX_URL;
@@ -60,22 +59,3 @@ export async function convexRequest<T>(
     return null;
   }
 }
-
-export async function scheduleContainerStop(
-  token: string,
-  taskRunId: string,
-  scheduledStopAt?: number,
-  baseUrlOverride?: string
-): Promise<void> {
-  await convexRequest(
-    `/api/crown/schedule-stop`,
-    token,
-    {
-      taskRunId,
-      scheduledStopAt,
-    },
-    baseUrlOverride
-  );
-}
-
-export { sleep };

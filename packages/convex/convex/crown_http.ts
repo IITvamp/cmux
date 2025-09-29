@@ -1,14 +1,13 @@
-import type {
-  CrownWorkerCheckResponse,
-  WorkerAllRunsCompleteResponse,
-  WorkerRunStatus,
-  WorkerTaskRunResponse,
-} from "@cmux/shared";
-import { z } from "zod";
 import {
   verifyTaskRunToken,
+  type CrownWorkerCheckResponse,
   type TaskRunTokenPayload,
-} from "../_shared/taskRunToken";
+  type WorkerAllRunsCompleteResponse,
+  type WorkerRunStatus,
+  type WorkerTaskRunResponse,
+} from "../../shared/src/convex-safe";
+import { z } from "zod";
+import { env } from "../_shared/convex-env";
 import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { httpAction } from "./_generated/server";
@@ -42,7 +41,7 @@ const WorkerFinalizeSchema = z.object({
   summary: z.string().optional(),
   pullRequest: z
     .object({
-      url: z.string().url(),
+      url: z.url(),
       isDraft: z.boolean().optional(),
       state: z
         .union([
@@ -203,7 +202,10 @@ async function ensureWorkerAuth(
   }
 
   try {
-    const payload = await verifyTaskRunToken(token);
+    const payload = await verifyTaskRunToken(
+      token,
+      env.CMUX_TASK_RUN_JWT_SECRET
+    );
     return { token, payload };
   } catch (error) {
     console.error("[convex.crown] Failed to verify task run token", error);
@@ -334,7 +336,7 @@ export const crownSummarize = httpAction(async (ctx, req) => {
   try {
     const result = await ctx.runAction(api.crown.actions.summarize, {
       prompt: validation.data.prompt,
-      teamSlugOrId,
+      teamSlugOrId: teamSlugOrId!,
     });
     return jsonResponse(result);
   } catch (error) {
@@ -396,15 +398,7 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
       id: taskRun.taskId,
     });
 
-    const containerSettings = await ctx.runQuery(
-      internal.containerSettings.getEffectiveInternal,
-      {
-        teamId: workerAuth.payload.teamId,
-        userId: workerAuth.payload.userId,
-      }
-    );
-
-    const response: WorkerTaskRunResponse = {
+    const response = {
       ok: true,
       taskRun: {
         id: taskRun._id,
@@ -419,15 +413,7 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
             text: task.text,
           }
         : null,
-      containerSettings: containerSettings
-        ? {
-            autoCleanupEnabled: containerSettings.autoCleanupEnabled,
-            stopImmediatelyOnCompletion:
-              containerSettings.stopImmediatelyOnCompletion,
-            reviewPeriodMinutes: containerSettings.reviewPeriodMinutes,
-          }
-        : null,
-    };
+    } satisfies WorkerTaskRunResponse;
     return jsonResponse(response);
   }
 
@@ -478,12 +464,12 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
       statuses,
     });
 
-    const response: WorkerAllRunsCompleteResponse = {
+    const response = {
       ok: true,
       taskId,
       allComplete,
       statuses,
-    };
+    } satisfies WorkerAllRunsCompleteResponse;
     return jsonResponse(response);
   }
 
@@ -578,7 +564,7 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
     completedAt: run.completedAt ?? null,
   }));
 
-  const response: CrownWorkerCheckResponse = {
+  const response = {
     ok: true,
     taskId,
     allRunsFinished,
@@ -600,7 +586,7 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
       autoPrEnabled: workspaceSettings?.autoPrEnabled ?? false,
     },
     runs: runsPayload,
-  };
+  } satisfies CrownWorkerCheckResponse;
   return jsonResponse(response);
 });
 
@@ -745,7 +731,19 @@ export const crownWorkerComplete = httpAction(async (ctx, req) => {
     }
   );
 
-  const response: WorkerTaskRunResponse = {
+  if (containerSettings?.autoCleanupEnabled) {
+    const reviewMinutes = containerSettings.reviewPeriodMinutes ?? 60;
+    const scheduledStopAt = containerSettings.stopImmediatelyOnCompletion
+      ? Date.now()
+      : Date.now() + reviewMinutes * 60 * 1000;
+
+    await ctx.runMutation(internal.taskRuns.updateScheduledStopInternal, {
+      taskRunId,
+      scheduledStopAt,
+    });
+  }
+
+  const response = {
     ok: true,
     taskRun: updatedRun
       ? {
@@ -760,17 +758,9 @@ export const crownWorkerComplete = httpAction(async (ctx, req) => {
       ? {
           id: task._id,
           text: task.text,
-        }
+      }
       : null,
-    containerSettings: containerSettings
-      ? {
-          autoCleanupEnabled: containerSettings.autoCleanupEnabled,
-          stopImmediatelyOnCompletion:
-            containerSettings.stopImmediatelyOnCompletion,
-          reviewPeriodMinutes: containerSettings.reviewPeriodMinutes,
-        }
-      : null,
-  };
+  } satisfies WorkerTaskRunResponse;
   return jsonResponse(response);
 });
 

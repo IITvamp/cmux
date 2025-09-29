@@ -8,10 +8,7 @@ import type {
   PullRequestMetadata,
   WorkerRunContext,
 } from "./types";
-import {
-  buildPullRequestBody,
-  buildPullRequestTitle,
-} from "./prompts";
+import { buildPullRequestBody, buildPullRequestTitle } from "./prompts";
 
 function mapGhState(
   state: string | undefined
@@ -29,7 +26,7 @@ function mapGhState(
 }
 
 const ghPrCreateResponseSchema = z.object({
-  url: z.string().url(),
+  url: z.url(),
   number: z
     .union([
       z.number().int(),
