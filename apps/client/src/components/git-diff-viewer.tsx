@@ -11,14 +11,7 @@ import {
   FilePlus,
   FileText,
 } from "lucide-react";
-import {
-  memo,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { MergeView } from "@codemirror/merge";
 import {
   createMergeBaseExtensions,
@@ -58,7 +51,6 @@ type FileGroup = {
   patch?: string;
   isBinary: boolean;
 };
-
 
 function debugGitDiffViewerLog(
   message: string,
@@ -207,14 +199,6 @@ export function GitDiffViewer({
     setExpandedFiles(new Set());
   };
 
-  const calculateEditorHeight = (oldContent: string, newContent: string) => {
-    const oldLines = oldContent.split("\n").length;
-    const newLines = newContent.split("\n").length;
-    const maxLines = Math.max(oldLines, newLines);
-    // approximate using compact line height of 18px + small padding
-    return Math.max(100, maxLines * 18 + 24);
-  };
-
   // Compute totals consistently before any conditional early-returns
   const totalAdditions = diffs.reduce((sum, d) => sum + d.additions, 0);
   const totalDeletions = diffs.reduce((sum, d) => sum + d.deletions, 0);
@@ -255,7 +239,6 @@ export function GitDiffViewer({
             isExpanded={expandedFiles.has(file.filePath)}
             onToggle={() => toggleFile(file.filePath)}
             theme={theme}
-            calculateEditorHeight={calculateEditorHeight}
             classNames={classNames?.fileDiffRow}
           />
         ))}
@@ -281,7 +264,6 @@ interface FileDiffRowProps {
   isExpanded: boolean;
   onToggle: () => void;
   theme: string | undefined;
-  calculateEditorHeight: (oldContent: string, newContent: string) => number;
   classNames?: {
     button?: string;
     container?: string;
@@ -293,18 +275,10 @@ function FileDiffRow({
   isExpanded,
   onToggle,
   theme,
-  calculateEditorHeight,
   classNames,
 }: FileDiffRowProps) {
   const mergeHostRef = useRef<HTMLDivElement | null>(null);
   const mergeViewRef = useRef<MergeView | null>(null);
-  const resizeObserverRef = useRef<ResizeObserver | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
-
-  const [isEditorVisible, setIsEditorVisible] = useState(false);
-  const [minimumHeight, setMinimumHeight] = useState(() =>
-    Math.max(120, calculateEditorHeight(file.oldContent, file.newContent)),
-  );
 
   const shouldRenderEditor =
     isExpanded &&
@@ -322,37 +296,8 @@ function FileDiffRow({
     [file.filePath],
   );
 
-  useLayoutEffect(() => {
-    if (!shouldRenderEditor) {
-      return;
-    }
-    const nextHeight = Math.max(
-      120,
-      calculateEditorHeight(file.oldContent, file.newContent),
-    );
-    setMinimumHeight((prev) => (prev === nextHeight ? prev : nextHeight));
-  }, [
-    shouldRenderEditor,
-    file.oldContent,
-    file.newContent,
-    calculateEditorHeight,
-  ]);
-
-  useEffect(() => {
-    return () => {
-      if (animationFrameRef.current != null) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
-      }
-    };
-  }, []);
-
   useEffect(() => {
     if (!shouldRenderEditor) {
-      if (resizeObserverRef.current) {
-        resizeObserverRef.current.disconnect();
-        resizeObserverRef.current = null;
-      }
       if (mergeViewRef.current) {
         mergeViewRef.current.destroy();
         mergeViewRef.current = null;
@@ -360,7 +305,6 @@ function FileDiffRow({
       if (mergeHostRef.current) {
         mergeHostRef.current.textContent = "";
       }
-      setIsEditorVisible(false);
       return;
     }
 
@@ -370,7 +314,6 @@ function FileDiffRow({
     }
 
     host.textContent = "";
-    setIsEditorVisible(false);
 
     const extensions = [...baseExtensions, ...languageExtensions];
 
@@ -398,43 +341,15 @@ function FileDiffRow({
 
     mergeViewRef.current = merge;
 
-    const measure = () => {
-      const dom = merge.dom;
-      const height = dom.getBoundingClientRect().height;
-      if (!Number.isFinite(height) || height <= 0) {
-        return;
-      }
-      const next = Math.max(120, Math.ceil(height) + 12);
-      setMinimumHeight((prev) => (prev === next ? prev : next));
-    };
-
-    measure();
-
-    const observer = new ResizeObserver(measure);
-    observer.observe(merge.dom);
-    resizeObserverRef.current = observer;
-
-    animationFrameRef.current = requestAnimationFrame(() => {
-      setIsEditorVisible(true);
-      animationFrameRef.current = null;
-    });
-
     debugGitDiffViewerLog("merge editor mounted", {
       filePath: file.filePath,
       collapseUnchanged: true,
     });
 
     return () => {
-      if (animationFrameRef.current != null) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
-      }
-      observer.disconnect();
-      resizeObserverRef.current = null;
       merge.destroy();
       mergeViewRef.current = null;
       host.textContent = "";
-      setIsEditorVisible(false);
       debugGitDiffViewerLog("merge editor cleaned up", {
         filePath: file.filePath,
       });
@@ -509,13 +424,7 @@ function FileDiffRow({
               File was deleted
             </div>
           ) : (
-            <div
-              className="relative"
-              style={{
-                minHeight: minimumHeight,
-                visibility: isEditorVisible ? "visible" : "hidden",
-              }}
-            >
+            <div className="relative">
               <div ref={mergeHostRef} className="h-full" />
             </div>
           )}

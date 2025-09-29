@@ -100,7 +100,9 @@ const GITHUB_COLLAPSED_LIGHT_TEXT = "#4b5563";
 const GITHUB_COLLAPSED_DARK_BG = "#1f2733";
 const GITHUB_COLLAPSED_DARK_TEXT = "#e5e7eb";
 
-export function createMergeBaseExtensions(theme: string | undefined): Extension[] {
+export function createMergeBaseExtensions(
+  theme: string | undefined,
+): Extension[] {
   const isDark = theme === "dark";
   const textColor = isDark ? "#e5e7eb" : "#1f2937";
   const gutterColor = isDark ? "#9ca3af" : "#6b7280";
@@ -169,11 +171,17 @@ export function createMergeBaseExtensions(theme: string | undefined): Extension[
       ".cm-selectionBackground, & ::selection": {
         backgroundColor: "rgba(148, 163, 184, 0.35)",
       },
-      ".cm-mergeView": {
+      "& .cm-mergeView": {
         backgroundColor: "transparent",
       },
-      ".cm-mergeView .cm-editor": {
+      "& .cm-mergeView .cm-editor": {
         backgroundColor: "transparent",
+      },
+      "& .cm-mergeViewEditors": {
+        backgroundColor: "transparent",
+      },
+      "&.cm-merge-a": {
+        borderRight: `1px solid ${isDark ? "#27272a" : "#e5e5e5"}`,
       },
       ".cm-change.cm-change-insert": {
         backgroundColor: isDark
@@ -203,7 +211,9 @@ export function createMergeBaseExtensions(theme: string | undefined): Extension[
         backgroundColor: isDark
           ? GITHUB_COLLAPSED_DARK_BG
           : GITHUB_COLLAPSED_LIGHT_BG,
-        color: isDark ? GITHUB_COLLAPSED_DARK_TEXT : GITHUB_COLLAPSED_LIGHT_TEXT,
+        color: isDark
+          ? GITHUB_COLLAPSED_DARK_TEXT
+          : GITHUB_COLLAPSED_LIGHT_TEXT,
         padding: "5px 5px 5px 10px",
         cursor: "pointer",
         backgroundImage: "none",
@@ -355,4 +365,8 @@ export function getLanguageExtensions(path: string): Extension[] {
   }
 }
 
-export { diffLineNumberMarkers, LINE_NUMBER_ADDITION_CLASS, LINE_NUMBER_DELETION_CLASS };
+export {
+  diffLineNumberMarkers,
+  LINE_NUMBER_ADDITION_CLASS,
+  LINE_NUMBER_DELETION_CLASS,
+};
