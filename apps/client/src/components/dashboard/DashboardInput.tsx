@@ -160,13 +160,26 @@ export const DashboardInput = memo(
         }
 
         if (
-          candidateActiveElement instanceof HTMLIFrameElement &&
-          candidateActiveElement.title.toLowerCase().includes("vscode")
+          candidateActiveElement.closest("#persistent-iframe-container") !==
+          null
         ) {
-          return true;
+          return false;
         }
 
-        return candidateActiveElement.tagName === "BODY";
+        if (
+          candidateActiveElement instanceof HTMLIFrameElement &&
+          candidateActiveElement.title
+            .trim()
+            .toLowerCase()
+            .includes("vscode")
+        ) {
+          return false;
+        }
+
+        return (
+          candidateActiveElement === document.body ||
+          candidateActiveElement === document.documentElement
+        );
       };
 
       const handleFocusEvent = (event: FocusEvent) => {
