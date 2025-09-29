@@ -842,7 +842,7 @@ function SocketActions({
           disabled={isCreatingPr || isOpeningPr || isMerging || !hasChanges}
         >
           <ExternalLink className="w-3.5 h-3.5" />
-          {isCreatingPr ? "Creating draft PRs..." : "Open draft PRs"}
+          {isCreatingPr ? openingDraftLabel : (hasMultipleRepos ? "Open draft PRs" : "Open draft PR")}
         </button>
       )}
     </>
