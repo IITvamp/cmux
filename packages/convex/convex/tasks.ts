@@ -3,7 +3,7 @@ import { resolveTeamIdLoose } from "../_shared/team";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { internalQuery } from "./_generated/server";
-import { authMutation, authQuery } from "./users/utils";
+import { authMutation, authQuery, taskIdWithFake } from "./users/utils";
 
 export const get = authQuery({
   args: {
@@ -208,11 +208,16 @@ export const update = authMutation({
 });
 
 export const getById = authQuery({
-  args: { teamSlugOrId: v.string(), id: v.id("tasks") },
+  args: { teamSlugOrId: v.string(), id: taskIdWithFake },
   handler: async (ctx, args) => {
+    // Handle fake IDs by returning null
+    if (typeof args.id === 'string' && args.id.startsWith('fake-')) {
+      return null;
+    }
+
     const userId = ctx.identity.subject;
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
-    const task = await ctx.db.get(args.id);
+    const task = await ctx.db.get(args.id as Id<"tasks">);
     if (!task || task.teamId !== teamId || task.userId !== userId) return null;
 
     if (task.images && task.images.length > 0) {

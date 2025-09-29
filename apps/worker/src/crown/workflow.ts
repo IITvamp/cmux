@@ -16,10 +16,6 @@ import {
 } from "./git";
 import { createPullRequestIfEnabled } from "./pullRequest";
 import {
-  buildEvaluationPrompt,
-  buildSummarizationPrompt,
-} from "./prompts";
-import {
   type CandidateData,
   type CrownEvaluationResponse,
   type CrownSummarizationResponse,
@@ -43,7 +39,7 @@ type WorkerCompletionOptions = {
 };
 
 export async function handleWorkerTaskCompletion(
-  options: WorkerCompletionOptions
+  options: WorkerCompletionOptions,
 ): Promise<void> {
   const {
     taskRunId,
@@ -95,15 +91,19 @@ export async function handleWorkerTaskCompletion(
       taskRunId,
       checkType: "info",
     },
-    baseUrlOverride
+    baseUrlOverride,
   );
 
   if (!info) {
-    log("ERROR", "Failed to load task run info - endpoint not found or network error", {
-      taskRunId,
-      info,
-      convexUrl: baseUrlOverride || process.env.NEXT_PUBLIC_CONVEX_URL,
-    });
+    log(
+      "ERROR",
+      "Failed to load task run info - endpoint not found or network error",
+      {
+        taskRunId,
+        info,
+        convexUrl: baseUrlOverride || process.env.NEXT_PUBLIC_CONVEX_URL,
+      },
+    );
   } else if (!info.ok || !info.taskRun) {
     log("ERROR", "Task run info response invalid", {
       taskRunId,
@@ -112,11 +112,6 @@ export async function handleWorkerTaskCompletion(
       hasTaskRun: info?.taskRun,
     });
     return;
-  }
-
-  if (info?.taskRun) {
-    runContext.taskId = runContext.taskId ?? info.taskRun.taskId;
-    runContext.teamId = runContext.teamId ?? info.taskRun.teamId;
   }
 
   const hasGitRepo = existsSync(join(detectedGitPath, ".git"));
@@ -132,7 +127,8 @@ export async function handleWorkerTaskCompletion(
       reason: !hasProjectInfo ? "environment-mode" : "no-git-repo",
     });
   } else {
-    const taskTextForCommit = info?.task?.text ?? runContext.prompt ?? "cmux task";
+    const taskTextForCommit =
+      info?.task?.text ?? runContext.prompt ?? "cmux task";
 
     const diffForCommit = await captureRelevantDiff();
     log("INFO", "Captured relevant diff", {
@@ -149,7 +145,10 @@ export async function handleWorkerTaskCompletion(
     if (!branchForCommit) {
       branchForCommit = await getCurrentBranch();
       if (!branchForCommit) {
-        const headCheck = await runGitCommandSafe("git symbolic-ref -q HEAD", true);
+        const headCheck = await runGitCommandSafe(
+          "git symbolic-ref -q HEAD",
+          true,
+        );
         if (!headCheck || headCheck.stdout.includes("fatal")) {
           log("WARN", "Git HEAD is detached or not properly initialized", {
             taskRunId,
@@ -158,7 +157,7 @@ export async function handleWorkerTaskCompletion(
           if (info?.taskRun?.newBranch) {
             const createBranch = await runGitCommandSafe(
               `git checkout -b ${info.taskRun.newBranch}`,
-              true
+              true,
             );
             if (createBranch && createBranch.stdout) {
               branchForCommit = info.taskRun.newBranch;
@@ -215,7 +214,7 @@ export async function handleWorkerTaskCompletion(
       taskRunId,
       exitCode,
     },
-    baseUrlOverride
+    baseUrlOverride,
   );
 
   if (!completion?.ok) {
@@ -229,18 +228,31 @@ export async function handleWorkerTaskCompletion(
   });
 
   const completedRunInfo = completion.taskRun ?? info?.taskRun;
-  if (completedRunInfo) {
-    runContext.taskId = completedRunInfo.taskId;
-    runContext.teamId = runContext.teamId ?? completedRunInfo.teamId;
-  }
 
-  const resolvedTaskId =
-    runContext.taskId ?? completion.task?.id ?? info?.task?.id;
-  if (!resolvedTaskId) {
-    log("ERROR", "Missing task ID after worker completion", { taskRunId });
+  // Always use the task ID from the task run (which is the real ID from the database)
+  // Never use task IDs from other sources as they might be fake
+  const realTaskId = completedRunInfo?.taskId;
+
+  if (!realTaskId) {
+    log("ERROR", "Missing real task ID from task run after worker completion", {
+      taskRunId,
+      hasCompletedRunInfo: Boolean(completedRunInfo),
+      hasInfoTaskRun: Boolean(info?.taskRun),
+    });
     return;
   }
-  runContext.taskId = resolvedTaskId;
+
+  // Validate that it's not a fake ID (defensive check)
+  if (realTaskId.startsWith("fake-")) {
+    log("ERROR", "Task run has fake task ID - this should not happen", {
+      taskRunId,
+      taskId: realTaskId,
+    });
+    return;
+  }
+
+  runContext.taskId = realTaskId;
+  runContext.teamId = completedRunInfo.teamId ?? runContext.teamId;
 
   async function attemptCrownEvaluation(currentTaskId: string) {
     log("INFO", "Starting crown evaluation attempt", {
@@ -255,7 +267,7 @@ export async function handleWorkerTaskCompletion(
         taskRunId,
         status: "complete",
       },
-      baseUrlOverride
+      baseUrlOverride,
     );
 
     const maxRetries = 3;
@@ -270,7 +282,7 @@ export async function handleWorkerTaskCompletion(
           taskId: currentTaskId,
           checkType: "all-complete",
         },
-        baseUrlOverride
+        baseUrlOverride,
       );
 
       if (!completionState?.ok) {
@@ -289,7 +301,7 @@ export async function handleWorkerTaskCompletion(
         allComplete: completionState.allComplete,
         totalStatuses: completionState.statuses.length,
         completedCount: completionState.statuses.filter(
-          (status) => status.status === "completed"
+          (status) => status.status === "completed",
         ).length,
       });
 
@@ -316,7 +328,7 @@ export async function handleWorkerTaskCompletion(
           taskRunId,
           taskId: currentTaskId,
           statuses: completionState?.statuses || [],
-        }
+        },
       );
       return;
     }
@@ -332,10 +344,18 @@ export async function handleWorkerTaskCompletion(
       {
         taskId: currentTaskId,
       },
-      baseUrlOverride
+      baseUrlOverride,
     );
 
     if (!checkResponse?.ok) {
+      return;
+    }
+
+    if (!checkResponse.task) {
+      log("ERROR", "Missing task in crown check response", {
+        taskRunId,
+        taskId: currentTaskId,
+      });
       return;
     }
 
@@ -347,18 +367,19 @@ export async function handleWorkerTaskCompletion(
           taskRunId,
           winnerRunId: checkResponse.existingEvaluation.winnerRunId,
           evaluatedAt: new Date(
-            checkResponse.existingEvaluation.evaluatedAt
+            checkResponse.existingEvaluation.evaluatedAt,
           ).toISOString(),
-        }
+        },
       );
       return;
     }
 
     const completedRuns = checkResponse.runs.filter(
-      (run) => run.status === "completed"
+      (run) => run.status === "completed",
     );
     const totalRuns = checkResponse.runs.length;
-    const allRunsCompleted = totalRuns > 0 && completedRuns.length === totalRuns;
+    const allRunsCompleted =
+      totalRuns > 0 && completedRuns.length === totalRuns;
 
     log("INFO", "Crown readiness status", {
       taskRunId,
@@ -400,7 +421,7 @@ export async function handleWorkerTaskCompletion(
       const candidate = await (async () => {
         const gitDiff = await collectDiffForRun(
           baseBranch,
-          singleRun.newBranch
+          singleRun.newBranch,
         );
         log("INFO", "Built crown candidate", {
           runId: singleRun.id,
@@ -417,7 +438,7 @@ export async function handleWorkerTaskCompletion(
 
       const branchesReady = await ensureBranchesAvailable(
         [{ id: candidate.runId, newBranch: candidate.newBranch }],
-        baseBranch
+        baseBranch,
       );
       if (!branchesReady) {
         log("WARN", "Branches not ready for single-run crown; continuing", {
@@ -427,50 +448,26 @@ export async function handleWorkerTaskCompletion(
         return;
       }
 
-      const evaluationPrompt = buildEvaluationPrompt(
-        checkResponse.task.text,
-        [candidate]
-      );
-
-      const evaluationResponse = await convexRequest<CrownEvaluationResponse>(
-        "/api/crown/single-run",
-        runContext.token,
-        {
-          prompt: evaluationPrompt,
-          teamSlugOrId: runContext.teamId,
-          candidateRunId: candidate.runId,
-        },
-        baseUrlOverride
-      );
-
-      if (!evaluationResponse) {
-        log("ERROR", "Missing evaluation response for single run", {
-          taskRunId,
-          elapsedMs,
-        });
-        return;
-      }
-
-      log("INFO", "Single-run evaluation response", {
+      // For single run, skip evaluation and go straight to finalization
+      log("INFO", "Single run detected, skipping evaluation", {
         taskRunId,
-        winner: evaluationResponse.winner,
-        reason: evaluationResponse.reason,
+        runId: candidate.runId,
+        agentName: candidate.agentName,
       });
 
-      const summaryPrompt = buildSummarizationPrompt(
-        checkResponse.task.text,
-        candidate.gitDiff
-      );
-
-      const summarizationResponse = await convexRequest<CrownSummarizationResponse>(
-        "/api/crown/summarize",
-        runContext.token,
-        {
-          prompt: summaryPrompt,
-          teamSlugOrId: runContext.teamId,
-        },
-        baseUrlOverride
-      );
+      // Still get a summary for the PR description
+      const summarizationResponse =
+        await convexRequest<CrownSummarizationResponse>(
+          "/api/crown/summarize",
+          runContext.token,
+          {
+            taskText:
+              checkResponse.task?.text || "Task description not available",
+            gitDiff: candidate.gitDiff,
+            teamSlugOrId: runContext.teamId,
+          },
+          baseUrlOverride,
+        );
 
       const singleSummary = summarizationResponse?.summary
         ? summarizationResponse.summary.slice(0, 8000)
@@ -487,13 +484,16 @@ export async function handleWorkerTaskCompletion(
         {
           taskId: checkResponse.taskId,
           winnerRunId: candidate.runId,
-          reason: evaluationResponse.reason ?? "Single run winner",
-          evaluationPrompt,
-          evaluationResponse: JSON.stringify(evaluationResponse),
+          reason: "Single run automatically selected (no competition)",
+          evaluationPrompt: `Single run - no evaluation needed`,
+          evaluationResponse: JSON.stringify({
+            winner: 0,
+            reason: "Single run - no competition",
+          }),
           candidateRunIds: [candidate.runId],
           summary: singleSummary,
         },
-        baseUrlOverride
+        baseUrlOverride,
       );
 
       log("INFO", "Crowned task with single-run winner", {
@@ -519,11 +519,11 @@ export async function handleWorkerTaskCompletion(
           gitDiff,
           newBranch: run.newBranch,
         } satisfies CandidateData;
-      })
+      }),
     );
 
     const candidates = completedRunsWithDiff.filter(
-      (candidate): candidate is CandidateData => Boolean(candidate)
+      (candidate): candidate is CandidateData => Boolean(candidate),
     );
 
     if (candidates.length === 0) {
@@ -538,19 +538,88 @@ export async function handleWorkerTaskCompletion(
       return;
     }
 
-    const evaluationPrompt = buildEvaluationPrompt(
-      checkResponse.task.text,
-      candidates
-    );
+    if (!checkResponse.task?.text) {
+      log("ERROR", "Missing task text for crown evaluation", {
+        taskRunId,
+        hasTask: !!checkResponse.task,
+        hasText: !!checkResponse.task?.text,
+      });
+      return;
+    }
+
+    // Extract task text after validation for type safety
+    const taskText = checkResponse.task.text;
+
+    // Extra validation before making the request
+    if (candidates.length === 0) {
+      log(
+        "ERROR",
+        "No candidates available for crown evaluation after filtering",
+        {
+          taskRunId,
+        },
+      );
+      return;
+    }
+
+    // Final validation before sending request
+    if (!taskText || typeof taskText !== "string" || taskText.length === 0) {
+      log("ERROR", "Task text is invalid despite earlier checks", {
+        taskRunId,
+        taskTextType: typeof taskText,
+        taskTextLength: taskText?.length,
+      });
+      return;
+    }
+
+    if (!Array.isArray(candidates) || candidates.length === 0) {
+      log("ERROR", "Candidates array is invalid despite earlier checks", {
+        taskRunId,
+        candidatesType: typeof candidates,
+        isArray: Array.isArray(candidates),
+        candidatesLength: candidates?.length,
+      });
+      return;
+    }
+
+    if (!runContext.teamId || typeof runContext.teamId !== "string") {
+      log("ERROR", "Team ID is invalid", {
+        taskRunId,
+        teamIdType: typeof runContext.teamId,
+        teamId: runContext.teamId,
+      });
+      return;
+    }
+
+    log("INFO", "Preparing crown evaluation request", {
+      taskRunId,
+      hasTaskText: true,
+      taskTextPreview: taskText.slice(0, 100),
+      candidatesCount: candidates.length,
+      teamId: runContext.teamId,
+    });
+
+    const requestBody = {
+      taskText,
+      candidates,
+      teamSlugOrId: runContext.teamId,
+    };
+
+    // Log the exact request body being sent
+    log("DEBUG", "Crown evaluation request body", {
+      taskRunId,
+      bodyKeys: Object.keys(requestBody),
+      hasAllRequiredFields:
+        !!requestBody.taskText &&
+        !!requestBody.candidates &&
+        !!requestBody.teamSlugOrId,
+    });
 
     const evaluationResponse = await convexRequest<CrownEvaluationResponse>(
       "/api/crown/evaluate",
       runContext.token,
-      {
-        prompt: evaluationPrompt,
-        teamSlugOrId: runContext.teamId,
-      },
-      baseUrlOverride
+      requestBody,
+      baseUrlOverride,
     );
 
     if (!evaluationResponse) {
@@ -579,18 +648,15 @@ export async function handleWorkerTaskCompletion(
       return;
     }
 
-    const summarizationPrompt = buildSummarizationPrompt(
-      checkResponse.task.text,
-      winnerCandidate.gitDiff
-    );
     const summaryResponse = await convexRequest<CrownSummarizationResponse>(
       "/api/crown/summarize",
       runContext.token,
       {
-        prompt: summarizationPrompt,
+        taskText,
+        gitDiff: winnerCandidate.gitDiff,
         teamSlugOrId: runContext.teamId,
       },
-      baseUrlOverride
+      baseUrlOverride,
     );
 
     log("INFO", "Crown summarization response", {
@@ -620,13 +686,13 @@ export async function handleWorkerTaskCompletion(
         taskId: checkResponse.taskId,
         winnerRunId: winnerCandidate.runId,
         reason,
-        evaluationPrompt,
+        evaluationPrompt: `Task: ${taskText}\nCandidates: ${JSON.stringify(candidates)}`,
         evaluationResponse: JSON.stringify(
           evaluationResponse ?? {
             winner: candidates.indexOf(winnerCandidate),
             reason,
             fallback: true,
-          }
+          },
         ),
         candidateRunIds: candidates.map((candidate) => candidate.runId),
         summary,
@@ -634,7 +700,7 @@ export async function handleWorkerTaskCompletion(
         pullRequestTitle: prMetadata?.title,
         pullRequestDescription: prMetadata?.description,
       },
-      baseUrlOverride
+      baseUrlOverride,
     );
 
     log("INFO", "Crowned task after evaluation", {
@@ -646,5 +712,5 @@ export async function handleWorkerTaskCompletion(
     });
   }
 
-  await attemptCrownEvaluation(resolvedTaskId);
+  await attemptCrownEvaluation(realTaskId);
 }

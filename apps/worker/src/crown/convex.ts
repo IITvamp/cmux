@@ -5,7 +5,7 @@ function getConvexBaseUrl(override?: string): string | null {
   if (!url) {
     log(
       "ERROR",
-      "NEXT_PUBLIC_CONVEX_URL is not configured; cannot call crown endpoints"
+      "NEXT_PUBLIC_CONVEX_URL is not configured; cannot call crown endpoints",
     );
     return null;
   }
@@ -17,7 +17,7 @@ export async function convexRequest<T>(
   path: string,
   token: string,
   body: Record<string, unknown>,
-  baseUrlOverride?: string
+  baseUrlOverride?: string,
 ): Promise<T | null> {
   const baseUrl = getConvexBaseUrl(baseUrlOverride);
   if (!baseUrl) return null;

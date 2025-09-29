@@ -15,14 +15,35 @@ import type { ActionCtx } from "./_generated/server";
 
 const JSON_HEADERS = { "content-type": "application/json" } as const;
 
+const CrownEvaluationCandidateSchema = z.object({
+  runId: z.string().optional(),
+  agentName: z.string().optional(),
+  modelName: z.string().optional(),
+  gitDiff: z.string(),
+  newBranch: z.string().optional(),
+  index: z.number().optional(),
+});
+
 const CrownEvaluationRequestSchema = z.object({
+  taskText: z.string(),
+  candidates: z.array(CrownEvaluationCandidateSchema).min(1),
+  teamSlugOrId: z.string(),
+});
+
+const CrownEvaluationPromptSchema = z.object({
   prompt: z.string(),
   teamSlugOrId: z.string(),
 });
 
 const CrownSummarizationRequestSchema = z.object({
-  prompt: z.string(),
+  taskText: z.string(),
+  gitDiff: z.string(),
   teamSlugOrId: z.string().optional(),
+});
+
+const CrownSummarizationPromptSchema = z.object({
+  prompt: z.string(),
+  teamSlugOrId: z.string(),
 });
 
 const WorkerCheckSchema = z.object({
@@ -70,18 +91,354 @@ const WorkerScheduleRequestSchema = z.object({
   scheduledStopAt: z.number().optional(),
 });
 
+type CrownEvaluationRequest = z.infer<typeof CrownEvaluationRequestSchema>;
+type CrownEvaluationCandidate = z.infer<typeof CrownEvaluationCandidateSchema>;
+
+type ParseEvaluationRequestResult =
+  | { ok: true; data: CrownEvaluationRequest }
+  | { ok: false; errors: Array<{ message: string; details?: unknown }> };
+
+type CrownSummarizationRequest = z.infer<typeof CrownSummarizationRequestSchema>;
+
+type ParseSummarizationRequestResult =
+  | { ok: true; data: CrownSummarizationRequest }
+  | { ok: false; errors: Array<{ message: string; details?: unknown }> };
+
+function parseEvaluationRequestBody(
+  json: unknown,
+): ParseEvaluationRequestResult {
+  const legacy = CrownEvaluationRequestSchema.safeParse(json);
+  if (legacy.success) {
+    return { ok: true, data: legacy.data };
+  }
+
+  const errors: Array<{ message: string; details?: unknown }> = [
+    { message: "legacy_schema_failed", details: legacy.error },
+  ];
+
+  const promptPayload = CrownEvaluationPromptSchema.safeParse(json);
+  if (!promptPayload.success) {
+    errors.push({
+      message: "prompt_schema_failed",
+      details: promptPayload.error,
+    });
+    return { ok: false, errors };
+  }
+
+  const converted = convertPromptPayload(
+    promptPayload.data.prompt,
+    promptPayload.data.teamSlugOrId,
+  );
+  if (!converted.ok) {
+    errors.push(converted.error);
+    return { ok: false, errors };
+  }
+
+  return { ok: true, data: converted.data };
+}
+
+function convertPromptPayload(
+  prompt: string,
+  teamSlugOrId: string,
+):
+  | { ok: true; data: CrownEvaluationRequest }
+  | { ok: false; error: { message: string; details?: unknown } } {
+  const jsonBlock = extractFirstJsonObject(prompt);
+  if (!jsonBlock) {
+    return { ok: false, error: { message: "prompt_missing_json_block" } };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonBlock);
+  } catch (error) {
+    return {
+      ok: false,
+      error: {
+        message: "prompt_json_parse_failed",
+        details: { error, jsonBlock },
+      },
+    };
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    return {
+      ok: false,
+      error: {
+        message: "prompt_json_not_object",
+        details: { parsedType: typeof parsed },
+      },
+    };
+  }
+
+  const record = parsed as Record<string, unknown>;
+  const taskTextValue = record.task ?? record.taskText;
+  if (typeof taskTextValue !== "string" || taskTextValue.trim() === "") {
+    return { ok: false, error: { message: "prompt_missing_task_text" } };
+  }
+
+  const rawCandidates = Array.isArray(record.implementations)
+    ? record.implementations
+    : Array.isArray(record.candidates)
+      ? record.candidates
+      : null;
+
+  if (!rawCandidates || rawCandidates.length === 0) {
+    return { ok: false, error: { message: "prompt_missing_candidates" } };
+  }
+
+  const candidates: CrownEvaluationCandidate[] = [];
+  for (let i = 0; i < rawCandidates.length; i++) {
+    const rawCandidate = rawCandidates[i];
+    if (!rawCandidate || typeof rawCandidate !== "object") {
+      return {
+        ok: false,
+        error: {
+          message: "prompt_candidate_not_object",
+          details: { index: i },
+        },
+      };
+    }
+
+    const candidateRecord = rawCandidate as Record<string, unknown>;
+    const gitDiffValue = candidateRecord.gitDiff;
+    if (typeof gitDiffValue !== "string") {
+      return {
+        ok: false,
+        error: {
+          message: "prompt_candidate_missing_git_diff",
+          details: { index: i },
+        },
+      };
+    }
+
+    candidates.push({
+      gitDiff: gitDiffValue,
+      runId:
+        typeof candidateRecord.runId === "string"
+          ? candidateRecord.runId
+          : undefined,
+      agentName:
+        typeof candidateRecord.agentName === "string"
+          ? candidateRecord.agentName
+          : undefined,
+      modelName:
+        typeof candidateRecord.modelName === "string"
+          ? candidateRecord.modelName
+          : undefined,
+      newBranch:
+        typeof candidateRecord.newBranch === "string"
+          ? candidateRecord.newBranch
+          : undefined,
+      index:
+        typeof candidateRecord.index === "number"
+          ? candidateRecord.index
+          : undefined,
+    });
+  }
+
+  const normalized = CrownEvaluationRequestSchema.safeParse({
+    taskText: taskTextValue,
+    candidates,
+    teamSlugOrId,
+  });
+
+  if (!normalized.success) {
+    return {
+      ok: false,
+      error: {
+        message: "prompt_conversion_failed_validation",
+        details: normalized.error,
+      },
+    };
+  }
+
+  return { ok: true, data: normalized.data };
+}
+
+function parseSummarizationRequestBody(
+  json: unknown,
+): ParseSummarizationRequestResult {
+  const legacy = CrownSummarizationRequestSchema.safeParse(json);
+  if (legacy.success) {
+    return { ok: true, data: legacy.data };
+  }
+
+  const errors: Array<{ message: string; details?: unknown }> = [
+    { message: "legacy_schema_failed", details: legacy.error },
+  ];
+
+  const promptPayload = CrownSummarizationPromptSchema.safeParse(json);
+  if (!promptPayload.success) {
+    errors.push({
+      message: "prompt_schema_failed",
+      details: promptPayload.error,
+    });
+    return { ok: false, errors };
+  }
+
+  const converted = convertSummarizationPrompt(
+    promptPayload.data.prompt,
+    promptPayload.data.teamSlugOrId,
+  );
+
+  if (!converted.ok) {
+    errors.push(converted.error);
+    return { ok: false, errors };
+  }
+
+  return { ok: true, data: converted.data };
+}
+
+function convertSummarizationPrompt(
+  prompt: string,
+  teamSlugOrId: string,
+):
+  | { ok: true; data: CrownSummarizationRequest }
+  | { ok: false; error: { message: string; details?: unknown } } {
+  const jsonBlock = extractFirstJsonObject(prompt);
+  if (!jsonBlock) {
+    return { ok: false, error: { message: "prompt_missing_json_block" } };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonBlock);
+  } catch (error) {
+    return {
+      ok: false,
+      error: {
+        message: "prompt_json_parse_failed",
+        details: { error, jsonBlock },
+      },
+    };
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    return {
+      ok: false,
+      error: {
+        message: "prompt_json_not_object",
+        details: { parsedType: typeof parsed },
+      },
+    };
+  }
+
+  const record = parsed as Record<string, unknown>;
+
+  const taskTextCandidates = [
+    record.taskText,
+    record.task,
+    record.request,
+    record.description,
+    record.title,
+  ];
+  const taskTextValue = taskTextCandidates.find((value): value is string => {
+    return typeof value === "string" && value.trim() !== "";
+  });
+  if (!taskTextValue) {
+    return { ok: false, error: { message: "prompt_missing_task_text" } };
+  }
+
+  const diffCandidates = [
+    record.gitDiff,
+    record.diff,
+    record.diffText,
+    record.git_diff,
+    record.diffSummary,
+    record.branchDiff,
+  ];
+  const gitDiffValue = diffCandidates.find(
+    (value): value is string => typeof value === "string",
+  );
+  if (!gitDiffValue) {
+    return { ok: false, error: { message: "prompt_missing_git_diff" } };
+  }
+
+  const normalized = CrownSummarizationRequestSchema.safeParse({
+    taskText: taskTextValue,
+    gitDiff: gitDiffValue,
+    teamSlugOrId,
+  });
+
+  if (!normalized.success) {
+    return {
+      ok: false,
+      error: {
+        message: "prompt_conversion_failed_validation",
+        details: normalized.error,
+      },
+    };
+  }
+
+  return { ok: true, data: normalized.data };
+}
+
+function extractFirstJsonObject(text: string): string | null {
+  const start = text.indexOf("{");
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let isEscaped = false;
+
+  for (let i = start; i < text.length; i++) {
+    const char = text[i];
+
+    if (inString) {
+      if (isEscaped) {
+        isEscaped = false;
+      } else if (char === "\\") {
+        isEscaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return text.slice(start, i + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
+function buildEvaluationCandidates(
+  candidates: CrownEvaluationCandidate[],
+): Array<{ modelName: string; gitDiff: string; index: number }> {
+  return candidates.map((candidate, index) => ({
+    modelName:
+      candidate.agentName ??
+      candidate.modelName ??
+      `candidate-${candidate.index ?? index}`,
+    gitDiff: candidate.gitDiff,
+    index: candidate.index ?? index,
+  }));
+}
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
 }
 
 async function ensureJsonRequest(
-  req: Request
+  req: Request,
 ): Promise<{ json: unknown } | Response> {
   const contentType = req.headers.get("content-type") ?? "";
   if (!contentType.toLowerCase().includes("application/json")) {
     return jsonResponse(
       { code: 415, message: "Content-Type must be application/json" },
-      415
+      415,
     );
   }
 
@@ -104,7 +461,7 @@ function ensureStackAuth(req: Request): Response | void {
     const parsed = JSON.parse(stackAuthHeader) as { accessToken?: string };
     if (!parsed.accessToken) {
       console.error(
-        "[convex.crown] Missing access token in x-stack-auth header"
+        "[convex.crown] Missing access token in x-stack-auth header",
       );
       return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
     }
@@ -112,14 +469,14 @@ function ensureStackAuth(req: Request): Response | void {
     console.error("[convex.crown] Failed to parse x-stack-auth header", error);
     return jsonResponse(
       { code: 400, message: "Invalid stack auth header" },
-      400
+      400,
     );
   }
 }
 
 async function ensureTeamMembership(
   ctx: ActionCtx,
-  teamSlugOrId: string
+  teamSlugOrId: string,
 ): Promise<Response | { teamId: string }> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
@@ -151,7 +508,7 @@ async function ensureTeamMembership(
 
 async function resolveTeamSlugOrId(
   ctx: ActionCtx,
-  teamSlugOrId?: string
+  teamSlugOrId?: string,
 ): Promise<Response | { teamSlugOrId: string }> {
   if (teamSlugOrId) {
     const membership = await ensureTeamMembership(ctx, teamSlugOrId);
@@ -193,7 +550,7 @@ type WorkerAuthContext = {
 };
 
 async function ensureWorkerAuth(
-  req: Request
+  req: Request,
 ): Promise<Response | WorkerAuthContext> {
   const token = req.headers.get("x-cmux-token");
   if (!token) {
@@ -204,7 +561,7 @@ async function ensureWorkerAuth(
   try {
     const payload = await verifyTaskRunToken(
       token,
-      env.CMUX_TASK_RUN_JWT_SECRET
+      env.CMUX_TASK_RUN_JWT_SECRET,
     );
     return { token, payload };
   } catch (error) {
@@ -214,7 +571,7 @@ async function ensureWorkerAuth(
 }
 
 async function getOptionalWorkerAuth(
-  req: Request
+  req: Request,
 ): Promise<Response | WorkerAuthContext | null> {
   const token = req.headers.get("x-cmux-token");
   if (!token) return null;
@@ -224,7 +581,7 @@ async function getOptionalWorkerAuth(
 async function loadTaskRunForWorker(
   ctx: ActionCtx,
   auth: WorkerAuthContext,
-  runId?: string
+  runId?: string,
 ): Promise<Response | Doc<"taskRuns">> {
   const taskRunId = (runId ?? auth.payload.taskRunId) as Id<"taskRuns">;
   const taskRun = await ctx.runQuery(internal.taskRuns.getById, {
@@ -247,7 +604,7 @@ async function loadTaskRunForWorker(
         taskRunId,
         workerTeamId: auth.payload.teamId,
         taskRunTeamId: taskRun.teamId,
-      }
+      },
     );
     return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
   }
@@ -256,6 +613,13 @@ async function loadTaskRunForWorker(
 }
 
 export const crownEvaluate = httpAction(async (ctx, req) => {
+  console.log("[convex.crown] Evaluate endpoint called", {
+    url: req.url,
+    method: req.method,
+    hasCmuxToken: !!req.headers.get("x-cmux-token"),
+    hasStackAuth: !!req.headers.get("x-stack-auth"),
+  });
+
   const workerAuthResult = await getOptionalWorkerAuth(req);
   if (workerAuthResult instanceof Response) return workerAuthResult;
   const workerAuth = workerAuthResult;
@@ -268,20 +632,34 @@ export const crownEvaluate = httpAction(async (ctx, req) => {
   const parsed = await ensureJsonRequest(req);
   if (parsed instanceof Response) return parsed;
 
-  const validation = CrownEvaluationRequestSchema.safeParse(parsed.json);
-  if (!validation.success) {
-    console.warn("[convex.crown] Invalid evaluation payload", validation.error);
+  console.log("[convex.crown] Parsed request body", {
+    bodyType: typeof parsed.json,
+    bodyKeys:
+      parsed.json && typeof parsed.json === "object"
+        ? Object.keys(parsed.json as Record<string, unknown>)
+        : null,
+    body: JSON.stringify(parsed.json),
+  });
+
+  const evaluationPayload = parseEvaluationRequestBody(parsed.json);
+  if (!evaluationPayload.ok) {
+    console.warn("[convex.crown] Invalid evaluation payload", {
+      errors: evaluationPayload.errors,
+      receivedBody: parsed.json,
+    });
     return jsonResponse({ code: 400, message: "Invalid input" }, 400);
   }
 
+  const normalizedEvaluation = evaluationPayload.data;
+
   const teamSlugOrId = workerAuth
     ? workerAuth.payload.teamId
-    : validation.data.teamSlugOrId;
+    : normalizedEvaluation.teamSlugOrId;
 
   if (!teamSlugOrId) {
     return jsonResponse(
       { code: 400, message: "teamSlugOrId is required" },
-      400
+      400,
     );
   }
 
@@ -291,13 +669,76 @@ export const crownEvaluate = httpAction(async (ctx, req) => {
   }
 
   try {
+    const candidates = buildEvaluationCandidates(
+      normalizedEvaluation.candidates,
+    );
+
     const result = await ctx.runAction(api.crown.actions.evaluate, {
-      prompt: validation.data.prompt,
+      taskText: normalizedEvaluation.taskText,
+      candidates,
       teamSlugOrId,
     });
     return jsonResponse(result);
   } catch (error) {
     console.error("[convex.crown] Evaluation error", error);
+    return jsonResponse({ code: 500, message: "Evaluation failed" }, 500);
+  }
+});
+
+export const crownSingleRun = httpAction(async (ctx, req) => {
+  const workerAuthResult = await getOptionalWorkerAuth(req);
+  if (workerAuthResult instanceof Response) return workerAuthResult;
+  const workerAuth = workerAuthResult;
+
+  if (!workerAuth) {
+    const stackAuthError = ensureStackAuth(req);
+    if (stackAuthError) throw stackAuthError;
+  }
+
+  const parsed = await ensureJsonRequest(req);
+  if (parsed instanceof Response) return parsed;
+
+  const evaluationPayload = parseEvaluationRequestBody(parsed.json);
+  if (!evaluationPayload.ok) {
+    console.warn("[convex.crown] Invalid single-run payload", {
+      errors: evaluationPayload.errors,
+      receivedBody: parsed.json,
+    });
+    return jsonResponse({ code: 400, message: "Invalid input" }, 400);
+  }
+
+  const normalizedEvaluation = evaluationPayload.data;
+
+  const teamSlugOrId = workerAuth
+    ? workerAuth.payload.teamId
+    : normalizedEvaluation.teamSlugOrId;
+
+  if (!teamSlugOrId) {
+    return jsonResponse(
+      { code: 400, message: "teamSlugOrId is required" },
+      400,
+    );
+  }
+
+  if (!workerAuth) {
+    const membership = await ensureTeamMembership(ctx, teamSlugOrId);
+    if (membership instanceof Response) return membership;
+  }
+
+  // For single run, we still evaluate but with only one candidate
+  try {
+    const candidates = buildEvaluationCandidates(
+      normalizedEvaluation.candidates,
+    );
+
+    const result = await ctx.runAction(api.crown.actions.evaluate, {
+      taskText: normalizedEvaluation.taskText,
+      candidates,
+      teamSlugOrId,
+    });
+    return jsonResponse(result);
+  } catch (error) {
+    console.error("[convex.crown] Single-run evaluation error", error);
     return jsonResponse({ code: 500, message: "Evaluation failed" }, 500);
   }
 });
@@ -315,16 +756,18 @@ export const crownSummarize = httpAction(async (ctx, req) => {
   const parsed = await ensureJsonRequest(req);
   if (parsed instanceof Response) return parsed;
 
-  const validation = CrownSummarizationRequestSchema.safeParse(parsed.json);
-  if (!validation.success) {
-    console.warn(
-      "[convex.crown] Invalid summarization payload",
-      validation.error
-    );
+  const summarizationPayload = parseSummarizationRequestBody(parsed.json);
+  if (!summarizationPayload.ok) {
+    console.warn("[convex.crown] Invalid summarization payload", {
+      errors: summarizationPayload.errors,
+      receivedBody: parsed.json,
+    });
     return jsonResponse({ code: 400, message: "Invalid input" }, 400);
   }
 
-  let teamSlugOrId = validation.data.teamSlugOrId;
+  const normalizedSummarization = summarizationPayload.data;
+
+  let teamSlugOrId = normalizedSummarization.teamSlugOrId;
   if (workerAuth) {
     teamSlugOrId = workerAuth.payload.teamId;
   } else {
@@ -333,10 +776,18 @@ export const crownSummarize = httpAction(async (ctx, req) => {
     teamSlugOrId = resolvedTeam.teamSlugOrId;
   }
 
+  if (!teamSlugOrId) {
+    return jsonResponse(
+      { code: 400, message: "teamSlugOrId is required" },
+      400,
+    );
+  }
+
   try {
     const result = await ctx.runAction(api.crown.actions.summarize, {
-      prompt: validation.data.prompt,
-      teamSlugOrId: teamSlugOrId!,
+      taskText: normalizedSummarization.taskText,
+      gitDiff: normalizedSummarization.gitDiff,
+      teamSlugOrId,
     });
     return jsonResponse(result);
   } catch (error) {
@@ -355,6 +806,11 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
   const workerAuth = await ensureWorkerAuth(req);
   if (workerAuth instanceof Response) return workerAuth;
 
+  if (!workerAuth) {
+    const stackAuthError = ensureStackAuth(req);
+    if (stackAuthError) throw stackAuthError;
+  }
+
   const parsed = await ensureJsonRequest(req);
   if (parsed instanceof Response) return parsed;
 
@@ -362,7 +818,7 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
   if (!validation.success) {
     console.warn(
       "[convex.crown] Invalid worker check payload",
-      validation.error
+      validation.error,
     );
     return jsonResponse({ code: 400, message: "Invalid input" }, 400);
   }
@@ -444,7 +900,7 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
     const runsForTeam = runs.filter(
       (run): run is Doc<"taskRuns"> =>
         run.teamId === workerAuth.payload.teamId &&
-        run.userId === workerAuth.payload.userId
+        run.userId === workerAuth.payload.userId,
     );
 
     const statuses = runsForTeam.map((run) => ({
@@ -477,7 +933,7 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
   const taskRun = await loadTaskRunForWorker(
     ctx,
     workerAuth,
-    validation.data.taskRunId
+    validation.data.taskRunId,
   );
   if (taskRun instanceof Response) return taskRun;
 
@@ -504,7 +960,7 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
       "[convex.crown] Worker attempted to access unauthorized task",
       {
         taskId,
-      }
+      },
     );
     return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
   }
@@ -518,20 +974,20 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
     {
       teamId: workerAuth.payload.teamId,
       userId: workerAuth.payload.userId,
-    }
+    },
   );
 
   const runsForTeam = runs.filter(
     (run): run is Doc<"taskRuns"> =>
       run.teamId === workerAuth.payload.teamId &&
-      run.userId === workerAuth.payload.userId
+      run.userId === workerAuth.payload.userId,
   );
 
   const allRunsFinished = runsForTeam.every((run) =>
-    ["completed", "failed"].includes(run.status)
+    ["completed", "failed"].includes(run.status),
   );
   const allWorkersReported = runsForTeam.every(
-    (run) => run.status === "completed"
+    (run) => run.status === "completed",
   );
   const completedRuns = runsForTeam.filter((run) => run.status === "completed");
 
@@ -541,7 +997,7 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
       taskId,
       teamId: workerAuth.payload.teamId,
       userId: workerAuth.payload.userId,
-    }
+    },
   );
 
   const shouldEvaluate =
@@ -601,7 +1057,7 @@ export const crownWorkerFinalize = httpAction(async (ctx, req) => {
   if (!validation.success) {
     console.warn(
       "[convex.crown] Invalid worker finalize payload",
-      validation.error
+      validation.error,
     );
     return jsonResponse({ code: 400, message: "Invalid input" }, 400);
   }
@@ -609,7 +1065,7 @@ export const crownWorkerFinalize = httpAction(async (ctx, req) => {
   const taskId = validation.data.taskId as Id<"tasks">;
   const winnerRunId = validation.data.winnerRunId as Id<"taskRuns">;
   const candidateRunIds = validation.data.candidateRunIds.map(
-    (id) => id as Id<"taskRuns">
+    (id) => id as Id<"taskRuns">,
   );
 
   const task = await ctx.runQuery(internal.tasks.getByIdInternal, {
@@ -631,7 +1087,7 @@ export const crownWorkerFinalize = httpAction(async (ctx, req) => {
       taskId,
       teamId: workerAuth.payload.teamId,
       userId: workerAuth.payload.userId,
-    }
+    },
   );
 
   if (existingEvaluation) {
@@ -685,7 +1141,7 @@ export const crownWorkerComplete = httpAction(async (ctx, req) => {
   if (!validation.success) {
     console.warn(
       "[convex.crown] Invalid worker complete payload",
-      validation.error
+      validation.error,
     );
     return jsonResponse({ code: 400, message: "Invalid input" }, 400);
   }
@@ -728,7 +1184,7 @@ export const crownWorkerComplete = httpAction(async (ctx, req) => {
     {
       teamId: auth.payload.teamId,
       userId: auth.payload.userId,
-    }
+    },
   );
 
   if (containerSettings?.autoCleanupEnabled) {
@@ -758,7 +1214,7 @@ export const crownWorkerComplete = httpAction(async (ctx, req) => {
       ? {
           id: task._id,
           text: task.text,
-      }
+        }
       : null,
   } satisfies WorkerTaskRunResponse;
   return jsonResponse(response);
@@ -775,7 +1231,7 @@ export const crownWorkerScheduleStop = httpAction(async (ctx, req) => {
   if (!validation.success) {
     console.warn(
       "[convex.crown] Invalid worker schedule payload",
-      validation.error
+      validation.error,
     );
     return jsonResponse({ code: 400, message: "Invalid input" }, 400);
   }

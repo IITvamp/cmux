@@ -1,5 +1,5 @@
 import { mutation, query, type ActionCtx, type MutationCtx, type QueryCtx } from "../_generated/server";
-import { ConvexError } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { customCtx, customMutation, customQuery } from "convex-helpers/server/customFunctions";
 
 export const authQuery = customQuery(
@@ -31,3 +31,9 @@ export async function AuthenticationRequired({
   }
   return identity;
 }
+
+// Custom validator for task IDs that accepts both real and fake IDs
+export const taskIdWithFake = v.union(
+  v.id("tasks"),
+  v.string() // Accepts fake IDs like "fake-xxx"
+);

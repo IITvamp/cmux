@@ -4,7 +4,7 @@ import { env } from "../_shared/convex-env";
 import { resolveTeamIdLoose } from "../_shared/team";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, internalQuery } from "./_generated/server";
-import { authMutation, authQuery } from "./users/utils";
+import { authMutation, authQuery, taskIdWithFake } from "./users/utils";
 
 function rewriteMorphUrl(url: string): string {
   // do not rewrite ports 39376 39377 39378
@@ -101,13 +101,18 @@ export const create = authMutation({
 
 // Get all task runs for a task, organized in tree structure
 export const getByTask = authQuery({
-  args: { teamSlugOrId: v.string(), taskId: v.id("tasks") },
+  args: { teamSlugOrId: v.string(), taskId: taskIdWithFake },
   handler: async (ctx, args) => {
+    // Handle fake IDs by returning empty array
+    if (typeof args.taskId === 'string' && args.taskId.startsWith('fake-')) {
+      return [];
+    }
+
     const userId = ctx.identity.subject;
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
     const runs = await ctx.db
       .query("taskRuns")
-      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .withIndex("by_task", (q) => q.eq("taskId", args.taskId as Id<"tasks">))
       .filter(
         (q) =>
           q.eq(q.field("teamId"), teamId) && q.eq(q.field("userId"), userId)

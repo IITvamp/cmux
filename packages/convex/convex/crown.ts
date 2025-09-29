@@ -1,7 +1,8 @@
 import { v } from "convex/values";
 import { getTeamId } from "../_shared/team";
+import type { Id } from "./_generated/dataModel";
 import { internalMutation, internalQuery } from "./_generated/server";
-import { authMutation, authQuery } from "./users/utils";
+import { authMutation, authQuery, taskIdWithFake } from "./users/utils";
 
 export const evaluateAndCrownWinner = authMutation({
   args: {
@@ -201,14 +202,19 @@ export const getCrownedRun = authQuery({
 export const getCrownEvaluation = authQuery({
   args: {
     teamSlugOrId: v.string(),
-    taskId: v.id("tasks"),
+    taskId: taskIdWithFake,
   },
   handler: async (ctx, args) => {
+    // Handle fake IDs by returning null
+    if (typeof args.taskId === 'string' && args.taskId.startsWith('fake-')) {
+      return null;
+    }
+
     const userId = ctx.identity.subject;
     const teamId = await getTeamId(ctx, args.teamSlugOrId);
     const evaluation = await ctx.db
       .query("crownEvaluations")
-      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .withIndex("by_task", (q) => q.eq("taskId", args.taskId as Id<"tasks">))
       .filter((q) => q.eq(q.field("teamId"), teamId))
       .filter((q) => q.eq(q.field("userId"), userId))
       .first();

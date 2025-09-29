@@ -189,7 +189,7 @@ export async function collectDiffForRun(
 
   try {
     const { stdout } = await execAsync(
-      "/usr/local/bin/cmux-collect-relevant-diff.sh",
+      "/usr/local/bin/cmux-collect-crown-diff.sh",
       {
         cwd: WORKSPACE_ROOT,
         maxBuffer: 5 * 1024 * 1024,
