@@ -34,7 +34,7 @@ export const configureGitIdentity = async (
 export const configureGithubAccess = async (
   instance: MorphInstance,
   token: string,
-  maxRetries = 3
+  maxRetries = 5
 ) => {
   let lastError: Error | undefined;
 
