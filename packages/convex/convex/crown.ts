@@ -1,5 +1,9 @@
 import { v } from "convex/values";
 import { getTeamId } from "../_shared/team";
+<<<<<<< HEAD
+=======
+import { internalMutation, internalQuery } from "./_generated/server";
+>>>>>>> parent of dc681188 (checkpoint: kind of working)
 import { authMutation, authQuery } from "./users/utils";
 
 export const evaluateAndCrownWinner = authMutation({

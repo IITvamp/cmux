@@ -2,6 +2,10 @@ import { v } from "convex/values";
 import { resolveTeamIdLoose } from "../_shared/team";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+<<<<<<< HEAD
+=======
+import { internalQuery } from "./_generated/server";
+>>>>>>> parent of dc681188 (checkpoint: kind of working)
 import { authMutation, authQuery } from "./users/utils";
 
 export const get = authQuery({
