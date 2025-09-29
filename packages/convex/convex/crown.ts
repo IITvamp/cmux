@@ -167,6 +167,7 @@ export const setCrownWinner = authMutation({
     // Mark PR creation needed
     await ctx.db.patch(args.taskRunId, {
       pullRequestUrl: "pending",
+      pullRequests: undefined,
     });
 
     return args.taskRunId;

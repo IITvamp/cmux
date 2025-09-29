@@ -3,13 +3,14 @@ import { Dropdown } from "@/components/ui/dropdown";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { useSocketSuspense } from "@/contexts/socket/use-socket";
 import { isElectron } from "@/lib/electron";
+import { cn } from "@/lib/utils";
 import { normalizeGitRef } from "@/lib/refWithOrigin";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
 import type { Doc, Id } from "@cmux/convex/dataModel";
 import type { TaskRunWithChildren } from "@/types/task";
 import { Skeleton } from "@heroui/react";
 import { useClipboard } from "@mantine/hooks";
-import { useQuery as useRQ, useQueries } from "@tanstack/react-query";
+import { useMutation, useQueries } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import {
@@ -31,20 +32,27 @@ import {
   type CSSProperties,
 } from "react";
 import { toast } from "sonner";
+import {
+  SocketMutationError,
+  type MergeBranchResponse,
+  type PullRequestActionResponse,
+  type ToastFeedbackContext,
+  getErrorDescription,
+} from "./task-detail-header.mutations";
+import type {
+  SocketMutationErrorInstance,
+} from "./task-detail-header.mutations";
 
 interface TaskDetailHeaderProps {
   task?: Doc<"tasks"> | null;
   taskRuns?: TaskRunWithChildren[] | null;
   selectedRun?: TaskRunWithChildren | null;
-  isCreatingPr: boolean;
-  setIsCreatingPr: (v: boolean) => void;
   totalAdditions?: number;
   totalDeletions?: number;
   taskRunId: Id<"taskRuns">;
   onExpandAll?: () => void;
   onCollapseAll?: () => void;
   teamSlugOrId: string;
-  // Smart diff view (no toggle)
 }
 
 const ENABLE_MERGE_BUTTON = false;
@@ -173,8 +181,6 @@ export function TaskDetailHeader({
   task,
   taskRuns,
   selectedRun,
-  isCreatingPr,
-  setIsCreatingPr,
   taskRunId,
   onExpandAll,
   onCollapseAll,
@@ -185,7 +191,6 @@ export function TaskDetailHeader({
   const prIsOpen = selectedRun?.pullRequestState === "open";
   const prIsMerged = selectedRun?.pullRequestState === "merged";
   const [agentMenuOpen, setAgentMenuOpen] = useState(false);
-  const [isOpeningPr, setIsOpeningPr] = useState(false);
   const handleAgentOpenChange = useCallback((open: boolean) => {
     setAgentMenuOpen(open);
   }, []);
@@ -195,7 +200,6 @@ export function TaskDetailHeader({
       clipboard.copy(selectedRun.newBranch);
     }
   };
-  const [isMerging, setIsMerging] = useState(false);
   const worktreePath = useMemo(
     () => selectedRun?.worktreePath || task?.worktreePath || null,
     [selectedRun?.worktreePath, task?.worktreePath],
@@ -307,15 +311,7 @@ export function TaskDetailHeader({
               taskRunId={taskRunId}
               prIsOpen={prIsOpen}
               prIsMerged={prIsMerged}
-              isCreatingPr={isCreatingPr}
-              setIsCreatingPr={setIsCreatingPr}
-              isOpeningPr={isOpeningPr}
-              setIsOpeningPr={setIsOpeningPr}
-              isMerging={isMerging}
-              setIsMerging={setIsMerging}
-              repoFullName={task?.projectFullName || ""}
-              ref1={normalizedBaseBranch}
-              ref2={normalizedHeadBranch}
+              repoDiffTargets={repoDiffTargets}
             />
           </Suspense>
 
@@ -497,150 +493,371 @@ function SocketActions({
   taskRunId,
   prIsOpen,
   prIsMerged,
-  isCreatingPr,
-  setIsCreatingPr,
-  isOpeningPr,
-  setIsOpeningPr,
-  isMerging,
-  setIsMerging,
-  repoFullName,
-  ref1,
-  ref2,
+  repoDiffTargets,
 }: {
   selectedRun: TaskRunWithChildren | null;
   taskRunId: Id<"taskRuns">;
   prIsOpen: boolean;
   prIsMerged: boolean;
-  isCreatingPr: boolean;
-  setIsCreatingPr: (v: boolean) => void;
-  isOpeningPr: boolean;
-  setIsOpeningPr: (v: boolean) => void;
-  isMerging: boolean;
-  setIsMerging: (v: boolean) => void;
-  repoFullName: string;
-  ref1: string;
-  ref2: string;
+  repoDiffTargets: RepoDiffTarget[];
 }) {
   const { socket } = useSocketSuspense();
-  const baseRef = normalizeGitRef(ref1);
-  const headRef = normalizeGitRef(ref2);
-  const diffsQuery = useRQ(
-    gitDiffQueryOptions({
-      repoFullName,
-      baseRef: baseRef || undefined,
-      headRef,
-    }),
+  const pullRequests = useMemo(
+    () => selectedRun?.pullRequests ?? [],
+    [selectedRun?.pullRequests],
   );
-  const hasChanges = (diffsQuery.data || []).length > 0;
 
-  const handleMerge = async (method: MergeMethod) => {
-    if (!socket || !taskRunId) return;
-    setIsMerging(true);
-    const toastId = toast.loading(`Merging PR (${method})...`);
-    await new Promise<void>((resolve) => {
-      socket.emit(
-        "github-merge-pr",
-        { taskRunId, method },
-        (resp: {
-          success: boolean;
-          merged?: boolean;
-          state?: string;
-          url?: string;
-          error?: string;
-        }) => {
-          setIsMerging(false);
-          if (resp.success) {
-            toast.success("PR merged", { id: toastId, description: resp.url });
-          } else {
-            toast.error("Failed to merge PR", {
-              id: toastId,
-              description: resp.error,
-            });
+  const repoFullNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const target of repoDiffTargets) {
+      const trimmed = target.repoFullName?.trim();
+      if (trimmed) {
+        names.add(trimmed);
+      }
+    }
+    for (const pr of pullRequests) {
+      const trimmed = pr.repoFullName?.trim();
+      if (trimmed) {
+        names.add(trimmed);
+      }
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [repoDiffTargets, pullRequests]);
+
+  const pullRequestMap = useMemo(
+    () => new Map(pullRequests.map((pr) => [pr.repoFullName, pr] as const)),
+    [pullRequests],
+  );
+
+  const diffQueries = useQueries({
+    queries: repoDiffTargets.map((target) => ({
+      ...gitDiffQueryOptions({
+        repoFullName: target.repoFullName,
+        baseRef: target.baseRef,
+        headRef: target.headRef ?? "",
+        includeContents: false,
+      }),
+      enabled:
+        Boolean(target.repoFullName?.trim()) && Boolean(target.headRef?.trim()),
+    })),
+  });
+
+  const hasChanges =
+    repoDiffTargets.length === 0
+      ? false
+      : diffQueries.some((query, index) => {
+          if (!repoDiffTargets[index]?.headRef) {
+            return false;
           }
-          resolve();
-        },
-      );
-    });
-  };
-
-  const handleMergeBranch = async (): Promise<void> => {
-    if (!socket || !taskRunId) return;
-    setIsMerging(true);
-    const toastId = toast.loading("Merging branch...");
-    await new Promise<void>((resolve) => {
-      socket.emit("github-merge-branch", { taskRunId }, (resp) => {
-        setIsMerging(false);
-        if (resp.success) {
-          toast.success("Branch merged", {
-            id: toastId,
-            description: resp.commitSha,
-          });
-        } else {
-          toast.error("Failed to merge branch", {
-            id: toastId,
-            description: resp.error,
-          });
-        }
-        resolve();
-      });
-    });
-  };
-
-  const handleOpenPR = () => {
-    if (!socket || !taskRunId) return;
-    // Create PR or mark draft ready
-    setIsOpeningPr(true);
-    const toastId = toast.loading("Opening PR...");
-    socket.emit("github-open-pr", { taskRunId }, (resp) => {
-      setIsOpeningPr(false);
-      if (resp.success) {
-        toast.success("PR opened", {
-          id: toastId,
-          description: resp.url,
-          ...(resp.url
-            ? {
-                action: {
-                  label: "View PR",
-                  onClick: () =>
-                    window.open(resp.url, "_blank", "noopener,noreferrer"),
-                },
-              }
-            : {}),
+          return (query.data ?? []).length > 0;
         });
-      } else {
-        console.error("Failed to open PR:", resp.error);
-        toast.error("Failed to open PR", {
-          id: toastId,
-          description: resp.error,
-        });
+
+  const openUrls = (prs: Array<{ url?: string | null }>) => {
+    prs.forEach((pr) => {
+      if (pr.url) {
+        window.open(pr.url, "_blank", "noopener,noreferrer");
       }
     });
   };
 
-  const handleViewPR = () => {
-    if (!socket || !taskRunId) return;
-    const prUrl = selectedRun?.pullRequestUrl;
-    if (prUrl && prUrl !== "pending") {
-      window.open(prUrl, "_blank");
+  const summarizeResults = (
+    results: Array<{ repoFullName: string; error?: string | undefined }>,
+  ) => {
+    const total = results.length;
+    const successCount = results.filter((result) => !result.error).length;
+    if (total === 0) {
+      return "No repositories updated";
+    }
+    if (successCount === total) {
+      return `${total} ${total === 1 ? "repository" : "repositories"} updated`;
+    }
+    return `${successCount}/${total} repositories updated`;
+  };
+
+  const hasMultipleRepos = repoFullNames.length > 1;
+  const viewLabel = hasMultipleRepos ? "View PRs" : "View PR";
+  const openingLabel = hasMultipleRepos ? "Opening PRs..." : "Opening PR...";
+  const openedLabel = hasMultipleRepos ? "PRs updated" : "PR updated";
+  const openingDraftLabel = hasMultipleRepos
+    ? "Creating draft PRs..."
+    : "Creating draft PR...";
+  const openedDraftLabel = hasMultipleRepos
+    ? "Draft PRs updated"
+    : "Draft PR updated";
+  const openErrorLabel = hasMultipleRepos
+    ? "Failed to open PRs"
+    : "Failed to open PR";
+  const draftErrorLabel = hasMultipleRepos
+    ? "Failed to create draft PRs"
+    : "Failed to create draft PR";
+  const mergeLoadingLabel = (method: MergeMethod) =>
+    hasMultipleRepos
+      ? `Merging PRs (${method})...`
+      : `Merging PR (${method})...`;
+  const mergedLabel = hasMultipleRepos ? "PRs merged" : "PR merged";
+  const mergeErrorLabel = hasMultipleRepos
+    ? "Failed to merge PRs"
+    : "Failed to merge PR";
+  const mergeBranchErrorLabel = "Failed to merge branch";
+
+  const openPrMutation = useMutation<
+    PullRequestActionResponse,
+    SocketMutationErrorInstance | Error,
+    void,
+    ToastFeedbackContext
+  >({
+    mutationFn: () => {
+      if (!socket) {
+        throw new Error("Socket unavailable");
+      }
+      return new Promise<PullRequestActionResponse>((resolve, reject) => {
+        socket.emit("github-open-pr", { taskRunId }, (resp) => {
+          if (resp.success) {
+            resolve(resp);
+          } else {
+            reject(new SocketMutationError(resp.error ?? openErrorLabel, resp));
+          }
+        });
+      });
+    },
+    onMutate: () => {
+      const toastId = toast.loading(openingLabel);
+      return { toastId };
+    },
+    onSuccess: (response, _variables, context) => {
+      const actionable = response.results.filter(
+        (result) => result.url && !result.error,
+      );
+      if (actionable.length > 0) {
+        openUrls(actionable);
+      }
+      toast.success(openedLabel, {
+        id: context?.toastId,
+        description: summarizeResults(response.results),
+        action:
+          actionable.length > 0
+            ? {
+                label: actionable.length === 1 ? "View PR" : "View PRs",
+                onClick: () => openUrls(actionable),
+              }
+            : undefined,
+      });
+    },
+    onError: (error, _variables, context) => {
+      toast.error(openErrorLabel, {
+        id: context?.toastId,
+        description: getErrorDescription(error),
+      });
+    },
+  });
+
+  const createDraftPrMutation = useMutation<
+    PullRequestActionResponse,
+    SocketMutationErrorInstance | Error,
+    void,
+    ToastFeedbackContext
+  >({
+    mutationFn: () => {
+      if (!socket) {
+        throw new Error("Socket unavailable");
+      }
+      return new Promise<PullRequestActionResponse>((resolve, reject) => {
+        socket.emit("github-create-draft-pr", { taskRunId }, (resp) => {
+          if (resp.success) {
+            resolve(resp);
+          } else {
+            reject(new SocketMutationError(resp.error ?? draftErrorLabel, resp));
+          }
+        });
+      });
+    },
+    onMutate: () => {
+      const toastId = toast.loading(openingDraftLabel);
+      return { toastId };
+    },
+    onSuccess: (response, _variables, context) => {
+      const actionable = response.results.filter(
+        (result) => result.url && !result.error,
+      );
+      if (actionable.length > 0) {
+        openUrls(actionable);
+      }
+      toast.success(openedDraftLabel, {
+        id: context?.toastId,
+        description: summarizeResults(response.results),
+        action:
+          actionable.length > 0
+            ? {
+                label: actionable.length === 1 ? "View draft" : "View drafts",
+                onClick: () => openUrls(actionable),
+              }
+            : undefined,
+      });
+    },
+    onError: (error, _variables, context) => {
+      toast.error(draftErrorLabel, {
+        id: context?.toastId,
+        description: getErrorDescription(error),
+      });
+    },
+  });
+
+  const mergePrMutation = useMutation<
+    PullRequestActionResponse,
+    SocketMutationErrorInstance | Error,
+    MergeMethod,
+    ToastFeedbackContext
+  >({
+    mutationFn: (method) => {
+      if (!socket) {
+        throw new Error("Socket unavailable");
+      }
+      return new Promise<PullRequestActionResponse>((resolve, reject) => {
+        socket.emit("github-merge-pr", { taskRunId, method }, (resp) => {
+          if (resp.success) {
+            resolve(resp);
+          } else {
+            reject(new SocketMutationError(resp.error ?? mergeErrorLabel, resp));
+          }
+        });
+      });
+    },
+    onMutate: (method) => {
+      const toastId = toast.loading(mergeLoadingLabel(method));
+      return { toastId };
+    },
+    onSuccess: (response, _variables, context) => {
+      toast.success(mergedLabel, {
+        id: context?.toastId,
+        description: summarizeResults(response.results),
+      });
+    },
+    onError: (error, _variables, context) => {
+      toast.error(mergeErrorLabel, {
+        id: context?.toastId,
+        description: getErrorDescription(error),
+      });
+    },
+  });
+
+  const mergeBranchMutation = useMutation<
+    MergeBranchResponse,
+    SocketMutationErrorInstance | Error,
+    void,
+    ToastFeedbackContext
+  >({
+    mutationFn: () => {
+      if (!socket) {
+        throw new Error("Socket unavailable");
+      }
+      return new Promise<MergeBranchResponse>((resolve, reject) => {
+        socket.emit("github-merge-branch", { taskRunId }, (resp) => {
+          if (resp.success) {
+            resolve(resp);
+          } else {
+            reject(
+              new SocketMutationError(
+                resp.error ?? mergeBranchErrorLabel,
+                resp,
+              ),
+            );
+          }
+        });
+      });
+    },
+    onMutate: () => {
+      const toastId = toast.loading("Merging branch...");
+      return { toastId };
+    },
+    onSuccess: (response, _variables, context) => {
+      toast.success("Branch merged", {
+        id: context?.toastId,
+        description: response.commitSha,
+      });
+    },
+    onError: (error, _variables, context) => {
+      toast.error(mergeBranchErrorLabel, {
+        id: context?.toastId,
+        description: getErrorDescription(error),
+      });
+    },
+  });
+
+  const handleOpenPRs = () => {
+    openPrMutation.mutate();
+  };
+
+  const handleOpenDraftPRs = () => {
+    createDraftPrMutation.mutate();
+  };
+
+  const handleViewPRs = () => {
+    const existing = pullRequests.filter((pr) => pr.url);
+    if (existing.length > 0) {
+      openUrls(existing);
       return;
     }
-    setIsCreatingPr(true);
-    socket.emit(
-      "github-create-draft-pr",
-      { taskRunId },
-      (resp: { success: boolean; url?: string; error?: string }) => {
-        setIsCreatingPr(false);
-        if (resp.success && resp.url) {
-          window.open(resp.url, "_blank");
-        } else if (resp.error) {
-          console.error("Failed to create draft PR:", resp.error);
-          toast.error("Failed to create draft PR", {
-            description: resp.error,
-          });
-        }
-      },
-    );
+    handleOpenDraftPRs();
   };
+
+  const handleMerge = (method: MergeMethod) => {
+    mergePrMutation.mutate(method);
+  };
+
+  const handleMergeBranch = () => {
+    mergeBranchMutation.mutate();
+  };
+
+  const isOpeningPr = openPrMutation.isPending;
+  const isCreatingPr = createDraftPrMutation.isPending;
+  const isMerging =
+    mergePrMutation.isPending || mergeBranchMutation.isPending;
+
+  const hasAnyRemotePr = pullRequests.some((pr) => pr.url);
+
+  const renderRepoDropdown = () => (
+    <Dropdown.Root>
+      <Dropdown.Trigger
+        aria-label={`${viewLabel} by repository`}
+        className={cn(
+          "flex items-center justify-center px-2 py-1 h-[26px]",
+          "bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white",
+          "border border-neutral-300 dark:border-neutral-700",
+          "rounded-r hover:bg-neutral-300 dark:hover:bg-neutral-700",
+          "disabled:opacity-60 disabled:cursor-not-allowed",
+        )}
+        disabled={repoFullNames.every(
+          (repoName) => !pullRequestMap.get(repoName)?.url,
+        )}
+      >
+        <ChevronDown className="w-3.5 h-3.5" />
+      </Dropdown.Trigger>
+      <Dropdown.Portal>
+        <Dropdown.Positioner sideOffset={5}>
+          <Dropdown.Popup className="min-w-[200px]">
+            <Dropdown.Arrow />
+            {repoFullNames.map((repoName) => {
+              const pr = pullRequestMap.get(repoName);
+              const hasUrl = Boolean(pr?.url);
+              return (
+                <Dropdown.Item
+                  key={repoName}
+                  disabled={!hasUrl}
+                  onClick={() => {
+                    if (pr?.url) {
+                      window.open(pr.url, "_blank", "noopener,noreferrer");
+                    }
+                  }}
+                >
+                  <span className="truncate">{repoName}</span>
+                </Dropdown.Item>
+              );
+            })}
+          </Dropdown.Popup>
+        </Dropdown.Positioner>
+      </Dropdown.Portal>
+    </Dropdown.Root>
+  );
 
   return (
     <>
@@ -654,7 +871,7 @@ function SocketActions({
         </div>
       ) : (
         <MergeButton
-          onMerge={prIsOpen ? handleMerge : async () => handleOpenPR()}
+          onMerge={prIsOpen ? handleMerge : () => handleOpenPRs()}
           isOpen={prIsOpen}
           disabled={
             isOpeningPr ||
@@ -662,6 +879,7 @@ function SocketActions({
             isMerging ||
             (!prIsOpen && !hasChanges)
           }
+          prCount={repoFullNames.length}
         />
       )}
       {!prIsOpen && !prIsMerged && ENABLE_MERGE_BUTTON && (
@@ -674,25 +892,41 @@ function SocketActions({
           Merge
         </button>
       )}
-      {selectedRun?.pullRequestUrl &&
-      selectedRun.pullRequestUrl !== "pending" ? (
-        <a
-          href={selectedRun.pullRequestUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none whitespace-nowrap"
-        >
-          <ExternalLink className="w-3.5 h-3.5" />
-          {selectedRun.pullRequestIsDraft ? "View draft PR" : "View PR"}
-        </a>
+      {hasAnyRemotePr ? (
+        hasMultipleRepos ? (
+          <div className="flex items-stretch">
+            <button
+              onClick={handleViewPRs}
+              className="flex items-center gap-1.5 px-3 py-1 h-[26px] bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 border-r-0 rounded-l hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+              disabled={isOpeningPr || isCreatingPr || isMerging}
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              {viewLabel}
+            </button>
+            {renderRepoDropdown()}
+          </div>
+        ) : (
+          <button
+            onClick={handleViewPRs}
+            className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+            disabled={isOpeningPr || isCreatingPr || isMerging}
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            {viewLabel}
+          </button>
+        )
       ) : (
         <button
-          onClick={handleViewPR}
+          onClick={handleOpenDraftPRs}
           className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
           disabled={isCreatingPr || isOpeningPr || isMerging || !hasChanges}
         >
           <ExternalLink className="w-3.5 h-3.5" />
-          {isCreatingPr ? "Creating draft PR..." : "Open draft PR"}
+          {isCreatingPr
+            ? openingDraftLabel
+            : hasMultipleRepos
+              ? "Open draft PRs"
+              : "Open draft PR"}
         </button>
       )}
     </>

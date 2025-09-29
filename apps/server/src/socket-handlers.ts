@@ -4,8 +4,11 @@ import {
   GitFullDiffRequestSchema,
   GitHubCreateDraftPrSchema,
   GitHubFetchBranchesSchema,
+  GitHubMergePrSchema,
   GitHubFetchReposSchema,
   GitHubMergeBranchSchema,
+  GitHubOpenPrSchema,
+  GitHubSyncPrStateSchema,
   ListFilesRequestSchema,
   OpenInEditorSchema,
   SpawnFromCommentSchema,
@@ -13,6 +16,10 @@ import {
   type AvailableEditors,
   type FileInfo,
 } from "@cmux/shared";
+import {
+  type PullRequestActionResult,
+  type StoredPullRequestInfo,
+} from "@cmux/shared/pull-request-state";
 import fuzzysort from "fuzzysort";
 import { minimatch } from "minimatch";
 import { exec, spawn } from "node:child_process";
@@ -36,12 +43,11 @@ import { ensureRunWorktreeAndBranch } from "./utils/ensureRunWorktree";
 import { serverLogger } from "./utils/fileLogger";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken";
 import {
+  createDraftPr,
   createReadyPr,
-  fetchPrByHead,
   fetchPrDetail,
   markPrReady,
   mergePr,
-  parseRepoFromUrl,
   reopenPr,
 } from "./utils/githubPr";
 import { getOctokit } from "./utils/octokit";
@@ -50,6 +56,14 @@ import { refreshGitHubData } from "./utils/refreshGitHubData";
 import { runWithAuth, runWithAuthToken } from "./utils/requestContext";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance";
 import { getProjectPaths } from "./workspace";
+import {
+  collectRepoFullNamesForRun,
+  EMPTY_AGGREGATE,
+  loadPullRequestDetail,
+  persistPullRequestResults,
+  splitRepoFullName,
+  toPullRequestActionResult,
+} from "./pullRequestState";
 
 const execAsync = promisify(exec);
 
@@ -68,7 +82,7 @@ const GitSocketDiffRequestSchema = z.object({
 export function setupSocketHandlers(
   rt: RealtimeServer,
   gitDiffManager: GitDiffManager,
-  defaultRepo?: GitRepoInfo | null
+  defaultRepo?: GitRepoInfo | null,
 ) {
   let hasRefreshedGithub = false;
   let dockerEventsStarted = false;
@@ -120,7 +134,7 @@ export function setupSocketHandlers(
       };
       serverLogger.info(
         `Sending default-repo to new client ${socket.id}:`,
-        defaultRepoData
+        defaultRepoData,
       );
       socket.emit("default-repo", defaultRepoData);
     }
@@ -150,7 +164,7 @@ export function setupSocketHandlers(
       runWithAuth(initialToken, initialAuthJson, () => {
         if (!initialTeam) {
           serverLogger.warn(
-            "No team provided on socket handshake; skipping initial GitHub refresh"
+            "No team provided on socket handshake; skipping initial GitHub refresh",
           );
           return;
         }
@@ -163,14 +177,14 @@ export function setupSocketHandlers(
         dockerEventsStarted = true;
         runWithAuth(initialToken, initialAuthJson, () => {
           serverLogger.info(
-            "Starting Docker container state sync after authenticated connect"
+            "Starting Docker container state sync after authenticated connect",
           );
           DockerVSCodeInstance.startContainerStateSync();
         });
       }
     } else if (!initialToken) {
       serverLogger.info(
-        "Skipping initial GitHub refresh: no auth token on connect"
+        "Skipping initial GitHub refresh: no auth token on connect",
       );
     }
 
@@ -184,7 +198,7 @@ export function setupSocketHandlers(
           !parsed.originPathOverride
         ) {
           throw new Error(
-            "repoFullName, repoUrl, or originPathOverride is required"
+            "repoFullName, repoUrl, or originPathOverride is required",
           );
         }
 
@@ -212,7 +226,7 @@ export function setupSocketHandlers(
             });
           } catch (e) {
             serverLogger.warn(
-              `Failed to start watcher for ${parsed.originPathOverride}: ${String(e)}`
+              `Failed to start watcher for ${parsed.originPathOverride}: ${String(e)}`,
             );
           }
         }
@@ -290,7 +304,7 @@ export function setupSocketHandlers(
       if (!taskDataParseResult.success) {
         serverLogger.error(
           "Task data failed schema validation:",
-          taskDataParseResult.error
+          taskDataParseResult.error,
         );
         callback({
           taskId: data.taskId,
@@ -318,7 +332,7 @@ export function setupSocketHandlers(
           } catch (e) {
             serverLogger.warn(
               "Failed to verify Docker status before start-task",
-              e
+              e,
             );
             callback({
               taskId,
@@ -334,7 +348,7 @@ export function setupSocketHandlers(
         try {
           generatedTitle = await getPRTitleFromTaskDescription(
             taskData.taskDescription,
-            safeTeam
+            safeTeam,
           );
           // Persist to Convex immediately
           await getConvex().mutation(api.tasks.setPullRequestTitle, {
@@ -346,7 +360,7 @@ export function setupSocketHandlers(
         } catch (e) {
           serverLogger.error(
             `[Server] Failed generating/saving early PR title:`,
-            e
+            e,
           );
         }
 
@@ -364,12 +378,12 @@ export function setupSocketHandlers(
             theme: taskData.theme,
             environmentId: taskData.environmentId,
           },
-          safeTeam
+          safeTeam,
         );
 
         // Check if at least one agent spawned successfully
         const successfulAgents = agentResults.filter(
-          (result) => result.success
+          (result) => result.success,
         );
         if (successfulAgents.length === 0) {
           const errors = agentResults
@@ -387,16 +401,16 @@ export function setupSocketHandlers(
         agentResults.forEach((result) => {
           if (result.success) {
             serverLogger.info(
-              `Successfully spawned ${result.agentName} with terminal ${result.terminalId}`
+              `Successfully spawned ${result.agentName} with terminal ${result.terminalId}`,
             );
             if (result.vscodeUrl) {
               serverLogger.info(
-                `VSCode URL for ${result.agentName}: ${result.vscodeUrl}`
+                `VSCode URL for ${result.agentName}: ${result.vscodeUrl}`,
               );
             }
           } else {
             serverLogger.error(
-              `Failed to spawn ${result.agentName}: ${result.error}`
+              `Failed to spawn ${result.agentName}: ${result.error}`,
             );
           }
         });
@@ -423,12 +437,12 @@ export function setupSocketHandlers(
                 workspacePath: primaryAgent.worktreePath,
                 filePath: changedPath,
               });
-            }
+            },
           );
         } catch (error) {
           serverLogger.warn(
             "Could not set up file watching for workspace:",
-            error
+            error,
           );
           // Continue without file watching
         }
@@ -450,168 +464,136 @@ export function setupSocketHandlers(
     // Sync PR state (non-destructive): query GitHub and update Convex
     socket.on("github-sync-pr-state", async (data, callback) => {
       try {
-        const { taskRunId } = GitHubCreateDraftPrSchema.parse(data);
+        const { taskRunId } = GitHubSyncPrStateSchema.parse(data);
 
-        // Load run and task (no worktree setup to keep it light)
         const run = await getConvex().query(api.taskRuns.get, {
           teamSlugOrId: safeTeam,
           id: taskRunId,
         });
         if (!run) {
-          callback({ success: false, error: "Task run not found" });
+          callback({
+            success: false,
+            results: [],
+            aggregate: EMPTY_AGGREGATE,
+            error: "Task run not found",
+          });
           return;
         }
+
         const task = await getConvex().query(api.tasks.getById, {
           teamSlugOrId: safeTeam,
           id: run.taskId,
         });
         if (!task) {
-          callback({ success: false, error: "Task not found" });
+          callback({
+            success: false,
+            results: [],
+            aggregate: EMPTY_AGGREGATE,
+            error: "Task not found",
+          });
           return;
         }
 
         const githubToken = await getGitHubTokenFromKeychain();
         if (!githubToken) {
-          callback({ success: false, error: "GitHub token is not configured" });
+          callback({
+            success: false,
+            results: [],
+            aggregate: EMPTY_AGGREGATE,
+            error: "GitHub token is not configured",
+          });
           return;
         }
 
-        const repoFullName = task.projectFullName || "";
-        let [owner, repo] = repoFullName.split("/");
-        const branchName = run.newBranch || "";
-
-        // Determine PR via URL number when available
-        let prNumber: number | null = null;
-        if (run.pullRequestNumber) {
-          prNumber = run.pullRequestNumber;
-        } else if (run.pullRequestUrl) {
-          const parsed = parseRepoFromUrl(run.pullRequestUrl);
-          if (parsed.owner && parsed.repo) {
-            owner = owner || parsed.owner;
-            repo = repo || parsed.repo;
-          }
-          if (parsed.number) prNumber = parsed.number;
-        }
-
-        let prBasic: {
-          number: number;
-          html_url: string;
-          state: string;
-          draft?: boolean;
-        } | null = null;
-        if (owner && repo && prNumber) {
-          const detail = await fetchPrDetail(
-            githubToken,
-            owner,
-            repo,
-            prNumber
-          );
-          prBasic = {
-            number: detail.number,
-            html_url: detail.html_url,
-            state: detail.state,
-            draft: detail.draft,
-          };
-        } else if (owner && repo && branchName) {
-          // Find PR by head branch
-          prBasic = await fetchPrByHead(
-            githubToken,
-            owner,
-            repo,
-            owner,
-            branchName
-          );
-        }
-
-        if (!prBasic) {
-          await getConvex().mutation(api.taskRuns.updatePullRequestState, {
-            teamSlugOrId: safeTeam,
-            id: run._id,
-            state: "none",
-            isDraft: undefined,
-            number: undefined,
-            url: undefined,
-          });
-          // Update task merge status to none
-          await getConvex().mutation(api.tasks.updateMergeStatus, {
-            teamSlugOrId: safeTeam,
-            id: task._id,
-            mergeStatus: "none",
-          });
-          callback({ success: true, state: "none" });
-          return;
-        }
-
-        // Fetch detailed PR to detect merged
-        const prDetail = await fetchPrDetail(
-          githubToken,
-          owner,
-          repo,
-          prBasic.number
+        const repoFullNames = await collectRepoFullNamesForRun(
+          run,
+          task,
+          safeTeam,
         );
-        const isMerged = !!prDetail.merged_at;
-        const isDraft = prDetail.draft ?? prBasic.draft ?? false;
+        if (repoFullNames.length === 0) {
+          callback({
+            success: true,
+            results: [],
+            aggregate: EMPTY_AGGREGATE,
+          });
+          return;
+        }
 
-        const state: "open" | "closed" | "merged" | "draft" | "unknown" =
-          isMerged
-            ? "merged"
-            : isDraft
-              ? "draft"
-              : prBasic.state === "open"
-                ? "open"
-                : prBasic.state === "closed"
-                  ? "closed"
-                  : "unknown";
+        const existingByRepo = new Map(
+          (run.pullRequests ?? []).map(
+            (record) => [record.repoFullName, record] as const,
+          ),
+        );
 
-        await getConvex().mutation(api.taskRuns.updatePullRequestState, {
+        const results = await Promise.all(
+          repoFullNames.map(async (repoFullName) => {
+            try {
+              const split = splitRepoFullName(repoFullName);
+              if (!split) {
+                throw new Error(`Invalid repository name: ${repoFullName}`);
+              }
+              const { owner, repo } = split;
+              const existingRecord = existingByRepo.get(repoFullName);
+
+              const detail = await loadPullRequestDetail({
+                token: githubToken,
+                repoFullName,
+                owner,
+                repo,
+                branchName: run.newBranch ?? "",
+                number: existingRecord?.number,
+              });
+
+              if (!detail) {
+                return {
+                  repoFullName,
+                  url: undefined,
+                  number: undefined,
+                  state: "none",
+                  isDraft: undefined,
+                } satisfies PullRequestActionResult;
+              }
+
+              return toPullRequestActionResult(repoFullName, detail);
+            } catch (error) {
+              const message =
+                error instanceof Error ? error.message : String(error);
+              return {
+                repoFullName,
+                url: undefined,
+                number: undefined,
+                state: "unknown",
+                isDraft: undefined,
+                error: message,
+              } satisfies PullRequestActionResult;
+            }
+          }),
+        );
+
+        const persisted = await persistPullRequestResults({
           teamSlugOrId: safeTeam,
-          id: run._id,
-          state,
-          isDraft,
-          number: prBasic.number,
-          url: prBasic.html_url,
+          run,
+          task,
+          repoFullNames,
+          results,
         });
 
-        // Update task merge status based on PR state
-        let taskMergeStatus:
-          | "none"
-          | "pr_draft"
-          | "pr_open"
-          | "pr_merged"
-          | "pr_closed" = "none";
-        switch (state) {
-          case "draft":
-            taskMergeStatus = "pr_draft";
-            break;
-          case "open":
-            taskMergeStatus = "pr_open";
-            break;
-          case "merged":
-            taskMergeStatus = "pr_merged";
-            break;
-          case "closed":
-            taskMergeStatus = "pr_closed";
-            break;
-        }
-        if (taskMergeStatus !== "none") {
-          await getConvex().mutation(api.tasks.updateMergeStatus, {
-            teamSlugOrId: safeTeam,
-            id: task._id,
-            mergeStatus: taskMergeStatus,
-          });
-        }
+        const errors = results
+          .filter((result) => result.error)
+          .map((result) => `${result.repoFullName}: ${result.error}`);
 
         callback({
-          success: true,
-          url: prBasic.html_url,
-          number: prBasic.number,
-          state,
-          isDraft,
+          success: errors.length === 0,
+          results,
+          aggregate: persisted.aggregate,
+          error: errors.length > 0 ? errors.join("; ") : undefined,
         });
       } catch (error) {
         serverLogger.error("Error syncing PR state:", error);
         callback({
           success: false,
+          results: [],
+          aggregate: EMPTY_AGGREGATE,
           error: error instanceof Error ? error.message : "Unknown error",
         });
       }
@@ -620,146 +602,203 @@ export function setupSocketHandlers(
     // Merge PR for a run
     socket.on("github-merge-pr", async (data, callback) => {
       try {
-        const { taskRunId, method } = data;
+        const { taskRunId, method } = GitHubMergePrSchema.parse(data);
 
         const run = await getConvex().query(api.taskRuns.get, {
           teamSlugOrId: safeTeam,
           id: taskRunId,
         });
         if (!run) {
-          return callback({ success: false, error: "Task run not found" });
+          callback({
+            success: false,
+            results: [],
+            aggregate: EMPTY_AGGREGATE,
+            error: "Task run not found",
+          });
+          return;
         }
+
         const task = await getConvex().query(api.tasks.getById, {
           teamSlugOrId: safeTeam,
           id: run.taskId,
         });
         if (!task) {
-          return callback({ success: false, error: "Task not found" });
+          callback({
+            success: false,
+            results: [],
+            aggregate: EMPTY_AGGREGATE,
+            error: "Task not found",
+          });
+          return;
         }
+
         const githubToken = await getGitHubTokenFromKeychain();
         if (!githubToken) {
-          return callback({
+          callback({
             success: false,
+            results: [],
+            aggregate: EMPTY_AGGREGATE,
             error: "GitHub token is not configured",
           });
-        }
-        let [owner, repo] = (task.projectFullName || "").split("/");
-        let prNumber: number | null = run.pullRequestNumber || null;
-        if ((!owner || !repo || !prNumber) && run.pullRequestUrl) {
-          const parsed = parseRepoFromUrl(run.pullRequestUrl);
-          owner = owner || parsed.owner || owner;
-          repo = repo || parsed.repo || repo;
-          prNumber = prNumber || parsed.number || null;
-        }
-        if (!owner || !repo) {
-          return callback({ success: false, error: "Unknown repo for task" });
-        }
-        // If PR number still unknown, try to locate via branch
-        if (!prNumber && run.newBranch) {
-          const found = await fetchPrByHead(
-            githubToken,
-            owner,
-            repo,
-            owner,
-            run.newBranch
-          );
-          if (found) {
-            prNumber = found.number;
-          }
+          return;
         }
 
-        if (!prNumber) {
-          return callback({
+        const repoFullNames = await collectRepoFullNamesForRun(
+          run,
+          task,
+          safeTeam,
+        );
+        if (repoFullNames.length === 0) {
+          callback({
             success: false,
-            error: "Pull request not found for this run",
+            results: [],
+            aggregate: EMPTY_AGGREGATE,
+            error: "No repositories configured for this run",
           });
+          return;
         }
 
-        // Ensure PR is open and not draft
-        const detail = await fetchPrDetail(githubToken, owner, repo, prNumber);
-        if (detail.draft) {
-          // Try to mark ready
-          try {
-            await markPrReady(githubToken, owner, repo, prNumber);
-            serverLogger.info(
-              `[MergePR] Successfully marked PR #${prNumber} as ready for review`
-            );
-          } catch (e: unknown) {
-            const msg = e instanceof Error ? e.message : String(e);
-
-            // Check if it's a 404 error
-            if (msg.includes("not found") || msg.includes("404")) {
-              return callback({
-                success: false,
-                error: `Pull request #${prNumber} not found. It may have been deleted.`,
-              });
-            }
-
-            return callback({
-              success: false,
-              error: `PR is draft and could not be made ready: ${msg}`,
-            });
-          }
-        }
-        if (detail.state === "closed") {
-          // Try to reopen
-          try {
-            await reopenPr(githubToken, owner, repo, prNumber);
-          } catch (e: unknown) {
-            const msg = e instanceof Error ? e.message : String(e);
-            return callback({
-              success: false,
-              error: `PR is closed and could not be reopened: ${msg}`,
-            });
-          }
-        }
-
-        // Optional: commit title/message
-        const title = task.pullRequestTitle || task.text || `cmux changes`;
+        const title = task.pullRequestTitle || task.text || "cmux changes";
         const truncatedTitle =
           title.length > 72 ? `${title.slice(0, 69)}...` : title;
         const commitMessage = `Merged by cmux for task ${String(task._id)}.`;
 
-        // Merge
-        try {
-          const res = await mergePr(
-            githubToken,
-            owner,
-            repo,
-            prNumber,
-            method,
-            truncatedTitle,
-            commitMessage
-          );
-          // Update Convex: merged
-          await getConvex().mutation(api.taskRuns.updatePullRequestState, {
-            teamSlugOrId: safeTeam,
-            id: run._id,
-            state: "merged",
-            isDraft: false,
-            number: prNumber,
-            url: detail.html_url,
-          });
-          // Update task merge status to merged
-          await getConvex().mutation(api.tasks.updateMergeStatus, {
-            teamSlugOrId: safeTeam,
-            id: task._id,
-            mergeStatus: "pr_merged",
-          });
-          callback({
-            success: true,
-            merged: !!res.merged,
-            state: "merged",
-            url: detail.html_url,
-          });
-        } catch (e: unknown) {
-          const msg = e instanceof Error ? e.message : String(e);
-          callback({ success: false, error: `Failed to merge PR: ${msg}` });
-        }
+        const existingByRepo = new Map(
+          (run.pullRequests ?? []).map(
+            (record) => [record.repoFullName, record] as const,
+          ),
+        );
+
+        const results = await Promise.all(
+          repoFullNames.map(async (repoFullName) => {
+            try {
+              const split = splitRepoFullName(repoFullName);
+              if (!split) {
+                throw new Error(`Invalid repository name: ${repoFullName}`);
+              }
+              const { owner, repo } = split;
+              const existingRecord = existingByRepo.get(repoFullName);
+
+              let detail = await loadPullRequestDetail({
+                token: githubToken,
+                repoFullName,
+                owner,
+                repo,
+                branchName: run.newBranch ?? "",
+                number: existingRecord?.number,
+              });
+
+              if (!detail) {
+                throw new Error("Pull request not found for this branch");
+              }
+
+              if (detail.draft) {
+                try {
+                  await markPrReady(githubToken, owner, repo, detail.number);
+                } catch (error) {
+                  const message =
+                    error instanceof Error ? error.message : String(error);
+                  throw new Error(
+                    `Failed to mark PR #${detail.number} as ready before merge: ${message}`,
+                  );
+                }
+                detail = await fetchPrDetail(
+                  githubToken,
+                  owner,
+                  repo,
+                  detail.number,
+                );
+              }
+
+              if (
+                (detail.state ?? "").toLowerCase() === "closed" &&
+                !detail.merged_at
+              ) {
+                try {
+                  await reopenPr(githubToken, owner, repo, detail.number);
+                } catch (error) {
+                  const message =
+                    error instanceof Error ? error.message : String(error);
+                  throw new Error(
+                    `Failed to reopen PR #${detail.number}: ${message}`,
+                  );
+                }
+                detail = await fetchPrDetail(
+                  githubToken,
+                  owner,
+                  repo,
+                  detail.number,
+                );
+              }
+
+              try {
+                await mergePr(
+                  githubToken,
+                  owner,
+                  repo,
+                  detail.number,
+                  method,
+                  truncatedTitle,
+                  commitMessage,
+                );
+              } catch (error) {
+                const message =
+                  error instanceof Error ? error.message : String(error);
+                throw new Error(
+                  `Failed to merge PR #${detail.number}: ${message}`,
+                );
+              }
+
+              const mergedDetail = await fetchPrDetail(
+                githubToken,
+                owner,
+                repo,
+                detail.number,
+              );
+
+              return toPullRequestActionResult(repoFullName, {
+                ...mergedDetail,
+                merged_at: mergedDetail.merged_at ?? new Date().toISOString(),
+              });
+            } catch (error) {
+              const message =
+                error instanceof Error ? error.message : String(error);
+              return {
+                repoFullName,
+                url: undefined,
+                number: undefined,
+                state: "unknown",
+                isDraft: undefined,
+                error: message,
+              } satisfies PullRequestActionResult;
+            }
+          }),
+        );
+
+        const persisted = await persistPullRequestResults({
+          teamSlugOrId: safeTeam,
+          run,
+          task,
+          repoFullNames,
+          results,
+        });
+
+        const errors = results
+          .filter((result) => result.error)
+          .map((result) => `${result.repoFullName}: ${result.error}`);
+
+        callback({
+          success: errors.length === 0,
+          results,
+          aggregate: persisted.aggregate,
+          error: errors.length > 0 ? errors.join("; ") : undefined,
+        });
       } catch (error) {
         serverLogger.error("Error merging PR:", error);
         callback({
           success: false,
+          results: [],
+          aggregate: EMPTY_AGGREGATE,
           error: error instanceof Error ? error.message : "Unknown error",
         });
       }
@@ -796,10 +835,37 @@ export function setupSocketHandlers(
             head: branchName,
           });
 
+          const existingRecords = run.pullRequests ?? [];
+          const updatedRecords: StoredPullRequestInfo[] =
+            existingRecords.length > 0
+              ? existingRecords.map((record) =>
+                  record.repoFullName === repoFullName
+                    ? {
+                        ...record,
+                        state: "merged",
+                        isDraft: false,
+                      }
+                    : record,
+                )
+              : [
+                  {
+                    repoFullName,
+                    url:
+                      run.pullRequestUrl && run.pullRequestUrl !== "pending"
+                        ? run.pullRequestUrl
+                        : undefined,
+                    number: run.pullRequestNumber ?? undefined,
+                    state: "merged",
+                    isDraft: false,
+                  },
+                ];
+
           await getConvex().mutation(api.taskRuns.updatePullRequestState, {
             teamSlugOrId: safeTeam,
             id: run._id,
             state: "merged",
+            isDraft: false,
+            pullRequests: updatedRecords,
           });
 
           await getConvex().mutation(api.tasks.updateMergeStatus, {
@@ -905,7 +971,7 @@ export function setupSocketHandlers(
             }
           } else {
             serverLogger.error(
-              `Error opening ${editor}: process exited with code ${code}`
+              `Error opening ${editor}: process exited with code ${code}`,
             );
             const error = `Failed to open ${editor}: process exited with code ${code}`;
             socket.emit("open-in-editor-error", { error });
@@ -966,7 +1032,7 @@ export function setupSocketHandlers(
         await repoManager.ensureRepository(
           repoUrl,
           projectPaths.originPath,
-          baseBranch
+          baseBranch,
         );
 
         // For clarity downstream, compute a proper worktreeInfo keyed by baseBranch
@@ -982,7 +1048,7 @@ export function setupSocketHandlers(
         } catch {
           serverLogger.error(
             "Origin directory does not exist:",
-            worktreeInfo.originPath
+            worktreeInfo.originPath,
           );
           socket.emit("list-files-response", {
             files: [],
@@ -1010,7 +1076,7 @@ export function setupSocketHandlers(
 
         async function walkDir(
           dir: string,
-          baseDir: string
+          baseDir: string,
         ): Promise<FileInfo[]> {
           const files: FileInfo[] = [];
 
@@ -1025,7 +1091,7 @@ export function setupSocketHandlers(
               const shouldIgnore = ignoredPatterns.some(
                 (pattern) =>
                   minimatch(relativePath, pattern) ||
-                  minimatch(fullPath, pattern)
+                  minimatch(fullPath, pattern),
               );
 
               if (shouldIgnore) continue;
@@ -1065,7 +1131,7 @@ export function setupSocketHandlers(
         // List files from the origin directory
         let fileList = await walkDir(
           worktreeInfo.originPath,
-          worktreeInfo.originPath
+          worktreeInfo.originPath,
         );
 
         // Apply fuzzysort fuzzy matching if pattern is provided
@@ -1121,7 +1187,7 @@ export function setupSocketHandlers(
           execWithEnv("whoami").then((r) => r.stdout),
           execWithEnv("echo $HOME").then((r) => r.stdout),
           execWithEnv('ls -la ~/.config/gh/ || echo "No gh config"').then(
-            (r) => r.stdout
+            (r) => r.stdout,
           ),
         ]);
 
@@ -1173,14 +1239,14 @@ export function setupSocketHandlers(
           runWithAuthToken(initialToken, () =>
             refreshGitHubData({ teamSlugOrId }).catch((error) => {
               serverLogger.error("Background refresh failed:", error);
-            })
+            }),
           );
           return;
         }
 
         // If no repos exist, do a full fetch
         await runWithAuthToken(initialToken, () =>
-          refreshGitHubData({ teamSlugOrId })
+          refreshGitHubData({ teamSlugOrId }),
         );
         const reposByOrg = await getConvex().query(api.github.getReposByOrg, {
           teamSlugOrId,
@@ -1264,12 +1330,12 @@ Please address the issue mentioned in the comment above.`;
               "codex/gpt-5",
             ],
           },
-          safeTeam
+          safeTeam,
         );
 
         // Check if at least one agent spawned successfully
         const successfulAgents = agentResults.filter(
-          (result) => result.success
+          (result) => result.success,
         );
 
         if (successfulAgents.length === 0) {
@@ -1331,225 +1397,170 @@ Please address the issue mentioned in the comment above.`;
       try {
         const { taskRunId } = GitHubCreateDraftPrSchema.parse(data);
 
-        // Ensure worktree exists and we are on the correct branch
-        const { run, task, worktreePath, branchName, baseBranch } =
-          await ensureRunWorktreeAndBranch(taskRunId, safeTeam);
-
-        // Get GitHub token from keychain/Convex
-        const githubToken = await getGitHubTokenFromKeychain();
-        if (!githubToken) {
-          callback({ success: false, error: "GitHub token is not configured" });
+        const run = await getConvex().query(api.taskRuns.get, {
+          teamSlugOrId: safeTeam,
+          id: taskRunId,
+        });
+        if (!run) {
+          callback({
+            success: false,
+            results: [],
+            aggregate: EMPTY_AGGREGATE,
+            error: "Task run not found",
+          });
           return;
         }
 
-        // Create PR title/body and commit message using stored task title when available
+        const task = await getConvex().query(api.tasks.getById, {
+          teamSlugOrId: safeTeam,
+          id: run.taskId,
+        });
+        if (!task) {
+          callback({
+            success: false,
+            results: [],
+            aggregate: EMPTY_AGGREGATE,
+            error: "Task not found",
+          });
+          return;
+        }
+
+        const branchName = run.newBranch?.trim();
+        if (!branchName) {
+          callback({
+            success: false,
+            results: [],
+            aggregate: EMPTY_AGGREGATE,
+            error: "Missing branch name for run",
+          });
+          return;
+        }
+
+        const githubToken = await getGitHubTokenFromKeychain();
+        if (!githubToken) {
+          callback({
+            success: false,
+            results: [],
+            aggregate: EMPTY_AGGREGATE,
+            error: "GitHub token is not configured",
+          });
+          return;
+        }
+
+        const repoFullNames = await collectRepoFullNamesForRun(
+          run,
+          task,
+          safeTeam,
+        );
+        if (repoFullNames.length === 0) {
+          callback({
+            success: false,
+            results: [],
+            aggregate: EMPTY_AGGREGATE,
+            error: "No repositories configured for this run",
+          });
+          return;
+        }
+
+        const baseBranch = task.baseBranch?.trim() || "main";
         const title = task.pullRequestTitle || task.text || "cmux changes";
         const truncatedTitle =
           title.length > 72 ? `${title.slice(0, 69)}...` : title;
-        const commitMessage = `${truncatedTitle}\n\nGenerated by cmux for task ${String(task._id)}.`;
-        const body = task.text || `## Summary\n\n${title}`;
+        const body =
+          task.text ||
+          `## Summary
 
-        // Ensure on branch, commit, push, and create draft PR using local filesystem
-        const cwd = worktreePath;
+${title}`;
 
-        let prUrl: string | undefined;
+        const existingByRepo = new Map(
+          (run.pullRequests ?? []).map(
+            (record) => [record.repoFullName, record] as const,
+          ),
+        );
 
-        // 1) Fetch base (optional but helpful)
-        try {
-          await execAsync(`git fetch origin ${baseBranch}`, {
-            cwd,
-            env: { ...process.env },
-            maxBuffer: 10 * 1024 * 1024,
-          });
-        } catch (e: unknown) {
-          const err = e as {
-            stdout?: string;
-            stderr?: string;
-            message?: string;
-          };
-          serverLogger.warn(
-            `[DraftPR] Fetch base failed (continuing): ${err?.stderr || err?.message || "unknown"}`
-          );
-        }
-
-        // 2) Ensure we are on branchName without discarding local changes
-        try {
-          const { stdout: cbOut } = await execAsync(
-            `git rev-parse --abbrev-ref HEAD`,
-            { cwd, env: { ...process.env } }
-          );
-          const currentBranch = cbOut.trim();
-          if (currentBranch !== branchName) {
-            // Try create from current HEAD; if exists, just switch
+        const results = await Promise.all(
+          repoFullNames.map(async (repoFullName) => {
             try {
-              await execAsync(`git checkout -b ${branchName}`, {
-                cwd,
-                env: { ...process.env },
+              const split = splitRepoFullName(repoFullName);
+              if (!split) {
+                throw new Error(`Invalid repository name: ${repoFullName}`);
+              }
+              const { owner, repo } = split;
+              const existingRecord = existingByRepo.get(repoFullName);
+              const existingNumber = existingRecord?.number;
+
+              let detail = await loadPullRequestDetail({
+                token: githubToken,
+                repoFullName,
+                owner,
+                repo,
+                branchName,
+                number: existingNumber,
               });
-            } catch {
-              await execAsync(`git checkout ${branchName}`, {
-                cwd,
-                env: { ...process.env },
-              });
+
+              if (!detail) {
+                const created = await createDraftPr(
+                  githubToken,
+                  owner,
+                  repo,
+                  truncatedTitle,
+                  branchName,
+                  baseBranch,
+                  body,
+                );
+                detail =
+                  (await fetchPrDetail(
+                    githubToken,
+                    owner,
+                    repo,
+                    created.number,
+                  ).catch(() => null)) ??
+                  ({
+                    ...created,
+                    merged_at: null,
+                  } as Awaited<ReturnType<typeof fetchPrDetail>>);
+              }
+
+              return toPullRequestActionResult(repoFullName, detail);
+            } catch (error) {
+              const message =
+                error instanceof Error ? error.message : String(error);
+              return {
+                repoFullName,
+                url: undefined,
+                number: undefined,
+                state: "none",
+                isDraft: undefined,
+                error: message,
+              } satisfies PullRequestActionResult;
             }
-          }
-        } catch (e: unknown) {
-          const err = e as {
-            stdout?: string;
-            stderr?: string;
-            message?: string;
-          };
-          const msg =
-            err?.message || err?.stderr || err?.stdout || "unknown error";
-          serverLogger.error(`[DraftPR] Failed at 'Ensure branch': ${msg}`);
-          callback({
-            success: false,
-            error: `Failed at 'Ensure branch': ${msg}`,
-          });
-          return;
-        }
+          }),
+        );
 
-        // 3) Stage and commit changes (no-op safe)
-        try {
-          await execAsync("git add -A", { cwd, env: { ...process.env } });
-          await execAsync(
-            `git commit -m ${JSON.stringify(commitMessage)} || echo 'No changes to commit'`,
-            { cwd, env: { ...process.env }, shell: "/bin/bash" }
-          );
-        } catch (e: unknown) {
-          const err = e as {
-            stdout?: string;
-            stderr?: string;
-            message?: string;
-          };
-          const msg =
-            err?.message || err?.stderr || err?.stdout || "unknown error";
-          serverLogger.error(`[DraftPR] Failed at 'Commit changes': ${msg}`);
-          callback({
-            success: false,
-            error: `Failed at 'Commit changes': ${msg}`,
-          });
-          return;
-        }
+        const persisted = await persistPullRequestResults({
+          teamSlugOrId: safeTeam,
+          run,
+          task,
+          repoFullNames,
+          results,
+        });
 
-        // 4) If remote branch exists, pull --rebase to integrate updates
-        try {
-          const { stdout: lsOut } = await execAsync(
-            `git ls-remote --heads origin ${branchName}`,
-            { cwd, env: { ...process.env } }
-          );
-          if ((lsOut || "").trim().length > 0) {
-            await execAsync(`git pull --rebase origin ${branchName}`, {
-              cwd,
-              env: { ...process.env },
-              maxBuffer: 10 * 1024 * 1024,
-            });
-          }
-        } catch (e: unknown) {
-          const err = e as {
-            stdout?: string;
-            stderr?: string;
-            message?: string;
-          };
-          const msg =
-            err?.message || err?.stderr || err?.stdout || "unknown error";
-          serverLogger.error(`[DraftPR] Failed at 'Pull --rebase': ${msg}`);
-          callback({
-            success: false,
-            error: `Failed at 'Pull --rebase': ${msg}`,
-          });
-          return;
-        }
+        const errors = results
+          .filter((result) => result.error)
+          .map((result) => `${result.repoFullName}: ${result.error}`);
 
-        // 5) Push branch (set upstream)
-        try {
-          await execAsync(`git push -u origin ${branchName}`, {
-            cwd,
-            env: { ...process.env },
-            maxBuffer: 10 * 1024 * 1024,
-          });
-        } catch (e: unknown) {
-          const err = e as {
-            stdout?: string;
-            stderr?: string;
-            message?: string;
-          };
-          const msg =
-            err?.message || err?.stderr || err?.stdout || "unknown error";
-          serverLogger.error(`[DraftPR] Failed at 'Push branch': ${msg}`);
-          callback({
-            success: false,
-            error: `Failed at 'Push branch': ${msg}`,
-          });
-          return;
-        }
-
-        // 6) Create draft PR
-        try {
-          // Write body to a temp file to preserve Markdown formatting
-          const tmpBodyPath = path.join(
-            os.tmpdir(),
-            `cmux_pr_body_${Date.now()}_${Math.random().toString(36).slice(2)}.md`
-          );
-          await fs.writeFile(tmpBodyPath, body, "utf8");
-
-          const { stdout, stderr } = await execAsync(
-            `gh pr create --draft --title ${JSON.stringify(
-              truncatedTitle
-            )} --body-file ${JSON.stringify(tmpBodyPath)} --head ${JSON.stringify(
-              branchName
-            )} --base ${JSON.stringify(baseBranch)}`,
-            {
-              cwd,
-              env: { ...process.env, GH_TOKEN: githubToken },
-              maxBuffer: 10 * 1024 * 1024,
-            }
-          );
-          const out = (stdout || stderr || "").trim();
-          const match = out.match(/https:\/\/github\.com\/[^\s]+/);
-          prUrl = match ? match[0] : out;
-          // Clean up temp file
-          try {
-            await fs.unlink(tmpBodyPath);
-          } catch (e) {
-            serverLogger.error("Error cleaning up temp file:", e);
-          }
-        } catch (e: unknown) {
-          const err = e as {
-            stdout?: string;
-            stderr?: string;
-            message?: string;
-          };
-          const msg =
-            err?.message || err?.stderr || err?.stdout || "unknown error";
-          serverLogger.error(`[DraftPR] Failed at 'Create draft PR': ${msg}`);
-          callback({
-            success: false,
-            error: `Failed at 'Create draft PR': ${msg}`,
-          });
-          return;
-        }
-
-        if (prUrl) {
-          await getConvex().mutation(api.taskRuns.updatePullRequestUrl, {
-            teamSlugOrId: safeTeam,
-            id: run._id,
-            pullRequestUrl: prUrl,
-            isDraft: true,
-          });
-          // Update task merge status to draft PR
-          await getConvex().mutation(api.tasks.updateMergeStatus, {
-            teamSlugOrId: safeTeam,
-            id: task._id,
-            mergeStatus: "pr_draft",
-          });
-        }
-
-        callback({ success: true, url: prUrl });
+        callback({
+          success: errors.length === 0,
+          results,
+          aggregate: persisted.aggregate,
+          error: errors.length > 0 ? errors.join("; ") : undefined,
+        });
       } catch (error) {
         serverLogger.error("Error creating draft PR:", error);
         callback({
           success: false,
+          results: [],
+          aggregate: EMPTY_AGGREGATE,
           error: error instanceof Error ? error.message : "Unknown error",
         });
       }
@@ -1558,310 +1569,240 @@ Please address the issue mentioned in the comment above.`;
     // Open PR: create a non-draft PR if missing, or mark draft PR as ready
     socket.on("github-open-pr", async (data, callback) => {
       try {
-        const { taskRunId } = GitHubCreateDraftPrSchema.parse(data);
+        const { taskRunId } = GitHubOpenPrSchema.parse(data);
 
-        const { run, task, worktreePath, branchName, baseBranch } =
-          await ensureRunWorktreeAndBranch(taskRunId, safeTeam);
-
-        const githubToken = await getGitHubTokenFromKeychain();
-        if (!githubToken) {
-          callback({ success: false, error: "GitHub token is not configured" });
+        const run = await getConvex().query(api.taskRuns.get, {
+          teamSlugOrId: safeTeam,
+          id: taskRunId,
+        });
+        if (!run) {
+          callback({
+            success: false,
+            results: [],
+            aggregate: EMPTY_AGGREGATE,
+            error: "Task run not found",
+          });
           return;
         }
 
+        const task = await getConvex().query(api.tasks.getById, {
+          teamSlugOrId: safeTeam,
+          id: run.taskId,
+        });
+        if (!task) {
+          callback({
+            success: false,
+            results: [],
+            aggregate: EMPTY_AGGREGATE,
+            error: "Task not found",
+          });
+          return;
+        }
+
+        const branchName = run.newBranch?.trim();
+        if (!branchName) {
+          callback({
+            success: false,
+            results: [],
+            aggregate: EMPTY_AGGREGATE,
+            error: "Missing branch name for run",
+          });
+          return;
+        }
+
+        const githubToken = await getGitHubTokenFromKeychain();
+        if (!githubToken) {
+          callback({
+            success: false,
+            results: [],
+            aggregate: EMPTY_AGGREGATE,
+            error: "GitHub token is not configured",
+          });
+          return;
+        }
+
+        const repoFullNames = await collectRepoFullNamesForRun(
+          run,
+          task,
+          safeTeam,
+        );
+        if (repoFullNames.length === 0) {
+          callback({
+            success: false,
+            results: [],
+            aggregate: EMPTY_AGGREGATE,
+            error: "No repositories configured for this run",
+          });
+          return;
+        }
+
+        const baseBranch = task.baseBranch?.trim() || "main";
         const title = task.pullRequestTitle || task.text || "cmux changes";
         const truncatedTitle =
           title.length > 72 ? `${title.slice(0, 69)}...` : title;
-        const commitMessage = `${truncatedTitle}\n\nGenerated by cmux for task ${String(task._id)}.`;
-        const body = task.text || `## Summary\n\n${title}`;
+        const body =
+          task.text ||
+          `## Summary
 
-        const cwd = worktreePath;
-        const repoFullNameOpen = task.projectFullName || ""; // e.g. owner/name
-        const [owner, repo] = repoFullNameOpen.split("/");
+${title}`;
 
-        // Stage/commit/push branch, similar to draft flow, but tolerant to no-op
-        try {
-          await execAsync("git add -A", { cwd, env: { ...process.env } });
-          await execAsync(
-            `git commit -m ${JSON.stringify(commitMessage)} || echo 'No changes to commit'`,
-            { cwd, env: { ...process.env }, shell: "/bin/bash" }
-          );
-        } catch (e: unknown) {
-          const err = e as {
-            stdout?: string;
-            stderr?: string;
-            message?: string;
-          };
-          const msg =
-            err?.message || err?.stderr || err?.stdout || "unknown error";
-          serverLogger.warn(`[OpenPR] Commit step warning: ${msg}`);
-        }
+        const existingByRepo = new Map(
+          (run.pullRequests ?? []).map(
+            (record) => [record.repoFullName, record] as const,
+          ),
+        );
 
-        try {
-          await execAsync(`git push -u origin ${branchName}`, {
-            cwd,
-            env: { ...process.env },
-            maxBuffer: 10 * 1024 * 1024,
-          });
-        } catch (e: unknown) {
-          const err = e as {
-            stdout?: string;
-            stderr?: string;
-            message?: string;
-          };
-          const msg =
-            err?.message || err?.stderr || err?.stdout || "unknown error";
-          serverLogger.warn(`[OpenPR] Push warning: ${msg}`);
-        }
-
-        // PR resolution via helpers
-        serverLogger.info(`[OpenPR] Fetching PR by head branch...`, {
-          owner,
-          repo,
-          branchName,
-          tokenPrefix: githubToken ? githubToken.substring(0, 10) : "NO_TOKEN",
-        });
-        const initialBasic =
-          owner && repo
-            ? await fetchPrByHead(githubToken, owner, repo, owner, branchName)
-            : null;
-        serverLogger.info(`[OpenPR] fetchPrByHead result:`, {
-          found: !!initialBasic,
-          number: initialBasic?.number,
-          draft: initialBasic?.draft,
-          state: initialBasic?.state,
-        });
-
-        let finalUrl: string | undefined;
-        let finalNumber: number | undefined;
-        let finalState: string | undefined; // GitHub state string
-        let finalIsDraft: boolean | undefined;
-
-        if (!initialBasic) {
-          if (!owner || !repo) {
-            callback({ success: false, error: "Unknown repo for task" });
-            return;
-          }
-          try {
-            const created = await createReadyPr(
-              githubToken,
-              owner,
-              repo,
-              truncatedTitle,
-              branchName,
-              baseBranch,
-              body
-            );
-            finalUrl = created.html_url;
-            finalNumber = created.number;
-            finalState = created.state;
-            finalIsDraft = !!created.draft;
-          } catch (e: unknown) {
-            const msg = e instanceof Error ? e.message : String(e);
-            if (!/already exists/i.test(msg)) {
-              serverLogger.error(`[OpenPR] Failed creating PR via API: ${msg}`);
-              callback({
-                success: false,
-                error: `Failed to create PR: ${msg}`,
-              });
-              return;
-            }
-          }
-          const latest =
-            owner && repo
-              ? await fetchPrByHead(githubToken, owner, repo, owner, branchName)
-              : null;
-          if (latest) {
-            finalUrl = latest.html_url;
-            finalNumber = latest.number;
-            finalState = latest.state;
-            finalIsDraft = !!latest.draft;
-          }
-        } else if (initialBasic.draft) {
-          try {
-            serverLogger.info(
-              `[OpenPR] Attempting to mark PR #${initialBasic.number} as ready...`,
-              {
-                owner: owner!,
-                repo: repo!,
-                number: initialBasic.number,
-                tokenPrefix: githubToken
-                  ? githubToken.substring(0, 10)
-                  : "NO_TOKEN",
-              }
-            );
-            await markPrReady(githubToken, owner!, repo!, initialBasic.number);
-            serverLogger.info(
-              `[OpenPR] Successfully marked PR #${initialBasic.number} as ready for review`
-            );
-          } catch (e: unknown) {
-            const errorMessage = e instanceof Error ? e.message : String(e);
-            serverLogger.error(
-              `[OpenPR] Failed to mark PR #${initialBasic.number} as ready: ${errorMessage}`
-            );
-
-            // If the PR wasn't found or there's a permission issue, fail the operation
-            if (
-              errorMessage.includes("not found") ||
-              errorMessage.includes("404")
-            ) {
-              callback({
-                success: false,
-                error: `Pull request #${initialBasic.number} not found. It may have been deleted or you may not have access.`,
-              });
-              return;
-            } else if (
-              errorMessage.includes("Permission denied") ||
-              errorMessage.includes("403")
-            ) {
-              callback({
-                success: false,
-                error: `Permission denied. Please check that your GitHub token has the required permissions.`,
-              });
-              return;
-            } else if (
-              errorMessage.includes("Authentication failed") ||
-              errorMessage.includes("401")
-            ) {
-              callback({
-                success: false,
-                error: `Authentication failed. Please check that your GitHub token is valid.`,
-              });
-              return;
-            }
-
-            // For other errors, log but continue (e.g., if PR is already ready)
-            serverLogger.warn(
-              `[OpenPR] Continuing despite error: ${errorMessage}`
-            );
-          }
-          const latest = await fetchPrByHead(
-            githubToken,
-            owner!,
-            repo!,
-            owner!,
-            branchName
-          );
-          if (latest) {
-            finalUrl = latest.html_url;
-            finalNumber = latest.number;
-            finalState = latest.state;
-            finalIsDraft = !!latest.draft;
-          }
-        } else {
-          // Exists but not draft; if closed, attempt reopen
-          if ((initialBasic.state || "").toUpperCase() === "CLOSED") {
+        const results = await Promise.all(
+          repoFullNames.map(async (repoFullName) => {
             try {
-              await reopenPr(githubToken, owner!, repo!, initialBasic.number);
-            } catch (e: unknown) {
-              const msg = e instanceof Error ? e.message : String(e);
-              serverLogger.warn(`[OpenPR] Failed to reopen PR via API: ${msg}`);
+              const split = splitRepoFullName(repoFullName);
+              if (!split) {
+                throw new Error(`Invalid repository name: ${repoFullName}`);
+              }
+              const { owner, repo } = split;
+              const existingRecord = existingByRepo.get(repoFullName);
+              const existingNumber = existingRecord?.number;
+
+              let detail = await loadPullRequestDetail({
+                token: githubToken,
+                repoFullName,
+                owner,
+                repo,
+                branchName,
+                number: existingNumber,
+              });
+
+              if (!detail) {
+                const created = await createReadyPr(
+                  githubToken,
+                  owner,
+                  repo,
+                  truncatedTitle,
+                  branchName,
+                  baseBranch,
+                  body,
+                );
+                detail =
+                  (await fetchPrDetail(
+                    githubToken,
+                    owner,
+                    repo,
+                    created.number,
+                  ).catch(() => null)) ??
+                  ({
+                    ...created,
+                    merged_at: null,
+                  } as Awaited<ReturnType<typeof fetchPrDetail>>);
+              } else if (detail.draft) {
+                try {
+                  await markPrReady(githubToken, owner, repo, detail.number);
+                } catch (error) {
+                  const message =
+                    error instanceof Error ? error.message : String(error);
+                  if (
+                    message.includes("not found") ||
+                    message.includes("404")
+                  ) {
+                    throw new Error(
+                      `Pull request #${detail.number} not found. It may have been deleted or you may not have access.`,
+                    );
+                  }
+                  if (
+                    message.includes("Permission denied") ||
+                    message.includes("403")
+                  ) {
+                    throw new Error(
+                      `Permission denied when marking PR #${detail.number} as ready. Check GitHub token permissions.`,
+                    );
+                  }
+                  if (
+                    message.includes("Authentication failed") ||
+                    message.includes("401")
+                  ) {
+                    throw new Error(
+                      `Authentication failed when marking PR #${detail.number} as ready. Verify GitHub token.`,
+                    );
+                  }
+                  serverLogger.warn(
+                    `[OpenPR] Continuing despite error when marking PR ready: ${message}`,
+                  );
+                }
+                detail = await fetchPrDetail(
+                  githubToken,
+                  owner,
+                  repo,
+                  detail.number,
+                );
+              }
+
+              if (
+                detail &&
+                (detail.state ?? "").toLowerCase() === "closed" &&
+                !detail.merged_at
+              ) {
+                try {
+                  await reopenPr(githubToken, owner, repo, detail.number);
+                } catch (error) {
+                  const message =
+                    error instanceof Error ? error.message : String(error);
+                  throw new Error(
+                    `Failed to reopen PR #${detail.number}: ${message}`,
+                  );
+                }
+                detail = await fetchPrDetail(
+                  githubToken,
+                  owner,
+                  repo,
+                  detail.number,
+                );
+              }
+
+              if (!detail) {
+                throw new Error(
+                  "Pull request not found or could not be created",
+                );
+              }
+
+              return toPullRequestActionResult(repoFullName, detail);
+            } catch (error) {
+              const message =
+                error instanceof Error ? error.message : String(error);
+              return {
+                repoFullName,
+                url: undefined,
+                number: undefined,
+                state: "none",
+                isDraft: undefined,
+                error: message,
+              } satisfies PullRequestActionResult;
             }
-          }
-          // Reflect latest state
-          const latest = await fetchPrByHead(
-            githubToken,
-            owner!,
-            repo!,
-            owner!,
-            branchName
-          );
-          if (latest) {
-            finalUrl = latest.html_url;
-            finalNumber = latest.number;
-            finalState = latest.state;
-            finalIsDraft = !!latest.draft;
-          }
-        }
+          }),
+        );
 
-        // Map gh state to our union (consider merged flag)
-        const stateMap = (
-          s?: string,
-          isDraft?: boolean,
-          merged?: boolean
-        ): "open" | "draft" | "merged" | "closed" | "unknown" => {
-          if (merged) return "merged";
-          if (isDraft) return "draft";
-          switch ((s || "").toUpperCase()) {
-            case "OPEN":
-              return "open";
-            case "MERGED":
-              return "merged";
-            case "CLOSED":
-              return "closed";
-            default:
-              return "unknown";
-          }
-        };
-
-        // Determine merged via detail
-        let merged = false;
-        if (owner && repo && finalNumber) {
-          try {
-            const detail = await fetchPrDetail(
-              githubToken,
-              owner,
-              repo,
-              finalNumber
-            );
-            merged = !!detail.merged_at;
-          } catch (e) {
-            serverLogger.error("Error fetching PR detail:", e);
-          }
-        }
-
-        await getConvex().mutation(api.taskRuns.updatePullRequestState, {
+        const persisted = await persistPullRequestResults({
           teamSlugOrId: safeTeam,
-          id: run._id,
-          state: finalUrl
-            ? stateMap(finalState, finalIsDraft, merged)
-            : ("none" as const),
-          isDraft: finalIsDraft,
-          number: finalNumber,
-          url: finalUrl,
+          run,
+          task,
+          repoFullNames,
+          results,
         });
 
-        // Update task merge status based on PR state
-        const prState = finalUrl
-          ? stateMap(finalState, finalIsDraft, merged)
-          : "none";
-        let taskMergeStatus:
-          | "none"
-          | "pr_draft"
-          | "pr_open"
-          | "pr_merged"
-          | "pr_closed" = "none";
-        switch (prState) {
-          case "draft":
-            taskMergeStatus = "pr_draft";
-            break;
-          case "open":
-            taskMergeStatus = "pr_open";
-            break;
-          case "merged":
-            taskMergeStatus = "pr_merged";
-            break;
-          case "closed":
-            taskMergeStatus = "pr_closed";
-            break;
-        }
-        if (taskMergeStatus !== "none") {
-          await getConvex().mutation(api.tasks.updateMergeStatus, {
-            teamSlugOrId: safeTeam,
-            id: task._id,
-            mergeStatus: taskMergeStatus,
-          });
-        }
+        const errors = results
+          .filter((result) => result.error)
+          .map((result) => `${result.repoFullName}: ${result.error}`);
 
         callback({
-          success: true,
-          url: finalUrl,
-          state: finalUrl ? stateMap(finalState, finalIsDraft, merged) : "none",
+          success: errors.length === 0,
+          results,
+          aggregate: persisted.aggregate,
+          error: errors.length > 0 ? errors.join("; ") : undefined,
         });
       } catch (error) {
         serverLogger.error("Error opening PR:", error);
         callback({
           success: false,
+          results: [],
+          aggregate: EMPTY_AGGREGATE,
           error: error instanceof Error ? error.message : "Unknown error",
         });
       }
@@ -1895,11 +1836,11 @@ Please address the issue mentioned in the comment above.`;
 
         if (failed > 0) {
           serverLogger.warn(
-            `Archived task ${taskId}: ${successful} containers stopped, ${failed} failed`
+            `Archived task ${taskId}: ${successful} containers stopped, ${failed} failed`,
           );
         } else {
           serverLogger.info(
-            `Successfully archived task ${taskId}: all ${successful} containers stopped`
+            `Successfully archived task ${taskId}: all ${successful} containers stopped`,
           );
         }
 
