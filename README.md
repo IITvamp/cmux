@@ -44,3 +44,7 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+Code flows like a stream,
+Bugs hide in shadows deep,
+Debug with patient care.
