@@ -4,6 +4,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { SIDEBAR_PRS_DEFAULT_LIMIT } from "@/components/sidebar/const";
 import { convexQueryClient } from "@/contexts/convex/convex-query-client";
 import { ExpandTasksProvider } from "@/contexts/expand-tasks/ExpandTasksProvider";
+import { cachedGetUser } from "@/lib/cachedGetUser";
 import { setLastTeamSlugOrId } from "@/lib/lastTeam";
 import { stackClientApp } from "@/lib/stack";
 import { api } from "@cmux/convex/api";
@@ -15,7 +16,7 @@ import { Suspense, useEffect, useMemo } from "react";
 export const Route = createFileRoute("/_layout/$teamSlugOrId")({
   component: LayoutComponentWrapper,
   beforeLoad: async ({ params, location }) => {
-    const user = await stackClientApp.getUser();
+    const user = await cachedGetUser(stackClientApp);
     if (!user) {
       throw redirect({
         to: "/sign-in",
@@ -26,7 +27,7 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId")({
     }
     const { teamSlugOrId } = params;
     const teamMemberships = await convexQueryClient.convexClient.query(
-      api.teams.listTeamMemberships
+      api.teams.listTeamMemberships,
     );
     const teamMembership = teamMemberships.find((membership) => {
       const team = membership.team;
@@ -42,14 +43,14 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId")({
   },
   loader: async ({ params }) => {
     void convexQueryClient.queryClient.ensureQueryData(
-      convexQuery(api.tasks.get, { teamSlugOrId: params.teamSlugOrId })
+      convexQuery(api.tasks.get, { teamSlugOrId: params.teamSlugOrId }),
     );
     void convexQueryClient.queryClient.ensureQueryData(
       convexQuery(api.github_prs.listPullRequests, {
         teamSlugOrId: params.teamSlugOrId,
         state: "open",
         limit: SIDEBAR_PRS_DEFAULT_LIMIT,
-      })
+      }),
     );
   },
 });
