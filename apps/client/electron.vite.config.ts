@@ -5,7 +5,7 @@ import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import tsconfigPaths from "vite-tsconfig-paths";
-import { resolveWorkspacePackages } from "./electron-vite-plugin-resolve-workspace.ts";
+import { resolveWorkspacePackages } from "./electron-vite-plugin-resolve-workspace";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const repoRoot = resolve(__dirname, "..", "..");
