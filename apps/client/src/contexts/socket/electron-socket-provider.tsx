@@ -1,11 +1,8 @@
 import { CmuxIpcSocketClient } from "@/lib/cmux-ipc-socket-client";
 import { type MainServerSocket } from "@cmux/shared/socket";
-import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "@tanstack/react-router";
 import React, { useEffect, useMemo } from "react";
-import { cachedGetUser } from "../../lib/cachedGetUser";
-import { stackClientApp } from "../../lib/stack";
-import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
+import { useUser } from "@stackframe/react";
 import { setGlobalSocket, socketBoot } from "./socket-boot";
 import { ElectronSocketContext } from "./socket-context";
 import type { SocketContextType } from "./types";
@@ -13,8 +10,7 @@ import type { SocketContextType } from "./types";
 export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
   children,
 }) => {
-  const authJsonQuery = useQuery(authJsonQueryOptions());
-  const authToken = authJsonQuery.data?.accessToken;
+  const user = useUser({ or: "return-null" });
   const location = useLocation();
   const [socket, setSocket] = React.useState<
     SocketContextType["socket"] | null
@@ -30,8 +26,13 @@ export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
   }, [location.pathname]);
 
   useEffect(() => {
-    if (!authToken) {
-      console.warn("[ElectronSocket] No auth token yet; delaying connect");
+    if (!user) {
+      console.warn("[ElectronSocket] No user yet; delaying connect");
+      setSocket(null);
+      setIsConnected(false);
+      setAvailableEditors(null);
+      setGlobalSocket(null);
+      socketBoot.reset();
       return;
     }
 
@@ -39,52 +40,60 @@ export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
     let createdSocket: CmuxIpcSocketClient | null = null;
 
     (async () => {
-      const user = await cachedGetUser(stackClientApp);
-      const authJson = user ? await user.getAuthJson() : undefined;
+      try {
+        const authJson = await user.getAuthJson();
+        const authToken = authJson?.accessToken ?? null;
+        if (!authToken) {
+          console.warn("[ElectronSocket] Missing access token; skipping connect");
+          return;
+        }
 
-      const query: Record<string, string> = { auth: authToken };
-      if (teamSlugOrId) {
-        query.team = teamSlugOrId;
-      }
-      if (authJson) {
-        query.auth_json = JSON.stringify(authJson);
-      }
+        const query: Record<string, string> = { auth: authToken };
+        if (teamSlugOrId) {
+          query.team = teamSlugOrId;
+        }
+        if (authJson) {
+          query.auth_json = JSON.stringify(authJson);
+        }
 
-      if (disposed) return;
-
-      console.log("[ElectronSocket] Connecting via IPC (cmux)...");
-      createdSocket = new CmuxIpcSocketClient(query);
-
-      createdSocket.on("connect", () => {
         if (disposed) return;
-        setIsConnected(true);
-      });
 
-      createdSocket.on("disconnect", () => {
-        if (disposed) return;
-        console.log("[ElectronSocket] Disconnected from IPC");
-        setIsConnected(false);
-      });
+        console.log("[ElectronSocket] Connecting via IPC (cmux)...");
+        createdSocket = new CmuxIpcSocketClient(query);
 
-      createdSocket.on("connect_error", (error: unknown) => {
-        console.error("[ElectronSocket] Connection error:", error);
-      });
+        createdSocket.on("connect", () => {
+          if (disposed) return;
+          setIsConnected(true);
+        });
 
-      createdSocket.on("available-editors", (editors: unknown) => {
-        if (disposed) return;
-        console.log("[ElectronSocket] Available editors:", editors);
-        setAvailableEditors(editors as SocketContextType["availableEditors"]);
-      });
+        createdSocket.on("disconnect", () => {
+          if (disposed) return;
+          console.log("[ElectronSocket] Disconnected from IPC");
+          setIsConnected(false);
+        });
 
-      // Connect the socket
-      createdSocket.connect();
+        createdSocket.on("connect_error", (error: unknown) => {
+          console.error("[ElectronSocket] Connection error:", error);
+        });
 
-      if (!disposed) {
-        // Cast to Socket type to satisfy type requirement
-        setSocket(createdSocket as unknown as MainServerSocket);
-        setGlobalSocket(createdSocket as unknown as MainServerSocket);
-        // Signal that the provider has created the socket instance
-        socketBoot.resolve();
+        createdSocket.on("available-editors", (editors: unknown) => {
+          if (disposed) return;
+          console.log("[ElectronSocket] Available editors:", editors);
+          setAvailableEditors(editors as SocketContextType["availableEditors"]);
+        });
+
+        // Connect the socket
+        createdSocket.connect();
+
+        if (!disposed) {
+          // Cast to Socket type to satisfy type requirement
+          setSocket(createdSocket as unknown as MainServerSocket);
+          setGlobalSocket(createdSocket as unknown as MainServerSocket);
+          // Signal that the provider has created the socket instance
+          socketBoot.resolve();
+        }
+      } catch (error) {
+        console.error("[ElectronSocket] Failed to initialize socket", error);
       }
     })();
 
@@ -100,7 +109,7 @@ export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
       setGlobalSocket(null);
       socketBoot.reset();
     };
-  }, [authToken, teamSlugOrId]);
+  }, [user, user?.id, teamSlugOrId]);
 
   const contextValue = useMemo<SocketContextType>(
     () => ({

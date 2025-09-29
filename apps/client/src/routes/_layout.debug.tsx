@@ -15,7 +15,7 @@ function DebugComponent() {
       <div className="p-4">
         <button
           onClick={async () => {
-            const user = await stackClientApp.getUser();
+            const user = await stackClientApp.getUser({ or: "return-null" });
             if (!user) {
               throw new Error("No user");
             }
@@ -70,7 +70,7 @@ function DebugComponent() {
 
         <button
           onClick={async () => {
-            const user = await stackClientApp.getUser();
+            const user = await stackClientApp.getUser({ or: "return-null" });
             if (!user) throw new Error("No user");
             const authHeaders = await user.getAuthHeaders();
             const res = await fetch(

@@ -15,7 +15,7 @@ import { Suspense, useEffect, useMemo } from "react";
 export const Route = createFileRoute("/_layout/$teamSlugOrId")({
   component: LayoutComponentWrapper,
   beforeLoad: async ({ params, location }) => {
-    const user = await stackClientApp.getUser();
+    const user = await stackClientApp.getUser({ or: "return-null" });
     if (!user) {
       throw redirect({
         to: "/sign-in",

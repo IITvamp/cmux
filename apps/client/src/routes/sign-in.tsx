@@ -8,7 +8,7 @@ export const Route = createFileRoute("/sign-in")({
     after_auth_return_to: z.string().optional(),
   }),
   beforeLoad: async ({ search }) => {
-    const user = await stackClientApp.getUser();
+    const user = await stackClientApp.getUser({ or: "return-null" });
     if (user) {
       const after_auth_redirect_to = search.after_auth_return_to || "/";
       throw redirect({ to: after_auth_redirect_to });

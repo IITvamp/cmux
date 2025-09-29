@@ -3,12 +3,9 @@ import {
   connectToMainServer,
   type MainServerSocket,
 } from "@cmux/shared/socket";
-import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "@tanstack/react-router";
 import React, { useEffect, useMemo } from "react";
-import { cachedGetUser } from "../../lib/cachedGetUser";
-import { stackClientApp } from "../../lib/stack";
-import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
+import { useUser } from "@stackframe/react";
 import { setGlobalSocket, socketBoot } from "./socket-boot";
 import { WebSocketContext } from "./socket-context";
 
@@ -27,8 +24,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
   children,
   url = "http://localhost:9776",
 }) => {
-  const authJsonQuery = useQuery(authJsonQueryOptions());
-  const authToken = authJsonQuery.data?.accessToken;
+  const user = useUser({ or: "return-null" });
   const location = useLocation();
   const [socket, setSocket] = React.useState<
     SocketContextType["socket"] | null
@@ -46,63 +42,67 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
   }, [location.pathname]);
 
   useEffect(() => {
-    if (!authToken) {
-      console.warn("[Socket] No auth token yet; delaying connect");
+    if (!user) {
+      console.warn("[Socket] No user yet; delaying socket connect");
+      setSocket(null);
+      setIsConnected(false);
+      setAvailableEditors(null);
+      setGlobalSocket(null);
+      socketBoot.reset();
       return;
     }
     let disposed = false;
     let createdSocket: MainServerSocket | null = null;
     (async () => {
-      // Fetch full auth JSON for server to forward as x-stack-auth
-      const user = await cachedGetUser(stackClientApp);
-      const authJson = user ? await user.getAuthJson() : undefined;
+      try {
+        const authJson = await user.getAuthJson();
+        const authToken = authJson?.accessToken ?? null;
+        if (!authToken) {
+          console.warn("[Socket] Missing access token; skipping connect");
+          return;
+        }
 
-      const query: Record<string, string> = { auth: authToken };
-      if (teamSlugOrId) {
-        query.team = teamSlugOrId;
+        const newSocket = connectToMainServer({
+          url,
+          authToken,
+          teamSlugOrId,
+          authJson: authJson ?? undefined,
+        });
+
+        createdSocket = newSocket;
+        if (disposed) {
+          newSocket.disconnect();
+          return;
+        }
+        setSocket(newSocket);
+        setGlobalSocket(newSocket);
+        // Signal that the provider has created the socket instance
+        socketBoot.resolve();
+
+        newSocket.on("connect", () => {
+          console.log("[Socket] connected");
+          setIsConnected(true);
+        });
+
+        newSocket.on("disconnect", () => {
+          console.warn("[Socket] disconnected");
+          setIsConnected(false);
+        });
+
+        newSocket.on("connect_error", (err) => {
+          const errorMessage =
+            err && typeof err === "object" && "message" in err
+              ? (err as Error).message
+              : String(err);
+          console.error("[Socket] connect_error", errorMessage);
+        });
+
+        newSocket.on("available-editors", (data: AvailableEditors) => {
+          setAvailableEditors(data);
+        });
+      } catch (error) {
+        console.error("[Socket] Failed to initialize socket", error);
       }
-      if (authJson) {
-        query.auth_json = JSON.stringify(authJson);
-      }
-
-      const newSocket = connectToMainServer({
-        url,
-        authToken,
-        teamSlugOrId,
-        authJson,
-      });
-
-      createdSocket = newSocket;
-      if (disposed) {
-        newSocket.disconnect();
-        return;
-      }
-      setSocket(newSocket);
-      setGlobalSocket(newSocket);
-      // Signal that the provider has created the socket instance
-      socketBoot.resolve();
-
-      newSocket.on("connect", () => {
-        console.log("[Socket] connected");
-        setIsConnected(true);
-      });
-
-      newSocket.on("disconnect", () => {
-        console.warn("[Socket] disconnected");
-        setIsConnected(false);
-      });
-
-      newSocket.on("connect_error", (err) => {
-        const errorMessage =
-          err && typeof err === "object" && "message" in err
-            ? (err as Error).message
-            : String(err);
-        console.error("[Socket] connect_error", errorMessage);
-      });
-
-      newSocket.on("available-editors", (data: AvailableEditors) => {
-        setAvailableEditors(data);
-      });
     })();
 
     return () => {
@@ -112,7 +112,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
       setGlobalSocket(null);
       socketBoot.reset();
     };
-  }, [url, authToken, teamSlugOrId]);
+  }, [url, teamSlugOrId, user, user?.id]);
 
   const contextValue: SocketContextType = useMemo(
     () => ({
