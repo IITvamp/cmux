@@ -237,6 +237,31 @@ function RunDiffPage() {
 
   const taskRunId = selectedRun?._id ?? runId;
 
+  // Determine whether to restart in cloud or local mode based on the
+  // original run's VSCode provider. Fallback to environment-based heuristic.
+  const isCloudModeForRestart = useMemo(() => {
+    const provider = selectedRun?.vscode?.provider;
+    if (provider) {
+      // Treat anything other than explicit docker as cloud
+      return provider !== "docker";
+    }
+    // Fallback: if any run has a provider, use the first one we find
+    if (taskRuns && taskRuns.length > 0) {
+      const stack: TaskRunWithChildren[] = [...taskRuns];
+      while (stack.length > 0) {
+        const run = stack.shift();
+        if (run?.vscode?.provider) {
+          return run.vscode.provider !== "docker";
+        }
+        if (run?.children && run.children.length > 0) {
+          stack.push(...run.children);
+        }
+      }
+    }
+    // Last resort: infer from environment presence on the task
+    return Boolean(task?.environmentId);
+  }, [selectedRun?.vscode?.provider, taskRuns, task?.environmentId]);
+
   const handleRestartTask = useCallback(async () => {
     if (!task) {
       toast.error("Task data is still loading. Try again in a moment.");
@@ -320,7 +345,7 @@ function RunDiffPage() {
             projectFullName: projectFullNameForSocket,
             taskId: newTaskId,
             selectedAgents: [...restartAgents],
-            isCloudMode: isEnvTask || Boolean(task.environmentId),
+            isCloudMode: isCloudModeForRestart,
             ...(task.environmentId
               ? { environmentId: task.environmentId }
               : {}),
