@@ -98,38 +98,11 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       if (lower.startsWith("opencode/")) return "opencode";
       return "other";
     };
-    const providerOrder = [
-      "claude",
-      "openai",
-      "gemini",
-      "opencode",
-      "amp",
-      "cursor",
-      "kimi",
-      "glm",
-      "grok",
-      "qwen",
-      "other",
-    ] as const;
     const shortName = (label: string): string => {
       const slashIndex = label.indexOf("/");
       return slashIndex >= 0 ? label.slice(slashIndex + 1) : label;
     };
-    const sortedAgents = [...AGENT_CONFIGS].sort((a, b) => {
-      const vendorA = vendorKey(a.name);
-      const vendorB = vendorKey(b.name);
-      const rankA = providerOrder.indexOf(
-        vendorA as (typeof providerOrder)[number]
-      );
-      const rankB = providerOrder.indexOf(
-        vendorB as (typeof providerOrder)[number]
-      );
-      const safeRankA = rankA === -1 ? providerOrder.length : rankA;
-      const safeRankB = rankB === -1 ? providerOrder.length : rankB;
-      if (safeRankA !== safeRankB) return safeRankA - safeRankB;
-      return a.name.localeCompare(b.name);
-    });
-    return sortedAgents.map((agent) => {
+    return AGENT_CONFIGS.map((agent) => {
       const status = providerStatusMap.get(agent.name);
       const missingRequirements = status?.missingRequirements ?? [];
       const isAvailable = status?.isAvailable ?? true;
