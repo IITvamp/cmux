@@ -1,5 +1,7 @@
 import { RunDiffSection } from "@/components/RunDiffSection";
 import { Dropdown } from "@/components/ui/dropdown";
+import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
+import { useSocketSuspense } from "@/contexts/socket/use-socket";
 import { normalizeGitRef } from "@/lib/refWithOrigin";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
@@ -7,6 +9,7 @@ import { useQuery as useRQ } from "@tanstack/react-query";
 import { useQuery as useConvexQuery } from "convex/react";
 import { ExternalLink } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 type PullRequestDetailViewProps = {
   teamSlugOrId: string;
@@ -93,6 +96,8 @@ export function PullRequestDetailView({
   }, [prs, owner, repo, number]);
 
   const [diffControls, setDiffControls] = useState<DiffControls | null>(null);
+  const [isMerging, setIsMerging] = useState(false);
+  const { socket } = useSocketSuspense();
 
   if (!currentPR) {
     return (
@@ -101,6 +106,32 @@ export function PullRequestDetailView({
       </div>
     );
   }
+
+  const handleMerge = (method: MergeMethod) => {
+    if (!socket) return;
+    setIsMerging(true);
+    const toastId = toast.loading(`Merging PR (${method})...`);
+    socket.emit(
+      "github-merge-pr",
+      {
+        repoFullName: currentPR.repoFullName,
+        number: currentPR.number,
+        method,
+        teamSlugOrId,
+      },
+      (resp: { success: boolean; url?: string; error?: string }) => {
+        setIsMerging(false);
+        if (resp.success) {
+          toast.success("PR merged", { id: toastId, description: resp.url });
+        } else {
+          toast.error("Failed to merge PR", {
+            id: toastId,
+            description: resp.error,
+          });
+        }
+      }
+    );
+  };
 
   const gitDiffViewerClassNames = {
     fileDiffRow: { button: "top-[56px]" },
@@ -151,6 +182,13 @@ export function PullRequestDetailView({
                     Open
                   </span>
                 )}
+                {!currentPR.merged ? (
+                  <MergeButton
+                    onMerge={handleMerge}
+                    isOpen
+                    disabled={isMerging}
+                  />
+                ) : null}
                 {currentPR.htmlUrl ? (
                   <a
                     className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none whitespace-nowrap"

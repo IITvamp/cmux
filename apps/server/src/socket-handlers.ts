@@ -6,6 +6,7 @@ import {
   GitHubFetchBranchesSchema,
   GitHubFetchReposSchema,
   GitHubMergeBranchSchema,
+  GitHubMergePrSchema,
   ListFilesRequestSchema,
   OpenInEditorSchema,
   SpawnFromCommentSchema,
@@ -617,134 +618,219 @@ export function setupSocketHandlers(
       }
     });
 
-    // Merge PR for a run
+    // Merge PR, either for a task run or directly from a PR record
     socket.on("github-merge-pr", async (data, callback) => {
       try {
-        const { taskRunId, method } = data;
+        const parsed = GitHubMergePrSchema.safeParse(data);
+        if (!parsed.success) {
+          serverLogger.warn("Invalid github-merge-pr payload", parsed.error);
+          callback({ success: false, error: "Invalid merge request" });
+          return;
+        }
+        const payload = parsed.data;
 
-        const run = await getConvex().query(api.taskRuns.get, {
-          teamSlugOrId: safeTeam,
-          id: taskRunId,
-        });
-        if (!run) {
-          return callback({ success: false, error: "Task run not found" });
+        if ("taskRunId" in payload) {
+          const { taskRunId, method } = payload;
+
+          const run = await getConvex().query(api.taskRuns.get, {
+            teamSlugOrId: safeTeam,
+            id: taskRunId,
+          });
+          if (!run) {
+            callback({ success: false, error: "Task run not found" });
+            return;
+          }
+          const task = await getConvex().query(api.tasks.getById, {
+            teamSlugOrId: safeTeam,
+            id: run.taskId,
+          });
+          if (!task) {
+            callback({ success: false, error: "Task not found" });
+            return;
+          }
+          const githubToken = await getGitHubTokenFromKeychain();
+          if (!githubToken) {
+            callback({
+              success: false,
+              error: "GitHub token is not configured",
+            });
+            return;
+          }
+          let [owner, repo] = (task.projectFullName || "").split("/");
+          let prNumber: number | null = run.pullRequestNumber || null;
+          if ((!owner || !repo || !prNumber) && run.pullRequestUrl) {
+            const parsedUrl = parseRepoFromUrl(run.pullRequestUrl);
+            owner = owner || parsedUrl.owner || owner;
+            repo = repo || parsedUrl.repo || repo;
+            prNumber = prNumber || parsedUrl.number || null;
+          }
+          if (!owner || !repo) {
+            callback({ success: false, error: "Unknown repo for task" });
+            return;
+          }
+          if (!prNumber && run.newBranch) {
+            const found = await fetchPrByHead(
+              githubToken,
+              owner,
+              repo,
+              owner,
+              run.newBranch
+            );
+            if (found) {
+              prNumber = found.number;
+            }
+          }
+
+          if (!prNumber) {
+            callback({
+              success: false,
+              error: "Pull request not found for this run",
+            });
+            return;
+          }
+
+          const detail = await fetchPrDetail(githubToken, owner, repo, prNumber);
+          if (detail.draft) {
+            try {
+              await markPrReady(githubToken, owner, repo, prNumber);
+              serverLogger.info(
+                `[MergePR] Successfully marked PR #${prNumber} as ready for review`
+              );
+            } catch (e: unknown) {
+              const msg = e instanceof Error ? e.message : String(e);
+              if (msg.includes("not found") || msg.includes("404")) {
+                callback({
+                  success: false,
+                  error: `Pull request #${prNumber} not found. It may have been deleted.`,
+                });
+              } else {
+                callback({
+                  success: false,
+                  error: `PR is draft and could not be made ready: ${msg}`,
+                });
+              }
+              return;
+            }
+          }
+          if (detail.state === "closed") {
+            try {
+              await reopenPr(githubToken, owner, repo, prNumber);
+            } catch (e: unknown) {
+              const msg = e instanceof Error ? e.message : String(e);
+              callback({
+                success: false,
+                error: `PR is closed and could not be reopened: ${msg}`,
+              });
+              return;
+            }
+          }
+
+          const title = task.pullRequestTitle || task.text || `cmux changes`;
+          const truncatedTitle =
+            title.length > 72 ? `${title.slice(0, 69)}...` : title;
+          const commitMessage = `Merged by cmux for task ${String(task._id)}.`;
+
+          try {
+            const res = await mergePr(
+              githubToken,
+              owner,
+              repo,
+              prNumber,
+              method,
+              truncatedTitle,
+              commitMessage
+            );
+            await getConvex().mutation(api.taskRuns.updatePullRequestState, {
+              teamSlugOrId: safeTeam,
+              id: run._id,
+              state: "merged",
+              isDraft: false,
+              number: prNumber,
+              url: detail.html_url,
+            });
+            await getConvex().mutation(api.tasks.updateMergeStatus, {
+              teamSlugOrId: safeTeam,
+              id: task._id,
+              mergeStatus: "pr_merged",
+            });
+            callback({
+              success: true,
+              merged: !!res.merged,
+              state: "merged",
+              url: detail.html_url,
+            });
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            callback({ success: false, error: `Failed to merge PR: ${msg}` });
+          }
+          return;
         }
-        const task = await getConvex().query(api.tasks.getById, {
-          teamSlugOrId: safeTeam,
-          id: run.taskId,
-        });
-        if (!task) {
-          return callback({ success: false, error: "Task not found" });
+
+        const { repoFullName, number, method, teamSlugOrId } = payload;
+        const [owner, repo] = (repoFullName || "").split("/");
+        if (!owner || !repo) {
+          callback({ success: false, error: "Invalid repository name" });
+          return;
         }
+
         const githubToken = await getGitHubTokenFromKeychain();
         if (!githubToken) {
-          return callback({
+          callback({
             success: false,
             error: "GitHub token is not configured",
           });
-        }
-        let [owner, repo] = (task.projectFullName || "").split("/");
-        let prNumber: number | null = run.pullRequestNumber || null;
-        if ((!owner || !repo || !prNumber) && run.pullRequestUrl) {
-          const parsed = parseRepoFromUrl(run.pullRequestUrl);
-          owner = owner || parsed.owner || owner;
-          repo = repo || parsed.repo || repo;
-          prNumber = prNumber || parsed.number || null;
-        }
-        if (!owner || !repo) {
-          return callback({ success: false, error: "Unknown repo for task" });
-        }
-        // If PR number still unknown, try to locate via branch
-        if (!prNumber && run.newBranch) {
-          const found = await fetchPrByHead(
-            githubToken,
-            owner,
-            repo,
-            owner,
-            run.newBranch
-          );
-          if (found) {
-            prNumber = found.number;
-          }
+          return;
         }
 
-        if (!prNumber) {
-          return callback({
-            success: false,
-            error: "Pull request not found for this run",
-          });
-        }
-
-        // Ensure PR is open and not draft
-        const detail = await fetchPrDetail(githubToken, owner, repo, prNumber);
+        let detail = await fetchPrDetail(githubToken, owner, repo, number);
         if (detail.draft) {
-          // Try to mark ready
           try {
-            await markPrReady(githubToken, owner, repo, prNumber);
+            await markPrReady(githubToken, owner, repo, number);
             serverLogger.info(
-              `[MergePR] Successfully marked PR #${prNumber} as ready for review`
+              `[MergePR] Successfully marked PR #${number} as ready for review`
             );
+            detail = await fetchPrDetail(githubToken, owner, repo, number);
           } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
-
-            // Check if it's a 404 error
             if (msg.includes("not found") || msg.includes("404")) {
-              return callback({
+              callback({
                 success: false,
-                error: `Pull request #${prNumber} not found. It may have been deleted.`,
+                error: `Pull request #${number} not found. It may have been deleted.`,
+              });
+            } else {
+              callback({
+                success: false,
+                error: `PR is draft and could not be made ready: ${msg}`,
               });
             }
-
-            return callback({
-              success: false,
-              error: `PR is draft and could not be made ready: ${msg}`,
-            });
+            return;
           }
         }
         if (detail.state === "closed") {
-          // Try to reopen
           try {
-            await reopenPr(githubToken, owner, repo, prNumber);
+            await reopenPr(githubToken, owner, repo, number);
+            detail = await fetchPrDetail(githubToken, owner, repo, number);
           } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
-            return callback({
+            callback({
               success: false,
               error: `PR is closed and could not be reopened: ${msg}`,
             });
+            return;
           }
         }
 
-        // Optional: commit title/message
-        const title = task.pullRequestTitle || task.text || `cmux changes`;
-        const truncatedTitle =
-          title.length > 72 ? `${title.slice(0, 69)}...` : title;
-        const commitMessage = `Merged by cmux for task ${String(task._id)}.`;
-
-        // Merge
         try {
           const res = await mergePr(
             githubToken,
             owner,
             repo,
-            prNumber,
-            method,
-            truncatedTitle,
-            commitMessage
+            number,
+            method
           );
-          // Update Convex: merged
-          await getConvex().mutation(api.taskRuns.updatePullRequestState, {
-            teamSlugOrId: safeTeam,
-            id: run._id,
-            state: "merged",
-            isDraft: false,
-            number: prNumber,
-            url: detail.html_url,
-          });
-          // Update task merge status to merged
-          await getConvex().mutation(api.tasks.updateMergeStatus, {
-            teamSlugOrId: safeTeam,
-            id: task._id,
-            mergeStatus: "pr_merged",
+          const refreshTeam = teamSlugOrId ?? safeTeam;
+          void refreshGitHubData({ teamSlugOrId: refreshTeam }).catch((error) => {
+            serverLogger.warn("Failed to refresh GitHub data after merge", error);
           });
           callback({
             success: true,
