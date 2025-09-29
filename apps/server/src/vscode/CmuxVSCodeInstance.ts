@@ -1,16 +1,18 @@
-import {
-  getApiSandboxesByIdStatus,
-  postApiSandboxesByIdPublishDevcontainer,
-  postApiSandboxesByIdStop,
-  postApiSandboxesStart,
-} from "@cmux/www-openapi-client";
 import { dockerLogger } from "../utils/fileLogger";
 import { getWwwClient } from "../utils/wwwClient";
+import { getWwwOpenApiModule } from "../utils/wwwOpenApiModule";
 import {
   VSCodeInstance,
   type VSCodeInstanceConfig,
   type VSCodeInstanceInfo,
 } from "./VSCodeInstance";
+
+const {
+  getApiSandboxesByIdStatus,
+  postApiSandboxesByIdPublishDevcontainer,
+  postApiSandboxesByIdStop,
+  postApiSandboxesStart,
+} = await getWwwOpenApiModule();
 
 export class CmuxVSCodeInstance extends VSCodeInstance {
   private sandboxId: string | null = null;

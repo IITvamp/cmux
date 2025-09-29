@@ -137,6 +137,10 @@ const GITHUB_ADDITION_TEXT_BG = "#aceebb";
 const GITHUB_DELETION_LINE_BG = "#ffebe9";
 const GITHUB_DELETION_GUTTER_BG = "#ffcecb";
 const GITHUB_DELETION_TEXT_BG = "#ffcecb";
+const GITHUB_DARK_ADDITION_LINE = "#2ea04326";
+const GITHUB_DARK_ADDITION_GUTTER = "#3fb9504d";
+const GITHUB_DARK_DELETION_LINE = "#f851491a";
+const GITHUB_DARK_DELETION_GUTTER = "#f851494d";
 
 function debugGitDiffViewerLog(
   message: string,
