@@ -1,3 +1,5 @@
+// Do NOT export Node-only utilities here; browser builds import this index.
+
 export * from "./agentConfig";
 export * from "./convex-ready";
 export * from "./crown";
@@ -11,4 +13,4 @@ export * from "./utils/reserved-cmux-ports";
 export * from "./utils/validate-exposed-ports";
 export * from "./vscode-schemas";
 export * from "./worker-schemas";
-// Do NOT export Node-only utilities here; browser builds import this index.
+export * from "./pull-request-state";

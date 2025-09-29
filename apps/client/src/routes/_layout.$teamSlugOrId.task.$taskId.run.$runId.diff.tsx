@@ -159,7 +159,6 @@ function RunDiffPage() {
   const { theme } = useTheme();
   const { addTaskToExpand } = useExpandTasks();
   const createTask = useMutation(api.tasks.create);
-  const [isCreatingPr, setIsCreatingPr] = useState(false);
   const [diffControls, setDiffControls] = useState<DiffControls | null>(null);
   const [followUpText, setFollowUpText] = useState("");
   const [isRestartingTask, setIsRestartingTask] = useState(false);
@@ -427,8 +426,6 @@ function RunDiffPage() {
             task={task}
             taskRuns={taskRuns ?? null}
             selectedRun={selectedRun ?? null}
-            isCreatingPr={isCreatingPr}
-            setIsCreatingPr={setIsCreatingPr}
             taskRunId={taskRunId}
             onExpandAll={diffControls?.expandAll}
             onCollapseAll={diffControls?.collapseAll}

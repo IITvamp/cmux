@@ -561,7 +561,8 @@ function TaskRunTreeInner({
 
   const shouldRenderDiffLink = true;
   const shouldRenderPullRequestLink = Boolean(
-    run.pullRequestUrl && run.pullRequestUrl !== "pending"
+    (run.pullRequestUrl && run.pullRequestUrl !== "pending") ||
+      run.pullRequests?.some((pr) => pr.url)
   );
   const shouldRenderPreviewLink = previewServices.length > 0;
   const hasOpenWithActions = openWithActions.length > 0;

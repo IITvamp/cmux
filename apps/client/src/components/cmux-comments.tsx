@@ -154,7 +154,7 @@ function renderMarkdownLinks(text: string): React.ReactNode {
         className="text-blue-400 hover:text-blue-300 underline"
       >
         {linkText}
-      </a>
+      </a>,
     );
 
     lastIndex = match.index + match[0].length;
@@ -208,7 +208,7 @@ function CommentReplies({
 
 function CommentMarker({ comment, onClick, teamSlugOrId }: CommentMarkerProps) {
   const [position, setPosition] = useState<{ x: number; y: number } | null>(
-    null
+    null,
   );
   const [showContent, setShowContent] = useState(true);
 
@@ -225,7 +225,7 @@ function CommentMarker({ comment, onClick, teamSlugOrId }: CommentMarkerProps) {
             document,
             null,
             XPathResult.FIRST_ORDERED_NODE_TYPE,
-            null
+            null,
           );
           el = result.singleNodeValue as HTMLElement;
         } else {
@@ -239,7 +239,7 @@ function CommentMarker({ comment, onClick, teamSlugOrId }: CommentMarkerProps) {
               el = document.querySelector(escapedSelector) as HTMLElement;
             } catch (_e2) {
               console.warn(
-                `Could not find element with CSS selector: ${comment.nodeId}`
+                `Could not find element with CSS selector: ${comment.nodeId}`,
               );
             }
           }
@@ -258,7 +258,7 @@ function CommentMarker({ comment, onClick, teamSlugOrId }: CommentMarkerProps) {
           "Failed to find element for comment:",
           e,
           "NodeId:",
-          comment.nodeId
+          comment.nodeId,
         );
         setPosition(null);
       }
@@ -364,8 +364,8 @@ function CommentMarker({ comment, onClick, teamSlugOrId }: CommentMarkerProps) {
                   0,
                   Math.min(
                     position.x - bubbleWidth / 2,
-                    window.innerWidth - bubbleWidth
-                  )
+                    window.innerWidth - bubbleWidth,
+                  ),
                 );
                 y = bottomY;
               } else if (hasSpaceRight) {
@@ -375,8 +375,8 @@ function CommentMarker({ comment, onClick, teamSlugOrId }: CommentMarkerProps) {
                   0,
                   Math.min(
                     position.y - bubbleHeight / 3,
-                    window.innerHeight - bubbleHeight
-                  )
+                    window.innerHeight - bubbleHeight,
+                  ),
                 );
               } else if (hasSpaceLeft) {
                 // Place to the left of marker
@@ -385,8 +385,8 @@ function CommentMarker({ comment, onClick, teamSlugOrId }: CommentMarkerProps) {
                   0,
                   Math.min(
                     position.y - bubbleHeight / 3,
-                    window.innerHeight - bubbleHeight
-                  )
+                    window.innerHeight - bubbleHeight,
+                  ),
                 );
               } else if (hasSpaceTop) {
                 // Place above marker, centered
@@ -394,8 +394,8 @@ function CommentMarker({ comment, onClick, teamSlugOrId }: CommentMarkerProps) {
                   0,
                   Math.min(
                     position.x - bubbleWidth / 2,
-                    window.innerWidth - bubbleWidth
-                  )
+                    window.innerWidth - bubbleWidth,
+                  ),
                 );
                 y = topY;
               } else {
@@ -404,8 +404,8 @@ function CommentMarker({ comment, onClick, teamSlugOrId }: CommentMarkerProps) {
                   0,
                   Math.min(
                     position.x - bubbleWidth / 2,
-                    window.innerWidth - bubbleWidth
-                  )
+                    window.innerWidth - bubbleWidth,
+                  ),
                 );
                 y = bottomY;
               }
@@ -687,7 +687,7 @@ export function CmuxComments({ teamSlugOrId }: { teamSlugOrId: string }) {
         userId,
         // profileImageUrl: user.profileImageUrl || undefined,
         profileImageUrl,
-        selectedAgents: ["claude/sonnet-4", "codex/gpt-5"],
+        selectedAgents: ["claude/sonnet-4.5", "codex/gpt-5-high"],
         commentId,
       };
 
@@ -849,7 +849,7 @@ export function CmuxComments({ teamSlugOrId }: { teamSlugOrId: string }) {
                   "size-8 rounded-lg flex items-center justify-center transition-all bg-neutral-800",
                   commentDraft.trim()
                     ? "hover:bg-neutral-700"
-                    : "text-neutral-500 cursor-not-allowed opacity-50"
+                    : "text-neutral-500 cursor-not-allowed opacity-50",
                 )}
               >
                 <svg
@@ -923,7 +923,7 @@ export function CmuxComments({ teamSlugOrId }: { teamSlugOrId: string }) {
                 "px-2 py-1 rounded text-xs transition-all",
                 showArchived
                   ? "bg-neutral-700 text-white"
-                  : "text-neutral-400 hover:bg-neutral-800"
+                  : "text-neutral-400 hover:bg-neutral-800",
               )}
               title={showArchived ? "Hide archived" : "Show archived"}
             >
@@ -951,7 +951,7 @@ export function CmuxComments({ teamSlugOrId }: { teamSlugOrId: string }) {
                   key={comment._id}
                   className={clsx(
                     "flex items-start gap-3 group",
-                    comment.archived && "opacity-60"
+                    comment.archived && "opacity-60",
                   )}
                 >
                   {comment.profileImageUrl ? (
@@ -1017,6 +1017,6 @@ export function CmuxComments({ teamSlugOrId }: { teamSlugOrId: string }) {
         </button>
       )}
     </>,
-    document.body
+    document.body,
   );
 }
