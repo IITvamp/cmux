@@ -12,11 +12,14 @@ import {
   FileText,
 } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { MergeView } from "@codemirror/merge";
 import {
   createMergeBaseExtensions,
   getLanguageExtensions,
 } from "@/lib/codemirror/merge-extensions";
+import {
+  createDiffMergeView,
+  type DiffMergeViewInstance,
+} from "@/lib/codemirror/diff-merge-view";
 import { kitties } from "./kitties";
 
 type FileDiffRowClassNames = {
@@ -242,7 +245,7 @@ function FileDiffRow({
   classNames,
 }: FileDiffRowProps) {
   const mergeHostRef = useRef<HTMLDivElement | null>(null);
-  const mergeViewRef = useRef<MergeView | null>(null);
+  const mergeViewRef = useRef<DiffMergeViewInstance | null>(null);
 
   const shouldRenderEditor =
     isExpanded &&
@@ -281,41 +284,21 @@ function FileDiffRow({
 
     const extensions = [...baseExtensions, ...languageExtensions];
 
-    const now = performance.now();
-    const merge = new MergeView({
-      a: {
-        doc: file.oldContent ?? "",
-        extensions: [...extensions],
-      },
-      b: {
-        doc: file.newContent ?? "",
-        extensions: [...extensions],
-      },
+    const mergeView = createDiffMergeView({
+      oldContent: file.oldContent ?? "",
+      newContent: file.newContent ?? "",
+      extensions,
       parent: host,
-      highlightChanges: true,
-      gutter: true,
-      collapseUnchanged: {
-        margin: 3,
-        minSize: 6,
-      },
-      diffConfig: {
-        scanLimit: 500,
-        timeout: 1500,
-      },
     });
 
-    mergeViewRef.current = merge;
+    mergeViewRef.current = mergeView;
 
-    debugGitDiffViewerLog(
-      `merge editor mounted after ${performance.now() - now}ms`,
-      {
-        filePath: file.filePath,
-        collapseUnchanged: true,
-      },
-    );
+    debugGitDiffViewerLog("merge editor mounted", {
+      filePath: file.filePath,
+    });
 
     return () => {
-      merge.destroy();
+      mergeView.destroy();
       mergeViewRef.current = null;
       host.textContent = "";
     };
