@@ -174,6 +174,21 @@ function RunDiffPage() {
   const selectedRun = useMemo(() => {
     return taskRuns?.find((run) => run._id === runId);
   }, [runId, taskRuns]);
+  const restartProvider = selectedRun?.vscode?.provider;
+  const restartRunEnvironmentId = selectedRun?.environmentId;
+  const taskEnvironmentId = task?.environmentId;
+  const restartIsCloudMode = useMemo(() => {
+    if (restartProvider === "docker") {
+      return false;
+    }
+    if (restartProvider) {
+      return true;
+    }
+    if (restartRunEnvironmentId || taskEnvironmentId) {
+      return true;
+    }
+    return false;
+  }, [restartProvider, restartRunEnvironmentId, taskEnvironmentId]);
   const environmentRepos = useMemo(() => {
     const repos = selectedRun?.environment?.selectedRepos ?? [];
     const trimmed = repos
@@ -320,7 +335,7 @@ function RunDiffPage() {
             projectFullName: projectFullNameForSocket,
             taskId: newTaskId,
             selectedAgents: [...restartAgents],
-            isCloudMode: isEnvTask || Boolean(task.environmentId),
+            isCloudMode: restartIsCloudMode,
             ...(task.environmentId
               ? { environmentId: task.environmentId }
               : {}),
@@ -353,6 +368,7 @@ function RunDiffPage() {
     teamSlugOrId,
     theme,
     restartAgents,
+    restartIsCloudMode,
   ]);
 
   const handleFormSubmit = useCallback(
