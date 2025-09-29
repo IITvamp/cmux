@@ -600,6 +600,9 @@ function SocketActions({
         const actionable = resp.results.filter(
           (result) => result.url && !result.error,
         );
+        if (actionable.length > 0) {
+          openUrls(actionable);
+        }
         toast.success("PRs updated", {
           id: toastId,
           description: summarizeResults(resp.results),
@@ -631,6 +634,9 @@ function SocketActions({
         const actionable = resp.results.filter(
           (result) => result.url && !result.error,
         );
+        if (actionable.length > 0) {
+          openUrls(actionable);
+        }
         toast.success("Draft PRs updated", {
           id: toastId,
           description: summarizeResults(resp.results),
@@ -738,12 +744,7 @@ function SocketActions({
                     }
                   }}
                 >
-                  <span className="flex w-full items-center justify-between gap-2">
-                    <span className="truncate">{repoName}</span>
-                    <span className="text-[10px] uppercase text-neutral-400">
-                      {pr?.state ?? "none"}
-                    </span>
-                  </span>
+                  <span className="truncate">{repoName}</span>
                 </Dropdown.Item>
               );
             })}
