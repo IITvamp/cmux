@@ -53,9 +53,15 @@ interface TaskDetailHeaderProps {
   onExpandAll?: () => void;
   onCollapseAll?: () => void;
   teamSlugOrId: string;
+  diffMetadataByRepo?: Record<string, RepoDiffMetadata>;
 }
 
 const ENABLE_MERGE_BUTTON = false;
+
+type RepoDiffMetadata = {
+  lastKnownBaseSha?: string;
+  lastKnownMergeCommitSha?: string;
+};
 
 type RepoDiffTarget = {
   repoFullName: string;
@@ -67,10 +73,12 @@ function AdditionsAndDeletions({
   repos,
   defaultBaseRef,
   defaultHeadRef,
+  metadataByRepo,
 }: {
   repos: RepoDiffTarget[];
   defaultBaseRef?: string;
   defaultHeadRef?: string;
+  metadataByRepo?: Record<string, RepoDiffMetadata>;
 }) {
   const repoConfigs = useMemo(() => {
     const normalizedDefaults = {
@@ -80,7 +88,12 @@ function AdditionsAndDeletions({
 
     const map = new Map<
       string,
-      { repoFullName: string; baseRef?: string; headRef?: string }
+      {
+        repoFullName: string;
+        baseRef?: string;
+        headRef?: string;
+        metadata?: RepoDiffMetadata;
+      }
     >();
     for (const repo of repos) {
       const repoFullName = repo.repoFullName?.trim();
@@ -95,11 +108,12 @@ function AdditionsAndDeletions({
         repoFullName,
         baseRef: normalizedBaseRef || undefined,
         headRef: normalizedHeadRef || undefined,
+        metadata: metadataByRepo?.[repoFullName],
       });
     }
 
     return Array.from(map.values());
-  }, [repos, defaultBaseRef, defaultHeadRef]);
+  }, [repos, defaultBaseRef, defaultHeadRef, metadataByRepo]);
 
   const queries = useQueries({
     queries: repoConfigs.map((config) => {
@@ -108,6 +122,8 @@ function AdditionsAndDeletions({
         repoFullName: config.repoFullName,
         baseRef: config.baseRef,
         headRef,
+        lastKnownBaseSha: config.metadata?.lastKnownBaseSha,
+        lastKnownMergeCommitSha: config.metadata?.lastKnownMergeCommitSha,
       });
       return {
         ...options,
@@ -185,6 +201,7 @@ export function TaskDetailHeader({
   onExpandAll,
   onCollapseAll,
   teamSlugOrId,
+  diffMetadataByRepo,
 }: TaskDetailHeaderProps) {
   const navigate = useNavigate();
   const clipboard = useClipboard({ timeout: 2000 });
@@ -273,6 +290,7 @@ export function TaskDetailHeader({
               repos={repoDiffTargets}
               defaultBaseRef={normalizedBaseBranch || undefined}
               defaultHeadRef={normalizedHeadBranch || undefined}
+              metadataByRepo={diffMetadataByRepo}
             />
           </Suspense>
         </div>
@@ -312,6 +330,7 @@ export function TaskDetailHeader({
               prIsOpen={prIsOpen}
               prIsMerged={prIsMerged}
               repoDiffTargets={repoDiffTargets}
+              metadataByRepo={diffMetadataByRepo}
             />
           </Suspense>
 
@@ -494,12 +513,14 @@ function SocketActions({
   prIsOpen,
   prIsMerged,
   repoDiffTargets,
+  metadataByRepo,
 }: {
   selectedRun: TaskRunWithChildren | null;
   taskRunId: Id<"taskRuns">;
   prIsOpen: boolean;
   prIsMerged: boolean;
   repoDiffTargets: RepoDiffTarget[];
+  metadataByRepo?: Record<string, RepoDiffMetadata>;
 }) {
   const { socket } = useSocketSuspense();
   const pullRequests = useMemo(
@@ -530,15 +551,20 @@ function SocketActions({
   );
 
   const diffQueries = useQueries({
-    queries: repoDiffTargets.map((target) => ({
-      ...gitDiffQueryOptions({
-        repoFullName: target.repoFullName,
-        baseRef: target.baseRef,
-        headRef: target.headRef ?? "",
-      }),
-      enabled:
-        Boolean(target.repoFullName?.trim()) && Boolean(target.headRef?.trim()),
-    })),
+    queries: repoDiffTargets.map((target) => {
+      const repoName = target.repoFullName?.trim() ?? "";
+      const metadata = repoName ? metadataByRepo?.[repoName] : undefined;
+      return {
+        ...gitDiffQueryOptions({
+          repoFullName: repoName,
+          baseRef: target.baseRef,
+          headRef: target.headRef ?? "",
+          lastKnownBaseSha: metadata?.lastKnownBaseSha,
+          lastKnownMergeCommitSha: metadata?.lastKnownMergeCommitSha,
+        }),
+        enabled: Boolean(repoName) && Boolean(target.headRef?.trim()),
+      };
+    }),
   });
 
   const hasChanges =

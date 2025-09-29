@@ -479,6 +479,7 @@ function RunDiffPage() {
             onExpandAll={diffControls?.expandAll}
             onCollapseAll={diffControls?.collapseAll}
             teamSlugOrId={teamSlugOrId}
+            diffMetadataByRepo={metadataByRepo}
           />
           {task?.text && (
             <div className="mb-2 px-3.5">
