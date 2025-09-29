@@ -172,6 +172,24 @@ const convexSchema = defineSchema({
       )
     ),
     pullRequestNumber: v.optional(v.number()), // Numeric PR number on provider
+    pullRequests: v.optional(
+      v.array(
+        v.object({
+          repoFullName: v.string(),
+          url: v.optional(v.string()),
+          number: v.optional(v.number()),
+          state: v.union(
+            v.literal("none"),
+            v.literal("draft"),
+            v.literal("open"),
+            v.literal("merged"),
+            v.literal("closed"),
+            v.literal("unknown")
+          ),
+          isDraft: v.optional(v.boolean()),
+        })
+      )
+    ),
     diffsLastUpdated: v.optional(v.number()), // Timestamp when diffs were last fetched/updated
     // VSCode instance information
     vscode: v.optional(

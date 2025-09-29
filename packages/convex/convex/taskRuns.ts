@@ -5,6 +5,10 @@ import { resolveTeamIdLoose } from "../_shared/team";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
+import {
+  aggregatePullRequestState,
+  type StoredPullRequestInfo,
+} from "@cmux/shared/pull-request-state";
 
 function rewriteMorphUrl(url: string): string {
   // do not rewrite ports 39376 39377 39378
@@ -26,6 +30,26 @@ function rewriteMorphUrl(url: string): string {
     return result;
   }
   return url;
+}
+
+function normalizePullRequestRecords(
+  records: readonly StoredPullRequestInfo[] | undefined
+): StoredPullRequestInfo[] | undefined {
+  if (!records) {
+    return undefined;
+  }
+  return records.map((record) => ({
+    repoFullName: record.repoFullName.trim(),
+    url: record.url,
+    number: record.number,
+    state: record.state,
+    isDraft:
+      record.isDraft !== undefined
+        ? record.isDraft
+        : record.state === "draft"
+          ? true
+          : undefined,
+  }));
 }
 
 function deriveGeneratedBranchName(branch?: string | null): string | undefined {
@@ -764,6 +788,24 @@ export const updatePullRequestUrl = authMutation({
       )
     ),
     number: v.optional(v.number()),
+    pullRequests: v.optional(
+      v.array(
+        v.object({
+          repoFullName: v.string(),
+          url: v.optional(v.string()),
+          number: v.optional(v.number()),
+          state: v.union(
+            v.literal("none"),
+            v.literal("draft"),
+            v.literal("open"),
+            v.literal("merged"),
+            v.literal("closed"),
+            v.literal("unknown")
+          ),
+          isDraft: v.optional(v.boolean()),
+        })
+      )
+    ),
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
@@ -772,13 +814,33 @@ export const updatePullRequestUrl = authMutation({
     if (!run || run.teamId !== teamId || run.userId !== userId) {
       throw new Error("Task run not found or unauthorized");
     }
-    await ctx.db.patch(args.id, {
+    const updates: Partial<Doc<"taskRuns">> = {
       pullRequestUrl: args.pullRequestUrl,
-      pullRequestIsDraft: args.isDraft,
-      ...(args.state ? { pullRequestState: args.state } : {}),
-      ...(args.number !== undefined ? { pullRequestNumber: args.number } : {}),
       updatedAt: Date.now(),
-    });
+    };
+    if (args.isDraft !== undefined) {
+      updates.pullRequestIsDraft = args.isDraft;
+    }
+    if (args.state) {
+      updates.pullRequestState = args.state;
+    }
+    if (args.number !== undefined) {
+      updates.pullRequestNumber = args.number;
+    }
+    const normalizedPullRequests = normalizePullRequestRecords(args.pullRequests);
+    if (normalizedPullRequests) {
+      updates.pullRequests = normalizedPullRequests;
+      const aggregate = aggregatePullRequestState(normalizedPullRequests);
+      updates.pullRequestState = aggregate.state;
+      updates.pullRequestIsDraft = aggregate.isDraft;
+      updates.pullRequestUrl =
+        aggregate.url !== undefined ? aggregate.url : updates.pullRequestUrl;
+      updates.pullRequestNumber =
+        aggregate.number !== undefined
+          ? aggregate.number
+          : updates.pullRequestNumber;
+    }
+    await ctx.db.patch(args.id, updates);
   },
 });
 
@@ -797,6 +859,24 @@ export const updatePullRequestState = authMutation({
     isDraft: v.optional(v.boolean()),
     number: v.optional(v.number()),
     url: v.optional(v.string()),
+    pullRequests: v.optional(
+      v.array(
+        v.object({
+          repoFullName: v.string(),
+          url: v.optional(v.string()),
+          number: v.optional(v.number()),
+          state: v.union(
+            v.literal("none"),
+            v.literal("draft"),
+            v.literal("open"),
+            v.literal("merged"),
+            v.literal("closed"),
+            v.literal("unknown")
+          ),
+          isDraft: v.optional(v.boolean()),
+        })
+      )
+    ),
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
@@ -805,15 +885,33 @@ export const updatePullRequestState = authMutation({
     if (!run || run.teamId !== teamId || run.userId !== userId) {
       throw new Error("Task run not found or unauthorized");
     }
-    await ctx.db.patch(args.id, {
+    const updates: Partial<Doc<"taskRuns">> = {
       pullRequestState: args.state,
-      ...(args.isDraft !== undefined
-        ? { pullRequestIsDraft: args.isDraft }
-        : {}),
-      ...(args.number !== undefined ? { pullRequestNumber: args.number } : {}),
-      ...(args.url ? { pullRequestUrl: args.url } : {}),
       updatedAt: Date.now(),
-    });
+    };
+    if (args.isDraft !== undefined) {
+      updates.pullRequestIsDraft = args.isDraft;
+    }
+    if (args.number !== undefined) {
+      updates.pullRequestNumber = args.number;
+    }
+    if (args.url !== undefined) {
+      updates.pullRequestUrl = args.url;
+    }
+    const normalizedPullRequests = normalizePullRequestRecords(args.pullRequests);
+    if (normalizedPullRequests) {
+      updates.pullRequests = normalizedPullRequests;
+      const aggregate = aggregatePullRequestState(normalizedPullRequests);
+      updates.pullRequestState = aggregate.state;
+      updates.pullRequestIsDraft = aggregate.isDraft;
+      updates.pullRequestUrl =
+        aggregate.url !== undefined ? aggregate.url : updates.pullRequestUrl;
+      updates.pullRequestNumber =
+        aggregate.number !== undefined
+          ? aggregate.number
+          : updates.pullRequestNumber;
+    }
+    await ctx.db.patch(args.id, updates);
   },
 });
 

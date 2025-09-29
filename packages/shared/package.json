@@ -69,6 +69,10 @@
     "./utils/format-env-vars-content": {
       "import": "./src/utils/format-env-vars-content.ts",
       "types": "./src/utils/format-env-vars-content.ts"
+    },
+    "./pull-request-state": {
+      "import": "./src/pull-request-state.ts",
+      "types": "./src/pull-request-state.ts"
     }
   },
   "dependencies": {

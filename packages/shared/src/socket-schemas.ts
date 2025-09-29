@@ -1,6 +1,10 @@
 import type { Id } from "@cmux/convex/dataModel";
 import { z } from "zod";
 import { typedZid } from "./utils/typed-zid";
+import type {
+  AggregatePullRequestSummary,
+  PullRequestActionResult,
+} from "./pull-request-state";
 
 // Client to Server Events
 export const CreateTerminalSchema = z.object({
@@ -455,7 +459,8 @@ export interface ClientToServerEvents {
     data: GitHubCreateDraftPr,
     callback: (response: {
       success: boolean;
-      url?: string;
+      results: PullRequestActionResult[];
+      aggregate: AggregatePullRequestSummary;
       error?: string;
     }) => void
   ) => void;
@@ -464,8 +469,8 @@ export interface ClientToServerEvents {
     data: GitHubOpenPr,
     callback: (response: {
       success: boolean;
-      url?: string;
-      state?: string;
+      results: PullRequestActionResult[];
+      aggregate: AggregatePullRequestSummary;
       error?: string;
     }) => void
   ) => void;
@@ -474,10 +479,8 @@ export interface ClientToServerEvents {
     data: GitHubSyncPrState,
     callback: (response: {
       success: boolean;
-      url?: string;
-      number?: number;
-      state?: string;
-      isDraft?: boolean;
+      results: PullRequestActionResult[];
+      aggregate: AggregatePullRequestSummary;
       error?: string;
     }) => void
   ) => void;
@@ -486,9 +489,8 @@ export interface ClientToServerEvents {
     data: GitHubMergePr,
     callback: (response: {
       success: boolean;
-      merged?: boolean;
-      state?: string;
-      url?: string;
+      results: PullRequestActionResult[];
+      aggregate: AggregatePullRequestSummary;
       error?: string;
     }) => void
   ) => void;

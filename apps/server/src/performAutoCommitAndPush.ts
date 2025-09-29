@@ -5,6 +5,7 @@ import { buildAutoCommitPushCommand } from "./utils/autoCommitPushCommand";
 import { generateCommitMessageFromDiff } from "./utils/commitMessageGenerator";
 import { getConvex } from "./utils/convexClient";
 import { serverLogger } from "./utils/fileLogger";
+import { parseRepoFromUrl } from "./utils/githubPr";
 import { workerExec } from "./utils/workerExec";
 import { VSCodeInstance } from "./vscode/VSCodeInstance";
 
@@ -240,11 +241,31 @@ ${taskRun.crownReason || "This implementation was selected as the best solution.
             serverLogger.info(
               `[AgentSpawner] Pull request created: ${prUrlMatch[0]}`
             );
+            const parsed = parseRepoFromUrl(prUrlMatch[0]);
+            const repoFullName =
+              task.projectFullName ||
+              (parsed.owner && parsed.repo
+                ? `${parsed.owner}/${parsed.repo}`
+                : undefined);
+
             await getConvex().mutation(api.taskRuns.updatePullRequestUrl, {
               teamSlugOrId,
               id: taskRunId,
               pullRequestUrl: prUrlMatch[0],
               isDraft: false,
+              ...(repoFullName
+                ? {
+                    pullRequests: [
+                      {
+                        repoFullName,
+                        url: prUrlMatch[0],
+                        number: parsed.number,
+                        state: "open" as const,
+                        isDraft: false,
+                      },
+                    ],
+                  }
+                : {}),
             });
           } else {
             serverLogger.error(`[AgentSpawner] Failed to create PR`);
