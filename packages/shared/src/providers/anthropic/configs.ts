@@ -4,7 +4,7 @@ import { checkClaudeRequirements } from "./check-requirements";
 import { startClaudeCompletionDetector } from "./completion-detector";
 import { getClaudeEnvironment } from "./environment";
 
-export const CLAUDE_SONNET_CONFIG: AgentConfig = {
+export const CLAUDE_SONNET_4_CONFIG: AgentConfig = {
   name: "claude/sonnet-4",
   command: "bunx",
   args: [
