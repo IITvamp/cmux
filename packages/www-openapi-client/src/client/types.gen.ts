@@ -275,6 +275,25 @@ export type GithubPrsFileContentsBatchBody = {
     maxFileBytes?: number;
 };
 
+export type GithubPrsMergeResponse = {
+    merged: boolean;
+    commitSha?: string;
+    htmlUrl?: string;
+    message?: string;
+};
+
+export type GithubPrsMergeError = {
+    error: string;
+};
+
+export type GithubPrsMergeBody = {
+    team: string;
+    owner: string;
+    repo: string;
+    number: number;
+    method?: 'squash' | 'rebase' | 'merge';
+};
+
 export type SetupInstanceResponse = {
     instanceId: string;
     vscodeUrl: string;
@@ -1171,6 +1190,43 @@ export type PostApiIntegrationsGithubPrsFileContentsBatchResponses = {
 };
 
 export type PostApiIntegrationsGithubPrsFileContentsBatchResponse = PostApiIntegrationsGithubPrsFileContentsBatchResponses[keyof PostApiIntegrationsGithubPrsFileContentsBatchResponses];
+
+export type PostApiIntegrationsGithubPrsMergeData = {
+    body: GithubPrsMergeBody;
+    path?: never;
+    query?: never;
+    url: '/api/integrations/github/prs/merge';
+};
+
+export type PostApiIntegrationsGithubPrsMergeErrors = {
+    /**
+     * Invalid request
+     */
+    400: GithubPrsMergeError;
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Installation or pull request not found
+     */
+    404: GithubPrsMergeError;
+    /**
+     * Merge conflict or already merged
+     */
+    409: GithubPrsMergeError;
+};
+
+export type PostApiIntegrationsGithubPrsMergeError = PostApiIntegrationsGithubPrsMergeErrors[keyof PostApiIntegrationsGithubPrsMergeErrors];
+
+export type PostApiIntegrationsGithubPrsMergeResponses = {
+    /**
+     * Merge result
+     */
+    200: GithubPrsMergeResponse;
+};
+
+export type PostApiIntegrationsGithubPrsMergeResponse = PostApiIntegrationsGithubPrsMergeResponses[keyof PostApiIntegrationsGithubPrsMergeResponses];
 
 export type PostApiMorphSetupInstanceData = {
     body: SetupInstanceBody;

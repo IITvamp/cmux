@@ -8,6 +8,7 @@ export { githubPrsCodeRouter } from "./github.prs.code.route";
 export { githubPrsFileContentsBatchRouter } from "./github.prs.file-contents-batch.route";
 export { githubPrsFileContentsRouter } from "./github.prs.file-contents.route";
 export { githubPrsFilesRouter } from "./github.prs.files.route";
+export { githubPrsMergeRouter } from "./github.prs.merge.route";
 export { githubPrsPatchRouter } from "./github.prs.patch.route";
 export { githubPrsRouter } from "./github.prs.route";
 export { healthRouter } from "./health.route";

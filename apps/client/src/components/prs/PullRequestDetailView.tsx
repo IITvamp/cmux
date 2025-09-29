@@ -1,12 +1,19 @@
 import { RunDiffSection } from "@/components/RunDiffSection";
 import { Dropdown } from "@/components/ui/dropdown";
+import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { normalizeGitRef } from "@/lib/refWithOrigin";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
-import { useQuery as useRQ } from "@tanstack/react-query";
+import {
+  useMutation as useRQMutation,
+  useQuery as useRQ,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useQuery as useConvexQuery } from "convex/react";
 import { ExternalLink } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
+import { toast } from "sonner";
+import { postApiIntegrationsGithubPrsMergeMutation } from "@cmux/www-openapi-client/react-query";
 
 type PullRequestDetailViewProps = {
   teamSlugOrId: string;
@@ -93,6 +100,76 @@ export function PullRequestDetailView({
   }, [prs, owner, repo, number]);
 
   const [diffControls, setDiffControls] = useState<DiffControls | null>(null);
+  const queryClient = useQueryClient();
+  const mergeMutation = useRQMutation(
+    postApiIntegrationsGithubPrsMergeMutation()
+  );
+
+  const handleMerge = (method: MergeMethod) => {
+    if (!currentPR) {
+      return;
+    }
+    const prNumber = Number(number);
+    if (!Number.isFinite(prNumber)) {
+      toast.error("Invalid pull request number");
+      return;
+    }
+    const toastId = toast.loading("Merging pull request...");
+    mergeMutation.mutate(
+      {
+        body: {
+          team: teamSlugOrId,
+          owner,
+          repo,
+          number: prNumber,
+          method,
+        },
+      },
+      {
+        onSuccess: (data) => {
+          const description = data?.commitSha
+            ? `Commit ${data.commitSha.slice(0, 7)}`
+            : undefined;
+          toast.success("Pull request merged", {
+            id: toastId,
+            description,
+          });
+
+          if (
+            currentPR.repoFullName &&
+            currentPR.baseRef &&
+            currentPR.headRef
+          ) {
+            const diffOptions = gitDiffQueryOptions({
+              repoFullName: currentPR.repoFullName,
+              baseRef: normalizeGitRef(currentPR.baseRef),
+              headRef: normalizeGitRef(currentPR.headRef),
+            });
+            void queryClient.invalidateQueries({
+              queryKey: diffOptions.queryKey,
+            });
+          }
+        },
+        onError: (error) => {
+          const description =
+            typeof error === "string"
+              ? error
+              : error instanceof Error
+              ? error.message
+              : error &&
+                typeof error === "object" &&
+                "error" in error &&
+                typeof (error as { error?: unknown }).error === "string"
+              ? ((error as { error: string }).error)
+              : undefined;
+          toast.error("Failed to merge pull request", {
+            id: toastId,
+            description,
+          });
+        },
+      }
+    );
+  };
 
   if (!currentPR) {
     return (
@@ -151,6 +228,13 @@ export function PullRequestDetailView({
                     Open
                   </span>
                 )}
+                {currentPR.state === "open" && !currentPR.merged ? (
+                  <MergeButton
+                    onMerge={handleMerge}
+                    isOpen
+                    disabled={mergeMutation.isPending}
+                  />
+                ) : null}
                 {currentPR.htmlUrl ? (
                   <a
                     className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none whitespace-nowrap"
