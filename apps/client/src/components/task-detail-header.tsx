@@ -10,7 +10,7 @@ import type { Doc, Id } from "@cmux/convex/dataModel";
 import type { TaskRunWithChildren } from "@/types/task";
 import { Skeleton } from "@heroui/react";
 import { useClipboard } from "@mantine/hooks";
-import { useQueries } from "@tanstack/react-query";
+import { useMutation, useQueries } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import {
@@ -32,20 +32,27 @@ import {
   type CSSProperties,
 } from "react";
 import { toast } from "sonner";
+import {
+  SocketMutationError,
+  type MergeBranchResponse,
+  type PullRequestActionResponse,
+  type ToastFeedbackContext,
+  getErrorDescription,
+} from "./task-detail-header.mutations";
+import type {
+  SocketMutationErrorInstance,
+} from "./task-detail-header.mutations";
 
 interface TaskDetailHeaderProps {
   task?: Doc<"tasks"> | null;
   taskRuns?: TaskRunWithChildren[] | null;
   selectedRun?: TaskRunWithChildren | null;
-  isCreatingPr: boolean;
-  setIsCreatingPr: (v: boolean) => void;
   totalAdditions?: number;
   totalDeletions?: number;
   taskRunId: Id<"taskRuns">;
   onExpandAll?: () => void;
   onCollapseAll?: () => void;
   teamSlugOrId: string;
-  // Smart diff view (no toggle)
 }
 
 const ENABLE_MERGE_BUTTON = false;
@@ -174,8 +181,6 @@ export function TaskDetailHeader({
   task,
   taskRuns,
   selectedRun,
-  isCreatingPr,
-  setIsCreatingPr,
   taskRunId,
   onExpandAll,
   onCollapseAll,
@@ -186,7 +191,6 @@ export function TaskDetailHeader({
   const prIsOpen = selectedRun?.pullRequestState === "open";
   const prIsMerged = selectedRun?.pullRequestState === "merged";
   const [agentMenuOpen, setAgentMenuOpen] = useState(false);
-  const [isOpeningPr, setIsOpeningPr] = useState(false);
   const handleAgentOpenChange = useCallback((open: boolean) => {
     setAgentMenuOpen(open);
   }, []);
@@ -196,7 +200,6 @@ export function TaskDetailHeader({
       clipboard.copy(selectedRun.newBranch);
     }
   };
-  const [isMerging, setIsMerging] = useState(false);
   const worktreePath = useMemo(
     () => selectedRun?.worktreePath || task?.worktreePath || null,
     [selectedRun?.worktreePath, task?.worktreePath],
@@ -308,12 +311,6 @@ export function TaskDetailHeader({
               taskRunId={taskRunId}
               prIsOpen={prIsOpen}
               prIsMerged={prIsMerged}
-              isCreatingPr={isCreatingPr}
-              setIsCreatingPr={setIsCreatingPr}
-              isOpeningPr={isOpeningPr}
-              setIsOpeningPr={setIsOpeningPr}
-              isMerging={isMerging}
-              setIsMerging={setIsMerging}
               repoDiffTargets={repoDiffTargets}
             />
           </Suspense>
@@ -496,30 +493,18 @@ function SocketActions({
   taskRunId,
   prIsOpen,
   prIsMerged,
-  isCreatingPr,
-  setIsCreatingPr,
-  isOpeningPr,
-  setIsOpeningPr,
-  isMerging,
-  setIsMerging,
   repoDiffTargets,
 }: {
   selectedRun: TaskRunWithChildren | null;
   taskRunId: Id<"taskRuns">;
   prIsOpen: boolean;
   prIsMerged: boolean;
-  isCreatingPr: boolean;
-  setIsCreatingPr: (v: boolean) => void;
-  isOpeningPr: boolean;
-  setIsOpeningPr: (v: boolean) => void;
-  isMerging: boolean;
-  setIsMerging: (v: boolean) => void;
   repoDiffTargets: RepoDiffTarget[];
 }) {
   const { socket } = useSocketSuspense();
   const pullRequests = useMemo(
     () => selectedRun?.pullRequests ?? [],
-    [selectedRun?.pullRequests]
+    [selectedRun?.pullRequests],
   );
 
   const repoFullNames = useMemo(() => {
@@ -553,8 +538,7 @@ function SocketActions({
         includeContents: false,
       }),
       enabled:
-        Boolean(target.repoFullName?.trim()) &&
-        Boolean(target.headRef?.trim()),
+        Boolean(target.repoFullName?.trim()) && Boolean(target.headRef?.trim()),
     })),
   });
 
@@ -577,7 +561,7 @@ function SocketActions({
   };
 
   const summarizeResults = (
-    results: Array<{ repoFullName: string; error?: string | undefined }>
+    results: Array<{ repoFullName: string; error?: string | undefined }>,
   ) => {
     const total = results.length;
     const successCount = results.filter((result) => !result.error).length;
@@ -614,73 +598,197 @@ function SocketActions({
   const mergeErrorLabel = hasMultipleRepos
     ? "Failed to merge PRs"
     : "Failed to merge PR";
+  const mergeBranchErrorLabel = "Failed to merge branch";
+
+  const openPrMutation = useMutation<
+    PullRequestActionResponse,
+    SocketMutationErrorInstance | Error,
+    void,
+    ToastFeedbackContext
+  >({
+    mutationFn: () => {
+      if (!socket) {
+        throw new Error("Socket unavailable");
+      }
+      return new Promise<PullRequestActionResponse>((resolve, reject) => {
+        socket.emit("github-open-pr", { taskRunId }, (resp) => {
+          if (resp.success) {
+            resolve(resp);
+          } else {
+            reject(new SocketMutationError(resp.error ?? openErrorLabel, resp));
+          }
+        });
+      });
+    },
+    onMutate: () => {
+      const toastId = toast.loading(openingLabel);
+      return { toastId };
+    },
+    onSuccess: (response, _variables, context) => {
+      const actionable = response.results.filter(
+        (result) => result.url && !result.error,
+      );
+      if (actionable.length > 0) {
+        openUrls(actionable);
+      }
+      toast.success(openedLabel, {
+        id: context?.toastId,
+        description: summarizeResults(response.results),
+        action:
+          actionable.length > 0
+            ? {
+                label: actionable.length === 1 ? "View PR" : "View PRs",
+                onClick: () => openUrls(actionable),
+              }
+            : undefined,
+      });
+    },
+    onError: (error, _variables, context) => {
+      toast.error(openErrorLabel, {
+        id: context?.toastId,
+        description: getErrorDescription(error),
+      });
+    },
+  });
+
+  const createDraftPrMutation = useMutation<
+    PullRequestActionResponse,
+    SocketMutationErrorInstance | Error,
+    void,
+    ToastFeedbackContext
+  >({
+    mutationFn: () => {
+      if (!socket) {
+        throw new Error("Socket unavailable");
+      }
+      return new Promise<PullRequestActionResponse>((resolve, reject) => {
+        socket.emit("github-create-draft-pr", { taskRunId }, (resp) => {
+          if (resp.success) {
+            resolve(resp);
+          } else {
+            reject(new SocketMutationError(resp.error ?? draftErrorLabel, resp));
+          }
+        });
+      });
+    },
+    onMutate: () => {
+      const toastId = toast.loading(openingDraftLabel);
+      return { toastId };
+    },
+    onSuccess: (response, _variables, context) => {
+      const actionable = response.results.filter(
+        (result) => result.url && !result.error,
+      );
+      if (actionable.length > 0) {
+        openUrls(actionable);
+      }
+      toast.success(openedDraftLabel, {
+        id: context?.toastId,
+        description: summarizeResults(response.results),
+        action:
+          actionable.length > 0
+            ? {
+                label: actionable.length === 1 ? "View draft" : "View drafts",
+                onClick: () => openUrls(actionable),
+              }
+            : undefined,
+      });
+    },
+    onError: (error, _variables, context) => {
+      toast.error(draftErrorLabel, {
+        id: context?.toastId,
+        description: getErrorDescription(error),
+      });
+    },
+  });
+
+  const mergePrMutation = useMutation<
+    PullRequestActionResponse,
+    SocketMutationErrorInstance | Error,
+    MergeMethod,
+    ToastFeedbackContext
+  >({
+    mutationFn: (method) => {
+      if (!socket) {
+        throw new Error("Socket unavailable");
+      }
+      return new Promise<PullRequestActionResponse>((resolve, reject) => {
+        socket.emit("github-merge-pr", { taskRunId, method }, (resp) => {
+          if (resp.success) {
+            resolve(resp);
+          } else {
+            reject(new SocketMutationError(resp.error ?? mergeErrorLabel, resp));
+          }
+        });
+      });
+    },
+    onMutate: (method) => {
+      const toastId = toast.loading(mergeLoadingLabel(method));
+      return { toastId };
+    },
+    onSuccess: (response, _variables, context) => {
+      toast.success(mergedLabel, {
+        id: context?.toastId,
+        description: summarizeResults(response.results),
+      });
+    },
+    onError: (error, _variables, context) => {
+      toast.error(mergeErrorLabel, {
+        id: context?.toastId,
+        description: getErrorDescription(error),
+      });
+    },
+  });
+
+  const mergeBranchMutation = useMutation<
+    MergeBranchResponse,
+    SocketMutationErrorInstance | Error,
+    void,
+    ToastFeedbackContext
+  >({
+    mutationFn: () => {
+      if (!socket) {
+        throw new Error("Socket unavailable");
+      }
+      return new Promise<MergeBranchResponse>((resolve, reject) => {
+        socket.emit("github-merge-branch", { taskRunId }, (resp) => {
+          if (resp.success) {
+            resolve(resp);
+          } else {
+            reject(
+              new SocketMutationError(
+                resp.error ?? mergeBranchErrorLabel,
+                resp,
+              ),
+            );
+          }
+        });
+      });
+    },
+    onMutate: () => {
+      const toastId = toast.loading("Merging branch...");
+      return { toastId };
+    },
+    onSuccess: (response, _variables, context) => {
+      toast.success("Branch merged", {
+        id: context?.toastId,
+        description: response.commitSha,
+      });
+    },
+    onError: (error, _variables, context) => {
+      toast.error(mergeBranchErrorLabel, {
+        id: context?.toastId,
+        description: getErrorDescription(error),
+      });
+    },
+  });
 
   const handleOpenPRs = () => {
-    if (!socket) return;
-    setIsOpeningPr(true);
-    const toastId = toast.loading(openingLabel);
-    socket.emit("github-open-pr", { taskRunId }, (resp) => {
-      setIsOpeningPr(false);
-      if (resp.success) {
-        const actionable = resp.results.filter(
-          (result) => result.url && !result.error,
-        );
-        if (actionable.length > 0) {
-          openUrls(actionable);
-        }
-        toast.success(openedLabel, {
-          id: toastId,
-          description: summarizeResults(resp.results),
-          action:
-            actionable.length > 0
-              ? {
-                  label:
-                    actionable.length === 1 ? "View PR" : "View PRs",
-                  onClick: () => openUrls(actionable),
-                }
-              : undefined,
-        });
-      } else {
-        toast.error(openErrorLabel, {
-          id: toastId,
-          description: resp.error,
-        });
-      }
-    });
+    openPrMutation.mutate();
   };
 
   const handleOpenDraftPRs = () => {
-    if (!socket) return;
-    setIsCreatingPr(true);
-    const toastId = toast.loading(openingDraftLabel);
-    socket.emit("github-create-draft-pr", { taskRunId }, (resp) => {
-      setIsCreatingPr(false);
-      if (resp.success) {
-        const actionable = resp.results.filter(
-          (result) => result.url && !result.error,
-        );
-        if (actionable.length > 0) {
-          openUrls(actionable);
-        }
-        toast.success(openedDraftLabel, {
-          id: toastId,
-          description: summarizeResults(resp.results),
-          action:
-            actionable.length > 0
-              ? {
-                  label:
-                    actionable.length === 1 ? "View draft" : "View drafts",
-                  onClick: () => openUrls(actionable),
-                }
-              : undefined,
-        });
-      } else {
-        toast.error(draftErrorLabel, {
-          id: toastId,
-          description: resp.error,
-        });
-      }
-    });
+    createDraftPrMutation.mutate();
   };
 
   const handleViewPRs = () => {
@@ -693,47 +801,17 @@ function SocketActions({
   };
 
   const handleMerge = (method: MergeMethod) => {
-    if (!socket) return;
-    setIsMerging(true);
-    const toastId = toast.loading(mergeLoadingLabel(method));
-    socket.emit("github-merge-pr", { taskRunId, method }, (resp) => {
-      setIsMerging(false);
-      if (resp.success) {
-        toast.success(mergedLabel, {
-          id: toastId,
-          description: summarizeResults(resp.results),
-        });
-      } else {
-        toast.error(mergeErrorLabel, {
-          id: toastId,
-          description: resp.error,
-        });
-      }
-    });
+    mergePrMutation.mutate(method);
   };
 
-  const handleMergeBranch = async (): Promise<void> => {
-    if (!socket || !taskRunId) return;
-    setIsMerging(true);
-    const toastId = toast.loading("Merging branch...");
-    await new Promise<void>((resolve) => {
-      socket.emit("github-merge-branch", { taskRunId }, (resp) => {
-        setIsMerging(false);
-        if (resp.success) {
-          toast.success("Branch merged", {
-            id: toastId,
-            description: resp.commitSha,
-          });
-        } else {
-          toast.error("Failed to merge branch", {
-            id: toastId,
-            description: resp.error,
-          });
-        }
-        resolve();
-      });
-    });
+  const handleMergeBranch = () => {
+    mergeBranchMutation.mutate();
   };
+
+  const isOpeningPr = openPrMutation.isPending;
+  const isCreatingPr = createDraftPrMutation.isPending;
+  const isMerging =
+    mergePrMutation.isPending || mergeBranchMutation.isPending;
 
   const hasAnyRemotePr = pullRequests.some((pr) => pr.url);
 
@@ -746,9 +824,11 @@ function SocketActions({
           "bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white",
           "border border-neutral-300 dark:border-neutral-700",
           "rounded-r hover:bg-neutral-300 dark:hover:bg-neutral-700",
-          "disabled:opacity-60 disabled:cursor-not-allowed"
+          "disabled:opacity-60 disabled:cursor-not-allowed",
         )}
-        disabled={repoFullNames.every((repoName) => !pullRequestMap.get(repoName)?.url)}
+        disabled={repoFullNames.every(
+          (repoName) => !pullRequestMap.get(repoName)?.url,
+        )}
       >
         <ChevronDown className="w-3.5 h-3.5" />
       </Dropdown.Trigger>
@@ -842,7 +922,11 @@ function SocketActions({
           disabled={isCreatingPr || isOpeningPr || isMerging || !hasChanges}
         >
           <ExternalLink className="w-3.5 h-3.5" />
-          {isCreatingPr ? openingDraftLabel : (hasMultipleRepos ? "Open draft PRs" : "Open draft PR")}
+          {isCreatingPr
+            ? openingDraftLabel
+            : hasMultipleRepos
+              ? "Open draft PRs"
+              : "Open draft PR"}
         </button>
       )}
     </>
