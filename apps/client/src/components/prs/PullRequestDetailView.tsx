@@ -1,18 +1,45 @@
 import { RunDiffSection } from "@/components/RunDiffSection";
 import { Dropdown } from "@/components/ui/dropdown";
+import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { normalizeGitRef } from "@/lib/refWithOrigin";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
-import { useQuery as useRQ } from "@tanstack/react-query";
+import { useMutation, useQuery as useRQ } from "@tanstack/react-query";
 import { useQuery as useConvexQuery } from "convex/react";
 import { ExternalLink } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 type PullRequestDetailViewProps = {
   teamSlugOrId: string;
   owner: string;
   repo: string;
   number: string;
+};
+
+type MergeResponseBody = {
+  merged: boolean;
+  sha?: string;
+  message?: string;
+  error?: string;
+};
+
+type MergeContext = {
+  toastId: ReturnType<typeof toast.loading>;
+};
+
+const MERGE_ERROR_MESSAGE = "Failed to merge pull request";
+
+const mergeLoadingLabel = (method: MergeMethod): string => {
+  switch (method) {
+    case "squash":
+      return "Squashing pull request...";
+    case "rebase":
+      return "Rebasing pull request...";
+    case "merge":
+    default:
+      return "Merging pull request...";
+  }
 };
 
 type DiffControls = {
@@ -94,6 +121,82 @@ export function PullRequestDetailView({
 
   const [diffControls, setDiffControls] = useState<DiffControls | null>(null);
 
+  const mergeMutation = useMutation<
+    MergeResponseBody,
+    Error,
+    MergeMethod,
+    MergeContext
+  >({
+    mutationFn: async (method) => {
+      const parsedNumber = Number.parseInt(number, 10);
+      const pullNumber =
+        typeof currentPR?.number === "number"
+          ? currentPR.number
+          : Number.isNaN(parsedNumber)
+            ? undefined
+            : parsedNumber;
+
+      if (typeof pullNumber !== "number" || Number.isNaN(pullNumber)) {
+        throw new Error("Invalid pull request number");
+      }
+
+      const response = await fetch("/api/integrations/github/prs/merge", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          team: teamSlugOrId,
+          owner,
+          repo,
+          number: pullNumber,
+          method,
+        }),
+      });
+
+      let payload: MergeResponseBody | null = null;
+      try {
+        payload = (await response.json()) as MergeResponseBody;
+      } catch {
+        payload = null;
+      }
+
+      const errorMessage =
+        payload?.error ?? payload?.message ?? MERGE_ERROR_MESSAGE;
+
+      if (!response.ok || !payload?.merged) {
+        throw new Error(errorMessage);
+      }
+
+      return payload;
+    },
+    onMutate: (method) => {
+      const toastId = toast.loading(mergeLoadingLabel(method));
+      return { toastId };
+    },
+    onSuccess: (payload, _method, context) => {
+      const description = payload.sha
+        ? `Commit ${payload.sha.slice(0, 7)}`
+        : undefined;
+      toast.success("Pull request merged", {
+        id: context?.toastId,
+        description,
+      });
+    },
+    onError: (error, _method, context) => {
+      const description =
+        error instanceof Error ? error.message : String(error);
+      toast.error(MERGE_ERROR_MESSAGE, {
+        id: context?.toastId,
+        description,
+      });
+    },
+  });
+
+  const handleMerge = (method: MergeMethod) => {
+    mergeMutation.mutate(method);
+  };
+
   if (!currentPR) {
     return (
       <div className="h-full w-full flex items-center justify-center text-neutral-500 dark:text-neutral-400">
@@ -151,6 +254,13 @@ export function PullRequestDetailView({
                     Open
                   </span>
                 )}
+                {!currentPR.merged && currentPR.state === "open" ? (
+                  <MergeButton
+                    onMerge={handleMerge}
+                    isOpen
+                    disabled={mergeMutation.isPending}
+                  />
+                ) : null}
                 {currentPR.htmlUrl ? (
                   <a
                     className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none whitespace-nowrap"

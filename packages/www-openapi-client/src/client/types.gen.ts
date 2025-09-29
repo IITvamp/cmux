@@ -194,6 +194,35 @@ export type GithubPrCodeResponse = {
     files: Array<GithubPrFile>;
 };
 
+export type GithubPrsMergeResponse = {
+    merged: boolean;
+    sha?: string;
+    message?: string;
+};
+
+export type GithubPrsMergeBody = {
+    /**
+     * Team slug or UUID
+     */
+    team: string;
+    /**
+     * GitHub owner or organization
+     */
+    owner: string;
+    /**
+     * GitHub repository name
+     */
+    repo: string;
+    /**
+     * Pull request number
+     */
+    number: number;
+    /**
+     * GitHub merge method
+     */
+    method: 'squash' | 'rebase' | 'merge';
+};
+
 export type GithubPrsFilesResponse = {
     repoFullName: string;
     number: number;
@@ -1075,6 +1104,41 @@ export type GetApiIntegrationsGithubPrsRawResponses = {
 };
 
 export type GetApiIntegrationsGithubPrsRawResponse = GetApiIntegrationsGithubPrsRawResponses[keyof GetApiIntegrationsGithubPrsRawResponses];
+
+export type PostApiIntegrationsGithubPrsMergeData = {
+    body: GithubPrsMergeBody;
+    path?: never;
+    query?: never;
+    url: '/api/integrations/github/prs/merge';
+};
+
+export type PostApiIntegrationsGithubPrsMergeErrors = {
+    /**
+     * Invalid request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Server error
+     */
+    500: unknown;
+};
+
+export type PostApiIntegrationsGithubPrsMergeResponses = {
+    /**
+     * Merge completed
+     */
+    200: GithubPrsMergeResponse;
+};
+
+export type PostApiIntegrationsGithubPrsMergeResponse = PostApiIntegrationsGithubPrsMergeResponses[keyof PostApiIntegrationsGithubPrsMergeResponses];
 
 export type GetApiIntegrationsGithubPrsFilesData = {
     body?: never;
