@@ -600,11 +600,20 @@ function SocketActions({
   const openedDraftLabel = hasMultipleRepos
     ? "Draft PRs updated"
     : "Draft PR updated";
+  const openErrorLabel = hasMultipleRepos
+    ? "Failed to open PRs"
+    : "Failed to open PR";
+  const draftErrorLabel = hasMultipleRepos
+    ? "Failed to create draft PRs"
+    : "Failed to create draft PR";
   const mergeLoadingLabel = (method: MergeMethod) =>
     hasMultipleRepos
       ? `Merging PRs (${method})...`
       : `Merging PR (${method})...`;
   const mergedLabel = hasMultipleRepos ? "PRs merged" : "PR merged";
+  const mergeErrorLabel = hasMultipleRepos
+    ? "Failed to merge PRs"
+    : "Failed to merge PR";
 
   const handleOpenPRs = () => {
     if (!socket) return;
@@ -632,7 +641,7 @@ function SocketActions({
               : undefined,
         });
       } else {
-        toast.error("Failed to open PRs", {
+        toast.error(openErrorLabel, {
           id: toastId,
           description: resp.error,
         });
@@ -666,7 +675,7 @@ function SocketActions({
               : undefined,
         });
       } else {
-        toast.error("Failed to create draft PRs", {
+        toast.error(draftErrorLabel, {
           id: toastId,
           description: resp.error,
         });
@@ -695,7 +704,7 @@ function SocketActions({
           description: summarizeResults(resp.results),
         });
       } else {
-        toast.error("Failed to merge PRs", {
+        toast.error(mergeErrorLabel, {
           id: toastId,
           description: resp.error,
         });
