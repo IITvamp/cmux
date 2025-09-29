@@ -628,7 +628,7 @@ function createBaseExtensions(theme: string | undefined): Extension[] {
     {
       "&": {
         fontFamily:
-          "'JetBrains Mono', 'SF Mono', Monaco, 'Courier New', monospace",
+          "'Menlo', 'JetBrains Mono', 'SF Mono', Monaco, 'Courier New', monospace",
         fontSize: "12px",
         lineHeight: "18px",
         backgroundColor: "transparent",
@@ -636,7 +636,7 @@ function createBaseExtensions(theme: string | undefined): Extension[] {
       },
       ".cm-scroller": {
         fontFamily:
-          "'JetBrains Mono', 'SF Mono', Monaco, 'Courier New', monospace",
+          "'Menlo', 'JetBrains Mono', 'SF Mono', Monaco, 'Courier New', monospace",
         lineHeight: "18px",
       },
       ".cm-content": {
@@ -690,6 +690,16 @@ function createBaseExtensions(theme: string | undefined): Extension[] {
       ".cm-mergeView del.cm-deletedLine": {
         textDecoration: "none",
         backgroundColor: isDark ? "rgba(252, 165, 165, 0.22)" : GITHUB_DELETION_TEXT_BG,
+      },
+      ".cm-collapsedLines": {
+        backgroundColor: isDark ? "rgba(96, 165, 250, 0.24)" : "#ddf4ff",
+        color: isDark ? "#e5e7eb" : "#1f2937",
+        padding: "5px 5px 5px 10px",
+        cursor: "pointer",
+        backgroundImage: "none",
+      },
+      ".cm-mergeSpacer": {
+        backgroundColor: isDark ? "rgba(148, 163, 184, 0.18)" : "#f6f8fa",
       },
       "&.cm-merge-b .cm-changedLine": {
         backgroundColor: isDark
