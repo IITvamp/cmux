@@ -19,7 +19,6 @@ import type { Id } from "@cmux/convex/dataModel";
 import { getWorkerServerSocketOptions } from "@cmux/shared/node/socket";
 import { startAmpProxy } from "@cmux/shared/src/providers/amp/start-amp-proxy.ts";
 import { handleWorkerTaskCompletion } from "./crown/workflow";
-import type { WorkerRunContext } from "./crown/types";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import * as xtermHeadless from "@xterm/headless";
 import express from "express";
@@ -153,9 +152,6 @@ let mainServerSocket: Socket<
 // Track active file watchers by taskRunId
 const activeFileWatchers: Map<string, FileWatcher> = new Map();
 
-// Track process exit codes by taskRunId
-const processExitCodes: Map<string, number> = new Map();
-
 // Queue for pending events when mainServerSocket is not connected
 interface PendingEvent<
   K extends WorkerToServerEventNames = WorkerToServerEventNames,
@@ -169,7 +165,7 @@ const hasTaskId = (value: unknown): value is { taskId?: Id<"tasks"> } =>
   typeof value === "object" && value !== null && "taskId" in value;
 
 const hasTaskRunId = (
-  value: unknown
+  value: unknown,
 ): value is { taskRunId?: Id<"taskRuns"> } =>
   typeof value === "object" && value !== null && "taskRunId" in value;
 
@@ -231,7 +227,7 @@ function sendPendingEvents() {
         event: pendingEvent.event,
         data: payload,
         age,
-      }
+      },
     );
     socket.emit(pendingEvent.event, ...pendingEvent.args);
   }
@@ -265,7 +261,7 @@ function getWorkerStats(): WorkerHeartbeat {
 
 // Send registration info when main server connects
 function registerWithMainServer(
-  socket: Socket<ServerToWorkerEvents, WorkerToServerEvents>
+  socket: Socket<ServerToWorkerEvents, WorkerToServerEvents>,
 ) {
   const registration: WorkerRegister = {
     workerId: WORKER_ID,
@@ -287,7 +283,7 @@ function registerWithMainServer(
   log(
     "INFO",
     `Worker ${WORKER_ID} sent registration to main server`,
-    registration
+    registration,
   );
 }
 
@@ -300,7 +296,7 @@ managementIO.on("connection", (socket) => {
       from: socket.handshake.headers.referer || "unknown",
       socketId: socket.id,
     },
-    WORKER_ID
+    WORKER_ID,
   );
   mainServerSocket = socket;
 
@@ -323,9 +319,9 @@ managementIO.on("connection", (socket) => {
           }
           return value;
         },
-        2
+        2,
       ),
-      WORKER_ID
+      WORKER_ID,
     );
     try {
       const validated = WorkerCreateTerminalSchema.parse(data);
@@ -337,20 +333,20 @@ managementIO.on("connection", (socket) => {
           "INFO",
           `Writing ${validated.authFiles.length} auth files...`,
           undefined,
-          WORKER_ID
+          WORKER_ID,
         );
         for (const file of validated.authFiles) {
           try {
             // Expand $HOME in destination path
             const destPath = file.destinationPath.replace(
               "$HOME",
-              process.env.HOME || "/root"
+              process.env.HOME || "/root",
             );
             log(
               "INFO",
               `Writing auth file to: ${destPath}`,
               undefined,
-              WORKER_ID
+              WORKER_ID,
             );
 
             // Ensure directory exists
@@ -360,7 +356,7 @@ managementIO.on("connection", (socket) => {
             // Write the file
             await fs.writeFile(
               destPath,
-              Buffer.from(file.contentBase64, "base64")
+              Buffer.from(file.contentBase64, "base64"),
             );
 
             // Set permissions if specified
@@ -372,14 +368,14 @@ managementIO.on("connection", (socket) => {
               "INFO",
               `Successfully wrote auth file: ${destPath}`,
               undefined,
-              WORKER_ID
+              WORKER_ID,
             );
           } catch (error) {
             log(
               "ERROR",
               `Failed to write auth file ${file.destinationPath}:`,
               error,
-              WORKER_ID
+              WORKER_ID,
             );
           }
         }
@@ -399,7 +395,7 @@ managementIO.on("connection", (socket) => {
           args: validated.args,
           taskRunId: validated.taskRunId,
         },
-        WORKER_ID
+        WORKER_ID,
       );
 
       await createTerminal(validated.terminalId, {
@@ -430,7 +426,7 @@ managementIO.on("connection", (socket) => {
         "ERROR",
         "Error creating terminal from main server",
         error,
-        WORKER_ID
+        WORKER_ID,
       );
       callback({
         error: error instanceof Error ? error : new Error(error as string),
@@ -478,7 +474,7 @@ managementIO.on("connection", (socket) => {
       // Start by parsing the mounted config if it exists
       try {
         const { stdout: mountedConfig } = await execAsync(
-          "cat /root/.gitconfig 2>/dev/null || true"
+          "cat /root/.gitconfig 2>/dev/null || true",
         );
         if (mountedConfig) {
           let currentSection = "global";
@@ -565,10 +561,10 @@ managementIO.on("connection", (socket) => {
 
       // Also set it for all terminals
       await execAsync(
-        `echo 'export GIT_CONFIG_GLOBAL=${customGitConfigPath}' >> /etc/profile`
+        `echo 'export GIT_CONFIG_GLOBAL=${customGitConfigPath}' >> /etc/profile`,
       );
       await execAsync(
-        `echo 'export GIT_CONFIG_GLOBAL=${customGitConfigPath}' >> /root/.bashrc`
+        `echo 'export GIT_CONFIG_GLOBAL=${customGitConfigPath}' >> /root/.bashrc`,
       );
 
       // Set up SSH keys if provided
@@ -586,7 +582,7 @@ managementIO.on("connection", (socket) => {
           // SSH dir is read-only, use alternative location
           sshDirWritable = false;
           console.log(
-            ".ssh directory is mounted read-only, using alternative SSH config"
+            ".ssh directory is mounted read-only, using alternative SSH config",
           );
         }
 
@@ -599,7 +595,7 @@ managementIO.on("connection", (socket) => {
             const privateKeyPath = path.join(altSshDir, "id_rsa");
             await fs.writeFile(
               privateKeyPath,
-              Buffer.from(validated.sshKeys.privateKey, "base64")
+              Buffer.from(validated.sshKeys.privateKey, "base64"),
             );
             await fs.chmod(privateKeyPath, 0o600);
           }
@@ -608,7 +604,7 @@ managementIO.on("connection", (socket) => {
             const publicKeyPath = path.join(altSshDir, "id_rsa.pub");
             await fs.writeFile(
               publicKeyPath,
-              Buffer.from(validated.sshKeys.publicKey, "base64")
+              Buffer.from(validated.sshKeys.publicKey, "base64"),
             );
             await fs.chmod(publicKeyPath, 0o644);
           }
@@ -617,7 +613,7 @@ managementIO.on("connection", (socket) => {
             const knownHostsPath = path.join(altSshDir, "known_hosts");
             await fs.writeFile(
               knownHostsPath,
-              Buffer.from(validated.sshKeys.knownHosts, "base64")
+              Buffer.from(validated.sshKeys.knownHosts, "base64"),
             );
             await fs.chmod(knownHostsPath, 0o644);
           }
@@ -635,10 +631,10 @@ managementIO.on("connection", (socket) => {
 
           // Also export it for all terminals
           await execAsync(
-            `echo 'export GIT_SSH_COMMAND="ssh -F /root/.ssh-config"' >> /etc/profile`
+            `echo 'export GIT_SSH_COMMAND="ssh -F /root/.ssh-config"' >> /etc/profile`,
           );
           await execAsync(
-            `echo 'export GIT_SSH_COMMAND="ssh -F /root/.ssh-config"' >> /root/.bashrc`
+            `echo 'export GIT_SSH_COMMAND="ssh -F /root/.ssh-config"' >> /root/.bashrc`,
           );
         } else {
           // SSH dir is writable, use it normally
@@ -646,7 +642,7 @@ managementIO.on("connection", (socket) => {
             const privateKeyPath = path.join(sshDir, "id_rsa");
             await fs.writeFile(
               privateKeyPath,
-              Buffer.from(validated.sshKeys.privateKey, "base64")
+              Buffer.from(validated.sshKeys.privateKey, "base64"),
             );
             await fs.chmod(privateKeyPath, 0o600);
           }
@@ -655,7 +651,7 @@ managementIO.on("connection", (socket) => {
             const publicKeyPath = path.join(sshDir, "id_rsa.pub");
             await fs.writeFile(
               publicKeyPath,
-              Buffer.from(validated.sshKeys.publicKey, "base64")
+              Buffer.from(validated.sshKeys.publicKey, "base64"),
             );
             await fs.chmod(publicKeyPath, 0o644);
           }
@@ -664,7 +660,7 @@ managementIO.on("connection", (socket) => {
             const knownHostsPath = path.join(sshDir, "known_hosts");
             await fs.writeFile(
               knownHostsPath,
-              Buffer.from(validated.sshKeys.knownHosts, "base64")
+              Buffer.from(validated.sshKeys.knownHosts, "base64"),
             );
             await fs.chmod(knownHostsPath, 0o644);
           }
@@ -779,7 +775,7 @@ managementIO.on("connection", (socket) => {
 
     log(
       "INFO",
-      `[Worker] Started file watcher for task ${taskRunId} at ${worktreePath}`
+      `[Worker] Started file watcher for task ${taskRunId} at ${worktreePath}`,
     );
   });
 
@@ -812,7 +808,7 @@ managementIO.on("connection", (socket) => {
             age: Date.now() - e.timestamp,
           })),
           disconnectReason: reason,
-        }
+        },
       );
     }
   });
@@ -824,7 +820,7 @@ vscodeIO.on("connection", (socket) => {
     `VSCode connected to worker ${WORKER_ID}:`,
     socket.id,
     "from",
-    socket.handshake.headers.referer || "unknown"
+    socket.handshake.headers.referer || "unknown",
   );
 
   socket.on("disconnect", () => {
@@ -845,7 +841,7 @@ async function createTerminal(
     taskRunId?: Id<"taskRuns">;
     agentModel?: string;
     startupCommands?: string[];
-  } = {}
+  } = {},
 ): Promise<void> {
   const {
     cols = SERVER_TERMINAL_CONFIG.cols,
@@ -861,18 +857,6 @@ async function createTerminal(
   const taskRunToken = envRecord.CMUX_TASK_RUN_JWT;
   const convexUrl = envRecord.NEXT_PUBLIC_CONVEX_URL;
   const promptValue = envRecord["CMUX_PROMPT"] ?? envRecord["PROMPT"] ?? "";
-
-  let taskRunContext: WorkerRunContext | null = null;
-  if (options.taskRunId && taskRunToken) {
-    taskRunContext = {
-      token: taskRunToken,
-      prompt: promptValue,
-      agentModel: options.agentModel,
-      convexUrl,
-    };
-  }
-
-  let shouldTrackExitCode = Boolean(options.taskRunId && taskRunContext);
 
   const shell = command || (platform() === "win32" ? "powershell.exe" : "bash");
 
@@ -950,7 +934,7 @@ async function createTerminal(
     log(
       "INFO",
       `Running ${startupCommands.length} startup command(s) before spawn`,
-      { startupCommands }
+      { startupCommands },
     );
     for (const cmd of startupCommands) {
       try {
@@ -968,7 +952,9 @@ async function createTerminal(
             if (code === 0) resolve();
             else
               reject(
-                new Error(`Startup command failed (${code}): ${cmd}\n${stderr}`)
+                new Error(
+                  `Startup command failed (${code}): ${cmd}\n${stderr}`,
+                ),
               );
           });
           p.on("error", (e) => reject(e));
@@ -977,7 +963,7 @@ async function createTerminal(
         log(
           "ERROR",
           `Startup command failed: ${cmd}`,
-          e instanceof Error ? e : new Error(String(e))
+          e instanceof Error ? e : new Error(String(e)),
         );
       }
     }
@@ -1059,7 +1045,7 @@ async function createTerminal(
           taskRunId: options.taskRunId,
           agentModel: options.agentModel,
           hasDetector: !!agentConfig.completionDetector,
-        }
+        },
       );
 
       agentConfig
@@ -1067,7 +1053,7 @@ async function createTerminal(
         .then(async () => {
           log(
             "INFO",
-            `Completion detector resolved for task ${options.taskRunId}`
+            `Completion detector resolved for task ${options.taskRunId}`,
           );
 
           log(
@@ -1077,46 +1063,31 @@ async function createTerminal(
               taskRunId: options.taskRunId,
               agentModel: options.agentModel,
               elapsedMs: Date.now() - processStartTime,
-            }
+            },
           );
 
-          if (!taskRunContext) {
-            shouldTrackExitCode = false;
-            log("ERROR", "Missing task run context for crown workflow", {
+          if (!taskRunToken) {
+            log("ERROR", "Missing task run token for crown workflow", {
               taskRunId: options.taskRunId,
-              hasToken: Boolean(taskRunToken),
             });
             return;
           }
-
-          // Retrieve the exit code if the process has already exited
-          const storedExitCode = processExitCodes.get(options.taskRunId!);
 
           // Await the crown workflow directly
           try {
             await handleWorkerTaskCompletion({
               taskRunId: options.taskRunId!,
-              token: taskRunContext.token,
-              prompt: taskRunContext.prompt,
-              convexUrl: taskRunContext.convexUrl,
-              agentModel: options.agentModel ?? taskRunContext.agentModel,
-              teamId: taskRunContext.teamId,
-              taskId: taskRunContext.taskId,
+              token: taskRunToken,
+              prompt: promptValue,
+              convexUrl,
+              agentModel: options.agentModel,
               elapsedMs: Date.now() - processStartTime,
-              exitCode: storedExitCode ?? 0,
             });
 
             log("INFO", `Crown workflow completed for ${options.taskRunId}`, {
               taskRunId: options.taskRunId,
               agentModel: options.agentModel,
             });
-
-            // Clean up stored exit code
-            if (options.taskRunId) {
-              processExitCodes.delete(options.taskRunId);
-            }
-            shouldTrackExitCode = false;
-            taskRunContext = null;
           } catch (error) {
             log(
               "ERROR",
@@ -1126,26 +1097,20 @@ async function createTerminal(
                 agentModel: options.agentModel,
                 error: error instanceof Error ? error.message : String(error),
                 stack: error instanceof Error ? error.stack : undefined,
-              }
+              },
             );
-            // Clean up stored exit code even on error
-            if (options.taskRunId) {
-              processExitCodes.delete(options.taskRunId);
-            }
-            shouldTrackExitCode = false;
-            taskRunContext = null;
           }
         })
         .catch((e) => {
           log(
             "ERROR",
-            `Completion detector error for ${options.agentModel}: ${String(e)}`
+            `Completion detector error for ${options.agentModel}: ${String(e)}`,
           );
         });
     } catch (e) {
       log(
         "ERROR",
-        `Failed to start completion detector for ${options.agentModel}: ${String(e)}`
+        `Failed to start completion detector for ${options.agentModel}: ${String(e)}`,
       );
     }
   }
@@ -1171,7 +1136,6 @@ async function createTerminal(
   // Handle process exit
   childProcess.on("exit", (code, signal) => {
     const runtime = Date.now() - processStartTime;
-    const exitCode = code ?? 0;
 
     log("INFO", `Process exited for terminal ${terminalId}`, {
       code,
@@ -1181,21 +1145,6 @@ async function createTerminal(
       command: spawnCommand,
       args: spawnArgs.slice(0, 5), // Log first 5 args for debugging
     });
-
-    if (options.taskRunId) {
-      if (shouldTrackExitCode) {
-        processExitCodes.set(options.taskRunId, exitCode);
-        log(
-          "INFO",
-          `Stored exit code ${exitCode} for task ${options.taskRunId}`
-        );
-      } else if (processExitCodes.delete(options.taskRunId)) {
-        log(
-          "INFO",
-          `Discarded exit code ${exitCode} for task ${options.taskRunId} after workflow cleanup`
-        );
-      }
-    }
   });
 
   childProcess.on("error", (error) => {
@@ -1273,7 +1222,7 @@ if (ENABLE_HEARTBEAT) {
     } else {
       console.log(
         `Worker ${WORKER_ID} heartbeat (main server not connected):`,
-        stats
+        stats,
       );
     }
   }, 30000);
@@ -1285,7 +1234,7 @@ httpServer.listen(WORKER_PORT, () => {
     "INFO",
     `Worker ${WORKER_ID} starting on port ${WORKER_PORT}`,
     undefined,
-    WORKER_ID
+    WORKER_ID,
   );
   log(
     "INFO",
@@ -1294,13 +1243,13 @@ httpServer.listen(WORKER_PORT, () => {
       vscode: "/vscode",
       management: "/management",
     },
-    WORKER_ID
+    WORKER_ID,
   );
   log(
     "INFO",
     "Worker ready, waiting for terminal creation commands via socket.io",
     undefined,
-    WORKER_ID
+    WORKER_ID,
   );
 });
 
@@ -1340,7 +1289,7 @@ setInterval(() => {
           age,
           taskRunId:
             payload && hasTaskRunId(payload) ? payload.taskRunId : undefined,
-        }
+        },
       );
       return false;
     }
@@ -1352,7 +1301,7 @@ setInterval(() => {
     pendingEvents.push(...validEvents);
     log(
       "INFO",
-      `Cleaned up ${originalCount - validEvents.length} old pending events`
+      `Cleaned up ${originalCount - validEvents.length} old pending events`,
     );
   }
 
@@ -1371,7 +1320,7 @@ setInterval(() => {
               payload && hasTaskRunId(payload) ? payload.taskRunId : undefined,
           };
         }),
-      }
+      },
     );
   }
 }, 30000); // Run every 30 seconds

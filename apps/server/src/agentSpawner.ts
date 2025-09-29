@@ -61,10 +61,10 @@ export async function spawnAgent(
     theme?: "dark" | "light" | "system";
     newBranch?: string; // Optional pre-generated branch name
   },
-  teamSlugOrId: string
+  teamSlugOrId: string,
 ): Promise<AgentSpawnResult> {
   try {
-    // Capture the current auth token and header JSON from AsyncLocalStorages so we can
+    // Capture the current auth token and header JSON from AsyncLocalStorage so we can
     // re-enter the auth context inside async event handlers later.
     const capturedAuthToken = getAuthToken();
     const capturedAuthHeaderJson = getAuthHeaderJson();
@@ -75,7 +75,7 @@ export async function spawnAgent(
     serverLogger.info(
       `[AgentSpawner] New Branch: ${newBranch}, Base Branch: ${
         options.branch ?? "(auto)"
-      }`
+      }`,
     );
 
     // Create a task run for this specific agent
@@ -88,7 +88,7 @@ export async function spawnAgent(
         agentName: agent.name,
         newBranch,
         environmentId: options.environmentId,
-      }
+      },
     );
 
     // Fetch the task to get image storage IDs
@@ -113,7 +113,7 @@ export async function spawnAgent(
       const downloadedImages = await Promise.all(
         task.images.map(async (taskImage) => {
           const imageUrl = imageUrlsResult.find(
-            (url) => url.storageId === taskImage.storageId
+            (url) => url.storageId === taskImage.storageId,
           );
           if (imageUrl) {
             // Download image from Convex storage
@@ -127,7 +127,7 @@ export async function spawnAgent(
             };
           }
           return null;
-        })
+        }),
       );
       const filteredImages = downloadedImages.filter((img) => img !== null);
       imagesToProcess = filteredImages as Array<{
@@ -139,10 +139,10 @@ export async function spawnAgent(
 
     if (imagesToProcess.length > 0) {
       serverLogger.info(
-        `[AgentSpawner] Processing ${imagesToProcess.length} images`
+        `[AgentSpawner] Processing ${imagesToProcess.length} images`,
       );
       serverLogger.info(
-        `[AgentSpawner] Original task description: ${options.taskDescription}`
+        `[AgentSpawner] Original task description: ${options.taskDescription}`,
       );
 
       // Create image files and update prompt
@@ -167,19 +167,19 @@ export async function spawnAgent(
           // Escape special regex characters in the filename
           const escapedFileName = image.fileName.replace(
             /[.*+?^${}()|[\]\\]/g,
-            "\\$&"
+            "\\$&",
           );
           processedTaskDescription = processedTaskDescription.replace(
             new RegExp(escapedFileName, "g"),
-            imagePath
+            imagePath,
           );
           if (beforeReplace !== processedTaskDescription) {
             serverLogger.info(
-              `[AgentSpawner] Replaced "${image.fileName}" with "${imagePath}"`
+              `[AgentSpawner] Replaced "${image.fileName}" with "${imagePath}"`,
             );
           } else {
             serverLogger.warn(
-              `[AgentSpawner] Failed to find "${image.fileName}" in prompt text`
+              `[AgentSpawner] Failed to find "${image.fileName}" in prompt text`,
             );
           }
         }
@@ -193,22 +193,22 @@ export async function spawnAgent(
           const beforeReplace = processedTaskDescription;
           const escapedName = nameWithoutExt.replace(
             /[.*+?^${}()|[\]\\]/g,
-            "\\$&"
+            "\\$&",
           );
           processedTaskDescription = processedTaskDescription.replace(
             new RegExp(escapedName, "g"),
-            imagePath
+            imagePath,
           );
           if (beforeReplace !== processedTaskDescription) {
             serverLogger.info(
-              `[AgentSpawner] Replaced "${nameWithoutExt}" with "${imagePath}"`
+              `[AgentSpawner] Replaced "${nameWithoutExt}" with "${imagePath}"`,
             );
           }
         }
       });
 
       serverLogger.info(
-        `[AgentSpawner] Processed task description: ${processedTaskDescription}`
+        `[AgentSpawner] Processed task description: ${processedTaskDescription}`,
       );
     }
 
@@ -243,17 +243,17 @@ export async function spawnAgent(
             };
             serverLogger.info(
               `[AgentSpawner] Injected ${Object.keys(parsed).length} env vars from environment ${String(
-                options.environmentId
-              )}`
+                options.environmentId,
+              )}`,
             );
           }
         }
       } catch (error) {
         serverLogger.error(
           `[AgentSpawner] Failed to load environment env vars for ${String(
-            options.environmentId
+            options.environmentId,
           )}`,
-          error
+          error,
         );
       }
     }
@@ -313,11 +313,11 @@ export async function spawnAgent(
 
     // Build the tmux session command that will be sent via socket.io
     const tmuxSessionName = sanitizeTmuxSessionName(
-      `${agent.name}-${taskRunId}`
+      `${agent.name}-${taskRunId}`,
     );
 
     serverLogger.info(
-      `[AgentSpawner] Building command for agent ${agent.name}:`
+      `[AgentSpawner] Building command for agent ${agent.name}:`,
     );
     serverLogger.info(`  Raw command: ${agent.command}`);
     serverLogger.info(`  Processed args: ${processedArgs.join(" ")}`);
@@ -352,7 +352,7 @@ export async function spawnAgent(
           repoUrl: options.repoUrl!,
           branch: newBranch,
         },
-        teamSlugOrId
+        teamSlugOrId,
       );
 
       // Setup workspace
@@ -377,7 +377,7 @@ export async function spawnAgent(
       worktreePath = workspaceResult.worktreePath;
 
       serverLogger.info(
-        `[AgentSpawner] Creating DockerVSCodeInstance for ${agent.name}`
+        `[AgentSpawner] Creating DockerVSCodeInstance for ${agent.name}`,
       );
       vscodeInstance = new DockerVSCodeInstance({
         workspacePath: worktreePath,
@@ -395,7 +395,7 @@ export async function spawnAgent(
         teamSlugOrId,
         id: taskRunId,
         worktreePath: worktreePath,
-      })
+      }),
     );
 
     // Store the VSCode instance
@@ -408,7 +408,7 @@ export async function spawnAgent(
     const vscodeUrl = vscodeInfo.workspaceUrl;
 
     serverLogger.info(
-      `VSCode instance spawned for agent ${agent.name}: ${vscodeUrl}`
+      `VSCode instance spawned for agent ${agent.name}: ${vscodeUrl}`,
     );
 
     if (options.isCloudMode && vscodeInstance instanceof CmuxVSCodeInstance) {
@@ -418,14 +418,14 @@ export async function spawnAgent(
         .catch((err) =>
           serverLogger.error(
             "[AgentSpawner] setupDevcontainer encountered an error",
-            err
-          )
+            err,
+          ),
         );
     }
 
     // Start file watching for real-time diff updates
     serverLogger.info(
-      `[AgentSpawner] Starting file watch for ${agent.name} at ${worktreePath}`
+      `[AgentSpawner] Starting file watch for ${agent.name} at ${worktreePath}`,
     );
     vscodeInstance.startFileWatch(worktreePath);
 
@@ -433,7 +433,7 @@ export async function spawnAgent(
     vscodeInstance.on("file-changes", async (data) => {
       serverLogger.info(
         `[AgentSpawner] File changes detected for ${agent.name}:`,
-        { changeCount: data.changes.length, taskRunId: data.taskRunId }
+        { changeCount: data.changes.length, taskRunId: data.taskRunId },
       );
     });
 
@@ -442,11 +442,11 @@ export async function spawnAgent(
       try {
         serverLogger.error(
           `[AgentSpawner] Terminal failed for ${agent.name}:`,
-          data
+          data,
         );
         if (data.taskRunId !== taskRunId) {
           serverLogger.warn(
-            `[AgentSpawner] Failure event taskRunId mismatch; ignoring`
+            `[AgentSpawner] Failure event taskRunId mismatch; ignoring`,
           );
           return;
         }
@@ -460,17 +460,17 @@ export async function spawnAgent(
               errorMessage: data.errorMessage || "Terminal failed",
               // WorkerTerminalFailed does not include exitCode in schema; default to 1
               exitCode: 1,
-            })
-          )
+            }),
+          ),
         );
 
         serverLogger.info(
-          `[AgentSpawner] Marked taskRun ${taskRunId} as failed`
+          `[AgentSpawner] Marked taskRun ${taskRunId} as failed`,
         );
       } catch (error) {
         serverLogger.error(
           `[AgentSpawner] Error handling terminal-failed:`,
-          error
+          error,
         );
       }
     });
@@ -506,7 +506,7 @@ export async function spawnAgent(
           startedAt: Date.now(),
           ...(ports ? { ports } : {}),
         },
-      })
+      }),
     );
 
     // Use taskRunId as terminal ID for compatibility
@@ -515,13 +515,13 @@ export async function spawnAgent(
     // Log auth files if any
     if (authFiles.length > 0) {
       serverLogger.info(
-        `[AgentSpawner] Prepared ${authFiles.length} auth files for agent ${agent.name}`
+        `[AgentSpawner] Prepared ${authFiles.length} auth files for agent ${agent.name}`,
       );
     }
 
     // After VSCode instance is started, create the terminal with tmux session
     serverLogger.info(
-      `[AgentSpawner] Preparing to send terminal creation command for ${agent.name}`
+      `[AgentSpawner] Preparing to send terminal creation command for ${agent.name}`,
     );
 
     // Wait for worker connection if not already connected
@@ -530,7 +530,7 @@ export async function spawnAgent(
       await new Promise<void>((resolve) => {
         const timeout = setTimeout(() => {
           serverLogger.error(
-            `[AgentSpawner] Timeout waiting for worker connection`
+            `[AgentSpawner] Timeout waiting for worker connection`,
           );
           resolve();
         }, 30000); // 30 second timeout
@@ -546,7 +546,7 @@ export async function spawnAgent(
     const workerSocket = vscodeInstance.getWorkerSocket();
     if (!workerSocket) {
       serverLogger.error(
-        `[AgentSpawner] No worker socket available for ${agent.name}`
+        `[AgentSpawner] No worker socket available for ${agent.name}`,
       );
       return {
         agentName: agent.name,
@@ -582,7 +582,7 @@ export async function spawnAgent(
     // Log the actual command for Codex agents to debug notify command
     if (agent.name.toLowerCase().includes("codex")) {
       serverLogger.info(
-        `[AgentSpawner] Codex command string: ${commandString}`
+        `[AgentSpawner] Codex command string: ${commandString}`,
       );
       serverLogger.info(`[AgentSpawner] Codex raw args:`, actualArgs);
     }
@@ -631,7 +631,7 @@ export async function spawnAgent(
     };
 
     serverLogger.info(
-      `[AgentSpawner] Sending terminal creation command at ${new Date().toISOString()}:`
+      `[AgentSpawner] Sending terminal creation command at ${new Date().toISOString()}:`,
     );
     serverLogger.info(`  Terminal ID: ${tmuxSessionName}`);
     // serverLogger.info(
@@ -651,7 +651,7 @@ export async function spawnAgent(
     // Create image files if any
     if (imageFiles.length > 0) {
       serverLogger.info(
-        `[AgentSpawner] Creating ${imageFiles.length} image files...`
+        `[AgentSpawner] Creating ${imageFiles.length} image files...`,
       );
 
       // First create the prompt directory
@@ -674,27 +674,27 @@ export async function spawnAgent(
                 ) {
                   serverLogger.error(
                     "Socket timeout while creating prompt directory",
-                    timeoutError
+                    timeoutError,
                   );
                 } else {
                   serverLogger.error(
                     "Failed to create prompt directory",
-                    timeoutError
+                    timeoutError,
                   );
                 }
               } else if (result?.error) {
                 serverLogger.error(
                   "Failed to create prompt directory",
-                  result.error
+                  result.error,
                 );
               }
               resolve();
-            }
+            },
           );
         } catch (err) {
           serverLogger.error(
             "Error emitting command to create prompt directory",
-            err
+            err,
           );
           resolve();
         }
@@ -737,12 +737,12 @@ export async function spawnAgent(
 
           const result = await response.json();
           serverLogger.info(
-            `[AgentSpawner] Successfully uploaded image: ${result.path} (${result.size} bytes)`
+            `[AgentSpawner] Successfully uploaded image: ${result.path} (${result.size} bytes)`,
           );
         } catch (error) {
           serverLogger.error(
             `[AgentSpawner] Failed to upload image ${imageFile.path}:`,
-            error
+            error,
           );
         }
       }
@@ -750,18 +750,18 @@ export async function spawnAgent(
 
     // Send the terminal creation command
     serverLogger.info(
-      `[AgentSpawner] About to emit worker:create-terminal at ${new Date().toISOString()}`
+      `[AgentSpawner] About to emit worker:create-terminal at ${new Date().toISOString()}`,
     );
     serverLogger.info(
       `[AgentSpawner] Socket connected:`,
-      workerSocket.connected
+      workerSocket.connected,
     );
     serverLogger.info(`[AgentSpawner] Socket id:`, workerSocket.id);
 
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         serverLogger.error(
-          `[AgentSpawner] Timeout waiting for terminal creation response after 30s`
+          `[AgentSpawner] Timeout waiting for terminal creation response after 30s`,
         );
         reject(new Error("Timeout waiting for terminal creation"));
       }, 30000);
@@ -773,7 +773,7 @@ export async function spawnAgent(
           clearTimeout(timeout);
           serverLogger.info(
             `[AgentSpawner] Got response from worker:create-terminal at ${new Date().toISOString()}:`,
-            result
+            result,
           );
           if (result.error) {
             reject(result.error);
@@ -782,10 +782,10 @@ export async function spawnAgent(
             serverLogger.info("Terminal created successfully", result);
             resolve(result.data);
           }
-        }
+        },
       );
       serverLogger.info(
-        `[AgentSpawner] Emitted worker:create-terminal at ${new Date().toISOString()}`
+        `[AgentSpawner] Emitted worker:create-terminal at ${new Date().toISOString()}`,
       );
     });
 
@@ -827,7 +827,7 @@ export async function spawnAllAgents(
     }>;
     theme?: "dark" | "light" | "system";
   },
-  teamSlugOrId: string
+  teamSlugOrId: string,
 ): Promise<AgentSpawnResult[]> {
   // If selectedAgents is provided, map each entry to an AgentConfig to preserve duplicates
   const agentsToSpawn = options.selectedAgents
@@ -842,11 +842,11 @@ export async function spawnAllAgents(
     : await generateUniqueBranchNames(
         options.taskDescription,
         agentsToSpawn.length,
-        teamSlugOrId
+        teamSlugOrId,
       );
 
   serverLogger.info(
-    `[AgentSpawner] Generated ${branchNames.length} unique branch names for agents`
+    `[AgentSpawner] Generated ${branchNames.length} unique branch names for agents`,
   );
 
   // Spawn all agents in parallel with their pre-generated branch names
@@ -859,9 +859,9 @@ export async function spawnAllAgents(
           ...options,
           newBranch: branchNames[index],
         },
-        teamSlugOrId
-      )
-    )
+        teamSlugOrId,
+      ),
+    ),
   );
 
   return results;

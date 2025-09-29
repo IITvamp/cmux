@@ -12,7 +12,7 @@ import {
   detectGitRepoPath,
   ensureBranchesAvailable,
   getCurrentBranch,
-  runGitCommandSafe,
+  runGitCommand,
 } from "./git";
 import { createPullRequestIfEnabled } from "./pullRequest";
 import {
@@ -116,15 +116,22 @@ export async function handleWorkerTaskCompletion(
 
   const hasGitRepo = existsSync(join(detectedGitPath, ".git"));
   const hasProjectInfo = Boolean(info?.task?.projectFullName);
-  const shouldPerformGitOps = hasProjectInfo && hasGitRepo;
 
-  if (!shouldPerformGitOps) {
-    log("INFO", "Skipping git operations", {
+  log("INFO", "[AUTOCOMMIT] Git operations check", {
+    taskRunId,
+    hasGitRepo,
+    hasProjectInfo,
+    projectFullName: info?.task?.projectFullName,
+    detectedGitPath,
+    workspaceRoot: WORKSPACE_ROOT,
+    gitDirExists: existsSync(join(detectedGitPath, ".git")),
+    gitDirPath: join(detectedGitPath, ".git"),
+  });
+
+  if (!hasGitRepo) {
+    log("ERROR", "[AUTOCOMMIT] No git repository found, cannot autocommit", {
       taskRunId,
-      hasProjectFullName: hasProjectInfo,
-      hasGitRepo,
-      gitPath: detectedGitPath,
-      reason: !hasProjectInfo ? "environment-mode" : "no-git-repo",
+      detectedGitPath,
     });
   } else {
     const promptForCommit =
@@ -145,17 +152,14 @@ export async function handleWorkerTaskCompletion(
     if (!branchForCommit) {
       branchForCommit = await getCurrentBranch();
       if (!branchForCommit) {
-        const headCheck = await runGitCommandSafe(
-          "git symbolic-ref -q HEAD",
-          true,
-        );
+        const headCheck = await runGitCommand("git symbolic-ref -q HEAD", true);
         if (!headCheck || headCheck.stdout.includes("fatal")) {
           log("WARN", "Git HEAD is detached or not properly initialized", {
             taskRunId,
             headStatus: headCheck?.stderr || "unknown",
           });
           if (info?.taskRun?.newBranch) {
-            const createBranch = await runGitCommandSafe(
+            const createBranch = await runGitCommand(
               `git checkout -b ${info.taskRun.newBranch}`,
               true,
             );
@@ -179,31 +183,54 @@ export async function handleWorkerTaskCompletion(
       });
     }
 
-    if (branchForCommit && info?.task?.projectFullName) {
-      const remoteUrl = `https://github.com/${info.task.projectFullName}.git`;
+    log("INFO", "[AUTOCOMMIT] Preparing to autocommit and push", {
+      taskRunId,
+      branchForCommit,
+      projectFullName: info?.task?.projectFullName,
+      hasInfo: Boolean(info),
+      hasTask: Boolean(info?.task),
+      hasTaskRun: Boolean(info?.taskRun),
+      taskRunNewBranch: info?.taskRun?.newBranch,
+    });
+
+    if (!branchForCommit) {
+      log("ERROR", "[AUTOCOMMIT] Unable to resolve branch name", {
+        taskRunId,
+        taskRunNewBranch: info?.taskRun?.newBranch,
+      });
+    } else {
+      const remoteUrl = info?.task?.projectFullName
+        ? `https://github.com/${info.task.projectFullName}.git`
+        : undefined;
+
+      log("INFO", "[AUTOCOMMIT] Starting autoCommitAndPush", {
+        taskRunId,
+        branchForCommit,
+        remoteUrl: remoteUrl || "using existing remote",
+        commitMessage,
+        hasGitRepo,
+        gitRepoPath: detectedGitPath,
+      });
+
       try {
         await autoCommitAndPush({
           branchName: branchForCommit,
           commitMessage,
           remoteUrl,
         });
+        log("INFO", "[AUTOCOMMIT] autoCommitAndPush completed successfully", {
+          taskRunId,
+          branch: branchForCommit,
+        });
       } catch (error) {
-        log("ERROR", "Worker auto-commit failed", {
+        log("ERROR", "[AUTOCOMMIT] Worker auto-commit failed", {
           taskRunId,
           branch: branchForCommit,
           error,
+          errorMessage: error instanceof Error ? error.message : String(error),
+          errorStack: error instanceof Error ? error.stack : undefined,
         });
       }
-    } else {
-      log("ERROR", "Unable to resolve branch for auto-commit", {
-        taskRunId,
-        taskInfo: {
-          hasTaskRun: Boolean(info?.taskRun),
-          newBranch: info?.taskRun?.newBranch,
-          hasTask: Boolean(info?.task),
-          projectFullName: info?.task?.projectFullName,
-        },
-      });
     }
   }
 
