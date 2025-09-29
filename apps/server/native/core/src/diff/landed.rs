@@ -297,6 +297,7 @@ pub fn landed_diff(opts: GitDiffLandedOptions) -> Result<Vec<DiffEntry>> {
     );
     #[cfg(debug_assertions)]
     println!("[native.landed] result entries={}", d.len());
+    // Note: d is already sorted by diff_refs
     Ok(d)
   } else {
     let _d_total = t_total.elapsed();

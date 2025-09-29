@@ -197,5 +197,11 @@ pub fn diff_workspace(opts: GitDiffWorkspaceOptions) -> Result<Vec<DiffEntry>> {
     out.push(e);
   }
 
+  // Stable sort by filePath (case-insensitive)
+  out.sort_by(|a, b| {
+    a.filePath.to_lowercase().cmp(&b.filePath.to_lowercase())
+      .then_with(|| a.filePath.cmp(&b.filePath))
+  });
+
   Ok(out)
 }
