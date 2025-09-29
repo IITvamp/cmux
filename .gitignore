@@ -25,6 +25,7 @@ out
 *.sln
 *.sw?
 .tanstack
+data/codemirror-merge/
 
 .env
 .env.production
