@@ -1,4 +1,4 @@
-import { validateExposedPorts } from "@cmux/shared/utils/validate-exposed-ports";
+import { validateExposedPorts } from "../../shared/src/convex-safe";
 import { v } from "convex/values";
 import { resolveTeamIdLoose } from "../_shared/team";
 import { authMutation, authQuery } from "./users/utils";
