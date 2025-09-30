@@ -31,6 +31,12 @@ interface CmuxLogsAPI {
   copyAll: () => Promise<{ ok: boolean }>;
 }
 
+interface CmuxStorageAPI {
+  getItem: (key: string) => string | null;
+  setItem: (key: string, value: string) => boolean;
+  removeItem: (key: string) => boolean;
+}
+
 interface CmuxRectangle {
   x: number;
   y: number;
@@ -105,6 +111,7 @@ interface CmuxAPI {
   autoUpdate: {
     install: () => Promise<{ ok: boolean; reason?: string }>;
   };
+  storage: CmuxStorageAPI;
 }
 
 declare global {

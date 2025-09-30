@@ -37,6 +37,11 @@ import {
   appendLogWithRotation,
   type LogRotationOptions,
 } from "./log-management/log-rotation";
+import {
+  getPersistentItem,
+  removePersistentItem,
+  setPersistentItem,
+} from "./persistent-storage";
 const { autoUpdater } = electronUpdater;
 
 import util from "node:util";
@@ -290,6 +295,51 @@ function registerAutoUpdateIpcHandlers(): void {
       mainWarn("Failed to trigger quitAndInstall", error);
       const err = error instanceof Error ? error : new Error(String(error));
       throw err;
+    }
+  });
+}
+
+function registerStorageIpcHandlers(): void {
+  ipcMain.on("cmux:storage:get", (event, key) => {
+    if (typeof key !== "string") {
+      event.returnValue = null;
+      return;
+    }
+    try {
+      event.returnValue = getPersistentItem(key);
+    } catch (error) {
+      mainWarn("Failed to read persistent storage", { key, error });
+      event.returnValue = null;
+    }
+  });
+
+  ipcMain.on("cmux:storage:set", (event, key, value) => {
+    if (typeof key !== "string" || typeof value !== "string") {
+      mainWarn("Ignoring storage set with invalid arguments", { key, value });
+      event.returnValue = false;
+      return;
+    }
+    try {
+      setPersistentItem(key, value);
+      event.returnValue = true;
+    } catch (error) {
+      mainWarn("Failed to write persistent storage", { key, error });
+      event.returnValue = false;
+    }
+  });
+
+  ipcMain.on("cmux:storage:remove", (event, key) => {
+    if (typeof key !== "string") {
+      mainWarn("Ignoring storage remove with invalid key", { key });
+      event.returnValue = false;
+      return;
+    }
+    try {
+      removePersistentItem(key);
+      event.returnValue = true;
+    } catch (error) {
+      mainWarn("Failed to remove persistent storage key", { key, error });
+      event.returnValue = false;
     }
   });
 }
@@ -560,6 +610,7 @@ app.whenReady().then(async () => {
   setupConsoleFileMirrors();
   registerLogIpcHandlers();
   registerAutoUpdateIpcHandlers();
+  registerStorageIpcHandlers();
   initCmdK({
     getMainWindow: () => mainWindow,
     logger: {
