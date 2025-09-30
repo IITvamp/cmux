@@ -281,6 +281,34 @@ export const workerFinalize = internalMutation({
       throw new Error("Task not found or unauthorized");
     }
 
+    const existingEvaluation = await ctx.db
+      .query("crownEvaluations")
+      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .filter(
+        (q) =>
+          q.eq(q.field("teamId"), args.teamId) &&
+          q.eq(q.field("userId"), args.userId),
+      )
+      .first();
+
+    if (existingEvaluation) {
+      throw new Error("Crown evaluation already exists for this task");
+    }
+
+    const now = Date.now();
+
+    await ctx.db.insert("crownEvaluations", {
+      taskId: args.taskId,
+      evaluatedAt: now,
+      winnerRunId: args.winnerRunId,
+      candidateRunIds: args.candidateRunIds,
+      evaluationPrompt: args.evaluationPrompt,
+      evaluationResponse: args.evaluationResponse,
+      createdAt: now,
+      userId: args.userId,
+      teamId: args.teamId,
+    });
+
     const runsForTeam = await ctx.db
       .query("taskRuns")
       .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
@@ -295,8 +323,6 @@ export const workerFinalize = internalMutation({
     if (!winnerRun) {
       throw new Error("Winner run not found");
     }
-
-    const now = Date.now();
 
     await ctx.db.patch(args.winnerRunId, {
       isCrowned: true,
@@ -331,18 +357,6 @@ export const workerFinalize = internalMutation({
       ...(args.pullRequestDescription
         ? { pullRequestDescription: args.pullRequestDescription }
         : {}),
-    });
-
-    await ctx.db.insert("crownEvaluations", {
-      taskId: args.taskId,
-      evaluatedAt: now,
-      winnerRunId: args.winnerRunId,
-      candidateRunIds: args.candidateRunIds,
-      evaluationPrompt: args.evaluationPrompt,
-      evaluationResponse: args.evaluationResponse,
-      createdAt: now,
-      userId: args.userId,
-      teamId: args.teamId,
     });
 
     return args.winnerRunId;

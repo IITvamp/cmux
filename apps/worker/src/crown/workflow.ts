@@ -66,7 +66,7 @@ export async function handleWorkerTaskCompletion(
     agentModel,
     elapsedMs,
     exitCode,
-    convexUrl: process.env.NEXT_PUBLIC_CONVEX_URL,
+    convexUrl,
   });
 
   const runContext: WorkerRunContext = {
@@ -97,7 +97,7 @@ export async function handleWorkerTaskCompletion(
       {
         taskRunId,
         info,
-        convexUrl: baseUrlOverride || process.env.NEXT_PUBLIC_CONVEX_URL,
+        convexUrl: baseUrlOverride,
       },
     );
   } else if (!info.ok || !info.taskRun) {
@@ -246,391 +246,403 @@ export async function handleWorkerTaskCompletion(
   runContext.taskId = realTaskId;
   runContext.teamId = completedRunInfo.teamId ?? runContext.teamId;
 
-  async function startCrownEvaluation(currentTaskId: string) {
-    log("INFO", "Starting crown evaluation attempt", {
+  await startCrownEvaluation({
+    taskRunId,
+    currentTaskId: realTaskId,
+    runContext,
+    baseUrlOverride,
+    agentModel,
+    elapsedMs,
+  });
+}
+
+async function startCrownEvaluation({
+  taskRunId,
+  currentTaskId,
+  runContext,
+  baseUrlOverride,
+  agentModel,
+  elapsedMs,
+}: {
+  taskRunId: string;
+  currentTaskId: string;
+  runContext: WorkerRunContext;
+  baseUrlOverride?: string;
+  agentModel?: string;
+  elapsedMs?: number;
+}): Promise<void> {
+  log("INFO", "Starting crown evaluation attempt", {
+    taskRunId,
+    taskId: currentTaskId,
+  });
+
+  let allComplete = false;
+  let completionState: WorkerAllRunsCompleteResponse | null = null;
+
+  completionState = await convexRequest<WorkerAllRunsCompleteResponse>(
+    "/api/crown/check",
+    runContext.token,
+    {
+      taskId: currentTaskId,
+      checkType: "all-complete",
+    },
+    baseUrlOverride,
+  );
+
+  if (!completionState?.ok) {
+    log("ERROR", "Failed to verify task run completion state", {
       taskRunId,
       taskId: currentTaskId,
     });
+    return;
+  }
 
-    const maxRetries = 3;
-    let allComplete = false;
-    let completionState: WorkerAllRunsCompleteResponse | null = null;
+  log("INFO", "Task completion state check", {
+    taskRunId,
+    taskId: currentTaskId,
+    allComplete: completionState.allComplete,
+    totalStatuses: completionState.statuses.length,
+    completedCount: completionState.statuses.filter(
+      (status) => status.status === "completed",
+    ).length,
+  });
 
-    for (let attempt = 0; attempt < maxRetries; attempt += 1) {
-      completionState = await convexRequest<WorkerAllRunsCompleteResponse>(
-        "/api/crown/check",
-        runContext.token,
-        {
-          taskId: currentTaskId,
-          checkType: "all-complete",
-        },
-        baseUrlOverride,
-      );
+  if (completionState.allComplete) {
+    allComplete = true;
+  }
 
-      if (!completionState?.ok) {
-        log("ERROR", "Failed to verify task run completion state", {
-          taskRunId,
-          taskId: currentTaskId,
-          attempt,
-        });
-        return;
-      }
-
-      log("INFO", "Task completion state check", {
-        taskRunId,
-        taskId: currentTaskId,
-        attempt,
-        allComplete: completionState.allComplete,
-        totalStatuses: completionState.statuses.length,
-        completedCount: completionState.statuses.filter(
-          (status) => status.status === "completed",
-        ).length,
-      });
-
-      if (completionState.allComplete) {
-        allComplete = true;
-        break;
-      }
-
-      if (attempt < maxRetries - 1) {
-        log("INFO", "Not all runs complete yet, waiting before retry", {
-          taskRunId,
-          attempt: attempt + 1,
-          maxRetries,
-        });
-      }
-    }
-
-    if (!allComplete || !completionState) {
-      log(
-        "INFO",
-        "Task runs still pending after retries; deferring crown evaluation",
-        {
-          taskRunId,
-          taskId: currentTaskId,
-          statuses: completionState?.statuses || [],
-        },
-      );
-      return;
-    }
-
-    log("INFO", "All task runs complete; proceeding with crown evaluation", {
-      taskRunId,
-      taskId: currentTaskId,
-    });
-
-    const crownData = await convexRequest<CrownWorkerCheckResponse>(
-      "/api/crown/check",
-      runContext.token,
+  if (!allComplete || !completionState) {
+    log(
+      "INFO",
+      "Task runs still pending after retries; deferring crown evaluation",
       {
-        taskId: currentTaskId,
-      },
-      baseUrlOverride,
-    );
-
-    if (!crownData?.ok) {
-      return;
-    }
-
-    if (!crownData.task) {
-      log("ERROR", "Missing task in crown check response", {
         taskRunId,
         taskId: currentTaskId,
-      });
-      return;
-    }
-
-    if (crownData.existingEvaluation) {
-      log(
-        "INFO",
-        "Crown evaluation already exists (another worker completed it)",
-        {
-          taskRunId,
-          winnerRunId: crownData.existingEvaluation.winnerRunId,
-          evaluatedAt: new Date(
-            crownData.existingEvaluation.evaluatedAt,
-          ).toISOString(),
-        },
-      );
-      return;
-    }
-
-    const completedRuns = crownData.runs.filter(
-      (run) => run.status === "completed",
+        statuses: completionState?.statuses || [],
+      },
     );
-    const totalRuns = crownData.runs.length;
-    const allRunsCompleted =
-      totalRuns > 0 && completedRuns.length === totalRuns;
+    return;
+  }
 
-    log("INFO", "Crown readiness status", {
+  log("INFO", "All task runs complete; checking if evaluation needed", {
+    taskRunId,
+    taskId: currentTaskId,
+  });
+
+  const crownData = await convexRequest<CrownWorkerCheckResponse>(
+    "/api/crown/check",
+    runContext.token,
+    {
+      taskId: currentTaskId,
+    },
+    baseUrlOverride,
+  );
+
+  if (!crownData?.ok) {
+    return;
+  }
+
+  if (!crownData.task) {
+    log("ERROR", "Missing task in crown check response", {
       taskRunId,
       taskId: currentTaskId,
-      totalRuns,
-      completedRuns: completedRuns.length,
-      allRunsCompleted,
     });
+    return;
+  }
 
-    if (!allRunsCompleted) {
-      log("INFO", "Not all task runs completed; deferring crown evaluation", {
+  if (crownData.existingEvaluation) {
+    log(
+      "INFO",
+      "Crown evaluation already exists (another worker completed it)",
+      {
         taskRunId,
-        taskId: currentTaskId,
-        runStatuses: crownData.runs.map((run) => ({
-          id: run.id,
-          status: run.status,
-        })),
+        winnerRunId: crownData.existingEvaluation.winnerRunId,
+        evaluatedAt: new Date(
+          crownData.existingEvaluation.evaluatedAt,
+        ).toISOString(),
+      },
+    );
+    return;
+  }
+
+  if (!crownData.shouldEvaluate && !crownData.singleRunWinnerId) {
+    log("INFO", "Evaluation not needed at this time", {
+      taskRunId,
+      taskId: currentTaskId,
+    });
+    return;
+  }
+
+  const completedRuns = crownData.runs.filter(
+    (run) => run.status === "completed",
+  );
+  const totalRuns = crownData.runs.length;
+  const allRunsCompleted = totalRuns > 0 && completedRuns.length === totalRuns;
+
+  log("INFO", "Crown readiness status", {
+    taskRunId,
+    taskId: currentTaskId,
+    totalRuns,
+    completedRuns: completedRuns.length,
+    allRunsCompleted,
+  });
+
+  if (!allRunsCompleted) {
+    log("INFO", "Not all task runs completed; deferring crown evaluation", {
+      taskRunId,
+      taskId: currentTaskId,
+      runStatuses: crownData.runs.map((run) => ({
+        id: run.id,
+        status: run.status,
+      })),
+    });
+    return;
+  }
+
+  const baseBranch = crownData.task.baseBranch ?? "main";
+
+  if (crownData.singleRunWinnerId) {
+    if (crownData.singleRunWinnerId !== taskRunId) {
+      log("INFO", "Single-run winner already handled by another run", {
+        taskRunId,
+        winnerRunId: crownData.singleRunWinnerId,
       });
       return;
     }
 
-    const baseBranch = crownData.task.baseBranch ?? "main";
+    const singleRun = crownData.runs.find((run) => run.id === taskRunId);
+    if (!singleRun) {
+      log("ERROR", "Single-run entry missing during crown", { taskRunId });
+      return;
+    }
 
-    if (crownData.singleRunWinnerId) {
-      if (crownData.singleRunWinnerId !== taskRunId) {
-        log("INFO", "Single-run winner already handled by another run", {
-          taskRunId,
-          winnerRunId: crownData.singleRunWinnerId,
-        });
-        return;
-      }
+    const gitDiff = await collectDiffForRun(baseBranch, singleRun.newBranch);
 
-      const singleRun = crownData.runs.find((run) => run.id === taskRunId);
-      if (!singleRun) {
-        log("ERROR", "Single-run entry missing during crown", { taskRunId });
-        return;
-      }
+    log("INFO", "Built crown candidate", {
+      runId: singleRun.id,
+      branch: singleRun.newBranch,
+    });
 
-      const gitDiff = await collectDiffForRun(baseBranch, singleRun.newBranch);
+    const candidate: CandidateData = {
+      runId: singleRun.id,
+      agentName: singleRun.agentName ?? "unknown agent",
+      gitDiff,
+      newBranch: singleRun.newBranch,
+    };
 
-      log("INFO", "Built crown candidate", {
-        runId: singleRun.id,
-        branch: singleRun.newBranch,
-      });
-
-      const candidate: CandidateData = {
-        runId: singleRun.id,
-        agentName: singleRun.agentName ?? "unknown agent",
-        gitDiff,
-        newBranch: singleRun.newBranch,
-      };
-
-      const branchesReady = await ensureBranchesAvailable(
-        [{ id: candidate.runId, newBranch: candidate.newBranch }],
-        baseBranch,
-      );
-      if (!branchesReady) {
-        log("WARN", "Branches not ready for single-run crown; continuing", {
-          taskRunId,
-          elapsedMs,
-        });
-        return;
-      }
-
-      // For single run, skip evaluation and go straight to finalization
-      log("INFO", "Single run detected, skipping evaluation", {
+    const branchesReady = await ensureBranchesAvailable(
+      [{ id: candidate.runId, newBranch: candidate.newBranch }],
+      baseBranch,
+    );
+    if (!branchesReady) {
+      log("WARN", "Branches not ready for single-run crown; continuing", {
         taskRunId,
-        runId: candidate.runId,
-        agentName: candidate.agentName,
-      });
-
-      const summarizationResponse =
-        await convexRequest<CrownSummarizationResponse>(
-          "/api/crown/summarize",
-          runContext.token,
-          {
-            prompt: crownData.task?.text || "Task description not available",
-            gitDiff: candidate.gitDiff,
-            teamSlugOrId: runContext.teamId,
-          },
-          baseUrlOverride,
-        );
-
-      const summary = summarizationResponse?.summary
-        ? summarizationResponse.summary.slice(0, 8000)
-        : undefined;
-
-      log("INFO", "Single-run summarization response", {
-        taskRunId,
-        summaryPreview: summary?.slice(0, 120),
-      });
-
-      await convexRequest(
-        "/api/crown/finalize",
-        runContext.token,
-        {
-          taskId: crownData.taskId,
-          winnerRunId: candidate.runId,
-          reason: "Single run automatically selected (no competition)",
-          evaluationPrompt: "Single run - no evaluation needed",
-          evaluationResponse: JSON.stringify({
-            winner: 0,
-            reason: "Single run - no competition",
-          }),
-          candidateRunIds: [candidate.runId],
-          summary,
-        },
-        baseUrlOverride,
-      );
-
-      log("INFO", "Crowned task with single-run winner", {
-        taskId: crownData.taskId,
-        winnerRunId: candidate.runId,
-        agentModel: agentModel ?? runContext.agentModel,
         elapsedMs,
       });
       return;
     }
 
-    const completedRunsWithDiff = await Promise.all(
-      completedRuns.map(async (run) => {
-        const gitDiff = await collectDiffForRun(baseBranch, run.newBranch);
-        log("INFO", "Built crown candidate", {
-          runId: run.id,
-          branch: run.newBranch,
-        });
-        return {
-          runId: run.id,
-          agentName: run.agentName ?? "unknown agent",
-          gitDiff,
-          newBranch: run.newBranch,
-        } satisfies CandidateData;
-      }),
-    );
-
-    const candidates = completedRunsWithDiff.filter(
-      (candidate): candidate is CandidateData => Boolean(candidate),
-    );
-
-    if (candidates.length === 0) {
-      log("ERROR", "No candidates available for crown evaluation", {
-        taskRunId,
-      });
-      return;
-    }
-
-    if (!runContext.teamId) {
-      log("ERROR", "Missing teamId for crown evaluation", { taskRunId });
-      return;
-    }
-
-    if (!crownData.task?.text) {
-      log("ERROR", "Missing task text for crown evaluation", {
-        taskRunId,
-        hasTask: !!crownData.task,
-        hasText: !!crownData.task?.text,
-      });
-      return;
-    }
-
-    // Extract task text after validation for type safety
-    const promptText = crownData.task.text;
-
-    log("INFO", "Preparing crown evaluation request", {
+    log("INFO", "Single run detected, skipping evaluation", {
       taskRunId,
-      hasPrompt: true,
-      promptPreview: promptText.slice(0, 100),
-      candidatesCount: candidates.length,
-      teamId: runContext.teamId,
+      runId: candidate.runId,
+      agentName: candidate.agentName,
     });
 
-    const evaluationResponse = await convexRequest<CrownEvaluationResponse>(
-      "/api/crown/evaluate-agents",
-      runContext.token,
-      {
-        prompt: promptText,
-        candidates,
-        teamSlugOrId: runContext.teamId,
-      },
-      baseUrlOverride,
-    );
+    const summarizationResponse =
+      await convexRequest<CrownSummarizationResponse>(
+        "/api/crown/summarize",
+        runContext.token,
+        {
+          prompt: crownData.task?.text || "Task description not available",
+          gitDiff: candidate.gitDiff,
+          teamSlugOrId: runContext.teamId,
+        },
+        baseUrlOverride,
+      );
 
-    if (!evaluationResponse) {
-      log("ERROR", "Crown evaluation response missing", {
-        taskRunId,
-      });
-      return;
-    }
-
-    log("INFO", "Crown evaluation response", {
-      taskRunId,
-      winner: evaluationResponse.winner,
-      reason: evaluationResponse.reason,
-    });
-
-    const winnerIndex =
-      typeof evaluationResponse.winner === "number"
-        ? evaluationResponse.winner
-        : 0;
-    const winnerCandidate = candidates[winnerIndex] ?? candidates[0];
-    if (!winnerCandidate) {
-      log("ERROR", "Unable to determine crown winner", {
-        taskRunId,
-        winnerIndex,
-      });
-      return;
-    }
-
-    const summaryResponse = await convexRequest<CrownSummarizationResponse>(
-      "/api/crown/summarize",
-      runContext.token,
-      {
-        prompt: promptText,
-        gitDiff: winnerCandidate.gitDiff,
-        teamSlugOrId: runContext.teamId,
-      },
-      baseUrlOverride,
-    );
-
-    log("INFO", "Crown summarization response", {
-      taskRunId,
-      summaryPreview: summaryResponse?.summary?.slice(0, 120),
-    });
-
-    const summary = summaryResponse?.summary
-      ? summaryResponse.summary.slice(0, 8000)
+    const summary = summarizationResponse?.summary
+      ? summarizationResponse.summary.slice(0, 8000)
       : undefined;
 
-    const prMetadata = await createPullRequest({
-      check: crownData,
-      winner: winnerCandidate,
-      summary,
-      context: runContext,
+    log("INFO", "Single-run summarization response", {
+      taskRunId,
+      summaryPreview: summary?.slice(0, 120),
     });
-
-    const reason =
-      evaluationResponse.reason || `Selected ${winnerCandidate.agentName}`;
 
     await convexRequest(
       "/api/crown/finalize",
       runContext.token,
       {
         taskId: crownData.taskId,
-        winnerRunId: winnerCandidate.runId,
-        reason,
-        evaluationPrompt: `Task: ${promptText}\nCandidates: ${JSON.stringify(candidates)}`,
-        evaluationResponse: JSON.stringify(
-          evaluationResponse ?? {
-            winner: candidates.indexOf(winnerCandidate),
-            reason,
-            fallback: true,
-          },
-        ),
-        candidateRunIds: candidates.map((candidate) => candidate.runId),
+        winnerRunId: candidate.runId,
+        reason: "Single run automatically selected (no competition)",
+        evaluationPrompt: "Single run - no evaluation needed",
+        evaluationResponse: JSON.stringify({
+          winner: 0,
+          reason: "Single run - no competition",
+        }),
+        candidateRunIds: [candidate.runId],
         summary,
-        pullRequest: prMetadata?.pullRequest,
-        pullRequestTitle: prMetadata?.title,
-        pullRequestDescription: prMetadata?.description,
       },
       baseUrlOverride,
     );
 
-    log("INFO", "Crowned task after evaluation", {
+    log("INFO", "Crowned task with single-run winner", {
       taskId: crownData.taskId,
-      winnerRunId: winnerCandidate.runId,
-      winnerAgent: winnerCandidate.agentName,
+      winnerRunId: candidate.runId,
       agentModel: agentModel ?? runContext.agentModel,
       elapsedMs,
     });
+    return;
   }
 
-  await startCrownEvaluation(realTaskId);
+  const completedRunsWithDiff = await Promise.all(
+    completedRuns.map(async (run) => {
+      const gitDiff = await collectDiffForRun(baseBranch, run.newBranch);
+      log("INFO", "Built crown candidate", {
+        runId: run.id,
+        branch: run.newBranch,
+      });
+      return {
+        runId: run.id,
+        agentName: run.agentName ?? "unknown agent",
+        gitDiff,
+        newBranch: run.newBranch,
+      } satisfies CandidateData;
+    }),
+  );
+
+  const candidates = completedRunsWithDiff.filter(
+    (candidate): candidate is CandidateData => Boolean(candidate),
+  );
+
+  if (candidates.length === 0) {
+    log("ERROR", "No candidates available for crown evaluation", {
+      taskRunId,
+    });
+    return;
+  }
+
+  if (!runContext.teamId) {
+    log("ERROR", "Missing teamId for crown evaluation", { taskRunId });
+    return;
+  }
+
+  if (!crownData.task?.text) {
+    log("ERROR", "Missing task text for crown evaluation", {
+      taskRunId,
+      hasTask: !!crownData.task,
+      hasText: !!crownData.task?.text,
+    });
+    return;
+  }
+
+  const promptText = crownData.task.text;
+
+  log("INFO", "Preparing crown evaluation request", {
+    taskRunId,
+    hasPrompt: true,
+    promptPreview: promptText.slice(0, 100),
+    candidatesCount: candidates.length,
+    teamId: runContext.teamId,
+  });
+
+  const evaluationResponse = await convexRequest<CrownEvaluationResponse>(
+    "/api/crown/evaluate-agents",
+    runContext.token,
+    {
+      prompt: promptText,
+      candidates,
+      teamSlugOrId: runContext.teamId,
+    },
+    baseUrlOverride,
+  );
+
+  if (!evaluationResponse) {
+    log("ERROR", "Crown evaluation response missing", {
+      taskRunId,
+    });
+    return;
+  }
+
+  log("INFO", "Crown evaluation response", {
+    taskRunId,
+    winner: evaluationResponse.winner,
+    reason: evaluationResponse.reason,
+  });
+
+  const winnerIndex =
+    typeof evaluationResponse.winner === "number"
+      ? evaluationResponse.winner
+      : 0;
+  const winnerCandidate = candidates[winnerIndex] ?? candidates[0];
+  if (!winnerCandidate) {
+    log("ERROR", "Unable to determine crown winner", {
+      taskRunId,
+      winnerIndex,
+    });
+    return;
+  }
+
+  const summaryResponse = await convexRequest<CrownSummarizationResponse>(
+    "/api/crown/summarize",
+    runContext.token,
+    {
+      prompt: promptText,
+      gitDiff: winnerCandidate.gitDiff,
+      teamSlugOrId: runContext.teamId,
+    },
+    baseUrlOverride,
+  );
+
+  log("INFO", "Crown summarization response", {
+    taskRunId,
+    summaryPreview: summaryResponse?.summary?.slice(0, 120),
+  });
+
+  const summary = summaryResponse?.summary
+    ? summaryResponse.summary.slice(0, 8000)
+    : undefined;
+
+  const prMetadata = await createPullRequest({
+    check: crownData,
+    winner: winnerCandidate,
+    summary,
+    context: runContext,
+  });
+
+  const reason =
+    evaluationResponse.reason || `Selected ${winnerCandidate.agentName}`;
+
+  await convexRequest(
+    "/api/crown/finalize",
+    runContext.token,
+    {
+      taskId: crownData.taskId,
+      winnerRunId: winnerCandidate.runId,
+      reason,
+      evaluationPrompt: `Task: ${promptText}\nCandidates: ${JSON.stringify(candidates)}`,
+      evaluationResponse: JSON.stringify(
+        evaluationResponse ?? {
+          winner: candidates.indexOf(winnerCandidate),
+          reason,
+          fallback: true,
+        },
+      ),
+      candidateRunIds: candidates.map((candidate) => candidate.runId),
+      summary,
+      pullRequest: prMetadata?.pullRequest,
+      pullRequestTitle: prMetadata?.title,
+      pullRequestDescription: prMetadata?.description,
+    },
+    baseUrlOverride,
+  );
+
+  log("INFO", "Crowned task after evaluation", {
+    taskId: crownData.taskId,
+    winnerRunId: winnerCandidate.runId,
+    winnerAgent: winnerCandidate.agentName,
+    agentModel: agentModel ?? runContext.agentModel,
+    elapsedMs,
+  });
 }

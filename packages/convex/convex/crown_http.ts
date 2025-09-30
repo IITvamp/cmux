@@ -194,13 +194,6 @@ async function loadTaskRunForWorker(
 }
 
 export const crownEvaluate = httpAction(async (ctx, req) => {
-  console.log("[convex.crown] Evaluate endpoint called", {
-    url: req.url,
-    method: req.method,
-    hasCmuxToken: !!req.headers.get("x-cmux-token"),
-    hasStackAuth: !!req.headers.get("x-stack-auth"),
-  });
-
   const workerAuth = await getWorkerAuth(req);
 
   if (!workerAuth) {
@@ -210,15 +203,6 @@ export const crownEvaluate = httpAction(async (ctx, req) => {
 
   const parsed = await ensureJsonRequest(req);
   if (parsed instanceof Response) return parsed;
-
-  console.log("[convex.crown] Parsed request body", {
-    bodyType: typeof parsed.json,
-    bodyKeys:
-      parsed.json && typeof parsed.json === "object"
-        ? Object.keys(parsed.json as Record<string, unknown>)
-        : null,
-    body: JSON.stringify(parsed.json),
-  });
 
   const validation = CrownEvaluationRequestSchema.safeParse(parsed.json);
   if (!validation.success) {
@@ -617,12 +601,6 @@ export const crownWorkerFinalize = httpAction(async (ctx, req) => {
 });
 
 export const crownWorkerComplete = httpAction(async (ctx, req) => {
-  console.log("[convex.crown] Worker complete endpoint called", {
-    path: req.url,
-    method: req.method,
-    hasToken: !!req.headers.get("x-cmux-token"),
-  });
-
   const auth = await getWorkerAuth(req);
   if (!auth) {
     console.error("[convex.crown] Auth failed for worker complete");
@@ -642,7 +620,6 @@ export const crownWorkerComplete = httpAction(async (ctx, req) => {
   }
 
   const taskRunId = validation.data.taskRunId;
-  console.log("[convex.crown] Loading task run for completion", { taskRunId });
 
   const existingRun = await loadTaskRunForWorker(ctx, auth, taskRunId);
   if (existingRun instanceof Response) {
@@ -650,18 +627,9 @@ export const crownWorkerComplete = httpAction(async (ctx, req) => {
     return existingRun;
   }
 
-  console.log("[convex.crown] Marking task run as complete", {
-    taskRunId,
-    exitCode: validation.data.exitCode,
-  });
-
   await ctx.runMutation(internal.taskRuns.workerComplete, {
     taskRunId,
     exitCode: validation.data.exitCode,
-  });
-
-  console.log("[convex.crown] Task run marked as complete successfully", {
-    taskRunId,
   });
 
   const updatedRun = await ctx.runQuery(internal.taskRuns.getById, {

@@ -1,8 +1,7 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-
 import { log } from "../logger";
-import { WORKSPACE_ROOT, execAsync } from "./utils";
+import { WORKSPACE_ROOT, execAsync, execFileAsync } from "./utils";
 
 type ExecError = Error & {
   stdout?: string | Buffer;
@@ -27,41 +26,23 @@ export async function detectGitRepoPath(): Promise<string> {
   }
 
   try {
-    const { stdout: dirs } = await execAsync(
-      `ls -d ${WORKSPACE_ROOT}/*/ 2>/dev/null || true`,
-      {
-        cwd: WORKSPACE_ROOT,
-      },
-    );
-
-    if (dirs && dirs.trim()) {
-      const dirList = dirs.trim().split("\n");
-      for (const dir of dirList) {
-        const trimmedDir = dir.replace(/\/$/, "");
-        if (existsSync(join(trimmedDir, ".git"))) {
-          gitRepoPath = trimmedDir;
-          log("INFO", "Git repository found in subdirectory", {
-            path: gitRepoPath,
-          });
-          return gitRepoPath;
+    const entries = readdirSync(WORKSPACE_ROOT, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const subDirPath = join(WORKSPACE_ROOT, entry.name);
+        const gitPath = join(subDirPath, ".git");
+        try {
+          if (existsSync(gitPath) && statSync(gitPath).isDirectory()) {
+            gitRepoPath = subDirPath;
+            log("INFO", "Git repository found in subdirectory", {
+              path: gitRepoPath,
+            });
+            return gitRepoPath;
+          }
+        } catch {
+          continue;
         }
       }
-    }
-
-    const { stdout } = await execAsync(
-      `find ${WORKSPACE_ROOT} -maxdepth 2 -type d -name .git 2>/dev/null | head -1`,
-      {
-        cwd: WORKSPACE_ROOT,
-      },
-    );
-
-    if (stdout && stdout.trim()) {
-      const gitDir = stdout.trim();
-      gitRepoPath = gitDir.replace(/\/.git$/, "");
-      log("INFO", "Git repository found via find command", {
-        path: gitRepoPath,
-      });
-      return gitRepoPath;
     }
   } catch (error) {
     log("WARN", "Failed to search for git repositories", {
@@ -117,6 +98,47 @@ export async function runGitCommand(
   }
 }
 
+export async function runGitCommandSafe(
+  args: string[],
+  allowFailure = false,
+): Promise<{ stdout: string; stderr: string; exitCode: number } | null> {
+  const formatOutput = (value: string | Buffer): string => String(value);
+
+  try {
+    const repoPath = await detectGitRepoPath();
+    const result = await execFileAsync("git", args, {
+      cwd: repoPath,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    const stdout = formatOutput(result.stdout);
+    const stderr = formatOutput(result.stderr);
+    return { stdout, stderr, exitCode: 0 };
+  } catch (error) {
+    const execError: ExecError =
+      error instanceof Error
+        ? error
+        : new Error(
+            typeof error === "string" ? error : "Unknown git command error",
+          );
+    const stdout = formatOutput(execError.stdout ?? "");
+    const stderr = formatOutput(execError.stderr ?? "");
+    const exitCode = execError.code ?? execError.status ?? 1;
+    const errorPayload = {
+      args,
+      message: execError.message,
+      exitCode,
+      stdout: stdout?.slice(0, 500),
+      stderr: stderr?.slice(0, 500),
+    };
+    if (!allowFailure) {
+      log("ERROR", "Git command failed", errorPayload);
+      throw error;
+    }
+    log("WARN", "Git command failed (ignored)", errorPayload);
+    return { stdout, stderr, exitCode };
+  }
+}
+
 export async function fetchRemoteRef(ref: string | null): Promise<boolean> {
   if (!ref) {
     return false;
@@ -128,11 +150,14 @@ export async function fetchRemoteRef(ref: string | null): Promise<boolean> {
 
   const remoteBranch = trimmedRef.replace(/^origin\//, "");
   const verifyRef = `refs/remotes/origin/${remoteBranch}`;
-  const fetchCommand = `git fetch --no-tags --prune origin refs/heads/${remoteBranch}:${verifyRef}`;
+  const refspec = `refs/heads/${remoteBranch}:${verifyRef}`;
 
   log("DEBUG", "Fetching remote ref", { ref: trimmedRef, remoteBranch });
 
-  const result = await runGitCommand(fetchCommand, true);
+  const result = await runGitCommandSafe(
+    ["fetch", "--no-tags", "--prune", "origin", refspec],
+    true,
+  );
 
   if (!result) {
     log("WARN", "git fetch failed for ref", { ref: trimmedRef });
@@ -147,8 +172,8 @@ export async function fetchRemoteRef(ref: string | null): Promise<boolean> {
     });
   }
 
-  const verifyResult = await runGitCommand(
-    `git rev-parse --verify --quiet ${verifyRef}`,
+  const verifyResult = await runGitCommandSafe(
+    ["rev-parse", "--verify", "--quiet", verifyRef],
     true,
   );
 
@@ -194,7 +219,7 @@ export async function collectDiffForRun(
   const branchRef = branch.startsWith("origin/") ? branch : `origin/${branch}`;
 
   try {
-    const { stdout } = await execAsync(
+    const { stdout, stderr } = await execAsync(
       "/usr/local/bin/cmux-collect-crown-diff.sh",
       {
         cwd: WORKSPACE_ROOT,
@@ -207,6 +232,12 @@ export async function collectDiffForRun(
       },
     );
 
+    if (stderr) {
+      log("WARN", "cmux-collect-crown-diff.sh stderr", {
+        stderr,
+      });
+    }
+
     const diff = stdout.trim();
     if (!diff) {
       log("INFO", "No differences found between branches", {
@@ -218,12 +249,23 @@ export async function collectDiffForRun(
 
     return formatDiff(diff);
   } catch (error) {
+    const execError = error as ExecError;
+    const stderr = execError.stderr ? String(execError.stderr).trim() : "";
+    const stdout = execError.stdout ? String(execError.stdout).trim() : "";
+    const exitCode = execError.code ?? execError.status ?? 1;
+
     log("ERROR", "Failed to collect diff for run", {
       baseBranch: sanitizedBase,
       branch,
-      error,
+      exitCode,
+      stderr: stderr.slice(0, 500),
+      stdout: stdout.slice(0, 500),
+      message: execError.message,
     });
-    return "No changes detected";
+
+    throw new Error(
+      `Failed to collect diff between ${baseRef} and ${branchRef}: ${stderr || execError.message}`,
+    );
   }
 }
 
@@ -307,13 +349,13 @@ async function configureRemote(remoteUrl: string): Promise<void> {
 
   if (!currentUrl) {
     log("INFO", "Adding origin remote", { remoteUrl });
-    await runGitCommand(`git remote add origin ${remoteUrl}`);
+    await runGitCommandSafe(["remote", "add", "origin", remoteUrl]);
   } else if (currentUrl !== remoteUrl) {
     log("INFO", "Updating origin remote", {
       currentRemote: currentUrl,
       remoteUrl,
     });
-    await runGitCommand(`git remote set-url origin ${remoteUrl}`);
+    await runGitCommandSafe(["remote", "set-url", "origin", remoteUrl]);
   }
 
   const updatedRemote = await runGitCommand("git remote -v", true);
@@ -335,7 +377,7 @@ async function stageAndCommitChanges(
   await runGitCommand("git add -A");
   log("INFO", "Staged all changes");
 
-  await runGitCommand(`git checkout -B ${branchName}`);
+  await runGitCommandSafe(["checkout", "-B", branchName]);
   log("INFO", "Checked out branch", { branchName });
 
   const status = await runGitCommand("git status --short", true);
@@ -355,8 +397,8 @@ async function stageAndCommitChanges(
     return;
   }
 
-  const commitResult = await runGitCommand(
-    `git commit -m ${JSON.stringify(commitMessage)}`,
+  const commitResult = await runGitCommandSafe(
+    ["commit", "-m", commitMessage],
     true,
   );
 
@@ -372,8 +414,8 @@ async function stageAndCommitChanges(
 }
 
 async function syncWithRemote(branchName: string): Promise<void> {
-  const remoteExists = await runGitCommand(
-    `git ls-remote --heads origin ${branchName}`,
+  const remoteExists = await runGitCommandSafe(
+    ["ls-remote", "--heads", "origin", branchName],
     true,
   );
 
@@ -383,9 +425,12 @@ async function syncWithRemote(branchName: string): Promise<void> {
       remoteHead: remoteExists.stdout.trim().slice(0, 120),
     });
 
-    const pullResult = await runGitCommand(
-      `git pull --rebase origin ${branchName}`,
-    );
+    const pullResult = await runGitCommandSafe([
+      "pull",
+      "--rebase",
+      "origin",
+      branchName,
+    ]);
 
     if (pullResult) {
       log("INFO", "Rebased branch onto remote", {
@@ -438,7 +483,12 @@ export async function autoCommitAndPush({
     command: `git push -u origin ${branchName}`,
   });
 
-  const pushResult = await runGitCommand(`git push -u origin ${branchName}`);
+  const pushResult = await runGitCommandSafe([
+    "push",
+    "-u",
+    "origin",
+    branchName,
+  ]);
 
   if (pushResult) {
     log("INFO", "Push completed", {

@@ -1,12 +1,9 @@
 import { log } from "../logger";
 
 function getConvexBaseUrl(override?: string): string | null {
-  const url = override ?? process.env.NEXT_PUBLIC_CONVEX_URL;
+  const url = override;
   if (!url) {
-    log(
-      "ERROR",
-      "NEXT_PUBLIC_CONVEX_URL is not configured; cannot call crown endpoints",
-    );
+    log("ERROR", "Convex URL is not configured; cannot call crown endpoints");
     return null;
   }
   const httpActionUrl = url.replace(".convex.cloud", ".convex.site");
