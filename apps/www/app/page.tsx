@@ -1,10 +1,13 @@
-"use client";
-
-import clientPackageJson from "../../client/package.json" assert { type: "json" };
-
-import { ClientIcon } from "@/components/client-icon";
 import CmuxLogo from "@/components/logo/cmux-logo";
-import { Cloud, GitBranch, GitPullRequest, Star, Terminal, Users, Zap } from "lucide-react";
+import {
+  Cloud,
+  GitBranch,
+  GitPullRequest,
+  Star,
+  Terminal,
+  Users,
+  Zap,
+} from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import cmuxDemo0 from "@/docs/assets/cmux-demo-00.png";
@@ -13,39 +16,78 @@ import cmuxDemo2 from "@/docs/assets/cmux-demo-20.png";
 import cmuxDemo3 from "@/docs/assets/cmux-demo-30.png";
 
 const RELEASE_PAGE_URL = "https://github.com/manaflow-ai/cmux/releases/latest";
+const GITHUB_RELEASE_URL =
+  "https://api.github.com/repos/manaflow-ai/cmux/releases/latest";
+const DMG_SUFFIX = "-arm64.dmg";
 
-const normalizeVersion = (tag: string): string => (tag.startsWith("v") ? tag.slice(1) : tag);
+const normalizeVersion = (tag: string): string =>
+  tag.startsWith("v") ? tag.slice(1) : tag;
 
-const ensureTagPrefix = (value: string): string => (value.startsWith("v") ? value : `v${value}`);
+type GithubRelease = {
+  tag_name?: string;
+  assets?: Array<{
+    name?: string;
+    browser_download_url?: string;
+  }>;
+};
 
 type ReleaseInfo = {
   latestVersion: string | null;
   macDownloadUrl: string;
 };
 
-const deriveReleaseInfo = (): ReleaseInfo => {
-  const versionValue = clientPackageJson.version;
-
-  if (typeof versionValue !== "string" || versionValue.trim() === "") {
-    return {
-      latestVersion: null,
-      macDownloadUrl: RELEASE_PAGE_URL,
-    };
+const deriveReleaseInfo = (data: GithubRelease | null): ReleaseInfo => {
+  if (!data) {
+    return { latestVersion: null, macDownloadUrl: RELEASE_PAGE_URL };
   }
 
-  const normalizedVersion = normalizeVersion(versionValue);
-  const releaseTag = ensureTagPrefix(versionValue);
+  const latestVersion =
+    typeof data.tag_name === "string" && data.tag_name.trim() !== ""
+      ? normalizeVersion(data.tag_name)
+      : null;
+
+  const macDownloadUrl = data.assets?.find((asset) => {
+    const assetName = asset.name?.toLowerCase();
+
+    return typeof assetName === "string" && assetName.endsWith(DMG_SUFFIX);
+  })?.browser_download_url;
 
   return {
-    latestVersion: normalizedVersion,
-    macDownloadUrl: `https://github.com/manaflow-ai/cmux/releases/download/${releaseTag}/cmux-${normalizedVersion}-arm64.dmg`,
+    latestVersion,
+    macDownloadUrl:
+      typeof macDownloadUrl === "string" && macDownloadUrl.trim() !== ""
+        ? macDownloadUrl
+        : RELEASE_PAGE_URL,
   };
 };
 
-const RELEASE_INFO = deriveReleaseInfo();
+async function fetchLatestRelease(): Promise<ReleaseInfo> {
+  try {
+    const response = await fetch(GITHUB_RELEASE_URL, {
+      headers: {
+        Accept: "application/vnd.github+json",
+      },
+      next: {
+        revalidate: 3600,
+      },
+    });
 
-export default function LandingPage() {
-  const { macDownloadUrl, latestVersion } = RELEASE_INFO;
+    if (!response.ok) {
+      return deriveReleaseInfo(null);
+    }
+
+    const data = (await response.json()) as GithubRelease;
+
+    return deriveReleaseInfo(data);
+  } catch (error) {
+    console.error("Failed to retrieve latest GitHub release", error);
+
+    return deriveReleaseInfo(null);
+  }
+}
+
+export default async function LandingPage() {
+  const { macDownloadUrl, latestVersion } = await fetchLatestRelease();
 
   return (
     <div className="min-h-dvh bg-background text-foreground overflow-y-auto">
@@ -147,13 +189,16 @@ export default function LandingPage() {
               </h1>
 
               <p className="text-lg text-neutral-300 mb-4 leading-relaxed">
-                cmux is a universal AI coding agent manager that supports Claude Code, Codex, Gemini CLI, Amp,
-                Opencode, and other coding CLIs. We give 10x engineers an interface to manage AI coding tasks in
-                parallel, context switch fast, and verify AI-generated code to stay actually productive with AI.
+                cmux is a universal AI coding agent manager that supports Claude
+                Code, Codex, Gemini CLI, Amp, Opencode, and other coding CLIs.
+                We give 10x engineers an interface to manage AI coding tasks in
+                parallel, context switch fast, and verify AI-generated code to
+                stay actually productive with AI.
               </p>
               <p className="text-lg text-neutral-300 mb-4 leading-relaxed">
-                Every run spins up an isolated VS Code instances via Docker with the git diff UI and terminal so parallel
-                agent work stays verifiable, fast, and ready to ship.
+                Every run spins up an isolated VS Code instances via Docker with
+                the git diff UI and terminal so parallel agent work stays
+                verifiable, fast, and ready to ship.
               </p>
               <p className="text-lg text-neutral-300 leading-relaxed">
                 Learn more about the{" "}
@@ -184,7 +229,11 @@ export default function LandingPage() {
               <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
                 <a
                   href={macDownloadUrl}
-                  title={latestVersion ? `Download cmux v${latestVersion} for macOS arm64` : "Requires macOS"}
+                  title={
+                    latestVersion
+                      ? `Download cmux v${latestVersion} for macOS arm64`
+                      : "Requires macOS"
+                  }
                   className="inline-flex h-12 items-center gap-2 text-base font-medium text-black bg-white hover:bg-neutral-50 border border-neutral-800 rounded-lg px-4 transition-all whitespace-nowrap"
                 >
                   <svg
@@ -252,17 +301,19 @@ export default function LandingPage() {
                 <span className="text-white font-semibold">
                   The interface is the bottleneck.
                 </span>{" "}
-                We&apos;ve spent years making AI agents better at coding, but almost
-                no time making it easier to verify their work. The result?
-                Developers spend 80% of their time reviewing and 20% prompting.
+                We&apos;ve spent years making AI agents better at coding, but
+                almost no time making it easier to verify their work. The
+                result? Developers spend 80% of their time reviewing and 20%
+                prompting.
               </p>
               <blockquote className="border-l-2 border-neutral-800 pl-4 text-neutral-300">
                 <p>
                   Running multiple agents at once sounds powerful until it turns
                   into chaos: 3-4 terminals, each on a different task, and
-                  you&apos;re asking, &quot;Which one is on auth? Did the database
-                  refactor finish?&quot; You end up bouncing between windows, running
-                  git diff, and piecing together what changed where.
+                  you&apos;re asking, &quot;Which one is on auth? Did the
+                  database refactor finish?&quot; You end up bouncing between
+                  windows, running git diff, and piecing together what changed
+                  where.
                 </p>
               </blockquote>
             </div>
@@ -278,11 +329,12 @@ export default function LandingPage() {
               </p>
               <blockquote className="border-l-2 border-neutral-800 pl-4 text-neutral-300">
                 <p>
-                  The issue isn&apos;t that agents aren&apos;t good — they&apos;re getting
-                  scary good. It&apos;s that our tools were designed for a different
-                  era. VS Code was built for writing code, not reviewing five
-                  parallel streams of AI-generated changes. Terminals expect
-                  sequential commands, not a fleet of autonomous workers.
+                  The issue isn&apos;t that agents aren&apos;t good —
+                  they&apos;re getting scary good. It&apos;s that our tools were
+                  designed for a different era. VS Code was built for writing
+                  code, not reviewing five parallel streams of AI-generated
+                  changes. Terminals expect sequential commands, not a fleet of
+                  autonomous workers.
                 </p>
               </blockquote>
             </div>
@@ -301,8 +353,8 @@ export default function LandingPage() {
                   Docker container, separate VS Code, separate git state. VS
                   Code opens with the git diff already showing. Every change is
                   isolated to its task, so you can see exactly what each agent
-                  did — immediately — without losing context. That&apos;s what makes
-                  running 10+ agents actually workable.
+                  did — immediately — without losing context. That&apos;s what
+                  makes running 10+ agents actually workable.
                 </p>
               </blockquote>
             </div>
@@ -336,8 +388,7 @@ export default function LandingPage() {
             <div className="space-y-6">
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <ClientIcon
-                    icon={GitBranch}
+                  <GitBranch
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
@@ -351,8 +402,7 @@ export default function LandingPage() {
 
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <ClientIcon
-                    icon={Users}
+                  <Users
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
@@ -367,16 +417,15 @@ export default function LandingPage() {
 
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <ClientIcon
-                    icon={Star}
+                  <Star
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
                   Git extension UI
                 </h3>
                 <p className="text-sm text-neutral-400">
-                  On mount, VS Code opens the git extension&apos;s diff UI. Review
-                  changes without context switching.
+                  On mount, VS Code opens the git extension&apos;s diff UI.
+                  Review changes without context switching.
                 </p>
               </div>
             </div>
@@ -384,8 +433,7 @@ export default function LandingPage() {
             <div className="space-y-6">
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <ClientIcon
-                    icon={Cloud}
+                  <Cloud
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
@@ -399,8 +447,7 @@ export default function LandingPage() {
 
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <ClientIcon
-                    icon={GitPullRequest}
+                  <GitPullRequest
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
@@ -414,8 +461,7 @@ export default function LandingPage() {
 
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <ClientIcon
-                    icon={Zap}
+                  <Zap
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
@@ -437,7 +483,7 @@ export default function LandingPage() {
               sizes="(min-width: 1024px) 1024px, 100vw"
               quality={100}
               className="w-full h-auto"
-            loading="lazy"
+              loading="lazy"
             />
           </div>
         </div>
@@ -499,8 +545,8 @@ export default function LandingPage() {
                 </h3>
                 <p className="text-sm text-neutral-400 mb-4">
                   Agents will communicate through a shared context layer. One
-                  agent&apos;s output becomes another&apos;s input. Automatic conflict
-                  resolution when agents modify the same files.
+                  agent&apos;s output becomes another&apos;s input. Automatic
+                  conflict resolution when agents modify the same files.
                 </p>
               </div>
             </div>
@@ -513,8 +559,9 @@ export default function LandingPage() {
                 agent will review the work of worker agents, using the same
                 interfaces you use today. It will approve simple changes,
                 escalate complex ones, and learn from your verification
-                patterns. The goal isn&apos;t to replace developers—it&apos;s to amplify
-                them 100x by removing the verification bottleneck entirely.
+                patterns. The goal isn&apos;t to replace developers—it&apos;s to
+                amplify them 100x by removing the verification bottleneck
+                entirely.
               </p>
             </div>
           </div>
@@ -527,7 +574,7 @@ export default function LandingPage() {
               sizes="(min-width: 1024px) 1024px, 100vw"
               quality={100}
               className="w-full h-auto"
-            loading="lazy"
+              loading="lazy"
             />
           </div>
         </div>
@@ -554,7 +601,6 @@ export default function LandingPage() {
               macOS or Linux
             </div>
           </div>
-          
         </div>
       </section>
 
@@ -565,11 +611,7 @@ export default function LandingPage() {
       <footer className="py-8 px-4 sm:px-6 lg:px-12">
         <div className="container max-w-5xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-2">
-            <ClientIcon
-              icon={Terminal}
-              className="h-4 w-4 text-neutral-500"
-              aria-hidden="true"
-            />
+            <Terminal className="h-4 w-4 text-neutral-500" aria-hidden="true" />
             <span className="text-sm text-neutral-500 font-mono">
               cmux by manaflow
             </span>
