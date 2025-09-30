@@ -1,4 +1,3 @@
-import { ClientIcon } from "@/components/client-icon";
 import CmuxLogo from "@/components/logo/cmux-logo";
 import {
   Cloud,
@@ -25,6 +24,8 @@ type ReleaseInfo = {
   releaseUrl: string;
 };
 
+export const dynamic = 'force-dynamic';
+
 async function fetchReleaseInfo(): Promise<ReleaseInfo> {
   try {
     const response = await fetch(GITHUB_RELEASES_URL, {
@@ -32,7 +33,7 @@ async function fetchReleaseInfo(): Promise<ReleaseInfo> {
         Accept: "application/vnd.github+json",
         "User-Agent": "cmux-www",
       },
-      next: { revalidate: 3600 },
+      cache: "no-store",
     });
 
     if (!response.ok) {
@@ -367,8 +368,7 @@ export default async function LandingPage() {
             <div className="space-y-6">
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <ClientIcon
-                    icon={GitBranch}
+                  <GitBranch
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
@@ -382,8 +382,7 @@ export default async function LandingPage() {
 
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <ClientIcon
-                    icon={Users}
+                  <Users
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
@@ -398,8 +397,7 @@ export default async function LandingPage() {
 
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <ClientIcon
-                    icon={Star}
+                  <Star
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
@@ -415,8 +413,7 @@ export default async function LandingPage() {
             <div className="space-y-6">
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <ClientIcon
-                    icon={Cloud}
+                  <Cloud
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
@@ -430,8 +427,7 @@ export default async function LandingPage() {
 
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <ClientIcon
-                    icon={GitPullRequest}
+                  <GitPullRequest
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
@@ -445,8 +441,7 @@ export default async function LandingPage() {
 
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <ClientIcon
-                    icon={Zap}
+                  <Zap
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
@@ -596,8 +591,7 @@ export default async function LandingPage() {
       <footer className="py-8 px-4 sm:px-6 lg:px-12">
         <div className="container max-w-5xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-2">
-            <ClientIcon
-              icon={Terminal}
+            <Terminal
               className="h-4 w-4 text-neutral-500"
               aria-hidden="true"
             />
