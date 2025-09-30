@@ -6,8 +6,9 @@ import type { Doc, Id } from "./_generated/dataModel";
 import {
   internalMutation,
   internalQuery,
+  type QueryCtx,
 } from "./_generated/server";
-import { authMutation, authQuery, taskIdWithFake } from "./users/utils";
+import { authMutation, authQuery } from "./users/utils";
 import {
   aggregatePullRequestState,
   type StoredPullRequestInfo,
@@ -63,6 +64,98 @@ function deriveGeneratedBranchName(branch?: string | null): string | undefined {
   if (idx <= 0) return trimmed;
   const candidate = trimmed.slice(0, idx);
   return candidate || trimmed;
+}
+
+type EnvironmentSummary = Pick<
+  Doc<"environments">,
+  "_id" | "name" | "selectedRepos"
+>;
+
+type TaskRunWithChildren = Doc<"taskRuns"> & {
+  children: TaskRunWithChildren[];
+  environment: EnvironmentSummary | null;
+};
+
+async function fetchTaskRunsForTask(
+  ctx: QueryCtx,
+  teamId: string,
+  userId: string,
+  taskId: Id<"tasks">,
+): Promise<TaskRunWithChildren[]> {
+  const runs = await ctx.db
+    .query("taskRuns")
+    .withIndex("by_task", (q) => q.eq("taskId", taskId))
+    .filter(
+      (q) => q.eq(q.field("teamId"), teamId) && q.eq(q.field("userId"), userId),
+    )
+    .collect();
+
+  const environmentSummaries = new Map<
+    Id<"environments">,
+    EnvironmentSummary
+  >();
+  const environmentIds = Array.from(
+    new Set(
+      runs
+        .map((run) => run.environmentId)
+        .filter((id): id is Id<"environments"> => id !== undefined),
+    ),
+  );
+
+  if (environmentIds.length > 0) {
+    const environmentDocs = await Promise.all(
+      environmentIds.map((environmentId) => ctx.db.get(environmentId)),
+    );
+
+    for (const environment of environmentDocs) {
+      if (!environment || environment.teamId !== teamId) continue;
+      environmentSummaries.set(environment._id, {
+        _id: environment._id,
+        name: environment.name,
+        selectedRepos: environment.selectedRepos,
+      });
+    }
+  }
+
+  const runMap = new Map<string, TaskRunWithChildren>();
+  const rootRuns: TaskRunWithChildren[] = [];
+
+  runs.forEach((run) => {
+    const networking = run.networking?.map((item) => ({
+      ...item,
+      url: rewriteMorphUrl(item.url),
+    }));
+
+    runMap.set(run._id, {
+      ...run,
+      log: "",
+      networking,
+      children: [],
+      environment: run.environmentId
+        ? (environmentSummaries.get(run.environmentId) ?? null)
+        : null,
+    });
+  });
+
+  runs.forEach((run) => {
+    const runWithChildren = runMap.get(run._id)!;
+    if (run.parentRunId) {
+      const parent = runMap.get(run.parentRunId);
+      if (parent) {
+        parent.children.push(runWithChildren);
+      }
+    } else {
+      rootRuns.push(runWithChildren);
+    }
+  });
+
+  const sortRuns = (items: TaskRunWithChildren[]) => {
+    items.sort((a, b) => a.createdAt - b.createdAt);
+    items.forEach((item) => sortRuns(item.children));
+  };
+  sortRuns(rootRuns);
+
+  return rootRuns;
 }
 
 // Create a new task run
@@ -128,108 +221,65 @@ export const create = authMutation({
 
 // Get all task runs for a task, organized in tree structure
 export const getByTask = authQuery({
-  args: { teamSlugOrId: v.string(), taskId: taskIdWithFake },
+  args: { teamSlugOrId: v.string(), taskId: v.id("tasks") },
   handler: async (ctx, args) => {
-    // Handle fake IDs by returning empty array
-    if (typeof args.taskId === "string" && args.taskId.startsWith("fake-")) {
-      return [];
-    }
-
     const userId = ctx.identity.subject;
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
-    const runs = await ctx.db
-      .query("taskRuns")
-      .withIndex("by_task", (q) => q.eq("taskId", args.taskId as Id<"tasks">))
-      .filter(
-        (q) =>
-          q.eq(q.field("teamId"), teamId) && q.eq(q.field("userId"), userId),
-      )
-      .collect();
-
-    type EnvironmentSummary = Pick<
-      Doc<"environments">,
-      "_id" | "name" | "selectedRepos"
-    >;
-
-    const environmentSummaries = new Map<
-      Id<"environments">,
-      EnvironmentSummary
-    >();
-    const environmentIds = Array.from(
-      new Set(
-        runs
-          .map((run) => run.environmentId)
-          .filter((id): id is Id<"environments"> => id !== undefined),
-      ),
-    );
-
-    if (environmentIds.length > 0) {
-      const environmentDocs = await Promise.all(
-        environmentIds.map((environmentId) => ctx.db.get(environmentId)),
-      );
-
-      for (const environment of environmentDocs) {
-        if (!environment || environment.teamId !== teamId) continue;
-        environmentSummaries.set(environment._id, {
-          _id: environment._id,
-          name: environment.name,
-          selectedRepos: environment.selectedRepos,
-        });
-      }
-    }
-
-    // Build tree structure
-    type TaskRunWithChildren = Doc<"taskRuns"> & {
-      children: TaskRunWithChildren[];
-      environment: EnvironmentSummary | null;
-    };
-    const runMap = new Map<string, TaskRunWithChildren>();
-    const rootRuns: TaskRunWithChildren[] = [];
-
-    // First pass: create map with children arrays
-    runs.forEach((run) => {
-      // Strip heavy/deprecated log field from payload to reduce bandwidth
-      // Send empty string to avoid large payloads and keep type compatibility.
-      // Rewrite morph URLs in networking field
-      const networking = run.networking?.map((item) => ({
-        ...item,
-        url: rewriteMorphUrl(item.url),
-      }));
-
-      runMap.set(run._id, {
-        ...run,
-        log: "",
-        networking,
-        children: [],
-        environment: run.environmentId
-          ? (environmentSummaries.get(run.environmentId) ?? null)
-          : null,
-      });
-    });
-
-    // Second pass: build tree
-    runs.forEach((run) => {
-      const runWithChildren = runMap.get(run._id)!;
-      if (run.parentRunId) {
-        const parent = runMap.get(run.parentRunId);
-        if (parent) {
-          parent.children.push(runWithChildren);
-        }
-      } else {
-        rootRuns.push(runWithChildren);
-      }
-    });
-
-    // Sort by creation date
-    const sortRuns = (runs: TaskRunWithChildren[]) => {
-      runs.sort((a, b) => a.createdAt - b.createdAt);
-      runs.forEach((run) => sortRuns(run.children));
-    };
-    sortRuns(rootRuns);
-
-    return rootRuns;
+    return await fetchTaskRunsForTask(ctx, teamId, userId, args.taskId);
   },
 });
+
+const SYSTEM_BRANCH_USER_ID = "__system__";
+
+async function fetchBranchMetadataForRepo(
+  ctx: QueryCtx,
+  teamId: string,
+  userId: string,
+  repo: string,
+): Promise<Doc<"branches">[]> {
+  const rows = await ctx.db
+    .query("branches")
+    .withIndex("by_repo", (q) => q.eq("repo", repo))
+    .filter((q) => q.eq(q.field("teamId"), teamId))
+    .collect();
+
+  const relevant = rows.filter(
+    (row) => row.userId === userId || row.userId === SYSTEM_BRANCH_USER_ID,
+  );
+
+  const byName = new Map<string, Doc<"branches">>();
+  for (const row of relevant) {
+    const existing = byName.get(row.name);
+    if (!existing) {
+      byName.set(row.name, row);
+      continue;
+    }
+
+    const currentHasKnown = Boolean(
+      row.lastKnownBaseSha || row.lastKnownMergeCommitSha,
+    );
+    const existingHasKnown = Boolean(
+      existing.lastKnownBaseSha || existing.lastKnownMergeCommitSha,
+    );
+
+    if (currentHasKnown && !existingHasKnown) {
+      byName.set(row.name, row);
+      continue;
+    }
+
+    if (!currentHasKnown && existingHasKnown) {
+      continue;
+    }
+
+    const currentActivity = row.lastActivityAt ?? -Infinity;
+    const existingActivity = existing.lastActivityAt ?? -Infinity;
+    if (currentActivity > existingActivity) {
+      byName.set(row.name, row);
+    }
+  }
+
+  return Array.from(byName.values());
+}
 
 // Update task run status
 export const updateStatus = internalMutation({
@@ -278,6 +328,73 @@ export const appendLog = internalMutation({
     const exists = await ctx.db.get(args.id);
     if (!exists) throw new Error("Task run not found");
     await ctx.db.patch(args.id, { updatedAt: Date.now() });
+  },
+});
+
+export const getRunDiffContext = authQuery({
+  args: {
+    teamSlugOrId: v.string(),
+    taskId: v.id("tasks"),
+    runId: v.id("taskRuns"),
+  },
+  handler: async (ctx, args) => {
+    const userId = ctx.identity.subject;
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+
+    const [taskDoc, taskRuns] = await Promise.all([
+      ctx.db.get(args.taskId),
+      fetchTaskRunsForTask(ctx, teamId, userId, args.taskId),
+    ]);
+
+    if (!taskDoc || taskDoc.teamId !== teamId || taskDoc.userId !== userId) {
+      return {
+        task: null,
+        taskRuns,
+        branchMetadataByRepo: {} as Record<string, Doc<"branches">[]>,
+      };
+    }
+
+    let taskWithImages = taskDoc;
+    if (taskDoc.images && taskDoc.images.length > 0) {
+      const imagesWithUrls = await Promise.all(
+        taskDoc.images.map(async (image) => {
+          const url = await ctx.storage.getUrl(image.storageId);
+          return {
+            ...image,
+            url,
+          };
+        }),
+      );
+      taskWithImages = {
+        ...taskDoc,
+        images: imagesWithUrls,
+      };
+    }
+
+    const trimmedProjectFullName = taskDoc.projectFullName?.trim();
+    const branchMetadataByRepo: Record<string, Doc<"branches">[]> = {};
+
+    if (trimmedProjectFullName) {
+      try {
+        const metadata = await fetchBranchMetadataForRepo(
+          ctx,
+          teamId,
+          userId,
+          trimmedProjectFullName,
+        );
+        if (metadata.length > 0) {
+          branchMetadataByRepo[trimmedProjectFullName] = metadata;
+        }
+      } catch {
+        // swallow errors – branch metadata is optional for diff prefetching
+      }
+    }
+
+    return {
+      task: taskWithImages,
+      taskRuns,
+      branchMetadataByRepo,
+    };
   },
 });
 
