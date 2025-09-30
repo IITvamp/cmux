@@ -616,10 +616,21 @@ pub fn diff_refs(opts: GitDiffOptions) -> Result<Vec<DiffEntry>> {
       }
       if !fallback.is_empty() {
         #[cfg(debug_assertions)] println!("[native.refs] CLI fallback returning {} entries", fallback.len());
+        // Stable sort by filePath (case-insensitive)
+        fallback.sort_by(|a, b| {
+          a.filePath.to_lowercase().cmp(&b.filePath.to_lowercase())
+            .then_with(|| a.filePath.cmp(&b.filePath))
+        });
         return Ok(fallback);
       }
     }
   }
+
+  // Stable sort by filePath (case-insensitive)
+  out.sort_by(|a, b| {
+    a.filePath.to_lowercase().cmp(&b.filePath.to_lowercase())
+      .then_with(|| a.filePath.cmp(&b.filePath))
+  });
 
   Ok(out)
 }

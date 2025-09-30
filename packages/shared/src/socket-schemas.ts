@@ -272,11 +272,6 @@ export const GitHubCreateDraftPrSchema = z.object({
   taskRunId: typedZid("taskRuns"),
 });
 
-// Open PR (create non-draft or convert draft to ready)
-export const GitHubOpenPrSchema = z.object({
-  taskRunId: typedZid("taskRuns"),
-});
-
 // Sync PR state
 export const GitHubSyncPrStateSchema = z.object({
   taskRunId: typedZid("taskRuns"),
@@ -404,7 +399,6 @@ export type GitHubBranchesResponse = z.infer<
 export type GitHubReposResponse = z.infer<typeof GitHubReposResponseSchema>;
 export type GitHubAuthResponse = z.infer<typeof GitHubAuthResponseSchema>;
 export type GitHubCreateDraftPr = z.infer<typeof GitHubCreateDraftPrSchema>;
-export type GitHubOpenPr = z.infer<typeof GitHubOpenPrSchema>;
 export type GitHubSyncPrState = z.infer<typeof GitHubSyncPrStateSchema>;
 export type GitHubMergePr = z.infer<typeof GitHubMergePrSchema>;
 export type GitHubMergeBranch = z.infer<typeof GitHubMergeBranchSchema>;
@@ -457,16 +451,6 @@ export interface ClientToServerEvents {
   // Create a draft pull request for a given task run
   "github-create-draft-pr": (
     data: GitHubCreateDraftPr,
-    callback: (response: {
-      success: boolean;
-      results: PullRequestActionResult[];
-      aggregate: AggregatePullRequestSummary;
-      error?: string;
-    }) => void
-  ) => void;
-  // Open PR: create a normal PR or mark draft ready
-  "github-open-pr": (
-    data: GitHubOpenPr,
     callback: (response: {
       success: boolean;
       results: PullRequestActionResult[];

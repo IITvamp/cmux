@@ -2,10 +2,12 @@
 
 export * from "./agentConfig";
 export * from "./convex-ready";
+export * from "./crown";
 export * from "./diff-types";
 export * from "./getShortId";
 export * from "./socket-schemas";
 export * from "./terminal-config";
+export * from "./verifyTaskRunToken";
 export * from "./utils/normalize-origin";
 export * from "./utils/reserved-cmux-ports";
 export * from "./utils/validate-exposed-ports";

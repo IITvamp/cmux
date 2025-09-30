@@ -4,12 +4,12 @@ import { githubPrsCodeRouter } from "@/lib/routes/github.prs.code.route";
 import { githubPrsFileContentsBatchRouter } from "@/lib/routes/github.prs.file-contents-batch.route";
 import { githubPrsFileContentsRouter } from "@/lib/routes/github.prs.file-contents.route";
 import { githubPrsFilesRouter } from "@/lib/routes/github.prs.files.route";
+import { githubPrsOpenRouter } from "@/lib/routes/github.prs.open.route";
 import { githubPrsPatchRouter } from "@/lib/routes/github.prs.patch.route";
 import { githubPrsRouter } from "@/lib/routes/github.prs.route";
 import { githubReposRouter } from "@/lib/routes/github.repos.route";
 import {
   booksRouter,
-  crownRouter,
   devServerRouter,
   environmentsRouter,
   healthRouter,
@@ -96,6 +96,7 @@ app.route("/", githubPrsRouter);
 app.route("/", githubPrsBackfillRouter);
 app.route("/", githubPrsBackfillRepoRouter);
 app.route("/", githubPrsCodeRouter);
+app.route("/", githubPrsOpenRouter);
 app.route("/", githubPrsPatchRouter);
 app.route("/", githubPrsFilesRouter);
 app.route("/", githubPrsFileContentsRouter);
@@ -103,7 +104,6 @@ app.route("/", githubPrsFileContentsBatchRouter);
 app.route("/", morphRouter);
 app.route("/", environmentsRouter);
 app.route("/", sandboxesRouter);
-app.route("/", crownRouter);
 app.route("/", teamsRouter);
 
 // OpenAPI documentation
