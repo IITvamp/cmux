@@ -1,4 +1,3 @@
-import { env } from "@/lib/utils/www-env";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 
 const GITHUB_RELEASES_URL = "https://api.github.com/repos/manaflow-ai/cmux/releases/latest";
@@ -53,10 +52,6 @@ githubReleasesRouter.openapi(
         Accept: "application/vnd.github+json",
         "User-Agent": "cmux-www",
       });
-
-      if (env.GITHUB_RELEASE_TOKEN) {
-        headers.set("Authorization", `Bearer ${env.GITHUB_RELEASE_TOKEN}`);
-      }
 
       const response = await fetch(GITHUB_RELEASES_URL, {
         headers,

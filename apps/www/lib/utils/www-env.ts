@@ -16,7 +16,6 @@ export const env = createEnv({
     CONVEX_DEPLOY_KEY: z.string().min(1),
     ANTHROPIC_API_KEY: z.string().min(1),
     CMUX_TASK_RUN_JWT_SECRET: z.string().min(1),
-    GITHUB_RELEASE_TOKEN: z.string().min(1).optional(),
   },
   client: {
     NEXT_PUBLIC_STACK_PROJECT_ID: z.string().min(1),
