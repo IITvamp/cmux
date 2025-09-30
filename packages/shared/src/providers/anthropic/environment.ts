@@ -178,7 +178,7 @@ exit 0`;
 
   // Add settings.json to files array as well
   files.push({
-    destinationPath: `${claudeLifecycleDir}/settings.json`,
+    destinationPath: "$HOME/.claude/settings.json",
     contentBase64: Buffer.from(
       JSON.stringify(settingsConfig, null, 2)
     ).toString("base64"),
@@ -194,18 +194,12 @@ exec cat "${claudeApiKeyPath}"`;
     mode: "700",
   });
 
-  // Create symlink from ~/.claude/settings.json to /root/lifecycle/claude/settings.json
-  // Claude looks for settings in ~/.claude/settings.json
-  startupCommands.push(
-    "ln -sf /root/lifecycle/claude/settings.json /root/.claude/settings.json"
-  );
-
   // Log the files for debugging
   startupCommands.push(
     `echo '[CMUX] Created Claude hook files in /root/lifecycle:' && ls -la ${claudeLifecycleDir}/`
   );
   startupCommands.push(
-    "echo '[CMUX] Settings symlink in ~/.claude:' && ls -la /root/.claude/"
+    "echo '[CMUX] Settings directory in ~/.claude:' && ls -la /root/.claude/"
   );
 
   return { files, env, startupCommands };
