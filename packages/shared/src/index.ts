@@ -8,6 +8,7 @@ export * from "./socket-schemas";
 export * from "./terminal-config";
 export * from "./utils/normalize-origin";
 export * from "./utils/reserved-cmux-ports";
+export * from "./utils/is-lockfile-path";
 export * from "./utils/validate-exposed-ports";
 export * from "./vscode-schemas";
 export * from "./worker-schemas";
