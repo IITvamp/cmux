@@ -64,7 +64,7 @@ type TaskRunWithChildren = Doc<"taskRuns"> & {
 const AVAILABLE_AGENT_NAMES = new Set(AGENT_CONFIGS.map((agent) => agent.name));
 
 function collectAgentNamesFromRuns(
-  runs: TaskRunWithChildren[] | undefined
+  runs: TaskRunWithChildren[] | undefined,
 ): string[] {
   if (!runs) return [];
 
@@ -89,7 +89,7 @@ function collectAgentNamesFromRuns(
 }
 
 export const Route = createFileRoute(
-  "/_layout/$teamSlugOrId/task/$taskId/run/$runId/diff"
+  "/_layout/$teamSlugOrId/task/$taskId/run/$runId/diff",
 )({
   component: RunDiffPage,
   params: {
@@ -101,55 +101,102 @@ export const Route = createFileRoute(
       };
     },
   },
-  loader: async (opts) => {
+  loader: (opts) => {
     const { runId } = opts.params;
-    const [taskRuns, task] = await Promise.all([
-      opts.context.queryClient.ensureQueryData(
-        convexQuery(api.taskRuns.getByTask, {
+
+    void opts.context.queryClient
+      .ensureQueryData(
+        convexQuery(api.taskRuns.getRunDiffContext, {
           teamSlugOrId: opts.params.teamSlugOrId,
           taskId: opts.params.taskId,
-        })
-      ),
-      opts.context.queryClient.ensureQueryData(
-        convexQuery(api.tasks.getById, {
-          teamSlugOrId: opts.params.teamSlugOrId,
-          id: opts.params.taskId,
-        })
-      ),
-    ]);
-    const selectedTaskRun = taskRuns.find((run) => run._id === runId);
-    if (
-      task?.baseBranch &&
-      task.projectFullName &&
-      selectedTaskRun?.newBranch
-    ) {
-      let branchMetadata: Doc<"branches">[] | undefined;
-      try {
-        branchMetadata = await opts.context.queryClient.ensureQueryData(
-          convexQuery(api.github.getBranchesByRepo, {
-            teamSlugOrId: opts.params.teamSlugOrId,
-            repo: task.projectFullName,
-          })
-        );
-      } catch {
-        branchMetadata = undefined;
-      }
-      const baseBranchMeta = branchMetadata?.find(
-        (branch) => branch.name === task.baseBranch
-      );
-      const baseRefForDiff = normalizeGitRef(task.baseBranch);
-      const headRefForDiff = normalizeGitRef(selectedTaskRun.newBranch);
+          runId,
+        }),
+      )
+      .then(async (context) => {
+        if (!context) {
+          return;
+        }
 
-      void opts.context.queryClient.ensureQueryData(
-        gitDiffQueryOptions({
-          baseRef: baseRefForDiff,
-          headRef: headRefForDiff,
-          repoFullName: task.projectFullName,
-          lastKnownBaseSha: baseBranchMeta?.lastKnownBaseSha,
-          lastKnownMergeCommitSha: baseBranchMeta?.lastKnownMergeCommitSha,
-        })
-      );
-    }
+        const { task, taskRuns, branchMetadataByRepo } = context;
+
+        if (task) {
+          opts.context.queryClient.setQueryData(
+            convexQuery(api.tasks.getById, {
+              teamSlugOrId: opts.params.teamSlugOrId,
+              id: opts.params.taskId,
+            }).queryKey,
+            task,
+          );
+        }
+
+        if (taskRuns) {
+          opts.context.queryClient.setQueryData(
+            convexQuery(api.taskRuns.getByTask, {
+              teamSlugOrId: opts.params.teamSlugOrId,
+              taskId: opts.params.taskId,
+            }).queryKey,
+            taskRuns,
+          );
+        }
+
+        const selectedTaskRun = taskRuns.find((run) => run._id === runId);
+        if (!task || !selectedTaskRun?.newBranch) {
+          return;
+        }
+
+        const trimmedProjectFullName = task.projectFullName?.trim();
+        const targetRepos = new Set<string>();
+        for (const repo of selectedTaskRun.environment?.selectedRepos ?? []) {
+          const trimmed = repo?.trim();
+          if (trimmed) {
+            targetRepos.add(trimmed);
+          }
+        }
+        if (trimmedProjectFullName) {
+          targetRepos.add(trimmedProjectFullName);
+        }
+
+        if (targetRepos.size === 0) {
+          return;
+        }
+
+        const baseRefForDiff = normalizeGitRef(task.baseBranch || "main");
+        const headRefForDiff = normalizeGitRef(selectedTaskRun.newBranch);
+        if (!headRefForDiff || !baseRefForDiff) {
+          return;
+        }
+
+        const metadataForPrimaryRepo = trimmedProjectFullName
+          ? branchMetadataByRepo?.[trimmedProjectFullName]
+          : undefined;
+        const baseBranchMeta = metadataForPrimaryRepo?.find(
+          (branch) => branch.name === task.baseBranch,
+        );
+
+        const prefetches = Array.from(targetRepos).map(async (repoFullName) => {
+          const metadata =
+            trimmedProjectFullName && repoFullName === trimmedProjectFullName
+              ? baseBranchMeta
+              : undefined;
+
+          return opts.context.queryClient
+            .ensureQueryData(
+              gitDiffQueryOptions({
+                baseRef: baseRefForDiff,
+                headRef: headRefForDiff,
+                repoFullName,
+                lastKnownBaseSha: metadata?.lastKnownBaseSha,
+                lastKnownMergeCommitSha: metadata?.lastKnownMergeCommitSha,
+              }),
+            )
+            .catch(() => undefined);
+        });
+
+        await Promise.all(prefetches);
+      })
+      .catch(() => undefined);
+
+    return undefined;
   },
 });
 
@@ -174,6 +221,21 @@ function RunDiffPage() {
   const selectedRun = useMemo(() => {
     return taskRuns?.find((run) => run._id === runId);
   }, [runId, taskRuns]);
+  const restartProvider = selectedRun?.vscode?.provider;
+  const restartRunEnvironmentId = selectedRun?.environmentId;
+  const taskEnvironmentId = task?.environmentId;
+  const restartIsCloudMode = useMemo(() => {
+    if (restartProvider === "docker") {
+      return false;
+    }
+    if (restartProvider) {
+      return true;
+    }
+    if (restartRunEnvironmentId || taskEnvironmentId) {
+      return true;
+    }
+    return false;
+  }, [restartProvider, restartRunEnvironmentId, taskEnvironmentId]);
   const environmentRepos = useMemo(() => {
     const repos = selectedRun?.environment?.selectedRepos ?? [];
     const trimmed = repos
@@ -199,7 +261,9 @@ function RunDiffPage() {
     enabled: Boolean(primaryRepo),
   });
 
-  const branchMetadata = branchMetadataQuery.data as Doc<"branches">[] | undefined;
+  const branchMetadata = branchMetadataQuery.data as
+    | Doc<"branches">[]
+    | undefined;
 
   const baseBranchMetadata = useMemo(() => {
     if (!task?.baseBranch) {
@@ -259,7 +323,7 @@ function RunDiffPage() {
 
     if (restartAgents.length === 0) {
       toast.error(
-        "No previous agents found for this task. Start a new run from the dashboard."
+        "No previous agents found for this task. Start a new run from the dashboard.",
       );
       return;
     }
@@ -320,7 +384,7 @@ function RunDiffPage() {
             projectFullName: projectFullNameForSocket,
             taskId: newTaskId,
             selectedAgents: [...restartAgents],
-            isCloudMode: isEnvTask || Boolean(task.environmentId),
+            isCloudMode: restartIsCloudMode,
             ...(task.environmentId
               ? { environmentId: task.environmentId }
               : {}),
@@ -334,7 +398,7 @@ function RunDiffPage() {
               toast.success("Started follow-up task");
             }
             resolve();
-          }
+          },
         );
       });
     } catch (error) {
@@ -353,6 +417,7 @@ function RunDiffPage() {
     teamSlugOrId,
     theme,
     restartAgents,
+    restartIsCloudMode,
   ]);
 
   const handleFormSubmit = useCallback(
@@ -360,7 +425,7 @@ function RunDiffPage() {
       event.preventDefault();
       void handleRestartTask();
     },
-    [handleRestartTask]
+    [handleRestartTask],
   );
 
   const trimmedFollowUp = followUpText.trim();
@@ -400,7 +465,7 @@ function RunDiffPage() {
         }
       }
     },
-    [handleRestartTask, isRestartDisabled]
+    [handleRestartTask, isRestartDisabled],
   );
 
   // 404 if selected run is missing
@@ -519,7 +584,7 @@ function RunDiffPage() {
                           "group-data-[selected=true]:bg-neutral-600",
                           "group-data-[selected=true]:border-neutral-600",
                           "dark:group-data-[selected=true]:bg-neutral-500",
-                          "dark:group-data-[selected=true]:border-neutral-500"
+                          "dark:group-data-[selected=true]:border-neutral-500",
                         ),
                       }}
                     />
