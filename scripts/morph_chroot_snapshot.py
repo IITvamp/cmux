@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import argparse
 import atexit
-import base64
 import json
 import os
 import shlex
@@ -27,15 +26,19 @@ import sys
 import tempfile
 import time
 import typing as t
+from pathlib import Path
 from urllib import request as urllib_request
 from urllib.error import HTTPError, URLError
 
 import dotenv
 from morphcloud.api import MorphCloudClient, Snapshot
+from morph_common import write_remote_file, write_remote_file_from_path
 
 dotenv.load_dotenv()
 
 client = MorphCloudClient()
+
+ASSETS_DIR = Path(__file__).resolve().parent / "morph_assets"
 
 current_instance: t.Optional[object] = None
 
@@ -77,21 +80,46 @@ class DockerImageConfig(t.TypedDict):
     user: str
 
 
-def build_or_pull_image(dockerfile_path: str | None, image_name: str | None) -> str:
+
+def build_or_pull_image(
+    dockerfile_path: str | None,
+    image_name: str | None,
+    *,
+    platform: str,
+    target: str | None,
+) -> str:
     """Build from Dockerfile or pull the image, return the image tag/name."""
     if dockerfile_path:
         tag = f"cmux-morph-temp:{os.getpid()}"
-        print(f"Building Docker image from {dockerfile_path}...")
-        dockerfile_dir = os.path.dirname(os.path.abspath(dockerfile_path)) or "."
-        subprocess.run(
-            ["docker", "build", "-t", tag, "-f", dockerfile_path, dockerfile_dir],
-            check=True,
+        stage_note = f" (target: {target})" if target else ""
+        print(
+            f"Building Docker image from {dockerfile_path} (platform: {platform}){stage_note}..."
         )
+        dockerfile_dir = os.path.dirname(os.path.abspath(dockerfile_path)) or "."
+        cmd = [
+            "docker",
+            "build",
+            "--platform",
+            platform,
+            "-t",
+            tag,
+            "-f",
+            dockerfile_path,
+            dockerfile_dir,
+        ]
+        if target:
+            cmd.extend(["--target", target])
+        subprocess.run(cmd, check=True)
         print(f"Built image: {tag}")
         return tag
     elif image_name:
-        print(f"Pulling Docker image: {image_name}")
-        subprocess.run(["docker", "pull", image_name], check=True)
+        print(f"Pulling Docker image: {image_name} (platform: {platform})")
+        if target:
+            print("--target is ignored when pulling an image tag")
+        subprocess.run(
+            ["docker", "pull", "--platform", platform, image_name],
+            check=True,
+        )
         return image_name
     else:
         raise ValueError("Must provide either --dockerfile or --image")
@@ -117,17 +145,18 @@ def inspect_image(image: str) -> DockerImageConfig:
     }
 
 
-def export_image_to_tar(image: str) -> str:
+
+def export_image_to_tar(image: str, *, platform: str) -> str:
     """Flatten the Docker image to a tarball using docker export.
 
     Returns the path to the temporary tar file.
     """
-    print(f"Flattening image {image} to tarball...")
+    print(f"Flattening image {image} to tarball (platform: {platform})...")
     fd, tar_path = tempfile.mkstemp(suffix=".tar", prefix="cmux-rootfs-")
     os.close(fd)
 
     result = subprocess.run(
-        ["docker", "create", image],
+        ["docker", "create", "--platform", platform, image],
         capture_output=True,
         text=True,
         check=True,
@@ -149,72 +178,24 @@ def export_image_to_tar(image: str) -> str:
 
 
 def create_chroot_runner_scripts(snapshot: Snapshot) -> Snapshot:
-    """Install the chroot runner and umount scripts."""
+    """Install the chroot runner and umount scripts from local assets."""
     print("Installing chroot runner scripts...")
 
-    runner_script = """#!/usr/bin/env bash
-set -euo pipefail
+    runner_asset = ASSETS_DIR / "app-chroot-runner.sh"
+    umount_asset = ASSETS_DIR / "app-chroot-umount.sh"
 
-ROOT="${ROOT:-/opt/app/rootfs}"
-
-for d in proc sys dev dev/pts; do
-  mkdir -p "$ROOT/$d"
-done
-
-mountpoint -q "$ROOT/proc"    || mount -t proc proc "$ROOT/proc"
-mountpoint -q "$ROOT/sys"     || mount -t sysfs sysfs "$ROOT/sys"
-mountpoint -q "$ROOT/dev"     || mount --bind /dev "$ROOT/dev"
-mountpoint -q "$ROOT/dev/pts" || mount --bind /dev/pts "$ROOT/dev/pts"
-
-if [ ! -e "$ROOT/etc/resolv.conf" ] && [ -e /etc/resolv.conf ]; then
-  mkdir -p "$ROOT/etc"
-  cp -L /etc/resolv.conf "$ROOT/etc/resolv.conf"
-fi
-
-ENV_FILE="${ENV_FILE:-/opt/app/app.env}"
-if [ -f "$ENV_FILE" ]; then
-  set -a
-  . "$ENV_FILE"
-  set +a
-fi
-
-USERSPEC="${USERSPEC:-}"
-WORKDIR="${WORKDIR:-/}"
-
-cd_target="$ROOT$WORKDIR"
-if [ ! -d "$cd_target" ]; then
-  mkdir -p "$cd_target"
-fi
-
-if [ -n "$USERSPEC" ]; then
-  exec chroot --userspec="$USERSPEC" "$ROOT" sh -c "cd ${WORKDIR@Q} && exec \\"$@\\""
-else
-  exec chroot "$ROOT" sh -c "cd ${WORKDIR@Q} && exec \\"$@\\""
-fi
-"""
-
-    umount_script = """#!/usr/bin/env bash
-set -euo pipefail
-ROOT="${ROOT:-/opt/app/rootfs}"
-for m in dev/pts dev sys proc; do
-  if mountpoint -q "$ROOT/$m"; then
-    umount -l "$ROOT/$m" || true
-  fi
-done
-"""
-
-    runner_b64 = base64.b64encode(runner_script.encode("utf-8")).decode("ascii")
-    umount_b64 = base64.b64encode(umount_script.encode("utf-8")).decode("ascii")
-
-    snapshot = snapshot.exec(
-        f"printf %s {shlex.quote(runner_b64)} | base64 -d > /usr/local/bin/app-chroot-runner && "
-        f"chmod +x /usr/local/bin/app-chroot-runner"
+    snapshot = write_remote_file_from_path(
+        snapshot,
+        remote_path="/usr/local/bin/app-chroot-runner",
+        local_path=runner_asset,
+        executable=True,
     )
-    snapshot = snapshot.exec(
-        f"printf %s {shlex.quote(umount_b64)} | base64 -d > /usr/local/bin/app-chroot-umount && "
-        f"chmod +x /usr/local/bin/app-chroot-umount"
+    snapshot = write_remote_file_from_path(
+        snapshot,
+        remote_path="/usr/local/bin/app-chroot-umount",
+        local_path=umount_asset,
+        executable=True,
     )
-
     return snapshot
 
 
@@ -226,47 +207,33 @@ def create_systemd_service(snapshot: Snapshot, config: DockerImageConfig) -> Sna
     if not cmd_parts:
         cmd_parts = ["/bin/sh"]
 
-    exec_start_args = " ".join(shlex.quote(p) for p in cmd_parts)
+    exec_start_args = " ".join(shlex.quote(part) for part in cmd_parts)
     exec_start = f"/usr/local/bin/app-chroot-runner {exec_start_args}"
 
     user_spec = ""
     if config["user"] and config["user"] != "root":
-        if ":" in config["user"]:
-            user_spec = config["user"]
-        else:
-            user_spec = config["user"]
+        user_spec = config["user"]
 
-    env_userspec_line = f"Environment=USERSPEC={user_spec}" if user_spec else ""
-    env_workdir_line = f"Environment=WORKDIR={config['workdir']}"
+    env_lines: list[str] = []
+    if user_spec:
+        env_lines.append(f"Environment=USERSPEC={user_spec}")
+    env_block = "\n".join(env_lines)
 
-    service_content = f"""[Unit]
-Description=Cmux App (chroot)
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-EnvironmentFile=/opt/app/app.env
-{env_userspec_line}
-{env_workdir_line}
-ExecStart={exec_start}
-ExecStopPost=/usr/local/bin/app-chroot-umount
-WorkingDirectory=/
-Restart=no
-StandardOutput=append:/var/log/cmux/cmux.service.log
-StandardError=append:/var/log/cmux/cmux.service.log
-
-[Install]
-WantedBy=multi-user.target
-"""
-
-    service_b64 = base64.b64encode(service_content.encode("utf-8")).decode("ascii")
-    snapshot = snapshot.exec(
-        f"mkdir -p /var/log/cmux && "
-        f"printf %s {shlex.quote(service_b64)} | base64 -d > /etc/systemd/system/cmux.service && "
-        f"systemctl daemon-reload && "
-        f"systemctl enable cmux.service"
+    service_template = (ASSETS_DIR / "cmux-chroot.service").read_text(encoding="utf-8")
+    service_content = service_template.format(
+        extra_environment_lines=env_block,
+        workdir=config["workdir"],
+        exec_start=exec_start,
     )
+
+    snapshot = write_remote_file(
+        snapshot,
+        remote_path="/etc/systemd/system/cmux.service",
+        content=service_content,
+    )
+
+    snapshot = snapshot.exec("mkdir -p /var/log/cmux")
+    snapshot = snapshot.exec("systemctl daemon-reload && systemctl enable cmux.service")
 
     if user_spec and ":" not in user_spec:
         snapshot = snapshot.exec(
@@ -276,16 +243,24 @@ WantedBy=multi-user.target
     return snapshot
 
 
+
 def build_snapshot(
     dockerfile_path: str | None,
     image_name: str | None,
+    platform: str,
+    target: str | None,
 ) -> Snapshot:
     """Build a Morph snapshot from a Docker image using chroot approach."""
-    image = build_or_pull_image(dockerfile_path, image_name)
+    image = build_or_pull_image(
+        dockerfile_path,
+        image_name,
+        platform=platform,
+        target=target,
+    )
     config = inspect_image(image)
     print(f"Image config: entrypoint={config['entrypoint']}, cmd={config['cmd']}, workdir={config['workdir']}, user={config['user']}")
 
-    rootfs_tar = export_image_to_tar(image)
+    rootfs_tar = export_image_to_tar(image, platform=platform)
 
     try:
         print("Creating Morph snapshot...")
@@ -314,14 +289,17 @@ def build_snapshot(
         )
 
         print("Writing environment file...")
-        env_content = "\n".join(config["env"])
-        if env_content:
-            env_b64 = base64.b64encode(env_content.encode("utf-8")).decode("ascii")
-            snapshot = snapshot.exec(
-                f"printf %s {shlex.quote(env_b64)} | base64 -d > /opt/app/app.env"
-            )
+        env_lines = config.get("env", [])
+        env_content = "\n".join(env_lines)
+        if env_lines:
+            env_content += "\n"
         else:
-            snapshot = snapshot.exec("touch /opt/app/app.env")
+            env_content = "\n"
+        snapshot = write_remote_file(
+            snapshot,
+            remote_path="/opt/app/app.env",
+            content=env_content,
+        )
 
         snapshot = create_chroot_runner_scripts(snapshot)
         snapshot = create_systemd_service(snapshot, config)
@@ -340,6 +318,15 @@ def main() -> None:
     group.add_argument("--dockerfile", help="Path to Dockerfile to build")
     group.add_argument("--image", help="Docker image name to use")
     ap.add_argument(
+        "--platform",
+        default="linux/amd64",
+        help="Docker platform to target (default: linux/amd64)",
+    )
+    ap.add_argument(
+        "--target",
+        help="Docker build stage to target when using --dockerfile",
+    )
+    ap.add_argument(
         "--resnapshot",
         action="store_true",
         help="After starting the instance, wait for Enter and snapshot again",
@@ -347,7 +334,7 @@ def main() -> None:
     args = ap.parse_args()
 
     try:
-        snapshot = build_snapshot(args.dockerfile, args.image)
+        snapshot = build_snapshot(args.dockerfile, args.image, args.platform, args.target)
         print(f"Snapshot ID: {snapshot.id}")
 
         print("Starting instance...")

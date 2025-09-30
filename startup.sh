@@ -1,18 +1,34 @@
 #!/bin/bash
 set -e
 
+
+has_docker() {
+    command -v docker >/dev/null 2>&1 && command -v dockerd >/dev/null 2>&1
+}
+
+DOCKER_AVAILABLE=0
+if has_docker; then
+    DOCKER_AVAILABLE=1
+fi
+
 # Ensure bun, node, and our shims are in PATH
 export PATH="/usr/local/bin:$PATH"
 
 # Create log dir early
 mkdir -p /var/log/cmux || true
 
-# Start supervisor to manage dockerd (in background, but with -n for proper signal handling)
-/usr/bin/supervisord -n >> /dev/null 2>&1 &
+# Start supervisor to manage dockerd when available (run in background with -n for signals)
+if [ "$DOCKER_AVAILABLE" -eq 1 ]; then
+    /usr/bin/supervisord -n >> /dev/null 2>&1 &
+fi
 
 # Wait for Docker daemon to be ready
 # Based on https://github.com/cruizba/ubuntu-dind/blob/master/start-docker.sh
 wait_for_dockerd() {
+    if [ "$DOCKER_AVAILABLE" -ne 1 ]; then
+        return 0
+    fi
+
     local max_time_wait=120
     local waited_sec=0
     echo "Waiting for Docker daemon to start..."
@@ -56,6 +72,11 @@ wait_for_dockerd() {
 
 # Function to start devcontainer if present
 start_devcontainer() {
+    if [ "$DOCKER_AVAILABLE" -ne 1 ]; then
+        echo "[Startup] Docker not available, skipping devcontainer startup" >> /var/log/cmux/startup.log
+        return 0
+    fi
+
     echo "[Startup] Checking for devcontainer configuration..." >> /var/log/cmux/startup.log
     
     # Wait for Docker to be ready first

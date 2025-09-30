@@ -132,11 +132,8 @@ RUN bun run package && cp cmux-vscode-extension-0.0.1.vsix /tmp/cmux-vscode-exte
 RUN /app/openvscode-server/bin/openvscode-server --install-extension /tmp/cmux-vscode-extension-0.0.1.vsix && \
     rm /tmp/cmux-vscode-extension-0.0.1.vsix
 
-# Stage 2: Runtime stage
-FROM ubuntu:24.04 AS runtime
-
-ARG DOCKER_VERSION=28.3.2
-ARG DOCKER_CHANNEL=stable
+# Stage 2: Runtime base (shared between local and morph)
+FROM ubuntu:24.04 AS runtime-base
 
 # Install runtime dependencies only
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -180,6 +177,8 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
 COPY --from=builder /usr/local/bin/bun /usr/local/bin/bun
 COPY --from=builder /usr/local/bin/bunx /usr/local/bin/bunx
 
+ENV PATH="/usr/local/bin:$PATH"
+
 # Verify bun works in runtime
 RUN bun --version && bunx --version
 
@@ -188,46 +187,6 @@ RUN bun add -g @openai/codex@0.42.0 @anthropic-ai/claude-code@2.0.0 @google/gemi
 # Install cursor cli
 RUN curl https://cursor.com/install -fsS | bash
 RUN /root/.local/bin/cursor-agent --version
-
-# Set iptables-legacy (required for Docker in Docker on Ubuntu 22.04+)
-RUN update-alternatives --set iptables /usr/sbin/iptables-legacy
-
-# Install Docker
-RUN <<-'EOF'
-    set -eux; \
-    arch="$(uname -m)"; \
-    case "$arch" in \
-        x86_64) dockerArch='x86_64' ;; \
-        aarch64) dockerArch='aarch64' ;; \
-        *) echo >&2 "error: unsupported architecture ($arch)"; exit 1 ;; \
-    esac; \
-    wget -O docker.tgz "https://download.docker.com/linux/static/${DOCKER_CHANNEL}/${dockerArch}/docker-${DOCKER_VERSION}.tgz"; \
-    tar --extract --file docker.tgz --strip-components 1 --directory /usr/local/bin/; \
-    rm docker.tgz; \
-    dockerd --version; \
-    docker --version
-EOF
-
-# Install Docker Compose and Buildx plugins
-RUN <<-'EOF'
-    set -eux; \
-    mkdir -p /usr/local/lib/docker/cli-plugins; \
-    arch="$(uname -m)"; \
-    # Install Docker Compose
-    curl -SL "https://github.com/docker/compose/releases/download/v2.32.2/docker-compose-linux-${arch}" \
-        -o /usr/local/lib/docker/cli-plugins/docker-compose; \
-    chmod +x /usr/local/lib/docker/cli-plugins/docker-compose; \
-    # Install Docker Buildx
-    curl -SL "https://github.com/docker/buildx/releases/download/v0.18.0/buildx-v0.18.0.linux-${arch}" \
-        -o /usr/local/lib/docker/cli-plugins/docker-buildx; \
-    chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx; \
-    echo "Docker plugins installed successfully"
-EOF
-
-# Skip docker-init installation - ubuntu-dind doesn't have it
-
-# Set Bun path
-ENV PATH="/usr/local/bin:$PATH"
 
 # Copy only the built artifacts and runtime dependencies from builder
 COPY --from=builder /app/openvscode-server /app/openvscode-server
@@ -266,6 +225,71 @@ RUN wget --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=15 -t 5 \
     /app/openvscode-server/bin/openvscode-server --install-extension /tmp/claude-code.vsix && \
     rm /tmp/claude-code.vsix
 
+# Create workspace and lifecycle directories
+RUN mkdir -p /workspace /root/workspace /root/lifecycle
+
+# Copy startup script and prompt wrapper
+COPY startup.sh /startup.sh
+COPY prompt-wrapper.sh /usr/local/bin/prompt-wrapper
+RUN chmod +x /startup.sh /usr/local/bin/prompt-wrapper
+
+# Create VS Code user settings
+RUN mkdir -p /root/.openvscode-server/data/User && \
+    echo '{\"workbench.startupEditor\": \"none\", \"terminal.integrated.macOptionClickForcesSelection\": true, \"terminal.integrated.shell.linux\": \"bash\", \"terminal.integrated.shellArgs.linux\": [\"-l\"]}' > /root/.openvscode-server/data/User/settings.json && \
+    mkdir -p /root/.openvscode-server/data/User/profiles/default-profile && \
+    echo '{\"workbench.startupEditor\": \"none\", \"terminal.integrated.macOptionClickForcesSelection\": true, \"terminal.integrated.shell.linux\": \"bash\", \"terminal.integrated.shellArgs.linux\": [\"-l\"]}' > /root/.openvscode-server/data/User/profiles/default-profile/settings.json && \
+    mkdir -p /root/.openvscode-server/data/Machine && \
+    echo '{\"workbench.startupEditor\": \"none\", \"terminal.integrated.macOptionClickForcesSelection\": true, \"terminal.integrated.shell.linux\": \"bash\", \"terminal.integrated.shellArgs.linux\": [\"-l\"]}' > /root/.openvscode-server/data/Machine/settings.json
+
+# Ports
+# 39376: VS Code Extension Socket Server
+# 39377: Worker service
+# 39378: OpenVSCode server
+EXPOSE 39376 39377 39378
+
+WORKDIR /
+ENTRYPOINT ["/startup.sh"]
+CMD []
+
+# Stage 3: Local (DinD) runtime with Docker available
+FROM runtime-base AS runtime-local
+
+ARG DOCKER_VERSION=28.3.2
+ARG DOCKER_CHANNEL=stable
+
+# Switch to legacy iptables for Docker compatibility
+RUN update-alternatives --set iptables /usr/sbin/iptables-legacy
+
+# Install Docker
+RUN <<-'EOF'
+    set -eux; \
+    arch="$(uname -m)"; \
+    case "$arch" in \
+        x86_64) dockerArch='x86_64' ;; \
+        aarch64) dockerArch='aarch64' ;; \
+        *) echo >&2 "error: unsupported architecture ($arch)"; exit 1 ;; \
+    esac; \
+    wget -O docker.tgz "https://download.docker.com/linux/static/${DOCKER_CHANNEL}/${dockerArch}/docker-${DOCKER_VERSION}.tgz"; \
+    tar --extract --file docker.tgz --strip-components 1 --directory /usr/local/bin/; \
+    rm docker.tgz; \
+    dockerd --version; \
+    docker --version
+EOF
+
+# Install Docker Compose and Buildx plugins
+RUN <<-'EOF'
+    set -eux; \
+    mkdir -p /usr/local/lib/docker/cli-plugins; \
+    arch="$(uname -m)"; \
+    curl -SL "https://github.com/docker/compose/releases/download/v2.32.2/docker-compose-linux-${arch}" \
+        -o /usr/local/lib/docker/cli-plugins/docker-compose; \
+    chmod +x /usr/local/lib/docker/cli-plugins/docker-compose; \
+    curl -SL "https://github.com/docker/buildx/releases/download/v0.18.0/buildx-v0.18.0.linux-${arch}" \
+        -o /usr/local/lib/docker/cli-plugins/docker-buildx; \
+    chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx; \
+    echo "Docker plugins installed successfully"
+EOF
+
 # Create modprobe script (required for DinD)
 RUN <<-'EOF'
 cat > /usr/local/bin/modprobe << 'SCRIPT'
@@ -285,9 +309,6 @@ SCRIPT
 chmod +x /usr/local/bin/modprobe
 EOF
 
-# Create workspace and lifecycle directories
-RUN mkdir -p /workspace /root/workspace /root/lifecycle
-
 VOLUME /var/lib/docker
 
 # Create supervisor config for dockerd
@@ -304,26 +325,8 @@ stdout_logfile=/var/log/dockerd.out.log
 CONFIG
 EOF
 
-# Copy startup script and prompt wrapper
-COPY startup.sh /startup.sh
-COPY prompt-wrapper.sh /usr/local/bin/prompt-wrapper
-RUN chmod +x /startup.sh /usr/local/bin/prompt-wrapper
+# Stage 4: Morph runtime without Docker
+FROM runtime-base AS morph
 
-# Create VS Code user settings
-RUN mkdir -p /root/.openvscode-server/data/User && \
-    echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.shell.linux": "bash", "terminal.integrated.shellArgs.linux": ["-l"]}' > /root/.openvscode-server/data/User/settings.json && \
-    mkdir -p /root/.openvscode-server/data/User/profiles/default-profile && \
-    echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.shell.linux": "bash", "terminal.integrated.shellArgs.linux": ["-l"]}' > /root/.openvscode-server/data/User/profiles/default-profile/settings.json && \
-    mkdir -p /root/.openvscode-server/data/Machine && \
-    echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.shell.linux": "bash", "terminal.integrated.shellArgs.linux": ["-l"]}' > /root/.openvscode-server/data/Machine/settings.json
-
-# Ports
-# 39376: VS Code Extension Socket Server
-# 39377: Worker service
-# 39378: OpenVSCode server
-EXPOSE 39376 39377 39378
-
-WORKDIR /
-
-ENTRYPOINT ["/startup.sh"]
-CMD []
+# Final image (default) uses the local DinD runtime
+FROM runtime-local

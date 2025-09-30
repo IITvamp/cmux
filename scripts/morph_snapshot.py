@@ -21,16 +21,12 @@ from urllib.error import HTTPError, URLError
 
 import dotenv
 from morphcloud.api import MorphCloudClient, Snapshot
+from morph_common import ensure_docker, ensure_docker_cli_plugins
 
 dotenv.load_dotenv()
 
 client = MorphCloudClient()
 
-
-# Morph snapshots run on x86_64 hardware; Docker plugins must match this arch
-MORPH_EXPECTED_UNAME_ARCH = "x86_64"
-DOCKER_COMPOSE_VERSION = "v2.32.2"
-DOCKER_BUILDX_VERSION = "v0.18.0"
 
 # Track live instance for cleanup on exit
 current_instance: t.Optional[object] = None
@@ -597,56 +593,6 @@ WantedBy=multi-user.target
             "systemctl daemon-reload && systemctl enable cmux.service"
         )
 
-
-def ensure_docker_cli_plugins(snapshot: Snapshot) -> Snapshot:
-    """Install docker compose/buildx CLI plugins and verify versions."""
-
-    docker_plugin_cmds = [
-        "mkdir -p /usr/local/lib/docker/cli-plugins",
-        "arch=$(uname -m)",
-        f'[ "$arch" = "{MORPH_EXPECTED_UNAME_ARCH}" ] || (echo "Morph snapshot architecture mismatch: expected {MORPH_EXPECTED_UNAME_ARCH} but got $arch" >&2; exit 1)',
-        f"curl -fsSL https://github.com/docker/compose/releases/download/{DOCKER_COMPOSE_VERSION}/docker-compose-linux-{MORPH_EXPECTED_UNAME_ARCH} "
-        f"-o /usr/local/lib/docker/cli-plugins/docker-compose",
-        "chmod +x /usr/local/lib/docker/cli-plugins/docker-compose",
-        f"curl -fsSL https://github.com/docker/buildx/releases/download/{DOCKER_BUILDX_VERSION}/buildx-{DOCKER_BUILDX_VERSION}.linux-amd64 "
-        f"-o /usr/local/lib/docker/cli-plugins/docker-buildx",
-        "chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx",
-        "docker compose version",
-        "docker buildx version",
-    ]
-    return snapshot.exec(" && ".join(docker_plugin_cmds))
-
-
-def ensure_docker(snapshot: Snapshot) -> Snapshot:
-    """Install Docker, docker compose, and enable BuildKit."""
-    snapshot = snapshot.setup(
-        "DEBIAN_FRONTEND=noninteractive apt-get update && "
-        "DEBIAN_FRONTEND=noninteractive apt-get install -y "
-        "docker.io docker-compose python3-docker git curl && "
-        "rm -rf /var/lib/apt/lists/*"
-    )
-    snapshot = snapshot.exec(
-        "mkdir -p /etc/docker && "
-        'echo \'{"features":{"buildkit":true}}\' > /etc/docker/daemon.json && '
-        "echo 'DOCKER_BUILDKIT=1' >> /etc/environment && "
-        "systemctl restart docker && "
-        "for i in {1..30}; do "
-        "  if docker info >/dev/null 2>&1; then "
-        "    echo 'Docker ready'; break; "
-        "  else "
-        "    echo 'Waiting for Docker...'; "
-        "    [ $i -eq 30 ] && { echo 'Docker failed to start after 30 attempts'; exit 1; }; "
-        "    sleep 2; "
-        "  fi; "
-        "done && "
-        "docker --version && docker-compose --version && "
-        "(docker compose version 2>/dev/null || echo 'docker compose plugin not available') && "
-        "echo 'Docker commands verified'"
-    )
-    snapshot = ensure_docker_cli_plugins(snapshot)
-    # Ensure IPv6 localhost resolution
-    snapshot = snapshot.exec("echo '::1       localhost' >> /etc/hosts")
-    return snapshot
 
 
 def _file_sha256_hex(path: str) -> str:
