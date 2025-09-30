@@ -38,27 +38,21 @@ async function buildOpencodeEnvironment(
   }
 
   // Ensure lifecycle directory for completion markers
-  startupCommands.push("mkdir -p /root/lifecycle");
+  startupCommands.push("mkdir -p /root/lifecycle/opencode");
+  startupCommands.push(
+    "rm -f /root/lifecycle/opencode-complete-* 2>/dev/null || true"
+  );
 
-  // Install OpenCode Notification plugin to detect session completion
-  const pluginContent = `\
-export const NotificationPlugin = async ({ client, $ }) => {
-  return {
-    event: async ({ event }) => {
-      // Send notification on session completion
-      if (event.type === "session.idle") {
-        try {
-          await $\`bash -lc "mkdir -p /root/lifecycle && echo done > /root/lifecycle/opencode-complete-$CMUX_TASK_RUN_ID"\`
-        } catch (e1) {
-          try {
-            await $\`sh -lc "mkdir -p /root/lifecycle && echo done > /root/lifecycle/opencode-complete-$CMUX_TASK_RUN_ID"\`
-          } catch (_) {}
-        }
-      }
-    },
-  }
-}
-`;
+  // Install OpenCode Notification plugin to detect session completion via lifecycle hook
+  const completionScript = `#!/bin/sh\nset -euo pipefail\n\nMARKER_DIR="/root/lifecycle"\nTASK_ID="\${CMUX_TASK_RUN_ID:-unknown}"\nMARKER_FILE="\${MARKER_DIR}/opencode-complete-\${TASK_ID}"\n\nmkdir -p "\${MARKER_DIR}"\n# Write a timestamp so repeated triggers are visible\nprintf "%s" "\$(date +%s)" > "\${MARKER_FILE}"\n# Maintain both agent-specific and shared done markers\ntouch "\${MARKER_DIR}/opencode-done.txt" "\${MARKER_DIR}/done.txt"\n\necho "[CMUX OpenCode Hook] Created marker at \${MARKER_FILE}" >&2\n`;
+
+  files.push({
+    destinationPath: "/root/lifecycle/opencode/session-complete.sh",
+    contentBase64: Buffer.from(completionScript).toString("base64"),
+    mode: "755",
+  });
+
+  const pluginContent = `export const NotificationPlugin = async ({ $ }) => {\n  return {\n    event: async ({ event }) => {\n      if (event.type === "session.idle") {\n        try {\n          await $\`/root/lifecycle/opencode/session-complete.sh\`;\n        } catch (error) {\n          console.error(\"[CMUX OpenCode Hook] Failed to run completion script\", error);\n        }\n      }\n    },\n  };\n};\n`;
 
   files.push({
     destinationPath: "$HOME/.config/opencode/plugin/notification.js",

@@ -518,6 +518,12 @@ export async function spawnAgent(
         `[AgentSpawner] Terminal idle detected for ${agent.name}:`,
         data
       );
+      if (agent.completionDetector) {
+        serverLogger.info(
+          `[AgentSpawner] Ignoring idle for ${agent.name} because a completion detector is active`
+        );
+        return;
+      }
       if (hasFailed) {
         serverLogger.warn(
           `[AgentSpawner] Ignoring idle for ${agent.name} (already marked failed)`
