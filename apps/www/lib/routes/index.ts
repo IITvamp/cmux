@@ -5,6 +5,7 @@ export { environmentsRouter } from "./environments.route";
 export { githubPrsBackfillRepoRouter } from "./github.prs.backfill-repo.route";
 export { githubPrsBackfillRouter } from "./github.prs.backfill.route";
 export { githubPrsCodeRouter } from "./github.prs.code.route";
+export { githubPrsOpenRouter } from "./github.prs.open.route";
 export { githubPrsFileContentsBatchRouter } from "./github.prs.file-contents-batch.route";
 export { githubPrsFileContentsRouter } from "./github.prs.file-contents.route";
 export { githubPrsFilesRouter } from "./github.prs.files.route";
