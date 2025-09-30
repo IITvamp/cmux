@@ -1009,53 +1009,9 @@ export function setupSocketHandlers(
           repoPath: repoUrl,
           branch,
           pattern,
+          environmentId,
         } = ListFilesRequestSchema.parse(data);
         const repoManager = RepositoryManager.getInstance();
-
-        // Resolve origin path without assuming any branch
-        const projectPaths = await getProjectPaths(repoUrl, safeTeam);
-
-        // Ensure directories exist
-        await fs.mkdir(projectPaths.projectPath, { recursive: true });
-        await fs.mkdir(projectPaths.worktreesPath, { recursive: true });
-
-        // Ensure the repository is cloned/fetched with deduplication
-        // Ensure repository exists (clone if needed) without assuming branch
-        await repoManager.ensureRepository(repoUrl, projectPaths.originPath);
-
-        // Determine the effective base branch
-        const baseBranch =
-          branch ||
-          (await repoManager.getDefaultBranch(projectPaths.originPath));
-
-        // Fetch that branch to make sure origin has it
-        await repoManager.ensureRepository(
-          repoUrl,
-          projectPaths.originPath,
-          baseBranch,
-        );
-
-        // For clarity downstream, compute a proper worktreeInfo keyed by baseBranch
-        const worktreeInfo = {
-          ...projectPaths,
-          worktreePath: projectPaths.worktreesPath + "/" + baseBranch,
-          branch: baseBranch,
-        } as const;
-
-        // Check if the origin directory exists
-        try {
-          await fs.access(worktreeInfo.originPath);
-        } catch {
-          serverLogger.error(
-            "Origin directory does not exist:",
-            worktreeInfo.originPath,
-          );
-          socket.emit("list-files-response", {
-            files: [],
-            error: "Repository directory not found",
-          });
-          return;
-        }
 
         const ignoredPatterns = [
           "**/node_modules/**",
@@ -1087,19 +1043,15 @@ export function setupSocketHandlers(
               const fullPath = path.join(dir, entry.name);
               const relativePath = path.relative(baseDir, fullPath);
 
-              // Check if path should be ignored
               const shouldIgnore = ignoredPatterns.some(
-                (pattern) =>
-                  minimatch(relativePath, pattern) ||
-                  minimatch(fullPath, pattern),
+                (ignorePattern) =>
+                  minimatch(relativePath, ignorePattern) ||
+                  minimatch(fullPath, ignorePattern),
               );
 
               if (shouldIgnore) continue;
 
-              // Skip pattern matching here - we'll do fuzzy matching later
-              // For directories, we still need to recurse to get all files
               if (entry.isDirectory() && !pattern) {
-                // Only add directory if no pattern (for browsing)
                 files.push({
                   path: fullPath,
                   name: entry.name,
@@ -1109,7 +1061,6 @@ export function setupSocketHandlers(
               }
 
               if (entry.isDirectory()) {
-                // Recurse into subdirectory
                 const subFiles = await walkDir(fullPath, baseDir);
                 files.push(...subFiles);
               } else {
@@ -1128,46 +1079,146 @@ export function setupSocketHandlers(
           return files;
         }
 
-        // List files from the origin directory
-        let fileList = await walkDir(
-          worktreeInfo.originPath,
-          worktreeInfo.originPath,
-        );
+        const listFilesForRepo = async ({
+          targetRepoUrl,
+          repoFullName,
+          branchOverride,
+        }: {
+          targetRepoUrl: string;
+          repoFullName?: string;
+          branchOverride?: string;
+        }): Promise<FileInfo[]> => {
+          const projectPaths = await getProjectPaths(targetRepoUrl, safeTeam);
 
-        // Apply fuzzysort fuzzy matching if pattern is provided
-        if (pattern) {
-          // Prepare file paths for fuzzysort
-          const filePaths = fileList.map((f) => f.relativePath);
+          await fs.mkdir(projectPaths.projectPath, { recursive: true });
+          await fs.mkdir(projectPaths.worktreesPath, { recursive: true });
 
-          // Use fuzzysort to search and sort files
-          const results = fuzzysort.go(pattern, filePaths, {
-            threshold: -10000, // Show all results, even poor matches
-            limit: 1000, // Limit results for performance
+          await repoManager.ensureRepository(
+            targetRepoUrl,
+            projectPaths.originPath,
+          );
+
+          const baseBranch =
+            branchOverride ||
+            (await repoManager.getDefaultBranch(projectPaths.originPath));
+
+          await repoManager.ensureRepository(
+            targetRepoUrl,
+            projectPaths.originPath,
+            baseBranch,
+          );
+
+          const worktreeInfo = {
+            ...projectPaths,
+            worktreePath: `${projectPaths.worktreesPath}/${baseBranch}`,
+            branch: baseBranch,
+          } as const;
+
+          try {
+            await fs.access(worktreeInfo.originPath);
+          } catch {
+            serverLogger.error(
+              "Origin directory does not exist:",
+              worktreeInfo.originPath,
+            );
+            return [];
+          }
+
+          let fileList = await walkDir(
+            worktreeInfo.originPath,
+            worktreeInfo.originPath,
+          );
+
+          if (pattern) {
+            const filePaths = fileList.map((f) => f.relativePath);
+            const results = fuzzysort.go(pattern, filePaths, {
+              threshold: -10000,
+              limit: 1000,
+            });
+            const fileMap = new Map(fileList.map((f) => [f.relativePath, f]));
+
+            fileList = results
+              .map((result) => fileMap.get(result.target)!)
+              .filter(Boolean);
+          } else {
+            fileList.sort((a, b) => {
+              if (a.isDirectory && !b.isDirectory) return -1;
+              if (!a.isDirectory && b.isDirectory) return 1;
+              return a.relativePath.localeCompare(b.relativePath);
+            });
+          }
+
+          if (repoFullName) {
+            return fileList.map((file) => ({
+              ...file,
+              repoFullName,
+              relativePath: `${repoFullName}/${file.relativePath}`,
+            }));
+          }
+
+          return fileList;
+        };
+
+        if (environmentId) {
+          const environment = await getConvex().query(api.environments.get, {
+            teamSlugOrId: safeTeam,
+            id: environmentId,
           });
 
-          // Create a map for quick lookup
-          const fileMap = new Map(fileList.map((f) => [f.relativePath, f]));
+          if (!environment) {
+            socket.emit("list-files-response", {
+              files: [],
+              error: "Environment not found",
+            });
+            return;
+          }
 
-          // Rebuild fileList based on fuzzysort results
-          fileList = results
-            .map((result) => fileMap.get(result.target)!)
-            .filter(Boolean);
+          const repoFullNames = (environment.selectedRepos || [])
+            .map((repo) => repo?.trim())
+            .filter((repo): repo is string => Boolean(repo));
 
-          // Add any files that didn't match at the end (if we want to show all files)
-          // Uncomment if you want to show non-matching files at the bottom
-          // const matchedPaths = new Set(results.map(r => r.target));
-          // const unmatchedFiles = fileList.filter(f => !matchedPaths.has(f.relativePath));
-          // fileList = [...fileList, ...unmatchedFiles];
-        } else {
-          // Only sort by directory/name when there's no search query
-          fileList.sort((a, b) => {
-            if (a.isDirectory && !b.isDirectory) return -1;
-            if (!a.isDirectory && b.isDirectory) return 1;
-            return a.relativePath.localeCompare(b.relativePath);
-          });
+          if (repoFullNames.length === 0) {
+            socket.emit("list-files-response", {
+              files: [],
+              error: "This environment has no repositories configured",
+            });
+            return;
+          }
+
+          const aggregatedFiles: FileInfo[] = [];
+
+          for (const repoFullName of repoFullNames) {
+            try {
+              const files = await listFilesForRepo({
+                targetRepoUrl: `https://github.com/${repoFullName}.git`,
+                repoFullName,
+              });
+              aggregatedFiles.push(...files);
+            } catch (error) {
+              serverLogger.error(
+                `Failed to list files for environment repo ${repoFullName}:`,
+                error,
+              );
+            }
+          }
+
+          socket.emit("list-files-response", { files: aggregatedFiles });
+          return;
         }
 
-        socket.emit("list-files-response", { files: fileList });
+        if (repoUrl) {
+          const fileList = await listFilesForRepo({
+            targetRepoUrl: repoUrl,
+            branchOverride: branch,
+          });
+          socket.emit("list-files-response", { files: fileList });
+          return;
+        }
+
+        socket.emit("list-files-response", {
+          files: [],
+          error: "Repository information missing",
+        });
       } catch (error) {
         serverLogger.error("Error listing files:", error);
         socket.emit("list-files-response", {
