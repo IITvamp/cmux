@@ -1,7 +1,5 @@
 "use client";
 
-import clientPackageJson from "../../client/package.json" assert { type: "json" };
-
 import { ClientIcon } from "@/components/client-icon";
 import CmuxLogo from "@/components/logo/cmux-logo";
 import { Cloud, GitBranch, GitPullRequest, Star, Terminal, Users, Zap } from "lucide-react";
@@ -11,41 +9,93 @@ import cmuxDemo0 from "@/docs/assets/cmux-demo-00.png";
 import cmuxDemo1 from "@/docs/assets/cmux-demo-10.png";
 import cmuxDemo2 from "@/docs/assets/cmux-demo-20.png";
 import cmuxDemo3 from "@/docs/assets/cmux-demo-30.png";
+import { useEffect, useState } from "react";
 
 const RELEASE_PAGE_URL = "https://github.com/manaflow-ai/cmux/releases/latest";
 
-const normalizeVersion = (tag: string): string => (tag.startsWith("v") ? tag.slice(1) : tag);
-
-const ensureTagPrefix = (value: string): string => (value.startsWith("v") ? value : `v${value}`);
+const RELEASE_API_URL = "/api/integrations/github/releases/latest";
 
 type ReleaseInfo = {
   latestVersion: string | null;
-  macDownloadUrl: string;
+  macDownloadUrl: string | null;
+  releaseUrl: string;
 };
 
-const deriveReleaseInfo = (): ReleaseInfo => {
-  const versionValue = clientPackageJson.version;
+type ReleaseApiResponse = ReleaseInfo & {
+  tagName: string | null;
+  publishedAt: string | null;
+};
 
-  if (typeof versionValue !== "string" || versionValue.trim() === "") {
-    return {
-      latestVersion: null,
-      macDownloadUrl: RELEASE_PAGE_URL,
-    };
+const DEFAULT_RELEASE_INFO: ReleaseInfo = {
+  latestVersion: null,
+  macDownloadUrl: null,
+  releaseUrl: RELEASE_PAGE_URL,
+};
+
+const isReleaseApiResponse = (value: unknown): value is ReleaseApiResponse => {
+  if (!value || typeof value !== "object") {
+    return false;
   }
 
-  const normalizedVersion = normalizeVersion(versionValue);
-  const releaseTag = ensureTagPrefix(versionValue);
+  const candidate = value as Partial<ReleaseApiResponse>;
 
-  return {
-    latestVersion: normalizedVersion,
-    macDownloadUrl: `https://github.com/manaflow-ai/cmux/releases/download/${releaseTag}/cmux-${normalizedVersion}-arm64.dmg`,
-  };
+  const isValidStringOrNull = (input: unknown) =>
+    typeof input === "string" || input === null;
+
+  return (
+    isValidStringOrNull(candidate.latestVersion) &&
+    isValidStringOrNull(candidate.macDownloadUrl) &&
+    typeof candidate.releaseUrl === "string"
+  );
 };
 
-const RELEASE_INFO = deriveReleaseInfo();
-
 export default function LandingPage() {
-  const { macDownloadUrl, latestVersion } = RELEASE_INFO;
+  const [releaseInfo, setReleaseInfo] = useState<ReleaseInfo>(DEFAULT_RELEASE_INFO);
+
+  useEffect(() => {
+    const abortController = new AbortController();
+
+    const fetchReleaseInfo = async () => {
+      try {
+        const response = await fetch(RELEASE_API_URL, {
+          signal: abortController.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Request failed: ${response.status}`);
+        }
+
+        const payload: unknown = await response.json();
+
+        if (isReleaseApiResponse(payload)) {
+          setReleaseInfo({
+            latestVersion: payload.latestVersion,
+            macDownloadUrl: payload.macDownloadUrl,
+            releaseUrl: payload.releaseUrl,
+          });
+        }
+      } catch (error) {
+        if ((error as Error).name === "AbortError") {
+          return;
+        }
+
+        console.error("Failed to fetch latest release info", error);
+        setReleaseInfo(DEFAULT_RELEASE_INFO);
+      }
+    };
+
+    fetchReleaseInfo();
+
+    return () => {
+      abortController.abort();
+    };
+  }, []);
+
+  const { macDownloadUrl, latestVersion, releaseUrl } = releaseInfo;
+  const downloadHref = macDownloadUrl ?? releaseUrl;
+  const downloadTitle = latestVersion
+    ? `Download cmux v${latestVersion} for macOS arm64`
+    : "Get the latest cmux release";
 
   return (
     <div className="min-h-dvh bg-background text-foreground overflow-y-auto">
@@ -183,8 +233,8 @@ export default function LandingPage() {
 
               <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
                 <a
-                  href={macDownloadUrl}
-                  title={latestVersion ? `Download cmux v${latestVersion} for macOS arm64` : "Requires macOS"}
+                  href={downloadHref}
+                  title={downloadTitle}
                   className="inline-flex h-12 items-center gap-2 text-base font-medium text-black bg-white hover:bg-neutral-50 border border-neutral-800 rounded-lg px-4 transition-all whitespace-nowrap"
                 >
                   <svg

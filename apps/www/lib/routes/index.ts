@@ -11,6 +11,7 @@ export { githubPrsFileContentsRouter } from "./github.prs.file-contents.route";
 export { githubPrsFilesRouter } from "./github.prs.files.route";
 export { githubPrsPatchRouter } from "./github.prs.patch.route";
 export { githubPrsRouter } from "./github.prs.route";
+export { githubReleasesRouter } from "./github.releases.route";
 export { healthRouter } from "./health.route";
 export { morphRouter } from "./morph.route";
 export { sandboxesRouter } from "./sandboxes.route";
