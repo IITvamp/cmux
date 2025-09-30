@@ -281,14 +281,15 @@ export const workerFinalize = internalMutation({
       throw new Error("Task not found or unauthorized");
     }
 
-    const runs = await ctx.db
+    const runsForTeam = await ctx.db
       .query("taskRuns")
       .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .filter(
+        (q) =>
+          q.eq(q.field("teamId"), args.teamId) &&
+          q.eq(q.field("userId"), args.userId),
+      )
       .collect();
-
-    const runsForTeam = runs.filter(
-      (run) => run.teamId === args.teamId && run.userId === args.userId
-    );
 
     const winnerRun = runsForTeam.find((run) => run._id === args.winnerRunId);
     if (!winnerRun) {

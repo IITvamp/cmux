@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { typedZid } from "../utils/typed-zid";
 
 export const WorkerRunStatusSchema = z.enum([
   "pending",
@@ -173,18 +174,18 @@ export const CrownSummarizationPromptSchema = z.object({
 });
 
 export const WorkerCheckSchema = z.object({
-  taskId: z.string().optional(),
-  taskRunId: z.string().optional(),
+  taskId: typedZid("tasks").optional(),
+  taskRunId: typedZid("taskRuns").optional(),
   checkType: z.enum(["info", "all-complete", "crown"]).optional(),
 });
 
 export const WorkerFinalizeSchema = z.object({
-  taskId: z.string(),
-  winnerRunId: z.string(),
+  taskId: typedZid("tasks"),
+  winnerRunId: typedZid("taskRuns"),
   reason: z.string(),
   evaluationPrompt: z.string(),
   evaluationResponse: z.string(),
-  candidateRunIds: z.array(z.string()).min(1),
+  candidateRunIds: z.array(typedZid("taskRuns")).min(1),
   summary: z.string().optional(),
   pullRequest: z
     .object({
@@ -201,7 +202,7 @@ export const WorkerFinalizeSchema = z.object({
 });
 
 export const WorkerCompleteRequestSchema = z.object({
-  taskRunId: z.string(),
+  taskRunId: typedZid("taskRuns"),
   exitCode: z.number().optional(),
 });
 

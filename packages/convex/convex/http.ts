@@ -5,8 +5,6 @@ import {
   crownWorkerCheck,
   crownWorkerFinalize,
   crownWorkerComplete,
-  crownWorkerScheduleStop,
-  crownHealthCheck,
 } from "./crown_http";
 import { githubSetup } from "./github_setup";
 import { githubWebhook } from "./github_webhook";
@@ -54,18 +52,6 @@ http.route({
   path: "/api/crown/complete",
   method: "POST",
   handler: crownWorkerComplete,
-});
-
-http.route({
-  path: "/api/crown/schedule-stop",
-  method: "POST",
-  handler: crownWorkerScheduleStop,
-});
-
-http.route({
-  path: "/api/crown/health",
-  method: "GET",
-  handler: crownHealthCheck,
 });
 
 http.route({
