@@ -37,23 +37,47 @@ async function buildOpencodeEnvironment(
     }
   }
 
-  // Ensure lifecycle directory for completion markers
+  // Ensure lifecycle directories exist for completion markers and hook assets
   startupCommands.push("mkdir -p /root/lifecycle");
+  startupCommands.push("mkdir -p /root/lifecycle/opencode");
 
-  // Install OpenCode Notification plugin to detect session completion
+  const completionHookScript = `#!/bin/sh
+set -eu
+
+LOG_FILE="/root/lifecycle/opencode/session-hook.log"
+TASK_ID="\${CMUX_TASK_RUN_ID:-unknown}"
+MARKER_DIR="/root/lifecycle"
+MARKER_FILE="\${MARKER_DIR}/opencode-complete-\${TASK_ID}"
+
+{
+  echo "[CMUX Opencode Hook] Started at $(date)"
+  echo "[CMUX Opencode Hook] Task run ID: \${TASK_ID}"
+} >> "\${LOG_FILE}" 2>&1
+
+mkdir -p "\${MARKER_DIR}"
+printf "%s\n" "$(date +%s)" > "\${MARKER_FILE}"
+
+{
+  echo "[CMUX Opencode Hook] Created marker file: \${MARKER_FILE}"
+  ls -la "\${MARKER_FILE}" 2>/dev/null || true
+} >> "\${LOG_FILE}" 2>&1
+
+exit 0
+`;
+
+  files.push({
+    destinationPath: "/root/lifecycle/opencode/session-complete.sh",
+    contentBase64: Buffer.from(completionHookScript).toString("base64"),
+    mode: "755",
+  });
+
+  // Install OpenCode Notification plugin to trigger the completion hook
   const pluginContent = `\
-export const NotificationPlugin = async ({ client, $ }) => {
+export const NotificationPlugin = async ({ $ }) => {
   return {
     event: async ({ event }) => {
-      // Send notification on session completion
       if (event.type === "session.idle") {
-        try {
-          await $\`bash -lc "mkdir -p /root/lifecycle && echo done > /root/lifecycle/opencode-complete-$CMUX_TASK_RUN_ID"\`
-        } catch (e1) {
-          try {
-            await $\`sh -lc "mkdir -p /root/lifecycle && echo done > /root/lifecycle/opencode-complete-$CMUX_TASK_RUN_ID"\`
-          } catch (_) {}
-        }
+        await $\`/root/lifecycle/opencode/session-complete.sh\`
       }
     },
   }
