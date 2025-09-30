@@ -4,4 +4,4 @@
 // export const DEFAULT_MORPH_SNAPSHOT_ID = "snapshot_xo8ptbkl";
 // export const DEFAULT_MORPH_SNAPSHOT_ID = "snapshot_5ru3csya";
 // export const DEFAULT_MORPH_SNAPSHOT_ID = "snapshot_m8l8ob49"; <- this one is good
-export const DEFAULT_MORPH_SNAPSHOT_ID = "snapshot_vbc05g8p";
+export const DEFAULT_MORPH_SNAPSHOT_ID = "snapshot_m8l8ob49";
