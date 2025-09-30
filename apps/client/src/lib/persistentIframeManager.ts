@@ -11,6 +11,8 @@ type IframeEntry = {
   url: string;
   lastUsed: number;
   isVisible: boolean;
+  allow?: string;
+  sandbox?: string;
 };
 
 interface MountOptions {
@@ -137,6 +139,14 @@ class PersistentIframeManager {
         existing.iframe.src = url;
         existing.url = url;
       }
+      if (options?.allow !== undefined && existing.allow !== options.allow) {
+        existing.iframe.allow = options.allow;
+        existing.allow = options.allow;
+      }
+      if (options?.sandbox !== undefined && existing.sandbox !== options.sandbox) {
+        existing.iframe.setAttribute("sandbox", options.sandbox);
+        existing.sandbox = options.sandbox;
+      }
       return existing.iframe;
     }
 
@@ -171,7 +181,7 @@ class PersistentIframeManager {
 
     // Apply sandbox if provided
     if (options?.sandbox) {
-      iframe.sandbox.value = options.sandbox;
+      iframe.setAttribute("sandbox", options.sandbox);
     }
 
     wrapper.appendChild(iframe);
@@ -187,6 +197,8 @@ class PersistentIframeManager {
       url,
       lastUsed: Date.now(),
       isVisible: false,
+      allow: options?.allow,
+      sandbox: options?.sandbox,
     };
 
     this.iframes.set(key, entry);
