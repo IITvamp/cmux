@@ -14,6 +14,51 @@ import {
 import { kitties } from "./kitties";
 import { FileDiffHeader } from "./file-diff-header";
 
+const LOCKFILE_BASENAMES = new Set(
+  [
+    "bun.lock",
+    "bun.lockb",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+    "pipfile.lock",
+    "poetry.lock",
+    "gemfile.lock",
+    "composer.lock",
+    "cargo.lock",
+    "uv.lock",
+    "podfile.lock",
+    "npm-shrinkwrap.json",
+  ].map((name) => name.toLowerCase()),
+);
+
+const LOCKFILE_SUFFIXES = [".lock", ".lockb"];
+
+function normalizePath(path: string) {
+  return path.replace(/\\/g, "/");
+}
+
+function basename(path: string): string {
+  const normalized = normalizePath(path);
+  const segments = normalized.split("/");
+  return segments[segments.length - 1] ?? normalized;
+}
+
+function isLockfilePath(filePath: string | undefined): boolean {
+  if (!filePath) {
+    return false;
+  }
+  const base = basename(filePath).toLowerCase();
+  if (LOCKFILE_BASENAMES.has(base)) {
+    return true;
+  }
+  return LOCKFILE_SUFFIXES.some((suffix) => base.endsWith(suffix));
+}
+
+function shouldHideDiff(diff: ReplaceDiffEntry): boolean {
+  return isLockfilePath(diff.filePath) || isLockfilePath(diff.oldPath);
+}
+
 type FileDiffRowClassNames = {
   button?: string;
   container?: string;
@@ -69,18 +114,23 @@ export function GitDiffViewer({
 }: GitDiffViewerProps) {
   const { theme } = useTheme();
 
+  const filteredDiffs = useMemo(
+    () => diffs.filter((diff) => !shouldHideDiff(diff)),
+    [diffs],
+  );
+
   const kitty = useMemo(() => {
     return kitties[Math.floor(Math.random() * kitties.length)];
   }, []);
 
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(
-    () => new Set(diffs.map((diff) => diff.filePath)),
+    () => new Set(filteredDiffs.map((diff) => diff.filePath)),
   );
 
   // Group diffs by file
   const fileGroups: FileGroup[] = useMemo(
     () =>
-      (diffs || []).map((diff) => ({
+      filteredDiffs.map((diff) => ({
         filePath: diff.filePath,
         oldPath: diff.oldPath,
         status: diff.status,
@@ -91,7 +141,7 @@ export function GitDiffViewer({
         patch: diff.patch,
         isBinary: diff.isBinary,
       })),
-    [diffs],
+    [filteredDiffs],
   );
 
   const toggleFile = (filePath: string) => {
@@ -128,8 +178,28 @@ export function GitDiffViewer({
   };
 
   // Compute totals consistently before any conditional early-returns
-  const totalAdditions = diffs.reduce((sum, d) => sum + d.additions, 0);
-  const totalDeletions = diffs.reduce((sum, d) => sum + d.deletions, 0);
+  const totalAdditions = filteredDiffs.reduce((sum, d) => sum + d.additions, 0);
+  const totalDeletions = filteredDiffs.reduce((sum, d) => sum + d.deletions, 0);
+
+  useEffect(() => {
+    const validPaths = new Set(fileGroups.map((file) => file.filePath));
+    setExpandedFiles((prev) => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const path of validPaths) {
+        if (!prev.has(path)) {
+          changed = true;
+        }
+        next.add(path);
+      }
+      for (const path of prev) {
+        if (!validPaths.has(path)) {
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [fileGroups]);
 
   // Keep a stable ref to the controls handler to avoid effect loops
   const controlsHandlerRef = useRef<
@@ -153,7 +223,7 @@ export function GitDiffViewer({
     });
     // Totals update when diffs change; avoid including function identities
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totalAdditions, totalDeletions, diffs.length]);
+  }, [totalAdditions, totalDeletions, filteredDiffs.length]);
 
   return (
     <div className="grow bg-white dark:bg-neutral-900">
