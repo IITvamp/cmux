@@ -194,6 +194,31 @@ export type GithubPrCodeResponse = {
     files: Array<GithubPrFile>;
 };
 
+export type GithubOpenPrResponse = {
+    success: boolean;
+    results: Array<{
+        repoFullName: string;
+        url?: string;
+        number?: number;
+        state: 'none' | 'draft' | 'open' | 'merged' | 'closed' | 'unknown';
+        isDraft?: boolean;
+        error?: string;
+    }>;
+    aggregate: {
+        state: 'none' | 'draft' | 'open' | 'merged' | 'closed' | 'unknown';
+        isDraft: boolean;
+        mergeStatus: 'none' | 'pr_draft' | 'pr_open' | 'pr_merged' | 'pr_closed';
+        url?: string;
+        number?: number;
+    };
+    error?: string;
+};
+
+export type GithubOpenPrRequest = {
+    teamSlugOrId: string;
+    taskRunId: string;
+};
+
 export type GithubPrsFilesResponse = {
     repoFullName: string;
     number: number;
@@ -1029,6 +1054,45 @@ export type GetApiIntegrationsGithubPrsCodeResponses = {
 };
 
 export type GetApiIntegrationsGithubPrsCodeResponse = GetApiIntegrationsGithubPrsCodeResponses[keyof GetApiIntegrationsGithubPrsCodeResponses];
+
+export type PostApiIntegrationsGithubPrsOpenData = {
+    body: GithubOpenPrRequest;
+    path?: never;
+    query?: never;
+    url: '/api/integrations/github/prs/open';
+};
+
+export type PostApiIntegrationsGithubPrsOpenErrors = {
+    /**
+     * Invalid request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Forbidden
+     */
+    403: unknown;
+    /**
+     * Task run not found
+     */
+    404: unknown;
+    /**
+     * Failed to create or update PRs
+     */
+    500: unknown;
+};
+
+export type PostApiIntegrationsGithubPrsOpenResponses = {
+    /**
+     * PRs created or updated
+     */
+    200: GithubOpenPrResponse;
+};
+
+export type PostApiIntegrationsGithubPrsOpenResponse = PostApiIntegrationsGithubPrsOpenResponses[keyof PostApiIntegrationsGithubPrsOpenResponses];
 
 export type GetApiIntegrationsGithubPrsRawData = {
     body?: never;
