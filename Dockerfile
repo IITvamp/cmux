@@ -8,6 +8,10 @@ ARG CODE_RELEASE
 ARG DOCKER_VERSION=28.3.2
 ARG DOCKER_CHANNEL=stable
 
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH="/usr/local/cargo/bin:${PATH}"
+
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -21,6 +25,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     gnupg \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Rust toolchain (shared binaries copied to runtime stage later)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+    sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable && \
+    rustup component add rustfmt && \
+    cargo --version
 
 # Install Node.js 24.x
 RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
@@ -91,6 +101,13 @@ COPY packages/vscode-extension/src ./packages/vscode-extension/src
 COPY packages/vscode-extension/tsconfig.json ./packages/vscode-extension/
 COPY packages/vscode-extension/.vscodeignore ./packages/vscode-extension/
 COPY packages/vscode-extension/LICENSE.md ./packages/vscode-extension/
+
+# Copy vendored Rust crates
+COPY crates ./crates
+
+# Build Rust binaries for envctl/envd and cmux-proxy
+RUN cargo install --path crates/cmux-env --locked --force && \
+    cargo install --path crates/cmux-proxy --locked --force
 
 # Build worker with bundling, using the installed node_modules
 RUN cd /cmux && \
@@ -220,20 +237,13 @@ COPY --from=builder /usr/local/bin/wait-for-docker.sh /usr/local/bin/wait-for-do
 COPY --from=builder /cmux/apps/worker/scripts/collect-relevant-diff.sh /usr/local/bin/cmux-collect-relevant-diff.sh
 RUN chmod +x /usr/local/bin/cmux-collect-relevant-diff.sh
 
-# Install envctl/envd into runtime
-# Using direct download URL to avoid GitHub API rate limits
-RUN CMUX_ENV_VERSION=0.0.8 && \
-    arch="$(uname -m)" && \
-    case "$arch" in \
-    x86_64) arch_name="x86_64" ;; \
-    aarch64|arm64) arch_name="aarch64" ;; \
-    *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; \
-    esac && \
-    curl -fsSL "https://github.com/lawrencecchen/cmux-env/releases/download/v${CMUX_ENV_VERSION}/cmux-env-${CMUX_ENV_VERSION}-${arch_name}-unknown-linux-musl.tar.gz" | tar -xz -C /tmp && \
-    mv /tmp/cmux-env-${CMUX_ENV_VERSION}-${arch_name}-unknown-linux-musl/envctl /usr/local/bin/envctl && \
-    mv /tmp/cmux-env-${CMUX_ENV_VERSION}-${arch_name}-unknown-linux-musl/envd /usr/local/bin/envd && \
-    rm -rf /tmp/cmux-env-${CMUX_ENV_VERSION}-${arch_name}-unknown-linux-musl && \
-    chmod +x /usr/local/bin/envctl /usr/local/bin/envd && \
+# Copy vendored Rust binaries from builder
+COPY --from=builder /usr/local/cargo/bin/envctl /usr/local/bin/envctl
+COPY --from=builder /usr/local/cargo/bin/envd /usr/local/bin/envd
+COPY --from=builder /usr/local/cargo/bin/cmux-proxy /usr/local/bin/cmux-proxy
+
+# Configure envctl/envd runtime defaults
+RUN chmod +x /usr/local/bin/envctl /usr/local/bin/envd /usr/local/bin/cmux-proxy && \
     envctl --version && \
     envctl install-hook bash && \
     echo '[ -f ~/.bashrc ] && . ~/.bashrc' > /root/.profile && \
