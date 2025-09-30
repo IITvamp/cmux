@@ -279,6 +279,117 @@ export const updateRepoActivityFromWebhook = internalMutation({
   },
 });
 
+export const syncReposForConnection = internalMutation({
+  args: {
+    connectionId: v.id("providerConnections"),
+    teamId: v.string(),
+    userId: v.string(),
+    repos: v.array(
+      v.object({
+        fullName: v.string(),
+        org: v.string(),
+        name: v.string(),
+        gitRemote: v.string(),
+        providerRepoId: v.optional(v.number()),
+        ownerLogin: v.optional(v.string()),
+        ownerType: v.optional(
+          v.union(v.literal("User"), v.literal("Organization"))
+        ),
+        visibility: v.optional(
+          v.union(v.literal("public"), v.literal("private"))
+        ),
+        defaultBranch: v.optional(v.string()),
+        lastPushedAt: v.optional(v.number()),
+      })
+    ),
+  },
+  handler: async (ctx, { connectionId, teamId, userId, repos }) => {
+    const now = Date.now();
+    for (const repo of repos) {
+      const existing = await ctx.db
+        .query("repos")
+        .withIndex("by_team", (q) => q.eq("teamId", teamId))
+        .filter((q) => q.eq(q.field("fullName"), repo.fullName))
+        .first();
+
+      if (existing) {
+        const patch: Partial<Doc<"repos">> = {};
+
+        if (existing.connectionId !== connectionId) {
+          patch.connectionId = connectionId;
+        }
+
+        if (
+          repo.providerRepoId !== undefined &&
+          repo.providerRepoId !== existing.providerRepoId
+        ) {
+          patch.providerRepoId = repo.providerRepoId;
+        }
+
+        if (repo.ownerLogin && repo.ownerLogin !== existing.ownerLogin) {
+          patch.ownerLogin = repo.ownerLogin;
+        }
+
+        if (repo.ownerType && repo.ownerType !== existing.ownerType) {
+          patch.ownerType = repo.ownerType;
+        }
+
+        if (repo.visibility && repo.visibility !== existing.visibility) {
+          patch.visibility = repo.visibility;
+        }
+
+        if (
+          repo.defaultBranch &&
+          repo.defaultBranch !== existing.defaultBranch
+        ) {
+          patch.defaultBranch = repo.defaultBranch;
+        }
+
+        if (existing.provider !== "github") {
+          patch.provider = "github";
+        }
+
+        if (
+          repo.lastPushedAt !== undefined &&
+          (existing.lastPushedAt === undefined ||
+            repo.lastPushedAt > existing.lastPushedAt)
+        ) {
+          patch.lastPushedAt = repo.lastPushedAt;
+        }
+
+        patch.lastSyncedAt = now;
+
+        if (Object.keys(patch).length > 0) {
+          await ctx.db.patch(existing._id, patch);
+        }
+        continue;
+      }
+
+      await ctx.db.insert("repos", {
+        fullName: repo.fullName,
+        org: repo.org,
+        name: repo.name,
+        gitRemote: repo.gitRemote,
+        provider: "github",
+        userId,
+        teamId,
+        connectionId,
+        providerRepoId: repo.providerRepoId,
+        ownerLogin: repo.ownerLogin,
+        ownerType: repo.ownerType,
+        visibility: repo.visibility,
+        defaultBranch: repo.defaultBranch,
+        lastSyncedAt: now,
+        ...(repo.lastPushedAt !== undefined
+          ? { lastPushedAt: repo.lastPushedAt }
+          : {}),
+      });
+    }
+
+    return { syncedCount: repos.length } as const;
+  },
+});
+
 // Internal mutations
 export const insertRepo = internalMutation({
   args: {

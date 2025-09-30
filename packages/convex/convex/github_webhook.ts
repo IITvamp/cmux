@@ -1,5 +1,6 @@
 import type {
   InstallationEvent,
+  InstallationRepositoriesEvent,
   PullRequestEvent,
   PushEvent,
   WebhookEvent,
@@ -123,7 +124,106 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
         }
         break;
       }
-      case "installation_repositories":
+      case "installation_repositories": {
+        try {
+          const reposPayload = body as InstallationRepositoriesEvent;
+          const action = reposPayload?.action;
+          if (action !== "added") break;
+          const added = reposPayload.repositories_added ?? [];
+          if (added.length === 0) break;
+          const installation = Number(reposPayload.installation?.id ?? 0);
+          if (!installation) break;
+          const connection = await _ctx.runQuery(
+            internal.github_app.getProviderConnectionByInstallationId,
+            { installationId: installation }
+          );
+          const teamId = connection?.teamId;
+          const userId = connection?.connectedByUserId;
+          if (!connection || !teamId || !userId) break;
+
+          const repos: Array<{
+            fullName: string;
+            org: string;
+            name: string;
+            gitRemote: string;
+            providerRepoId?: number;
+            ownerLogin?: string;
+            ownerType?: "Organization" | "User";
+            visibility: "public" | "private";
+            defaultBranch?: string;
+            lastPushedAt?: number;
+          }> = [];
+
+          for (const repo of added) {
+            const fullName = typeof repo.full_name === "string"
+              ? repo.full_name.trim()
+              : "";
+            if (!fullName) continue;
+            const [orgRaw, nameRaw] = fullName.split("/", 2);
+            const org = orgRaw?.trim();
+            const name = nameRaw?.trim();
+            if (!org || !name) continue;
+
+            const providerRepoId =
+              typeof repo.id === "number" ? repo.id : undefined;
+
+            const ownerSource = (repo as {
+              owner?: { login?: string | null; type?: string | null };
+            }).owner;
+            const ownerLogin =
+              typeof ownerSource?.login === "string"
+                ? ownerSource.login
+                : undefined;
+            const ownerTypeRaw = ownerSource?.type ?? undefined;
+            const ownerType =
+              ownerTypeRaw === "Organization" || ownerTypeRaw === "User"
+                ? ownerTypeRaw
+                : undefined;
+
+            const defaultBranchSource = (repo as {
+              default_branch?: string | null;
+            }).default_branch;
+            const defaultBranch =
+              typeof defaultBranchSource === "string" &&
+              defaultBranchSource.trim().length > 0
+                ? defaultBranchSource
+                : undefined;
+
+            const pushedAtSource = (repo as {
+              pushed_at?: string | number | null;
+            }).pushed_at;
+            const lastPushedAt = normalizeTimestamp(pushedAtSource ?? undefined);
+
+            repos.push({
+              fullName,
+              org,
+              name,
+              gitRemote: `https://github.com/${fullName}.git`,
+              providerRepoId,
+              ownerLogin,
+              ownerType,
+              visibility: repo.private ? "private" : "public",
+              defaultBranch,
+              lastPushedAt,
+            });
+          }
+
+          if (repos.length === 0) break;
+
+          await _ctx.runMutation(internal.github.syncReposForConnection, {
+            connectionId: connection._id,
+            teamId,
+            userId,
+            repos,
+          });
+        } catch (err) {
+          console.error("github_webhook installation_repositories failed", {
+            err,
+            delivery,
+          });
+        }
+        break;
+      }
       case "repository":
       case "create":
       case "delete":
