@@ -24,6 +24,7 @@ import electronUpdater, {
   type UpdateCheckResult,
   type UpdateInfo,
 } from "electron-updater";
+import semver from "semver";
 import {
   createRemoteJWKSet,
   decodeJwt,
@@ -225,6 +226,28 @@ function queueAutoUpdateToast(payload: AutoUpdateToastPayload): void {
   emitAutoUpdateToastIfPossible();
 }
 
+function resolveSemverVersion(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const valid = semver.valid(value);
+  if (valid) return valid;
+  const coerced = semver.coerce(value);
+  return coerced ? coerced.version : null;
+}
+
+function isUpdateNewerThanCurrent(info: UpdateInfo | null | undefined): boolean {
+  if (!info) return false;
+
+  const updateVersion = resolveSemverVersion(info.version);
+  if (!updateVersion) return false;
+
+  const currentVersion = resolveSemverVersion(app.getVersion());
+  if (!currentVersion) {
+    return info.version !== app.getVersion();
+  }
+
+  return semver.gt(updateVersion, currentVersion);
+}
+
 function logUpdateCheckResult(
   context: string,
   result: UpdateCheckResult | null | undefined
@@ -236,7 +259,7 @@ function logUpdateCheckResult(
 
   const info = result.updateInfo;
   const summary = {
-    updateAvailable: true,
+    updateAvailable: isUpdateNewerThanCurrent(info),
     version: info?.version ?? null,
     releaseDate: info?.releaseDate ?? null,
     fileCount: info?.files?.length ?? 0,
@@ -295,7 +318,7 @@ function registerAutoUpdateIpcHandlers(): void {
 
       return {
         ok: true as const,
-        updateAvailable: Boolean(result?.isUpdateAvailable),
+        updateAvailable: isUpdateNewerThanCurrent(updateInfo),
         version,
       };
     } catch (error) {
