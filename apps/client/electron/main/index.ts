@@ -274,6 +274,37 @@ function registerLogIpcHandlers(): void {
 }
 
 function registerAutoUpdateIpcHandlers(): void {
+  ipcMain.handle("cmux:auto-update:check", async () => {
+    if (!app.isPackaged) {
+      mainLog(
+        "Auto-update check requested while app is not packaged; ignoring request"
+      );
+      return { ok: false, reason: "not-packaged" as const };
+    }
+
+    try {
+      mainLog("Renderer requested manual checkForUpdates");
+      const result = await autoUpdater.checkForUpdates();
+      logUpdateCheckResult("Renderer checkForUpdates", result);
+
+      const updateInfo = result?.updateInfo;
+      const version =
+        updateInfo && typeof updateInfo.version === "string"
+          ? updateInfo.version
+          : null;
+
+      return {
+        ok: true as const,
+        updateAvailable: Boolean(result?.isUpdateAvailable),
+        version,
+      };
+    } catch (error) {
+      mainWarn("Renderer-initiated checkForUpdates failed", error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      throw err;
+    }
+  });
+
   ipcMain.handle("cmux:auto-update:install", async () => {
     if (!app.isPackaged) {
       mainLog(
