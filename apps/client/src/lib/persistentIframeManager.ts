@@ -135,10 +135,6 @@ class PersistentIframeManager {
 
     if (existing) {
       existing.lastUsed = Date.now();
-      if (existing.url !== url) {
-        existing.iframe.src = url;
-        existing.url = url;
-      }
       if (options?.allow !== undefined && existing.allow !== options.allow) {
         existing.iframe.allow = options.allow;
         existing.allow = options.allow;
@@ -146,6 +142,10 @@ class PersistentIframeManager {
       if (options?.sandbox !== undefined && existing.sandbox !== options.sandbox) {
         existing.iframe.setAttribute("sandbox", options.sandbox);
         existing.sandbox = options.sandbox;
+      }
+      if (existing.url !== url) {
+        existing.iframe.src = url;
+        existing.url = url;
       }
       return existing.iframe;
     }
@@ -167,7 +167,6 @@ class PersistentIframeManager {
 
     // Create iframe
     const iframe = document.createElement("iframe");
-    iframe.src = url;
     iframe.style.cssText = `
       width: 100%;
       height: 100%;
@@ -183,6 +182,8 @@ class PersistentIframeManager {
     if (options?.sandbox) {
       iframe.setAttribute("sandbox", options.sandbox);
     }
+
+    iframe.src = url;
 
     wrapper.appendChild(iframe);
 
