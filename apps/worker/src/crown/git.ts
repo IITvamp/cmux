@@ -257,24 +257,6 @@ export async function ensureBranchesAvailable(
   return baseOk && allBranchesOk;
 }
 
-export async function captureRelevantDiff(): Promise<string> {
-  try {
-    const gitPath = await detectGitRepoPath();
-    const { stdout } = await execAsync(
-      "/usr/local/bin/cmux-collect-relevant-diff.sh",
-      {
-        cwd: gitPath,
-        maxBuffer: 5 * 1024 * 1024,
-      },
-    );
-    const diff = stdout ? stdout.trim() : "";
-    return diff.length > 0 ? diff : "No changes detected";
-  } catch (error) {
-    log("ERROR", "Failed to collect relevant diff", { error });
-    return "No changes detected";
-  }
-}
-
 export function buildCommitMessage({
   prompt,
   agentName,
@@ -348,7 +330,7 @@ function truncateOutput(output: string | undefined, length = 200): string {
 
 async function stageAndCommitChanges(
   branchName: string,
-  commitMessage: string
+  commitMessage: string,
 ): Promise<void> {
   await runGitCommand("git add -A");
   log("INFO", "Staged all changes");
@@ -375,7 +357,7 @@ async function stageAndCommitChanges(
 
   const commitResult = await runGitCommand(
     `git commit -m ${JSON.stringify(commitMessage)}`,
-    true
+    true,
   );
 
   if (commitResult) {
@@ -392,7 +374,7 @@ async function stageAndCommitChanges(
 async function syncWithRemote(branchName: string): Promise<void> {
   const remoteExists = await runGitCommand(
     `git ls-remote --heads origin ${branchName}`,
-    true
+    true,
   );
 
   if (remoteExists?.stdout.trim()) {
@@ -402,7 +384,7 @@ async function syncWithRemote(branchName: string): Promise<void> {
     });
 
     const pullResult = await runGitCommand(
-      `git pull --rebase origin ${branchName}`
+      `git pull --rebase origin ${branchName}`,
     );
 
     if (pullResult) {
@@ -472,4 +454,3 @@ export async function autoCommitAndPush({
     exitCode: pushResult?.exitCode,
   });
 }
-

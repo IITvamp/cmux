@@ -6,7 +6,6 @@ import { convexRequest } from "./convex";
 import {
   autoCommitAndPush,
   buildCommitMessage,
-  captureRelevantDiff,
   collectDiffForRun,
   detectGitRepoPath,
   ensureBranchesAvailable,
@@ -128,12 +127,6 @@ export async function handleWorkerTaskCompletion(
   } else {
     const promptForCommit =
       info?.task?.text ?? runContext.prompt ?? "cmux task";
-
-    const diffForCommit = await captureRelevantDiff();
-    log("INFO", "Captured relevant diff", {
-      taskRunId,
-      diffPreview: diffForCommit.slice(0, 120),
-    });
 
     const commitMessage = buildCommitMessage({
       prompt: promptForCommit,
@@ -406,15 +399,11 @@ export async function handleWorkerTaskCompletion(
         return;
       }
 
-      const gitDiff = await collectDiffForRun(
-        baseBranch,
-        singleRun.newBranch,
-      );
+      const gitDiff = await collectDiffForRun(baseBranch, singleRun.newBranch);
 
       log("INFO", "Built crown candidate", {
         runId: singleRun.id,
         branch: singleRun.newBranch,
-        gitDiffPreview: gitDiff.slice(0, 120),
       });
 
       const candidate: CandidateData = {
@@ -448,8 +437,7 @@ export async function handleWorkerTaskCompletion(
           "/api/crown/summarize",
           runContext.token,
           {
-            prompt:
-              crownData.task?.text || "Task description not available",
+            prompt: crownData.task?.text || "Task description not available",
             gitDiff: candidate.gitDiff,
             teamSlugOrId: runContext.teamId,
           },
@@ -498,7 +486,6 @@ export async function handleWorkerTaskCompletion(
         log("INFO", "Built crown candidate", {
           runId: run.id,
           branch: run.newBranch,
-          gitDiffPreview: gitDiff.slice(0, 120),
         });
         return {
           runId: run.id,
