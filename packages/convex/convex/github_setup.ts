@@ -14,8 +14,121 @@ type InstallationAccountInfo = {
   accountType?: "Organization" | "User";
 };
 
+type InstallationRepositoryPayload = {
+  id?: number | null;
+  full_name?: string | null;
+  name?: string | null;
+  owner?: { login?: string | null; type?: string | null } | null;
+  private?: boolean | null;
+  default_branch?: string | null;
+  clone_url?: string | null;
+  pushed_at?: string | null;
+};
+
+type NormalizedInstallationRepo = {
+  providerRepoId?: number;
+  fullName: string;
+  org: string;
+  name: string;
+  gitRemote: string;
+  ownerLogin?: string;
+  ownerType?: "User" | "Organization";
+  visibility?: "public" | "private";
+  defaultBranch?: string;
+  lastPushedAt?: number;
+};
+
+const INSTALLATION_REPO_PAGE_SIZE = 100;
+const INSTALLATION_REPO_PAGE_LIMIT = 5;
+const INSTALLATION_REPO_MAX_ITEMS =
+  INSTALLATION_REPO_PAGE_SIZE * INSTALLATION_REPO_PAGE_LIMIT;
+
 const textEncoder = new TextEncoder();
 const privateKeyCache = new Map<string, CryptoKey>();
+
+function normalizePrivateKey(pem: string): string {
+  return pem.replace(/\\n/g, "\n");
+}
+
+function parseTimestampMillis(value: string | null | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+function getNextLink(linkHeader: string | null): string | null {
+  if (!linkHeader) return null;
+  const parts = linkHeader.split(",");
+  for (const part of parts) {
+    const match = part.match(/<([^>]+)>;\s*rel="([^\"]+)"/);
+    if (match && match[2] === "next") {
+      return match[1];
+    }
+  }
+  return null;
+}
+
+function normalizeInstallationRepo(
+  repo: InstallationRepositoryPayload
+): NormalizedInstallationRepo | null {
+  const fullName = typeof repo.full_name === "string" && repo.full_name
+    ? repo.full_name
+    : undefined;
+  const name = typeof repo.name === "string" && repo.name ? repo.name : undefined;
+  if (!fullName || !name) return null;
+
+  const ownerLogin = repo.owner?.login ?? undefined;
+  const normalizedOwnerLogin =
+    typeof ownerLogin === "string" && ownerLogin.length > 0 ? ownerLogin : undefined;
+  const orgFromFullName = fullName.split("/")[0] ?? "";
+  const org = normalizedOwnerLogin ?? orgFromFullName;
+  if (!org) return null;
+
+  const ownerTypeRaw = repo.owner?.type ?? undefined;
+  const ownerType =
+    ownerTypeRaw === "Organization"
+      ? "Organization"
+      : ownerTypeRaw === "User"
+      ? "User"
+      : undefined;
+
+  const visibility =
+    repo.private === true
+      ? "private"
+      : repo.private === false
+      ? "public"
+      : undefined;
+
+  const providerRepoId = typeof repo.id === "number" ? repo.id : undefined;
+  const defaultBranch =
+    typeof repo.default_branch === "string" && repo.default_branch
+      ? repo.default_branch
+      : undefined;
+  const gitRemote =
+    typeof repo.clone_url === "string" && repo.clone_url
+      ? repo.clone_url
+      : `https://github.com/${fullName}.git`;
+  const lastPushedAt = parseTimestampMillis(repo.pushed_at ?? undefined);
+
+  return {
+    providerRepoId,
+    fullName,
+    org,
+    name,
+    gitRemote,
+    ownerLogin: normalizedOwnerLogin,
+    ownerType,
+    visibility,
+    defaultBranch,
+    lastPushedAt,
+  };
+}
+
+export const __TEST_ONLY__ = {
+  normalizeInstallationRepo,
+  getNextLink,
+  parseTimestampMillis,
+};
 
 function pemToDer(pem: string): Uint8Array {
   const cleaned = pem
@@ -105,7 +218,7 @@ async function fetchInstallationAccountInfo(
   }
 
   try {
-    const normalizedPrivateKey = privateKey.replace(/\\n/g, "\n");
+    const normalizedPrivateKey = normalizePrivateKey(privateKey);
     const jwt = await createGithubAppJwt(appId, normalizedPrivateKey);
     const response = await fetch(
       `https://api.github.com/app/installations/${installationId}`,
@@ -152,6 +265,120 @@ async function fetchInstallationAccountInfo(
     );
     return null;
   }
+}
+
+async function createInstallationAccessToken(
+  installationId: number
+): Promise<string | null> {
+  const appId = env.CMUX_GITHUB_APP_ID;
+  const privateKey = env.CMUX_GITHUB_APP_PRIVATE_KEY;
+  if (!appId || !privateKey) {
+    return null;
+  }
+
+  try {
+    const normalizedPrivateKey = normalizePrivateKey(privateKey);
+    const jwt = await createGithubAppJwt(appId, normalizedPrivateKey);
+    const response = await fetch(
+      `https://api.github.com/app/installations/${installationId}/access_tokens`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${jwt}`,
+          Accept: "application/vnd.github+json",
+          "User-Agent": "cmux-github-setup",
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(
+        `[github_setup] Failed to create access token for installation ${installationId} (status ${response.status}): ${errorText}`
+      );
+      return null;
+    }
+
+    const data = (await response.json()) as { token?: string | null };
+    if (!data.token) {
+      console.error(
+        `[github_setup] Missing access token in response for installation ${installationId}`
+      );
+      return null;
+    }
+
+    return data.token;
+  } catch (error) {
+    console.error(
+      `[github_setup] Unexpected error creating access token for installation ${installationId}`,
+      error
+    );
+    return null;
+  }
+}
+
+async function fetchInstallationRepositories(
+  installationId: number
+): Promise<NormalizedInstallationRepo[]> {
+  const accessToken = await createInstallationAccessToken(installationId);
+  if (!accessToken) return [];
+
+  const repositories: NormalizedInstallationRepo[] = [];
+  let pageUrl = `https://api.github.com/installation/repositories?per_page=${INSTALLATION_REPO_PAGE_SIZE}`;
+  let pagesFetched = 0;
+
+  while (pageUrl && pagesFetched < INSTALLATION_REPO_PAGE_LIMIT) {
+    pagesFetched += 1;
+    try {
+      const response = await fetch(pageUrl, {
+        headers: {
+          Authorization: `token ${accessToken}`,
+          Accept: "application/vnd.github+json",
+          "User-Agent": "cmux-github-setup",
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(
+          `[github_setup] Failed to fetch repositories for installation ${installationId} (status ${response.status}): ${errorText}`
+        );
+        break;
+      }
+
+      const data = (await response.json()) as {
+        repositories?: InstallationRepositoryPayload[];
+      };
+
+      for (const repo of data.repositories ?? []) {
+        if (repositories.length >= INSTALLATION_REPO_MAX_ITEMS) {
+          return repositories;
+        }
+        const normalized = normalizeInstallationRepo(repo);
+        if (normalized) {
+          repositories.push(normalized);
+        }
+      }
+
+      if (repositories.length >= INSTALLATION_REPO_MAX_ITEMS) {
+        break;
+      }
+
+      const next = getNextLink(response.headers.get("link"));
+      if (!next) {
+        break;
+      }
+      pageUrl = next;
+    } catch (error) {
+      console.error(
+        `[github_setup] Unexpected error fetching repositories for installation ${installationId}`,
+        error
+      );
+      break;
+    }
+  }
+
+  return repositories;
 }
 
 export const githubSetup = httpAction(async (ctx, req) => {
@@ -292,6 +519,44 @@ export const githubSetup = httpAction(async (ctx, req) => {
         : {}),
     }
   );
+
+  try {
+    const connection = await ctx.runQuery(
+      internal.github_app.getProviderConnectionByInstallationId,
+      { installationId }
+    );
+
+    if (connection?._id) {
+      const repos = await fetchInstallationRepositories(installationId);
+      if (repos.length > 0) {
+        const { inserted, skipped } = await ctx.runMutation(
+          internal.github.recordInitialReposForConnection,
+          {
+            connectionId: connection._id,
+            teamId: payload.teamId,
+            userId: payload.userId,
+            repos,
+          }
+        );
+        console.log(
+          `[github_setup] Initial repo sync for installation ${installationId}: inserted=${inserted} skipped=${skipped}`
+        );
+      } else {
+        console.log(
+          `[github_setup] No repositories returned for installation ${installationId} during initial sync`
+        );
+      }
+    } else {
+      console.warn(
+        `[github_setup] Provider connection missing after upsert for installation ${installationId}`
+      );
+    }
+  } catch (error) {
+    console.error(
+      `[github_setup] Failed initial repository sync for installation ${installationId}`,
+      error
+    );
+  }
 
   // Resolve slug for nicer redirect when available
   const team = await ctx.runQuery(internal.teams.getByTeamIdInternal, {

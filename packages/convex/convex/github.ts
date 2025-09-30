@@ -279,6 +279,78 @@ export const updateRepoActivityFromWebhook = internalMutation({
   },
 });
 
+export const recordInitialReposForConnection = internalMutation({
+  args: {
+    teamId: v.string(),
+    userId: v.string(),
+    connectionId: v.id("providerConnections"),
+    repos: v.array(
+      v.object({
+        fullName: v.string(),
+        org: v.string(),
+        name: v.string(),
+        gitRemote: v.string(),
+        providerRepoId: v.optional(v.number()),
+        ownerLogin: v.optional(v.string()),
+        ownerType: v.optional(
+          v.union(v.literal("User"), v.literal("Organization"))
+        ),
+        visibility: v.optional(
+          v.union(v.literal("public"), v.literal("private"))
+        ),
+        defaultBranch: v.optional(v.string()),
+        lastPushedAt: v.optional(v.number()),
+      })
+    ),
+  },
+  handler: async (ctx, { teamId, userId, connectionId, repos }) => {
+    if (repos.length === 0) {
+      return { inserted: 0, skipped: 0, alreadySynced: false } as const;
+    }
+
+    const existing = await ctx.db
+      .query("repos")
+      .withIndex("by_connection", (q) => q.eq("connectionId", connectionId))
+      .collect();
+
+    const existingFullNames = new Set(existing.map((row) => row.fullName));
+    const now = Date.now();
+    let inserted = 0;
+
+    for (const repo of repos) {
+      if (existingFullNames.has(repo.fullName)) {
+        continue;
+      }
+
+      await ctx.db.insert("repos", {
+        fullName: repo.fullName,
+        org: repo.org,
+        name: repo.name,
+        gitRemote: repo.gitRemote,
+        provider: "github",
+        userId,
+        teamId,
+        providerRepoId: repo.providerRepoId,
+        ownerLogin: repo.ownerLogin,
+        ownerType: repo.ownerType,
+        visibility: repo.visibility,
+        defaultBranch: repo.defaultBranch,
+        connectionId,
+        lastSyncedAt: now,
+        lastPushedAt: repo.lastPushedAt,
+      });
+      existingFullNames.add(repo.fullName);
+      inserted += 1;
+    }
+
+    return {
+      inserted,
+      skipped: repos.length - inserted,
+      alreadySynced: existing.length > 0,
+    } as const;
+  },
+});
+
 // Internal mutations
 export const insertRepo = internalMutation({
   args: {
