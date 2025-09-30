@@ -15,8 +15,6 @@ import cmuxDemo1 from "@/docs/assets/cmux-demo-10.png";
 import cmuxDemo2 from "@/docs/assets/cmux-demo-20.png";
 import cmuxDemo3 from "@/docs/assets/cmux-demo-30.png";
 
-export const revalidate = 3600;
-
 const RELEASE_PAGE_URL = "https://github.com/manaflow-ai/cmux/releases/latest";
 const GITHUB_RELEASE_URL =
   "https://api.github.com/repos/manaflow-ai/cmux/releases/latest";
@@ -68,6 +66,9 @@ async function fetchLatestRelease(): Promise<ReleaseInfo> {
     const response = await fetch(GITHUB_RELEASE_URL, {
       headers: {
         Accept: "application/vnd.github+json",
+      },
+      next: {
+        revalidate: 3600,
       },
     });
 
