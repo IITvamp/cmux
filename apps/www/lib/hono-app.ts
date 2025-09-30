@@ -10,7 +10,6 @@ import { githubPrsRouter } from "@/lib/routes/github.prs.route";
 import { githubReposRouter } from "@/lib/routes/github.repos.route";
 import {
   booksRouter,
-  crownRouter,
   devServerRouter,
   environmentsRouter,
   healthRouter,
@@ -60,7 +59,12 @@ app.use("*", prettyJSON());
 app.use(
   "*",
   cors({
-    origin: ["http://localhost:5173", "http://localhost:9779"],
+    origin: [
+      "http://localhost:5173",
+      "http://localhost:9779",
+      "https://cmux.sh",
+      "https://www.cmux.sh",
+    ],
     credentials: true,
     allowHeaders: ["x-stack-auth", "content-type"],
   })
@@ -105,7 +109,6 @@ app.route("/", githubPrsFileContentsBatchRouter);
 app.route("/", morphRouter);
 app.route("/", environmentsRouter);
 app.route("/", sandboxesRouter);
-app.route("/", crownRouter);
 app.route("/", teamsRouter);
 
 // OpenAPI documentation

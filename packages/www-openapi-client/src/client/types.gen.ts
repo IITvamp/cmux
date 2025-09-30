@@ -219,6 +219,12 @@ export type GithubOpenPrRequest = {
     taskRunId: string;
 };
 
+export type GithubMergePrRequest = {
+    teamSlugOrId: string;
+    taskRunId: string;
+    method: 'squash' | 'rebase' | 'merge';
+};
+
 export type GithubPrsFilesResponse = {
     repoFullName: string;
     number: number;
@@ -416,6 +422,8 @@ export type StartSandboxBody = {
     metadata?: {
         [key: string]: string;
     };
+    taskRunId?: string;
+    taskRunJwt?: string;
     repoUrl?: string;
     branch?: string;
     newBranch?: string;
@@ -1092,6 +1100,45 @@ export type PostApiIntegrationsGithubPrsOpenResponses = {
 
 export type PostApiIntegrationsGithubPrsOpenResponse = PostApiIntegrationsGithubPrsOpenResponses[keyof PostApiIntegrationsGithubPrsOpenResponses];
 
+export type PostApiIntegrationsGithubPrsMergeData = {
+    body: GithubMergePrRequest;
+    path?: never;
+    query?: never;
+    url: '/api/integrations/github/prs/merge';
+};
+
+export type PostApiIntegrationsGithubPrsMergeErrors = {
+    /**
+     * Invalid request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Forbidden
+     */
+    403: unknown;
+    /**
+     * Task run not found
+     */
+    404: unknown;
+    /**
+     * Failed to merge PRs
+     */
+    500: unknown;
+};
+
+export type PostApiIntegrationsGithubPrsMergeResponses = {
+    /**
+     * PRs merged
+     */
+    200: GithubOpenPrResponse;
+};
+
+export type PostApiIntegrationsGithubPrsMergeResponse = PostApiIntegrationsGithubPrsMergeResponses[keyof PostApiIntegrationsGithubPrsMergeResponses];
+
 export type GetApiIntegrationsGithubPrsRawData = {
     body?: never;
     path?: never;
@@ -1733,75 +1780,6 @@ export type PostApiSandboxesByIdPublishDevcontainerResponses = {
 };
 
 export type PostApiSandboxesByIdPublishDevcontainerResponse = PostApiSandboxesByIdPublishDevcontainerResponses[keyof PostApiSandboxesByIdPublishDevcontainerResponses];
-
-export type PostApiCrownSummarizeData = {
-    body: {
-        prompt: string;
-        teamSlugOrId?: string;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/crown/summarize';
-};
-
-export type PostApiCrownSummarizeErrors = {
-    /**
-     * Unauthorized
-     */
-    401: unknown;
-    /**
-     * Summarization failed
-     */
-    500: unknown;
-};
-
-export type PostApiCrownSummarizeResponses = {
-    /**
-     * Summary generated
-     */
-    200: {
-        summary: string;
-    };
-};
-
-export type PostApiCrownSummarizeResponse = PostApiCrownSummarizeResponses[keyof PostApiCrownSummarizeResponses];
-
-export type PostApiCrownEvaluateData = {
-    body: {
-        prompt: string;
-        teamSlugOrId: string;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/crown/evaluate';
-};
-
-export type PostApiCrownEvaluateErrors = {
-    /**
-     * Invalid input
-     */
-    400: unknown;
-    /**
-     * Unauthorized
-     */
-    401: unknown;
-    /**
-     * Evaluation failed
-     */
-    500: unknown;
-};
-
-export type PostApiCrownEvaluateResponses = {
-    /**
-     * Crown evaluation result
-     */
-    200: {
-        winner: number;
-        reason: string;
-    };
-};
-
-export type PostApiCrownEvaluateResponse = PostApiCrownEvaluateResponses[keyof PostApiCrownEvaluateResponses];
 
 export type PostApiTeamsData = {
     body: CreateTeamRequest;

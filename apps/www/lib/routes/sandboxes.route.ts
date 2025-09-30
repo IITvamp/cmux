@@ -35,6 +35,8 @@ const StartSandboxBody = z
       .optional()
       .default(20 * 60),
     metadata: z.record(z.string(), z.string()).optional(),
+    taskRunId: z.string().optional(),
+    taskRunJwt: z.string().optional(),
     // Optional hydration parameters to clone a repo into the sandbox on start
     repoUrl: z.string().optional(),
     branch: z.string().optional(),
@@ -183,19 +185,33 @@ sandboxesRouter.openapi(
         return c.text("VSCode or worker service not found", 500);
       }
 
+      // Get environment variables from the environment if configured
       const environmentEnvVarsContent = await environmentEnvVarsPromise;
-      if (
-        environmentEnvVarsContent &&
-        environmentEnvVarsContent.trim().length > 0
-      ) {
+
+      // Prepare environment variables including task JWT if present
+      let envVarsToApply = environmentEnvVarsContent || "";
+
+      // Add CMUX task-related env vars if present
+      if (body.taskRunId) {
+        envVarsToApply += `\nCMUX_TASK_RUN_ID="${body.taskRunId}"`;
+      }
+      if (body.taskRunJwt) {
+        envVarsToApply += `\nCMUX_TASK_RUN_JWT="${body.taskRunJwt}"`;
+      }
+      
+      // Apply all environment variables if any
+      if (envVarsToApply.trim().length > 0) {
         try {
-          const encodedEnv = encodeEnvContentForEnvctl(
-            environmentEnvVarsContent
-          );
+          const encodedEnv = encodeEnvContentForEnvctl(envVarsToApply);
           const loadRes = await instance.exec(envctlLoadCommand(encodedEnv));
           if (loadRes.exit_code === 0) {
             console.log(
-              `[sandboxes.start] Applied environment env vars via envctl`
+              `[sandboxes.start] Applied environment variables via envctl`,
+              {
+                hasEnvironmentVars: Boolean(environmentEnvVarsContent),
+                hasTaskRunId: Boolean(body.taskRunId),
+                hasTaskRunJwt: Boolean(body.taskRunJwt),
+              }
             );
           } else {
             console.error(
@@ -204,7 +220,7 @@ sandboxesRouter.openapi(
           }
         } catch (error) {
           console.error(
-            "[sandboxes.start] Failed to apply environment env vars",
+            "[sandboxes.start] Failed to apply environment variables",
             error
           );
         }

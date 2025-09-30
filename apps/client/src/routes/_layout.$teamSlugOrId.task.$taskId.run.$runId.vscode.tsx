@@ -10,14 +10,13 @@ import { PersistentWebView } from "@/components/persistent-webview";
 import { getTaskRunPersistKey } from "@/lib/persistent-webview-keys";
 import { preloadTaskRunIframes } from "../lib/preloadTaskRunIframes";
 
-
 const paramsSchema = z.object({
   taskId: typedZid("tasks"),
   runId: typedZid("taskRuns"),
 });
 
 export const Route = createFileRoute(
-  "/_layout/$teamSlugOrId/task/$taskId/run/$runId/vscode"
+  "/_layout/$teamSlugOrId/task/$taskId/run/$runId/vscode",
 )({
   component: VSCodeComponent,
   params: {
@@ -34,7 +33,7 @@ export const Route = createFileRoute(
       convexQuery(api.taskRuns.get, {
         teamSlugOrId: opts.params.teamSlugOrId,
         id: opts.params.runId,
-      })
+      }),
     );
     if (result) {
       void preloadTaskRunIframes([
@@ -53,7 +52,7 @@ function VSCodeComponent() {
     convexQuery(api.taskRuns.get, {
       teamSlugOrId,
       id: taskRunId,
-    })
+    }),
   );
 
   const workspaceUrl = taskRun?.data?.vscode?.workspaceUrl ?? null;
@@ -66,9 +65,12 @@ function VSCodeComponent() {
 
   const onError = useCallback(
     (error: Error) => {
-      console.error(`Failed to load workspace view for task run ${taskRunId}:`, error);
+      console.error(
+        `Failed to load workspace view for task run ${taskRunId}:`,
+        error,
+      );
     },
-    [taskRunId]
+    [taskRunId],
   );
 
   return (
@@ -97,7 +99,7 @@ function VSCodeComponent() {
               {
                 "opacity-100": !hasWorkspace,
                 "opacity-0": hasWorkspace,
-              }
+              },
             )}
           >
             <div className="flex flex-col items-center gap-3">

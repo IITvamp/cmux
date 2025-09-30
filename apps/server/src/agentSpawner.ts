@@ -7,12 +7,9 @@ import {
 } from "@cmux/shared/agentConfig";
 import type {
   WorkerCreateTerminal,
-  WorkerTerminalExit,
   WorkerTerminalFailed,
-  WorkerTerminalIdle,
 } from "@cmux/shared/worker-schemas";
 import { parse as parseDotenv } from "dotenv";
-import { handleTaskCompletion } from "./handle-task-completion";
 import { sanitizeTmuxSessionName } from "./sanitizeTmuxSessionName";
 import {
   generateNewBranchName,
@@ -27,6 +24,7 @@ import {
   getAuthToken,
   runWithAuth,
 } from "./utils/requestContext";
+import { env } from "./utils/server-env";
 import { getWwwClient } from "./utils/wwwClient";
 import { getWwwOpenApiModule } from "./utils/wwwOpenApiModule";
 import { CmuxVSCodeInstance } from "./vscode/CmuxVSCodeInstance";
@@ -63,7 +61,7 @@ export async function spawnAgent(
     theme?: "dark" | "light" | "system";
     newBranch?: string; // Optional pre-generated branch name
   },
-  teamSlugOrId: string
+  teamSlugOrId: string,
 ): Promise<AgentSpawnResult> {
   try {
     // Capture the current auth token and header JSON from AsyncLocalStorage so we can
@@ -77,7 +75,7 @@ export async function spawnAgent(
     serverLogger.info(
       `[AgentSpawner] New Branch: ${newBranch}, Base Branch: ${
         options.branch ?? "(auto)"
-      }`
+      }`,
     );
 
     // Create a task run for this specific agent
@@ -90,7 +88,7 @@ export async function spawnAgent(
         agentName: agent.name,
         newBranch,
         environmentId: options.environmentId,
-      }
+      },
     );
 
     // Fetch the task to get image storage IDs
@@ -115,7 +113,7 @@ export async function spawnAgent(
       const downloadedImages = await Promise.all(
         task.images.map(async (taskImage) => {
           const imageUrl = imageUrlsResult.find(
-            (url) => url.storageId === taskImage.storageId
+            (url) => url.storageId === taskImage.storageId,
           );
           if (imageUrl) {
             // Download image from Convex storage
@@ -129,7 +127,7 @@ export async function spawnAgent(
             };
           }
           return null;
-        })
+        }),
       );
       const filteredImages = downloadedImages.filter((img) => img !== null);
       imagesToProcess = filteredImages as Array<{
@@ -141,10 +139,10 @@ export async function spawnAgent(
 
     if (imagesToProcess.length > 0) {
       serverLogger.info(
-        `[AgentSpawner] Processing ${imagesToProcess.length} images`
+        `[AgentSpawner] Processing ${imagesToProcess.length} images`,
       );
       serverLogger.info(
-        `[AgentSpawner] Original task description: ${options.taskDescription}`
+        `[AgentSpawner] Original task description: ${options.taskDescription}`,
       );
 
       // Create image files and update prompt
@@ -169,19 +167,19 @@ export async function spawnAgent(
           // Escape special regex characters in the filename
           const escapedFileName = image.fileName.replace(
             /[.*+?^${}()|[\]\\]/g,
-            "\\$&"
+            "\\$&",
           );
           processedTaskDescription = processedTaskDescription.replace(
             new RegExp(escapedFileName, "g"),
-            imagePath
+            imagePath,
           );
           if (beforeReplace !== processedTaskDescription) {
             serverLogger.info(
-              `[AgentSpawner] Replaced "${image.fileName}" with "${imagePath}"`
+              `[AgentSpawner] Replaced "${image.fileName}" with "${imagePath}"`,
             );
           } else {
             serverLogger.warn(
-              `[AgentSpawner] Failed to find "${image.fileName}" in prompt text`
+              `[AgentSpawner] Failed to find "${image.fileName}" in prompt text`,
             );
           }
         }
@@ -195,22 +193,22 @@ export async function spawnAgent(
           const beforeReplace = processedTaskDescription;
           const escapedName = nameWithoutExt.replace(
             /[.*+?^${}()|[\]\\]/g,
-            "\\$&"
+            "\\$&",
           );
           processedTaskDescription = processedTaskDescription.replace(
             new RegExp(escapedName, "g"),
-            imagePath
+            imagePath,
           );
           if (beforeReplace !== processedTaskDescription) {
             serverLogger.info(
-              `[AgentSpawner] Replaced "${nameWithoutExt}" with "${imagePath}"`
+              `[AgentSpawner] Replaced "${nameWithoutExt}" with "${imagePath}"`,
             );
           }
         }
       });
 
       serverLogger.info(
-        `[AgentSpawner] Processed task description: ${processedTaskDescription}`
+        `[AgentSpawner] Processed task description: ${processedTaskDescription}`,
       );
     }
 
@@ -219,6 +217,7 @@ export async function spawnAgent(
       CMUX_TASK_RUN_ID: taskRunId,
       CMUX_TASK_RUN_JWT: taskRunJwt,
       PROMPT: processedTaskDescription,
+      NEXT_PUBLIC_CONVEX_URL: env.NEXT_PUBLIC_CONVEX_URL,
     };
 
     if (options.environmentId) {
@@ -244,17 +243,17 @@ export async function spawnAgent(
             };
             serverLogger.info(
               `[AgentSpawner] Injected ${Object.keys(parsed).length} env vars from environment ${String(
-                options.environmentId
-              )}`
+                options.environmentId,
+              )}`,
             );
           }
         }
       } catch (error) {
         serverLogger.error(
           `[AgentSpawner] Failed to load environment env vars for ${String(
-            options.environmentId
+            options.environmentId,
           )}`,
-          error
+          error,
         );
       }
     }
@@ -314,11 +313,11 @@ export async function spawnAgent(
 
     // Build the tmux session command that will be sent via socket.io
     const tmuxSessionName = sanitizeTmuxSessionName(
-      `${agent.name}-${taskRunId}`
+      `${agent.name}-${taskRunId}`,
     );
 
     serverLogger.info(
-      `[AgentSpawner] Building command for agent ${agent.name}:`
+      `[AgentSpawner] Building command for agent ${agent.name}:`,
     );
     serverLogger.info(`  Raw command: ${agent.command}`);
     serverLogger.info(`  Processed args: ${processedArgs.join(" ")}`);
@@ -342,6 +341,7 @@ export async function spawnAgent(
         branch: options.branch,
         newBranch,
         environmentId: options.environmentId,
+        taskRunJwt,
       });
 
       worktreePath = "/root/workspace";
@@ -352,7 +352,7 @@ export async function spawnAgent(
           repoUrl: options.repoUrl!,
           branch: newBranch,
         },
-        teamSlugOrId
+        teamSlugOrId,
       );
 
       // Setup workspace
@@ -377,7 +377,7 @@ export async function spawnAgent(
       worktreePath = workspaceResult.worktreePath;
 
       serverLogger.info(
-        `[AgentSpawner] Creating DockerVSCodeInstance for ${agent.name}`
+        `[AgentSpawner] Creating DockerVSCodeInstance for ${agent.name}`,
       );
       vscodeInstance = new DockerVSCodeInstance({
         workspacePath: worktreePath,
@@ -395,7 +395,7 @@ export async function spawnAgent(
         teamSlugOrId,
         id: taskRunId,
         worktreePath: worktreePath,
-      })
+      }),
     );
 
     // Store the VSCode instance
@@ -408,7 +408,7 @@ export async function spawnAgent(
     const vscodeUrl = vscodeInfo.workspaceUrl;
 
     serverLogger.info(
-      `VSCode instance spawned for agent ${agent.name}: ${vscodeUrl}`
+      `VSCode instance spawned for agent ${agent.name}: ${vscodeUrl}`,
     );
 
     if (options.isCloudMode && vscodeInstance instanceof CmuxVSCodeInstance) {
@@ -418,142 +418,23 @@ export async function spawnAgent(
         .catch((err) =>
           serverLogger.error(
             "[AgentSpawner] setupDevcontainer encountered an error",
-            err
-          )
+            err,
+          ),
         );
     }
 
     // Start file watching for real-time diff updates
     serverLogger.info(
-      `[AgentSpawner] Starting file watch for ${agent.name} at ${worktreePath}`
+      `[AgentSpawner] Starting file watch for ${agent.name} at ${worktreePath}`,
     );
     vscodeInstance.startFileWatch(worktreePath);
-
-    // Track if this terminal already failed (to avoid completing later)
-    let hasFailed = false;
-
-    // Set up terminal-exit event handler
-    vscodeInstance.on("terminal-exit", async (data: WorkerTerminalExit) => {
-      serverLogger.info(
-        `[AgentSpawner] Terminal exited for ${agent.name}:`,
-        data
-      );
-
-      if (data.terminalId === terminalId) {
-        if (hasFailed) {
-          serverLogger.warn(
-            `[AgentSpawner] Not completing ${agent.name} (already marked failed)`
-          );
-          return;
-        }
-        await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () =>
-          handleTaskCompletion({
-            taskRunId,
-            agent,
-            exitCode: data.exitCode ?? 0,
-            worktreePath,
-            vscodeInstance,
-            teamSlugOrId,
-          })
-        );
-      }
-    });
 
     // Set up file change event handler for real-time diff updates
     vscodeInstance.on("file-changes", async (data) => {
       serverLogger.info(
         `[AgentSpawner] File changes detected for ${agent.name}:`,
-        { changeCount: data.changes.length, taskRunId: data.taskRunId }
+        { changeCount: data.changes.length, taskRunId: data.taskRunId },
       );
-
-      // On-demand diffs: no longer persisting incremental diffs to Convex
-    });
-
-    // Set up task-complete event handler (from project file detection)
-    vscodeInstance.on("task-complete", async (data) => {
-      serverLogger.info(
-        `[AgentSpawner] Task complete detected for ${agent.name}:`,
-        data
-      );
-      if (hasFailed) {
-        serverLogger.warn(
-          `[AgentSpawner] Ignoring task completion for ${agent.name} (already marked failed)`
-        );
-        return;
-      }
-
-      // Debug logging to understand what's being compared
-      serverLogger.info(`[AgentSpawner] Task completion comparison:`);
-      serverLogger.info(`[AgentSpawner]   data.taskRunId: "${data.taskRunId}"`);
-      serverLogger.info(`[AgentSpawner]   taskRunId: "${taskRunId}"`);
-      serverLogger.info(
-        `[AgentSpawner]   Match: ${data.taskRunId === taskRunId}`
-      );
-
-      // Update the task run as completed
-      if (data.taskRunId === taskRunId) {
-        serverLogger.info(
-          `[AgentSpawner] Task ID matched! Marking task as complete for ${agent.name}`
-        );
-        await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () =>
-          handleTaskCompletion({
-            taskRunId,
-            agent,
-            exitCode: 0,
-            worktreePath,
-            vscodeInstance,
-            teamSlugOrId,
-          })
-        );
-      } else {
-        serverLogger.warn(
-          `[AgentSpawner] Task ID did not match, ignoring task complete event`
-        );
-      }
-    });
-
-    // Set up terminal-idle event handler (legacy; ignore for deterministic agents like OpenCode)
-    vscodeInstance.on("terminal-idle", async (data: WorkerTerminalIdle) => {
-      serverLogger.info(
-        `[AgentSpawner] Terminal idle detected for ${agent.name}:`,
-        data
-      );
-      if (hasFailed) {
-        serverLogger.warn(
-          `[AgentSpawner] Ignoring idle for ${agent.name} (already marked failed)`
-        );
-        return;
-      }
-
-      // Debug logging to understand what's being compared
-      serverLogger.info(`[AgentSpawner] Terminal idle comparison:`);
-      serverLogger.info(`[AgentSpawner]   data.taskRunId: "${data.taskRunId}"`);
-      serverLogger.info(`[AgentSpawner]   taskRunId: "${taskRunId}"`);
-      serverLogger.info(
-        `[AgentSpawner]   Match: ${data.taskRunId === taskRunId}`
-      );
-
-      // Update the task run as completed
-      if (data.taskRunId === taskRunId) {
-        serverLogger.info(
-          `[AgentSpawner] Task ID matched! Marking task as complete for ${agent.name}`
-        );
-        vscodeInstance.stopFileWatch();
-        await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () =>
-          handleTaskCompletion({
-            taskRunId,
-            agent,
-            exitCode: 0,
-            worktreePath,
-            vscodeInstance,
-            teamSlugOrId,
-          })
-        );
-      } else {
-        serverLogger.warn(
-          `[AgentSpawner] Task ID did not match, ignoring idle event`
-        );
-      }
     });
 
     // Set up terminal-failed event handler
@@ -561,17 +442,14 @@ export async function spawnAgent(
       try {
         serverLogger.error(
           `[AgentSpawner] Terminal failed for ${agent.name}:`,
-          data
+          data,
         );
         if (data.taskRunId !== taskRunId) {
           serverLogger.warn(
-            `[AgentSpawner] Failure event taskRunId mismatch; ignoring`
+            `[AgentSpawner] Failure event taskRunId mismatch; ignoring`,
           );
           return;
         }
-        hasFailed = true;
-
-        // Do not write failure info to Convex logs; rely on status and errorMessage fields.
 
         // Mark the run as failed with error message
         await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () =>
@@ -582,17 +460,17 @@ export async function spawnAgent(
               errorMessage: data.errorMessage || "Terminal failed",
               // WorkerTerminalFailed does not include exitCode in schema; default to 1
               exitCode: 1,
-            })
-          )
+            }),
+          ),
         );
 
         serverLogger.info(
-          `[AgentSpawner] Marked taskRun ${taskRunId} as failed`
+          `[AgentSpawner] Marked taskRun ${taskRunId} as failed`,
         );
       } catch (error) {
         serverLogger.error(
           `[AgentSpawner] Error handling terminal-failed:`,
-          error
+          error,
         );
       }
     });
@@ -628,7 +506,7 @@ export async function spawnAgent(
           startedAt: Date.now(),
           ...(ports ? { ports } : {}),
         },
-      })
+      }),
     );
 
     // Use taskRunId as terminal ID for compatibility
@@ -637,13 +515,13 @@ export async function spawnAgent(
     // Log auth files if any
     if (authFiles.length > 0) {
       serverLogger.info(
-        `[AgentSpawner] Prepared ${authFiles.length} auth files for agent ${agent.name}`
+        `[AgentSpawner] Prepared ${authFiles.length} auth files for agent ${agent.name}`,
       );
     }
 
     // After VSCode instance is started, create the terminal with tmux session
     serverLogger.info(
-      `[AgentSpawner] Preparing to send terminal creation command for ${agent.name}`
+      `[AgentSpawner] Preparing to send terminal creation command for ${agent.name}`,
     );
 
     // Wait for worker connection if not already connected
@@ -652,7 +530,7 @@ export async function spawnAgent(
       await new Promise<void>((resolve) => {
         const timeout = setTimeout(() => {
           serverLogger.error(
-            `[AgentSpawner] Timeout waiting for worker connection`
+            `[AgentSpawner] Timeout waiting for worker connection`,
           );
           resolve();
         }, 30000); // 30 second timeout
@@ -668,7 +546,7 @@ export async function spawnAgent(
     const workerSocket = vscodeInstance.getWorkerSocket();
     if (!workerSocket) {
       serverLogger.error(
-        `[AgentSpawner] No worker socket available for ${agent.name}`
+        `[AgentSpawner] No worker socket available for ${agent.name}`,
       );
       return {
         agentName: agent.name,
@@ -704,7 +582,7 @@ export async function spawnAgent(
     // Log the actual command for Codex agents to debug notify command
     if (agent.name.toLowerCase().includes("codex")) {
       serverLogger.info(
-        `[AgentSpawner] Codex command string: ${commandString}`
+        `[AgentSpawner] Codex command string: ${commandString}`,
       );
       serverLogger.info(`[AgentSpawner] Codex raw args:`, actualArgs);
     }
@@ -753,7 +631,7 @@ export async function spawnAgent(
     };
 
     serverLogger.info(
-      `[AgentSpawner] Sending terminal creation command at ${new Date().toISOString()}:`
+      `[AgentSpawner] Sending terminal creation command at ${new Date().toISOString()}:`,
     );
     serverLogger.info(`  Terminal ID: ${tmuxSessionName}`);
     // serverLogger.info(
@@ -773,7 +651,7 @@ export async function spawnAgent(
     // Create image files if any
     if (imageFiles.length > 0) {
       serverLogger.info(
-        `[AgentSpawner] Creating ${imageFiles.length} image files...`
+        `[AgentSpawner] Creating ${imageFiles.length} image files...`,
       );
 
       // First create the prompt directory
@@ -796,27 +674,27 @@ export async function spawnAgent(
                 ) {
                   serverLogger.error(
                     "Socket timeout while creating prompt directory",
-                    timeoutError
+                    timeoutError,
                   );
                 } else {
                   serverLogger.error(
                     "Failed to create prompt directory",
-                    timeoutError
+                    timeoutError,
                   );
                 }
               } else if (result?.error) {
                 serverLogger.error(
                   "Failed to create prompt directory",
-                  result.error
+                  result.error,
                 );
               }
               resolve();
-            }
+            },
           );
         } catch (err) {
           serverLogger.error(
             "Error emitting command to create prompt directory",
-            err
+            err,
           );
           resolve();
         }
@@ -859,12 +737,12 @@ export async function spawnAgent(
 
           const result = await response.json();
           serverLogger.info(
-            `[AgentSpawner] Successfully uploaded image: ${result.path} (${result.size} bytes)`
+            `[AgentSpawner] Successfully uploaded image: ${result.path} (${result.size} bytes)`,
           );
         } catch (error) {
           serverLogger.error(
             `[AgentSpawner] Failed to upload image ${imageFile.path}:`,
-            error
+            error,
           );
         }
       }
@@ -872,18 +750,18 @@ export async function spawnAgent(
 
     // Send the terminal creation command
     serverLogger.info(
-      `[AgentSpawner] About to emit worker:create-terminal at ${new Date().toISOString()}`
+      `[AgentSpawner] About to emit worker:create-terminal at ${new Date().toISOString()}`,
     );
     serverLogger.info(
       `[AgentSpawner] Socket connected:`,
-      workerSocket.connected
+      workerSocket.connected,
     );
     serverLogger.info(`[AgentSpawner] Socket id:`, workerSocket.id);
 
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         serverLogger.error(
-          `[AgentSpawner] Timeout waiting for terminal creation response after 30s`
+          `[AgentSpawner] Timeout waiting for terminal creation response after 30s`,
         );
         reject(new Error("Timeout waiting for terminal creation"));
       }, 30000);
@@ -895,7 +773,7 @@ export async function spawnAgent(
           clearTimeout(timeout);
           serverLogger.info(
             `[AgentSpawner] Got response from worker:create-terminal at ${new Date().toISOString()}:`,
-            result
+            result,
           );
           if (result.error) {
             reject(result.error);
@@ -904,10 +782,10 @@ export async function spawnAgent(
             serverLogger.info("Terminal created successfully", result);
             resolve(result.data);
           }
-        }
+        },
       );
       serverLogger.info(
-        `[AgentSpawner] Emitted worker:create-terminal at ${new Date().toISOString()}`
+        `[AgentSpawner] Emitted worker:create-terminal at ${new Date().toISOString()}`,
       );
     });
 
@@ -949,7 +827,7 @@ export async function spawnAllAgents(
     }>;
     theme?: "dark" | "light" | "system";
   },
-  teamSlugOrId: string
+  teamSlugOrId: string,
 ): Promise<AgentSpawnResult[]> {
   // If selectedAgents is provided, map each entry to an AgentConfig to preserve duplicates
   const agentsToSpawn = options.selectedAgents
@@ -964,11 +842,11 @@ export async function spawnAllAgents(
     : await generateUniqueBranchNames(
         options.taskDescription,
         agentsToSpawn.length,
-        teamSlugOrId
+        teamSlugOrId,
       );
 
   serverLogger.info(
-    `[AgentSpawner] Generated ${branchNames.length} unique branch names for agents`
+    `[AgentSpawner] Generated ${branchNames.length} unique branch names for agents`,
   );
 
   // Spawn all agents in parallel with their pre-generated branch names
@@ -981,9 +859,9 @@ export async function spawnAllAgents(
           ...options,
           newBranch: branchNames[index],
         },
-        teamSlugOrId
-      )
-    )
+        teamSlugOrId,
+      ),
+    ),
   );
 
   return results;
