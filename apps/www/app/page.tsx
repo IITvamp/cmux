@@ -1,7 +1,3 @@
-"use client";
-
-import clientPackageJson from "../../client/package.json" assert { type: "json" };
-
 import { ClientIcon } from "@/components/client-icon";
 import CmuxLogo from "@/components/logo/cmux-logo";
 import { Cloud, GitBranch, GitPullRequest, Star, Terminal, Users, Zap } from "lucide-react";
@@ -12,40 +8,77 @@ import cmuxDemo1 from "@/docs/assets/cmux-demo-10.png";
 import cmuxDemo2 from "@/docs/assets/cmux-demo-20.png";
 import cmuxDemo3 from "@/docs/assets/cmux-demo-30.png";
 
+export const revalidate = 300;
+
 const RELEASE_PAGE_URL = "https://github.com/manaflow-ai/cmux/releases/latest";
+const GITHUB_RELEASE_URL = "https://api.github.com/repos/manaflow-ai/cmux/releases/latest";
+const DMG_SUFFIX = "-arm64.dmg";
 
 const normalizeVersion = (tag: string): string => (tag.startsWith("v") ? tag.slice(1) : tag);
 
-const ensureTagPrefix = (value: string): string => (value.startsWith("v") ? value : `v${value}`);
+type GithubRelease = {
+  tag_name?: string;
+  assets?: Array<{
+    name?: string;
+    browser_download_url?: string;
+  }>;
+};
 
 type ReleaseInfo = {
   latestVersion: string | null;
   macDownloadUrl: string;
 };
 
-const deriveReleaseInfo = (): ReleaseInfo => {
-  const versionValue = clientPackageJson.version;
-
-  if (typeof versionValue !== "string" || versionValue.trim() === "") {
-    return {
-      latestVersion: null,
-      macDownloadUrl: RELEASE_PAGE_URL,
-    };
+const deriveReleaseInfo = (data: GithubRelease | null): ReleaseInfo => {
+  if (!data) {
+    return { latestVersion: null, macDownloadUrl: RELEASE_PAGE_URL };
   }
 
-  const normalizedVersion = normalizeVersion(versionValue);
-  const releaseTag = ensureTagPrefix(versionValue);
+  const latestVersion = typeof data.tag_name === "string" && data.tag_name.trim() !== ""
+    ? normalizeVersion(data.tag_name)
+    : null;
+
+  const macDownloadUrl = data.assets?.find((asset) => {
+    const assetName = asset.name?.toLowerCase();
+
+    return typeof assetName === "string" && assetName.endsWith(DMG_SUFFIX);
+  })?.browser_download_url;
 
   return {
-    latestVersion: normalizedVersion,
-    macDownloadUrl: `https://github.com/manaflow-ai/cmux/releases/download/${releaseTag}/cmux-${normalizedVersion}-arm64.dmg`,
+    latestVersion,
+    macDownloadUrl: typeof macDownloadUrl === "string" && macDownloadUrl.trim() !== ""
+      ? macDownloadUrl
+      : RELEASE_PAGE_URL,
   };
 };
 
-const RELEASE_INFO = deriveReleaseInfo();
+async function fetchLatestRelease(): Promise<ReleaseInfo> {
+  try {
+    const response = await fetch(GITHUB_RELEASE_URL, {
+      headers: {
+        Accept: "application/vnd.github+json",
+      },
+      next: {
+        revalidate,
+      },
+    });
 
-export default function LandingPage() {
-  const { macDownloadUrl, latestVersion } = RELEASE_INFO;
+    if (!response.ok) {
+      return deriveReleaseInfo(null);
+    }
+
+    const data = (await response.json()) as GithubRelease;
+
+    return deriveReleaseInfo(data);
+  } catch (error) {
+    console.error("Failed to retrieve latest GitHub release", error);
+
+    return deriveReleaseInfo(null);
+  }
+}
+
+export default async function LandingPage() {
+  const { macDownloadUrl, latestVersion } = await fetchLatestRelease();
 
   return (
     <div className="min-h-dvh bg-background text-foreground overflow-y-auto">
