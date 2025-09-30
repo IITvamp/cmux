@@ -277,12 +277,6 @@ export const GitHubSyncPrStateSchema = z.object({
   taskRunId: typedZid("taskRuns"),
 });
 
-// Merge PR
-export const GitHubMergePrSchema = z.object({
-  taskRunId: typedZid("taskRuns"),
-  method: z.enum(["squash", "rebase", "merge"]),
-});
-
 // Merge branch directly
 export const GitHubMergeBranchSchema = z.object({
   taskRunId: typedZid("taskRuns"),
@@ -400,7 +394,6 @@ export type GitHubReposResponse = z.infer<typeof GitHubReposResponseSchema>;
 export type GitHubAuthResponse = z.infer<typeof GitHubAuthResponseSchema>;
 export type GitHubCreateDraftPr = z.infer<typeof GitHubCreateDraftPrSchema>;
 export type GitHubSyncPrState = z.infer<typeof GitHubSyncPrStateSchema>;
-export type GitHubMergePr = z.infer<typeof GitHubMergePrSchema>;
 export type GitHubMergeBranch = z.infer<typeof GitHubMergeBranchSchema>;
 export type ArchiveTask = z.infer<typeof ArchiveTaskSchema>;
 export type SpawnFromComment = z.infer<typeof SpawnFromCommentSchema>;
@@ -461,16 +454,6 @@ export interface ClientToServerEvents {
   // Sync PR state with GitHub and update Convex
   "github-sync-pr-state": (
     data: GitHubSyncPrState,
-    callback: (response: {
-      success: boolean;
-      results: PullRequestActionResult[];
-      aggregate: AggregatePullRequestSummary;
-      error?: string;
-    }) => void
-  ) => void;
-  // Merge PR with selected method
-  "github-merge-pr": (
-    data: GitHubMergePr,
     callback: (response: {
       success: boolean;
       results: PullRequestActionResult[];

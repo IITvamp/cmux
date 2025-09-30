@@ -76,6 +76,14 @@ const OpenPullRequestBody = z
   })
   .openapi("GithubOpenPrRequest");
 
+const MergePullRequestBody = z
+  .object({
+    teamSlugOrId: z.string(),
+    taskRunId: typedZid("taskRuns"),
+    method: z.enum(["squash", "rebase", "merge"]),
+  })
+  .openapi("GithubMergePrRequest");
+
 const OpenPullRequestResponse = z
   .object({
     success: z.boolean(),
@@ -353,6 +361,294 @@ githubPrsOpenRouter.openapi(
   },
 );
 
+githubPrsOpenRouter.openapi(
+  createRoute({
+    method: "post" as const,
+    path: "/integrations/github/prs/merge",
+    tags: ["Integrations"],
+    summary: "Merge GitHub pull requests for a task run using the user's GitHub OAuth token",
+    request: {
+      body: {
+        content: {
+          "application/json": {
+            schema: MergePullRequestBody,
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "PRs merged",
+        content: {
+          "application/json": {
+            schema: OpenPullRequestResponse,
+          },
+        },
+      },
+      400: { description: "Invalid request" },
+      401: { description: "Unauthorized" },
+      403: { description: "Forbidden" },
+      404: { description: "Task run not found" },
+      500: { description: "Failed to merge PRs" },
+    },
+  }),
+  async (c) => {
+    const user = await stackServerAppJs.getUser({ tokenStore: c.req.raw });
+    if (!user) {
+      return c.text("Unauthorized", 401);
+    }
+
+    const [{ accessToken }, githubAccount] = await Promise.all([
+      user.getAuthJson(),
+      user.getConnectedAccount("github"),
+    ]);
+
+    if (!accessToken) {
+      return c.text("Unauthorized", 401);
+    }
+
+    if (!githubAccount) {
+      return c.json(
+        {
+          success: false,
+          results: [],
+          aggregate: emptyAggregate(),
+          error: "GitHub account is not connected",
+        },
+        401,
+      );
+    }
+
+    const { accessToken: githubAccessToken } = await githubAccount.getAccessToken();
+    if (!githubAccessToken) {
+      return c.json(
+        {
+          success: false,
+          results: [],
+          aggregate: emptyAggregate(),
+          error: "GitHub access token unavailable",
+        },
+        401,
+      );
+    }
+
+    const body = c.req.valid("json");
+    const { teamSlugOrId, taskRunId, method } = body;
+
+    await verifyTeamAccess({ req: c.req.raw, teamSlugOrId });
+
+    const convex = getConvex({ accessToken });
+
+    const run = await convex.query(api.taskRuns.get, {
+      teamSlugOrId,
+      id: taskRunId,
+    });
+
+    if (!run) {
+      return c.json(
+        {
+          success: false,
+          results: [],
+          aggregate: emptyAggregate(),
+          error: "Task run not found",
+        },
+        404,
+      );
+    }
+
+    const task = await convex.query(api.tasks.getById, {
+      teamSlugOrId,
+      id: run.taskId,
+    });
+
+    if (!task) {
+      return c.json(
+        {
+          success: false,
+          results: [],
+          aggregate: emptyAggregate(),
+          error: "Task not found",
+        },
+        404,
+      );
+    }
+
+    const branchName = run.newBranch?.trim();
+    if (!branchName) {
+      return c.json(
+        {
+          success: false,
+          results: [],
+          aggregate: emptyAggregate(),
+          error: "Missing branch name for run",
+        },
+        400,
+      );
+    }
+
+    const repoFullNames = await collectRepoFullNamesForRun({
+      convex,
+      run,
+      task,
+      teamSlugOrId,
+    });
+
+    if (repoFullNames.length === 0) {
+      return c.json(
+        {
+          success: false,
+          results: [],
+          aggregate: emptyAggregate(),
+          error: "No repositories configured for this run",
+        },
+        400,
+      );
+    }
+
+    const title = task.pullRequestTitle || task.text || "cmux changes";
+    const truncatedTitle =
+      title.length > 72 ? `${title.slice(0, 69)}...` : title;
+    const commitMessage = `Merged by cmux for task ${String(task._id)}.`;
+
+    const existingByRepo = new Map(
+      (run.pullRequests ?? []).map(
+        (record) => [record.repoFullName, record] as const,
+      ),
+    );
+
+    const octokit = createOctokit(githubAccessToken);
+
+    const results = await Promise.all(
+      repoFullNames.map(async (repoFullName) => {
+        try {
+          const split = splitRepoFullName(repoFullName);
+          if (!split) {
+            throw new Error(`Invalid repository name: ${repoFullName}`);
+          }
+
+          const { owner, repo } = split;
+          const existingRecord = existingByRepo.get(repoFullName);
+
+          let detail = await loadPullRequestDetail({
+            octokit,
+            repoFullName,
+            owner,
+            repo,
+            branchName,
+            number: existingRecord?.number,
+          });
+
+          if (!detail) {
+            throw new Error("Pull request not found for this branch");
+          }
+
+          if (detail.draft) {
+            await markPullRequestReady({
+              octokit,
+              owner,
+              repo,
+              number: detail.number,
+              nodeId: detail.node_id,
+            });
+            detail = await fetchPullRequestDetail({
+              octokit,
+              owner,
+              repo,
+              number: detail.number,
+            });
+          }
+
+          if (
+            (detail.state ?? "").toLowerCase() === "closed" &&
+            !detail.merged_at
+          ) {
+            await reopenPullRequest({
+              octokit,
+              owner,
+              repo,
+              number: detail.number,
+            });
+            detail = await fetchPullRequestDetail({
+              octokit,
+              owner,
+              repo,
+              number: detail.number,
+            });
+          }
+
+          await mergePullRequest({
+            octokit,
+            owner,
+            repo,
+            number: detail.number,
+            method,
+            commitTitle: truncatedTitle,
+            commitMessage,
+          });
+
+          const mergedDetail = await fetchPullRequestDetail({
+            octokit,
+            owner,
+            repo,
+            number: detail.number,
+          });
+
+          return toPullRequestActionResult(repoFullName, {
+            ...mergedDetail,
+            merged_at:
+              mergedDetail.merged_at ?? new Date().toISOString(),
+          });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          return {
+            repoFullName,
+            url: undefined,
+            number: undefined,
+            state: "unknown" as const,
+            isDraft: undefined,
+            error: message,
+          } satisfies PullRequestActionResult;
+        }
+      }),
+    );
+
+    try {
+      const persisted = await persistPullRequestResults({
+        convex,
+        teamSlugOrId,
+        run,
+        task,
+        repoFullNames,
+        results,
+      });
+
+      const errors = results
+        .filter((result) => result.error)
+        .map((result) => `${result.repoFullName}: ${result.error}`);
+
+      return c.json({
+        success: errors.length === 0,
+        results,
+        aggregate: persisted.aggregate,
+        error: errors.length > 0 ? errors.join("; ") : undefined,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return c.json(
+        {
+          success: false,
+          results,
+          aggregate: emptyAggregate(),
+          error: message,
+        },
+        500,
+      );
+    }
+  },
+);
+
 function createOctokit(token: string): Octokit {
   return new Octokit({
     auth: token,
@@ -582,6 +878,52 @@ async function markPullRequestReady({
 
   await octokit.graphql(mutation, {
     pullRequestId: nodeId || data.node_id,
+  });
+}
+
+async function reopenPullRequest({
+  octokit,
+  owner,
+  repo,
+  number,
+}: {
+  octokit: Octokit;
+  owner: string;
+  repo: string;
+  number: number;
+}): Promise<void> {
+  await octokit.rest.pulls.update({
+    owner,
+    repo,
+    pull_number: number,
+    state: "open",
+  });
+}
+
+async function mergePullRequest({
+  octokit,
+  owner,
+  repo,
+  number,
+  method,
+  commitTitle,
+  commitMessage,
+}: {
+  octokit: Octokit;
+  owner: string;
+  repo: string;
+  number: number;
+  method: "squash" | "rebase" | "merge";
+  commitTitle: string;
+  commitMessage: string;
+}): Promise<void> {
+  await octokit.rest.pulls.merge({
+    owner,
+    repo,
+    pull_number: number,
+    merge_method: method,
+    commit_title: commitTitle,
+    commit_message: commitMessage,
   });
 }
 

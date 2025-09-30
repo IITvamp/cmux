@@ -16,10 +16,13 @@ import {
   type DefaultError,
 } from "@tanstack/react-query";
 import {
+  postApiIntegrationsGithubPrsMergeMutation,
   postApiIntegrationsGithubPrsOpenMutation,
 } from "@cmux/www-openapi-client/react-query";
 import type {
   Options,
+  PostApiIntegrationsGithubPrsMergeData,
+  PostApiIntegrationsGithubPrsMergeResponse,
   PostApiIntegrationsGithubPrsOpenData,
   PostApiIntegrationsGithubPrsOpenResponse,
 } from "@cmux/www-openapi-client";
@@ -715,28 +718,16 @@ function SocketActions({
   });
 
   const mergePrMutation = useMutation<
-    PullRequestActionResponse,
-    SocketMutationErrorInstance | Error,
-    MergeMethod,
+    PostApiIntegrationsGithubPrsMergeResponse,
+    DefaultError,
+    Options<PostApiIntegrationsGithubPrsMergeData>,
     ToastFeedbackContext
   >({
-    mutationFn: (method) => {
-      if (!socket) {
-        throw new Error("Socket unavailable");
-      }
-      return new Promise<PullRequestActionResponse>((resolve, reject) => {
-        socket.emit("github-merge-pr", { taskRunId, method }, (resp) => {
-          if (resp.success) {
-            resolve(resp);
-          } else {
-            reject(new SocketMutationError(resp.error ?? mergeErrorLabel, resp));
-          }
-        });
-      });
-    },
-    onMutate: (method) => {
+    ...postApiIntegrationsGithubPrsMergeMutation(),
+    onMutate: (variables) => {
+      const method = variables.body?.method ?? "merge";
       const toastId = toast.loading(mergeLoadingLabel(method));
-      return { toastId };
+      return { toastId } satisfies ToastFeedbackContext;
     },
     onSuccess: (response, _variables, context) => {
       toast.success(mergedLabel, {
@@ -747,7 +738,9 @@ function SocketActions({
     onError: (error, _variables, context) => {
       toast.error(mergeErrorLabel, {
         id: context?.toastId,
-        description: getErrorDescription(error),
+        description:
+          getErrorDescription(error) ??
+          (error instanceof Error ? error.message : undefined),
       });
     },
   });
@@ -809,7 +802,13 @@ function SocketActions({
   };
 
   const handleMerge = (method: MergeMethod) => {
-    mergePrMutation.mutate(method);
+    mergePrMutation.mutate({
+      body: {
+        teamSlugOrId,
+        taskRunId,
+        method,
+      },
+    });
   };
 
   const handleMergeBranch = () => {
