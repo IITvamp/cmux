@@ -218,36 +218,17 @@ export async function collectDiffForRun(
     : `origin/${sanitizedBase}`;
   const branchRef = branch.startsWith("origin/") ? branch : `origin/${branch}`;
 
+  let result;
   try {
-    const { stdout, stderr } = await execAsync(
-      "/usr/local/bin/cmux-collect-crown-diff.sh",
-      {
-        cwd: WORKSPACE_ROOT,
-        maxBuffer: 5 * 1024 * 1024,
-        env: {
-          ...process.env,
-          CMUX_DIFF_BASE: baseRef,
-          CMUX_DIFF_HEAD_REF: branchRef,
-        },
+    result = await execAsync("/usr/local/bin/cmux-collect-crown-diff.sh", {
+      cwd: WORKSPACE_ROOT,
+      maxBuffer: 5 * 1024 * 1024,
+      env: {
+        ...process.env,
+        CMUX_DIFF_BASE: baseRef,
+        CMUX_DIFF_HEAD_REF: branchRef,
       },
-    );
-
-    if (stderr) {
-      log("WARN", "cmux-collect-crown-diff.sh stderr", {
-        stderr,
-      });
-    }
-
-    const diff = stdout.trim();
-    if (!diff) {
-      log("INFO", "No differences found between branches", {
-        base: baseRef,
-        branch: branchRef,
-      });
-      return "No changes detected";
-    }
-
-    return formatDiff(diff);
+    });
   } catch (error) {
     const execError = error as ExecError;
     const stderr = execError.stderr ? String(execError.stderr).trim() : "";
@@ -267,6 +248,25 @@ export async function collectDiffForRun(
       `Failed to collect diff between ${baseRef} and ${branchRef}: ${stderr || execError.message}`,
     );
   }
+
+  const { stdout, stderr } = result;
+
+  if (stderr) {
+    log("WARN", "cmux-collect-crown-diff.sh stderr", {
+      stderr,
+    });
+  }
+
+  const diff = stdout.trim();
+  if (!diff) {
+    log("INFO", "No differences found between branches", {
+      base: baseRef,
+      branch: branchRef,
+    });
+    return "No changes detected";
+  }
+
+  return formatDiff(diff);
 }
 
 export async function ensureBranchesAvailable(

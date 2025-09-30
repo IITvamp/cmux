@@ -129,7 +129,10 @@ if [[ -n "$base_ref" ]]; then
           git add -- "$f" 2>/dev/null || true
         fi
       done
-      git --no-pager diff --staged -M --no-color "$merge_base" || true
+      if ! git --no-pager diff --staged -M --no-color "$merge_base"; then
+        echo "git diff failed for staged changes against $merge_base" >&2
+        exit 1
+      fi
       unset GIT_INDEX_FILE
     else
       changed_files=$(git --no-pager diff --name-only "$merge_base" HEAD || true)
@@ -156,7 +159,10 @@ if [[ -n "$base_ref" ]]; then
         exit 0
       fi
 
-      git --no-pager diff -M --no-color "$merge_base" HEAD -- "${filtered_files[@]}" || true
+      if ! git --no-pager diff -M --no-color "$merge_base" HEAD -- "${filtered_files[@]}"; then
+        echo "git diff failed for HEAD against $merge_base" >&2
+        exit 1
+      fi
     fi
   else
     changed_files=$(git --no-pager diff --name-only "$merge_base" "$head_ref" || true)
@@ -183,7 +189,10 @@ if [[ -n "$base_ref" ]]; then
       exit 0
     fi
 
-    git --no-pager diff -M --no-color "$merge_base" "$head_ref" -- "${filtered_files[@]}" || true
+    if ! git --no-pager diff -M --no-color "$merge_base" "$head_ref" -- "${filtered_files[@]}"; then
+      echo "git diff failed for $head_ref against $merge_base" >&2
+      exit 1
+    fi
   fi
 
   exit 0
@@ -222,4 +231,7 @@ echo "$deleted_list" | while IFS= read -r f; do
   git update-index --remove -- "$f" 2>/dev/null || true
 done
 
-git --no-pager diff --staged --no-color || true
+if ! git --no-pager diff --staged --no-color; then
+  echo "git diff --staged failed" >&2
+  exit 1
+fi
