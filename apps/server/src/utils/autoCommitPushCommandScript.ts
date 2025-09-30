@@ -5,199 +5,178 @@ import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
+const WORKSPACE_DIR = "/root/workspace";
 const branchName = process.env.CMUX_BRANCH_NAME;
 const commitMessage = process.env.CMUX_COMMIT_MESSAGE;
+
+function log(message: string, data?: Record<string, unknown>): void {
+  const formattedData = data
+    ? ` ${Object.entries(data)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(" ")}`
+    : "";
+  console.error(`[cmux auto-commit]${formattedData} ${message}`);
+}
+
 if (!branchName || !commitMessage) {
-  console.error("[cmux auto-commit] missing branch name or commit message");
-  console.error("[cmux auto-commit] branch name:", branchName);
-  console.error("[cmux auto-commit] commit message:", commitMessage);
+  log("Missing required environment variables");
+  log(`CMUX_BRANCH_NAME=${branchName || "(not set)"}`);
+  log(`CMUX_COMMIT_MESSAGE=${commitMessage || "(not set)"}`);
   process.exit(1);
 }
 
-async function runRepo(repoPath: string) {
-  console.error(`[cmux auto-commit] repo=${repoPath} -> enter directory`);
-
+async function checkoutBranch(repoPath: string): Promise<void> {
   try {
-    // Get repo info
-    const origin = await $`git -C ${repoPath} config --get remote.origin.url`
-      .text()
-      .catch(() => "");
-    console.error(
-      `[cmux auto-commit] repo=${repoPath} -> origin=${origin.trim()}`
-    );
-
-    // Add all changes
-    console.error(`[cmux auto-commit] repo=${repoPath} -> git add -A`);
-    await $`git -C ${repoPath} add -A`;
-
-    // Checkout branch
-    console.error(
-      `[cmux auto-commit] repo=${repoPath} -> checkout ${branchName}`
-    );
-    try {
-      await $`git -C ${repoPath} checkout -b ${branchName}`.quiet();
-    } catch {
-      await $`git -C ${repoPath} checkout ${branchName}`;
-    }
-
-    // Commit
-    console.error(`[cmux auto-commit] repo=${repoPath} -> git commit`);
-    try {
-      await $`git -C ${repoPath} commit -m ${commitMessage}`;
-      console.error(`[cmux auto-commit] repo=${repoPath} commit created`);
-    } catch (e) {
-      const hasChanges = await $`git -C ${repoPath} status --short`.text();
-      if (hasChanges.trim()) {
-        console.error(
-          `[cmux auto-commit] repo=${repoPath} commit failed with pending changes`
-        );
-        throw e;
-      } else {
-        console.error(`[cmux auto-commit] repo=${repoPath} nothing to commit`);
-      }
-    }
-
-    // Check if remote branch exists
-    const remoteBranch =
-      await $`git -C ${repoPath} ls-remote --heads origin ${branchName}`
-        .text()
-        .catch(() => "");
-
-    if (remoteBranch.trim()) {
-      console.error(
-        `[cmux auto-commit] repo=${repoPath} -> git pull --rebase origin ${branchName}`
-      );
-      await $`git -C ${repoPath} pull --rebase origin ${branchName}`;
-    } else {
-      console.error(
-        `[cmux auto-commit] repo=${repoPath} remote branch missing; skip pull --rebase`
-      );
-    }
-
-    // Push
-    console.error(
-      `[cmux auto-commit] repo=${repoPath} -> git push -u origin ${branchName}`
-    );
-    await $`git -C ${repoPath} push -u origin ${branchName}`;
-  } catch (error) {
-    console.error(`[cmux auto-commit] repo=${repoPath} failed:`, error);
-    throw error; // Will be caught by Promise.allSettled
+    await $`git -C ${repoPath} checkout -b ${branchName}`.quiet();
+  } catch {
+    await $`git -C ${repoPath} checkout ${branchName}`;
   }
 }
 
-async function main() {
-  console.error(`[cmux auto-commit] script start cwd=${process.cwd()}`);
-
-  console.error("[cmux auto-commit] detecting repositories");
-
-  // Always scan from /root/workspace regardless of current directory
-  const workspaceDir = "/root/workspace";
-  console.error(`[cmux auto-commit] scanning repos from ${workspaceDir}`);
-
-  const repoPaths: string[] = [];
-
-  if (existsSync(workspaceDir)) {
-    // First check if /root/workspace itself is a git repo
-    const workspaceGitPath = join(workspaceDir, ".git");
-
-    if (existsSync(workspaceGitPath)) {
-      // /root/workspace is itself a git repo
-      try {
-        await $`git -C ${workspaceDir} rev-parse --is-inside-work-tree`.quiet();
-        const repoPath = resolve(workspaceDir);
-
-        console.error(
-          `[cmux auto-commit] /root/workspace is a git repo: ${repoPath}`
-        );
-        repoPaths.push(repoPath);
-      } catch {
-        console.error(
-          "[cmux auto-commit] /root/workspace has .git but is not a valid repo"
-        );
-      }
-    } else {
-      // /root/workspace is not a git repo, check for sub-repos
-      console.error(
-        "[cmux auto-commit] /root/workspace is not a git repo, checking for sub-repos"
-      );
-
-      const dirEntries = await readdir(workspaceDir, {
-        withFileTypes: true,
-      }).catch(() => []);
-
-      console.error(`[cmux auto-commit] found ${dirEntries.length} sub-repos`);
-
-      const checkPromises = dirEntries
-        .filter((entry) => entry.isDirectory())
-        .map(async (entry) => {
-          const repoDir = join(workspaceDir, entry.name);
-          const gitPath = join(repoDir, ".git");
-
-          if (existsSync(gitPath)) {
-            // Verify it's a git repo
-            try {
-              await $`git -C ${repoDir} rev-parse --is-inside-work-tree`.quiet();
-              const repoPath = resolve(repoDir);
-              console.error(`[cmux auto-commit] found sub-repo: ${repoPath}`);
-              return repoPath;
-            } catch {
-              // Not a valid git repo, skip
-              return null;
-            }
-          }
-          return null;
-        });
-
-      const results = await Promise.all(checkPromises);
-      repoPaths.push(
-        ...results.filter((path): path is string => path !== null)
-      );
+async function commitChanges(repoPath: string): Promise<void> {
+  try {
+    await $`git -C ${repoPath} commit -m ${commitMessage}`;
+    log("Commit created", { repo: repoPath });
+  } catch (e) {
+    const hasChanges = await $`git -C ${repoPath} status --short`.text();
+    if (hasChanges.trim()) {
+      log("Commit failed with pending changes", { repo: repoPath });
+      throw e;
     }
+    log("Nothing to commit", { repo: repoPath });
+  }
+}
+
+async function syncWithRemote(repoPath: string): Promise<void> {
+  const remoteBranch =
+    await $`git -C ${repoPath} ls-remote --heads origin ${branchName}`
+      .text()
+      .catch(() => "");
+
+  if (remoteBranch.trim()) {
+    log("Rebasing onto remote branch", { repo: repoPath, branch: branchName });
+    await $`git -C ${repoPath} pull --rebase origin ${branchName}`;
+  } else {
+    log("Remote branch does not exist, will create", {
+      repo: repoPath,
+      branch: branchName,
+    });
+  }
+}
+
+async function processRepository(repoPath: string): Promise<void> {
+  log("Processing repository", { repo: repoPath });
+
+  const origin = await $`git -C ${repoPath} config --get remote.origin.url`
+    .text()
+    .catch(() => "");
+  log("Repository origin", { repo: repoPath, origin: origin.trim() });
+
+  await $`git -C ${repoPath} add -A`;
+  log("Staged all changes", { repo: repoPath });
+
+  await checkoutBranch(repoPath);
+  log("Checked out branch", { repo: repoPath, branch: branchName });
+
+  await commitChanges(repoPath);
+  await syncWithRemote(repoPath);
+
+  log("Pushing to remote", { repo: repoPath, branch: branchName });
+  await $`git -C ${repoPath} push -u origin ${branchName}`;
+}
+
+async function isValidGitRepo(path: string): Promise<boolean> {
+  try {
+    await $`git -C ${path} rev-parse --is-inside-work-tree`.quiet();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function findGitRepositories(): Promise<string[]> {
+  if (!existsSync(WORKSPACE_DIR)) {
+    return [];
   }
 
-  if (repoPaths.length === 0) {
-    console.error(
-      "[cmux auto-commit] No git repositories found for auto-commit"
-    );
-  } else {
-    console.error(
-      `[cmux auto-commit] processing ${repoPaths.length} repos in parallel`
-    );
+  const workspaceGitPath = join(WORKSPACE_DIR, ".git");
 
-    // Process all repos in parallel
-    const results = await Promise.allSettled(
-      repoPaths.map((repoPath) => runRepo(repoPath))
-    );
+  if (existsSync(workspaceGitPath)) {
+    const isValid = await isValidGitRepo(WORKSPACE_DIR);
+    if (isValid) {
+      log("Workspace is a git repository", { path: WORKSPACE_DIR });
+      return [resolve(WORKSPACE_DIR)];
+    }
+    log("Workspace has .git but is not a valid repository");
+  }
 
-    // Report results
-    let successCount = 0;
-    let failCount = 0;
+  log("Scanning workspace for git repositories");
+  const dirEntries = await readdir(WORKSPACE_DIR, {
+    withFileTypes: true,
+  }).catch(() => []);
 
-    results.forEach((result, index) => {
-      const repoPath = repoPaths[index];
-      if (result.status === "fulfilled") {
-        successCount++;
-        console.error(`[cmux auto-commit] ✓ ${repoPath} succeeded`);
-      } else {
-        failCount++;
-        console.error(
-          `[cmux auto-commit] ✗ ${repoPath} failed: ${result.reason}`
-        );
+  const checkPromises = dirEntries
+    .filter((entry) => entry.isDirectory())
+    .map(async (entry) => {
+      const repoDir = join(WORKSPACE_DIR, entry.name);
+      const gitPath = join(repoDir, ".git");
+
+      if (!existsSync(gitPath)) {
+        return null;
       }
+
+      const isValid = await isValidGitRepo(repoDir);
+      if (isValid) {
+        const repoPath = resolve(repoDir);
+        log("Found git repository", { path: repoPath });
+        return repoPath;
+      }
+
+      return null;
     });
 
-    console.error(
-      `[cmux auto-commit] completed: ${successCount} succeeded, ${failCount} failed`
-    );
+  const results = await Promise.all(checkPromises);
+  return results.filter((path): path is string => path !== null);
+}
 
-    // Exit with error if any repos failed
-    if (failCount > 0) {
-      process.exit(1);
+async function main(): Promise<void> {
+  log("Starting auto-commit", { cwd: process.cwd() });
+
+  const repoPaths = await findGitRepositories();
+
+  if (repoPaths.length === 0) {
+    log("No git repositories found");
+    return;
+  }
+
+  log(`Processing ${repoPaths.length} repositories in parallel`);
+
+  const results = await Promise.allSettled(
+    repoPaths.map((repoPath) => processRepository(repoPath))
+  );
+
+  let successCount = 0;
+  let failCount = 0;
+
+  results.forEach((result, index) => {
+    const repoPath = repoPaths[index];
+    if (result.status === "fulfilled") {
+      successCount++;
+      log("✓ Repository succeeded", { repo: repoPath });
+    } else {
+      failCount++;
+      log("✗ Repository failed", { repo: repoPath, error: result.reason });
     }
+  });
+
+  log(`Completed: ${successCount} succeeded, ${failCount} failed`);
+
+  if (failCount > 0) {
+    process.exit(1);
   }
 }
 
 await main().catch((error) => {
-  console.error("[cmux auto-commit] Fatal error:", error);
+  log("Fatal error", { error });
   process.exit(1);
 });

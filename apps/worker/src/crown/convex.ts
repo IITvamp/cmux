@@ -23,10 +23,6 @@ export async function convexRequest<T>(
   if (!baseUrl) return null;
 
   const fullUrl = `${baseUrl}${path}`;
-  log("DEBUG", "Making Crown HTTP request", {
-    url: fullUrl,
-    path,
-  });
 
   try {
     const response = await fetch(fullUrl, {

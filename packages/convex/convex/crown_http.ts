@@ -320,12 +320,6 @@ export const crownSummarize = httpAction(async (ctx, req) => {
 });
 
 export const crownWorkerCheck = httpAction(async (ctx, req) => {
-  console.log("[convex.crown] Worker check endpoint called", {
-    path: req.url,
-    method: req.method,
-    hasToken: !!req.headers.get("x-cmux-token"),
-  });
-
   const workerAuth = await getWorkerAuth(req);
   if (!workerAuth) {
     throw jsonResponse({ code: 401, message: "Unauthorized" }, 401);
@@ -343,123 +337,118 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
     return jsonResponse({ code: 400, message: "Invalid input" }, 400);
   }
 
-  // Handle different check types
-  const checkType = validation.data.checkType ?? "crown";
+  const requestType = validation.data.checkType ?? "crown";
+  const { taskRunId, taskId } = validation.data;
 
-  console.log("[convex.crown] Worker check type", {
-    checkType,
-    taskRunId: validation.data.taskRunId,
-    taskId: validation.data.taskId,
+  if (requestType === "info" && taskRunId) {
+    return handleInfoRequest(ctx, workerAuth, taskRunId);
+  }
+
+  if (requestType === "all-complete" && taskId) {
+    return handleAllCompleteRequest(ctx, workerAuth, taskId);
+  }
+
+  return handleCrownCheckRequest(ctx, workerAuth, validation.data);
+});
+
+async function handleInfoRequest(
+  ctx: ActionCtx,
+  workerAuth: WorkerAuthContext,
+  taskRunId: Id<"taskRuns">,
+): Promise<Response> {
+  const taskRun = await ctx.runQuery(internal.taskRuns.getById, {
+    id: taskRunId,
+  });
+  if (!taskRun) {
+    return jsonResponse({ code: 404, message: "Task run not found" }, 404);
+  }
+  if (
+    taskRun.teamId !== workerAuth.payload.teamId ||
+    taskRun.userId !== workerAuth.payload.userId
+  ) {
+    return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
+  }
+
+  const task = await ctx.runQuery(internal.tasks.getByIdInternal, {
+    id: taskRun.taskId,
   });
 
-  // For "info" check, just return task run info without updating status
-  if (checkType === "info" && validation.data.taskRunId) {
-    const taskRunId = validation.data.taskRunId;
-    console.log("[convex.crown] Fetching task run info", { taskRunId });
-    const taskRun = await ctx.runQuery(internal.taskRuns.getById, {
-      id: taskRunId,
-    });
-    if (!taskRun) {
-      console.error("[convex.crown] Task run not found", { taskRunId });
-      return jsonResponse({ code: 404, message: "Task run not found" }, 404);
-    }
-    if (
-      taskRun.teamId !== workerAuth.payload.teamId ||
-      taskRun.userId !== workerAuth.payload.userId
-    ) {
-      return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
-    }
+  const response = {
+    ok: true,
+    taskRun: {
+      id: taskRun._id,
+      taskId: taskRun.taskId,
+      teamId: taskRun.teamId,
+      newBranch: taskRun.newBranch ?? null,
+      agentName: taskRun.agentName ?? null,
+    },
+    task: task
+      ? {
+          id: task._id,
+          text: task.text,
+        }
+      : null,
+  } satisfies WorkerTaskRunResponse;
+  return jsonResponse(response);
+}
 
-    const task = await ctx.runQuery(internal.tasks.getByIdInternal, {
-      id: taskRun.taskId,
-    });
-
-    const response = {
-      ok: true,
-      taskRun: {
-        id: taskRun._id,
-        taskId: taskRun.taskId,
-        teamId: taskRun.teamId,
-        newBranch: taskRun.newBranch ?? null,
-        agentName: taskRun.agentName ?? null,
-      },
-      task: task
-        ? {
-            id: task._id,
-            text: task.text,
-          }
-        : null,
-    } satisfies WorkerTaskRunResponse;
-    return jsonResponse(response);
+async function handleAllCompleteRequest(
+  ctx: ActionCtx,
+  workerAuth: WorkerAuthContext,
+  taskId: Id<"tasks">,
+): Promise<Response> {
+  const task = await ctx.runQuery(internal.tasks.getByIdInternal, {
+    id: taskId,
+  });
+  if (!task) {
+    return jsonResponse({ code: 404, message: "Task not found" }, 404);
+  }
+  if (
+    task.teamId !== workerAuth.payload.teamId ||
+    task.userId !== workerAuth.payload.userId
+  ) {
+    return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
   }
 
-  // For "all-complete" check, check if all runs for a task are complete
-  if (checkType === "all-complete" && validation.data.taskId) {
-    const taskId = validation.data.taskId;
-    console.log("[convex.crown] Checking all-complete status", { taskId });
-    const task = await ctx.runQuery(internal.tasks.getByIdInternal, {
-      id: taskId,
-    });
-    if (!task) {
-      console.error("[convex.crown] Task not found for all-complete check", {
-        taskId,
-      });
-      return jsonResponse({ code: 404, message: "Task not found" }, 404);
-    }
-    if (
-      task.teamId !== workerAuth.payload.teamId ||
-      task.userId !== workerAuth.payload.userId
-    ) {
-      return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
-    }
-
-    const runsForTeam = await ctx.runQuery(
-      internal.taskRuns.listByTaskAndTeamInternal,
-      {
-        taskId,
-        teamId: workerAuth.payload.teamId,
-        userId: workerAuth.payload.userId,
-      },
-    );
-
-    const statuses = runsForTeam.map((run) => ({
-      id: run._id,
-      status: run.status,
-    }));
-
-    const allComplete =
-      runsForTeam.length > 0 &&
-      runsForTeam.every((run) => run.status === "completed");
-
-    console.log("[convex.crown] All-complete check", {
+  const runsForTeam = await ctx.runQuery(
+    internal.taskRuns.listByTaskAndTeamInternal,
+    {
       taskId,
-      totalRuns: runsForTeam.length,
-      completedRuns: runsForTeam.filter((r) => r.status === "completed").length,
-      allComplete,
-      statuses,
-    });
-
-    const response = {
-      ok: true,
-      taskId,
-      allComplete,
-      statuses,
-    } satisfies WorkerAllRunsCompleteResponse;
-    return jsonResponse(response);
-  }
-
-  // Default crown check logic
-  const taskRun = await loadTaskRunForWorker(
-    ctx,
-    workerAuth,
-    validation.data.taskRunId,
+      teamId: workerAuth.payload.teamId,
+      userId: workerAuth.payload.userId,
+    },
   );
+
+  const statuses = runsForTeam.map((run) => ({
+    id: run._id,
+    status: run.status,
+  }));
+
+  const allComplete =
+    runsForTeam.length > 0 &&
+    runsForTeam.every((run) => run.status === "completed");
+
+  const response = {
+    ok: true,
+    taskId,
+    allComplete,
+    statuses,
+  } satisfies WorkerAllRunsCompleteResponse;
+  return jsonResponse(response);
+}
+
+async function handleCrownCheckRequest(
+  ctx: ActionCtx,
+  workerAuth: WorkerAuthContext,
+  data: { taskRunId?: Id<"taskRuns">; taskId?: Id<"tasks"> },
+): Promise<Response> {
+  const taskRun = await loadTaskRunForWorker(ctx, workerAuth, data.taskRunId);
   if (taskRun instanceof Response) return taskRun;
 
-  const taskId = validation.data.taskId ?? taskRun.taskId;
+  const taskId = data.taskId ?? taskRun.taskId;
   if (taskId !== taskRun.taskId) {
     console.warn("[convex.crown] Worker taskId mismatch", {
-      providedTaskId: validation.data.taskId,
+      providedTaskId: data.taskId,
       expectedTaskId: taskRun.taskId,
     });
     return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
@@ -477,29 +466,28 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
   ) {
     console.warn(
       "[convex.crown] Worker attempted to access unauthorized task",
-      {
-        taskId,
-      },
+      { taskId },
     );
     return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
   }
 
-  const runsForTeam = await ctx.runQuery(
-    internal.taskRuns.listByTaskAndTeamInternal,
-    {
-      taskId,
-      teamId: workerAuth.payload.teamId,
-      userId: workerAuth.payload.userId,
-    },
-  );
-
-  const workspaceSettings = await ctx.runQuery(
-    internal.workspaceSettings.getInternal,
-    {
-      teamId: workerAuth.payload.teamId,
-      userId: workerAuth.payload.userId,
-    },
-  );
+  const [runsForTeam, workspaceSettings, existingEvaluation] =
+    await Promise.all([
+      ctx.runQuery(internal.taskRuns.listByTaskAndTeamInternal, {
+        taskId,
+        teamId: workerAuth.payload.teamId,
+        userId: workerAuth.payload.userId,
+      }),
+      ctx.runQuery(internal.workspaceSettings.getByTeamAndUserInternal, {
+        teamId: workerAuth.payload.teamId,
+        userId: workerAuth.payload.userId,
+      }),
+      ctx.runQuery(internal.crown.getEvaluationByTaskInternal, {
+        taskId,
+        teamId: workerAuth.payload.teamId,
+        userId: workerAuth.payload.userId,
+      }),
+    ]);
 
   const allRunsFinished = runsForTeam.every((run) =>
     ["completed", "failed"].includes(run.status),
@@ -508,15 +496,6 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
     (run) => run.status === "completed",
   );
   const completedRuns = runsForTeam.filter((run) => run.status === "completed");
-
-  const existingEvaluation = await ctx.runQuery(
-    internal.crown.getEvaluationByTaskInternal,
-    {
-      taskId,
-      teamId: workerAuth.payload.teamId,
-      userId: workerAuth.payload.userId,
-    },
-  );
 
   const shouldEvaluate =
     allRunsFinished &&
@@ -528,15 +507,6 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
     runsForTeam.length === 1 && completedRuns.length === 1
       ? completedRuns[0]._id
       : null;
-
-  const runsPayload = runsForTeam.map((run) => ({
-    id: run._id,
-    status: run.status as WorkerRunStatus,
-    agentName: run.agentName ?? null,
-    newBranch: run.newBranch ?? null,
-    exitCode: run.exitCode ?? null,
-    completedAt: run.completedAt ?? null,
-  }));
 
   const response = {
     ok: true,
@@ -559,10 +529,17 @@ export const crownWorkerCheck = httpAction(async (ctx, req) => {
       projectFullName: task.projectFullName ?? null,
       autoPrEnabled: workspaceSettings?.autoPrEnabled ?? false,
     },
-    runs: runsPayload,
+    runs: runsForTeam.map((run) => ({
+      id: run._id,
+      status: run.status as WorkerRunStatus,
+      agentName: run.agentName ?? null,
+      newBranch: run.newBranch ?? null,
+      exitCode: run.exitCode ?? null,
+      completedAt: run.completedAt ?? null,
+    })),
   } satisfies CrownWorkerCheckResponse;
   return jsonResponse(response);
-});
+}
 
 export const crownWorkerFinalize = httpAction(async (ctx, req) => {
   const workerAuth = await getWorkerAuth(req);
@@ -698,14 +675,14 @@ export const crownWorkerComplete = httpAction(async (ctx, req) => {
     : null;
 
   const containerSettings = await ctx.runQuery(
-    internal.containerSettings.getEffectiveInternal,
+    internal.containerSettings.getContainerSettingsInternal,
     {
       teamId: auth.payload.teamId,
       userId: auth.payload.userId,
     },
   );
 
-  if (containerSettings?.autoCleanupEnabled) {
+  if (containerSettings?.autoCleanupEnabled && updatedRun?.vscode) {
     const reviewMinutes = containerSettings.reviewPeriodMinutes ?? 60;
     const scheduledStopAt = containerSettings.stopImmediatelyOnCompletion
       ? Date.now()

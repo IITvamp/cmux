@@ -21,7 +21,7 @@ export const get = authQuery({
     const settings = await ctx.db
       .query("containerSettings")
       .withIndex("by_team_user", (q) =>
-        q.eq("teamId", teamId).eq("userId", userId)
+        q.eq("teamId", teamId).eq("userId", userId),
       )
       .first();
     if (!settings) {
@@ -56,7 +56,7 @@ export const update = authMutation({
     const existing = await ctx.db
       .query("containerSettings")
       .withIndex("by_team_user", (q) =>
-        q.eq("teamId", teamId).eq("userId", userId)
+        q.eq("teamId", teamId).eq("userId", userId),
       )
       .first();
     const now = Date.now();
@@ -89,7 +89,7 @@ export const getEffective = authQuery({
     const settings = await ctx.db
       .query("containerSettings")
       .withIndex("by_team_user", (q) =>
-        q.eq("teamId", teamId).eq("userId", userId)
+        q.eq("teamId", teamId).eq("userId", userId),
       )
       .first();
     return {
@@ -108,13 +108,13 @@ export const getEffective = authQuery({
   },
 });
 
-export const getEffectiveInternal = internalQuery({
+export const getContainerSettingsInternal = internalQuery({
   args: { teamId: v.string(), userId: v.string() },
   handler: async (ctx, args) => {
     const settings = await ctx.db
       .query("containerSettings")
       .withIndex("by_team_user", (q) =>
-        q.eq("teamId", args.teamId).eq("userId", args.userId)
+        q.eq("teamId", args.teamId).eq("userId", args.userId),
       )
       .first();
 

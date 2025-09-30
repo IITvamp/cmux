@@ -56,7 +56,7 @@ export const update = authMutation({
   },
 });
 
-export const getInternal = internalQuery({
+export const getByTeamAndUserInternal = internalQuery({
   args: { teamId: v.string(), userId: v.string() },
   handler: async (ctx, args) => {
     const settings = await ctx.db

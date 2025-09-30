@@ -2,17 +2,16 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { log } from "../logger";
-import { WORKSPACE_ROOT, execAsync, sleep } from "./utils";
+import { WORKSPACE_ROOT, execAsync } from "./utils";
 
 type ExecError = Error & {
-  stdout?: unknown;
-  stderr?: unknown;
-  code?: number | string;
+  stdout?: string | Buffer;
+  stderr?: string | Buffer;
+  code?: number;
   status?: number;
 };
 
 let gitRepoPath: string | null = null;
-export const branchDiffCache = new Map<string, string>();
 
 export async function detectGitRepoPath(): Promise<string> {
   if (gitRepoPath) {
@@ -32,7 +31,7 @@ export async function detectGitRepoPath(): Promise<string> {
       `ls -d ${WORKSPACE_ROOT}/*/ 2>/dev/null || true`,
       {
         cwd: WORKSPACE_ROOT,
-      }
+      },
     );
 
     if (dirs && dirs.trim()) {
@@ -53,7 +52,7 @@ export async function detectGitRepoPath(): Promise<string> {
       `find ${WORKSPACE_ROOT} -maxdepth 2 -type d -name .git 2>/dev/null | head -1`,
       {
         cwd: WORKSPACE_ROOT,
-      }
+      },
     );
 
     if (stdout && stdout.trim()) {
@@ -79,24 +78,9 @@ export async function detectGitRepoPath(): Promise<string> {
 
 export async function runGitCommand(
   command: string,
-  allowFailure = false
+  allowFailure = false,
 ): Promise<{ stdout: string; stderr: string; exitCode: number } | null> {
-  const formatOutput = (value: unknown): string => {
-    if (typeof value === "string") {
-      return value;
-    }
-    if (
-      value &&
-      typeof (value as { toString(): string }).toString === "function"
-    ) {
-      try {
-        return (value as { toString(): string }).toString();
-      } catch {
-        return "";
-      }
-    }
-    return "";
-  };
+  const formatOutput = (value: string | Buffer): string => String(value);
 
   try {
     const repoPath = await detectGitRepoPath();
@@ -112,16 +96,11 @@ export async function runGitCommand(
       error instanceof Error
         ? error
         : new Error(
-            typeof error === "string" ? error : "Unknown git command error"
+            typeof error === "string" ? error : "Unknown git command error",
           );
-    const stdout = formatOutput(execError.stdout);
-    const stderr = formatOutput(execError.stderr);
-    const exitCode =
-      typeof execError.code === "number"
-        ? execError.code
-        : typeof execError.status === "number"
-          ? execError.status
-          : 1;
+    const stdout = formatOutput(execError.stdout ?? "");
+    const stderr = formatOutput(execError.stderr ?? "");
+    const exitCode = execError.code ?? execError.status ?? 1;
     const errorPayload = {
       command,
       message: execError.message,
@@ -142,7 +121,6 @@ export async function fetchRemoteRef(ref: string | null): Promise<boolean> {
   if (!ref) {
     return false;
   }
-
   const trimmedRef = ref.trim();
   if (!trimmedRef) {
     return false;
@@ -171,7 +149,7 @@ export async function fetchRemoteRef(ref: string | null): Promise<boolean> {
 
   const verifyResult = await runGitCommand(
     `git rev-parse --verify --quiet ${verifyRef}`,
-    true
+    true,
   );
 
   if (verifyResult?.stdout?.trim()) {
@@ -190,23 +168,15 @@ function formatDiff(diff: string): string {
   if (!diff) return "No changes detected";
   const trimmed = diff.trim();
   if (trimmed.length === 0) return "No changes detected";
-  const limit = 5000;
-  if (trimmed.length <= limit) return trimmed;
-  return `${trimmed.slice(0, limit)}\n... (truncated)`;
+  return trimmed;
 }
 
 export async function collectDiffForRun(
   baseBranch: string,
-  branch: string | null
+  branch: string | null,
 ): Promise<string> {
   if (!branch) {
     return "No changes detected";
-  }
-
-  const cachedDiff = branchDiffCache.get(branch);
-  if (cachedDiff) {
-    log("INFO", "Using cached diff for branch", { branch });
-    return formatDiff(cachedDiff);
   }
 
   const sanitizedBase = baseBranch || "main";
@@ -234,7 +204,7 @@ export async function collectDiffForRun(
           CMUX_DIFF_BASE: baseRef,
           CMUX_DIFF_HEAD_REF: branchRef,
         },
-      }
+      },
     );
 
     const diff = stdout.trim();
@@ -246,7 +216,6 @@ export async function collectDiffForRun(
       return "No changes detected";
     }
 
-    branchDiffCache.set(branch, diff);
     return formatDiff(diff);
   } catch (error) {
     log("ERROR", "Failed to collect diff for run", {
@@ -261,53 +230,31 @@ export async function collectDiffForRun(
 export async function ensureBranchesAvailable(
   completedRuns: Array<{ id: string; newBranch: string | null }>,
   baseBranch: string,
-  localFallbackBranches: Set<string> = new Set()
 ): Promise<boolean> {
   const sanitizedBase = baseBranch || "main";
-  const attemptLimit = 3;
-  for (let attempt = 0; attempt < attemptLimit; attempt += 1) {
-    const baseOk = await fetchRemoteRef(sanitizedBase);
-    log("INFO", "Ensuring branches available", {
-      attempt,
-      maxAttempts: attemptLimit,
-      baseBranch: sanitizedBase,
-      baseOk,
-      completedRunCount: completedRuns.length,
-    });
-    let allBranchesOk = true;
-    for (const run of completedRuns) {
-      if (!run.newBranch) {
-        log("ERROR", "Run missing branch name", { runId: run.id });
-        return false;
-      }
-      const branchOk = await fetchRemoteRef(run.newBranch);
-      log("INFO", "Checked branch availability", {
-        runId: run.id,
-        branch: run.newBranch,
-        branchOk,
-      });
-      if (!branchOk && !localFallbackBranches.has(run.newBranch)) {
-        allBranchesOk = false;
-      } else if (!branchOk) {
-        log("INFO", "Using cached diff fallback for branch", {
-          runId: run.id,
-          branch: run.newBranch,
-        });
-      }
+  const baseOk = await fetchRemoteRef(sanitizedBase);
+  log("INFO", "Ensuring branches available", {
+    baseBranch: sanitizedBase,
+    baseOk,
+    completedRunCount: completedRuns.length,
+  });
+  let allBranchesOk = true;
+  for (const run of completedRuns) {
+    if (!run.newBranch) {
+      log("ERROR", "Run missing branch name", { runId: run.id });
+      return false;
     }
-    if (baseOk && allBranchesOk) {
-      return true;
-    }
-    log("INFO", "Branch check failed; retrying", {
-      attempt,
-      baseOk,
-      allBranchesOk,
+    const branchOk = await fetchRemoteRef(run.newBranch);
+    log("INFO", "Checked branch availability", {
+      runId: run.id,
+      branch: run.newBranch,
+      branchOk,
     });
-    if (attempt < attemptLimit - 1) {
-      await sleep(3000);
+    if (!branchOk) {
+      allBranchesOk = false;
     }
   }
-  return false;
+  return baseOk && allBranchesOk;
 }
 
 export async function captureRelevantDiff(): Promise<string> {
@@ -318,7 +265,7 @@ export async function captureRelevantDiff(): Promise<string> {
       {
         cwd: gitPath,
         maxBuffer: 5 * 1024 * 1024,
-      }
+      },
     );
     const diff = stdout ? stdout.trim() : "";
     return diff.length > 0 ? diff : "No changes detected";
@@ -352,6 +299,124 @@ export async function getCurrentBranch(): Promise<string | null> {
   return branch;
 }
 
+async function ensureGitRepository(gitPath: string): Promise<boolean> {
+  const gitCheck = await runGitCommand("git rev-parse --git-dir", true);
+  if (gitCheck && gitCheck.exitCode === 0) {
+    return true;
+  }
+
+  log("WARN", "Not in a git repository, initializing", { gitPath });
+  const initResult = await runGitCommand("git init", true);
+  if (!initResult || initResult.exitCode !== 0) {
+    log("ERROR", "Failed to initialize git repository", {
+      gitPath,
+      error: initResult?.stderr,
+    });
+    return false;
+  }
+
+  log("INFO", "Initialized git repository", { gitPath });
+  return true;
+}
+
+async function configureRemote(remoteUrl: string): Promise<void> {
+  const currentRemote = await runGitCommand("git remote get-url origin", true);
+  const currentUrl = currentRemote?.stdout.trim();
+
+  if (!currentUrl) {
+    log("INFO", "Adding origin remote", { remoteUrl });
+    await runGitCommand(`git remote add origin ${remoteUrl}`);
+  } else if (currentUrl !== remoteUrl) {
+    log("INFO", "Updating origin remote", {
+      currentRemote: currentUrl,
+      remoteUrl,
+    });
+    await runGitCommand(`git remote set-url origin ${remoteUrl}`);
+  }
+
+  const updatedRemote = await runGitCommand("git remote -v", true);
+  if (updatedRemote) {
+    log("INFO", "Current git remotes", {
+      remotes: updatedRemote.stdout.trim().split("\n"),
+    });
+  }
+}
+
+function truncateOutput(output: string | undefined, length = 200): string {
+  return output ? output.trim().slice(0, length) : "";
+}
+
+async function stageAndCommitChanges(
+  branchName: string,
+  commitMessage: string
+): Promise<void> {
+  await runGitCommand("git add -A");
+  log("INFO", "Staged all changes");
+
+  await runGitCommand(`git checkout -B ${branchName}`);
+  log("INFO", "Checked out branch", { branchName });
+
+  const status = await runGitCommand("git status --short", true);
+  const hasChanges = Boolean(status?.stdout.trim());
+
+  if (status) {
+    const lines = status.stdout.trim().split("\n");
+    log("INFO", "Git status before commit", {
+      branchName,
+      entries: lines.slice(0, 10),
+      totalLines: status.stdout.trim() === "" ? 0 : lines.length,
+    });
+  }
+
+  if (!hasChanges) {
+    log("INFO", "No changes to commit", { branchName });
+    return;
+  }
+
+  const commitResult = await runGitCommand(
+    `git commit -m ${JSON.stringify(commitMessage)}`,
+    true
+  );
+
+  if (commitResult) {
+    log("INFO", "Created commit", {
+      branchName,
+      stdout: truncateOutput(commitResult.stdout),
+      stderr: truncateOutput(commitResult.stderr),
+    });
+  } else {
+    log("WARN", "Commit command did not produce output", { branchName });
+  }
+}
+
+async function syncWithRemote(branchName: string): Promise<void> {
+  const remoteExists = await runGitCommand(
+    `git ls-remote --heads origin ${branchName}`,
+    true
+  );
+
+  if (remoteExists?.stdout.trim()) {
+    log("INFO", "Remote branch exists, rebasing", {
+      branchName,
+      remoteHead: remoteExists.stdout.trim().slice(0, 120),
+    });
+
+    const pullResult = await runGitCommand(
+      `git pull --rebase origin ${branchName}`
+    );
+
+    if (pullResult) {
+      log("INFO", "Rebased branch onto remote", {
+        branchName,
+        stdout: truncateOutput(pullResult.stdout),
+        stderr: truncateOutput(pullResult.stderr),
+      });
+    }
+  } else {
+    log("INFO", "Remote branch does not exist, will create", { branchName });
+  }
+}
+
 export async function autoCommitAndPush({
   branchName,
   commitMessage,
@@ -361,176 +426,50 @@ export async function autoCommitAndPush({
   commitMessage: string;
   remoteUrl?: string;
 }): Promise<void> {
-  log("INFO", "[AUTOCOMMIT] autoCommitAndPush CALLED", {
-    branchName,
-    commitMessage: commitMessage.slice(0, 100),
-    remoteUrl,
-    workspaceRoot: WORKSPACE_ROOT,
-  });
-
   if (!branchName) {
-    log("ERROR", "[AUTOCOMMIT] Missing branch name for auto-commit");
+    log("ERROR", "Missing branch name for auto-commit");
     return;
   }
 
-  const gitPath = await detectGitRepoPath();
-
-  log("INFO", "[AUTOCOMMIT] Worker auto-commit starting", {
+  log("INFO", "Auto-commit starting", {
     branchName,
-    remoteOverride: remoteUrl,
-    workspacePath: WORKSPACE_ROOT,
-    gitRepoPath: gitPath,
+    commitMessage: commitMessage.slice(0, 100),
+    remoteUrl,
   });
 
-  const gitCheck = await runGitCommand("git rev-parse --git-dir", true);
-  if (!gitCheck || gitCheck.exitCode !== 0) {
-    log("ERROR", "[AUTOCOMMIT] Not in a git repository", {
-      branchName,
-      workspacePath: WORKSPACE_ROOT,
-      gitRepoPath: gitPath,
-      gitCheckError: gitCheck?.stderr,
-    });
-    const initResult = await runGitCommand("git init", true);
-    if (!initResult || initResult.exitCode !== 0) {
-      log("ERROR", "[AUTOCOMMIT] Failed to initialize git repository", {
-        branchName,
-        gitRepoPath: gitPath,
-        error: initResult?.stderr,
-      });
-      return;
-    }
-    log("INFO", "[AUTOCOMMIT] Initialized git repository", {
-      branchName,
-      gitRepoPath: gitPath,
-    });
+  const gitPath = await detectGitRepoPath();
+
+  const isRepo = await ensureGitRepository(gitPath);
+  if (!isRepo) {
+    return;
   }
 
   if (remoteUrl) {
-    const currentRemote = await runGitCommand("git remote get-url origin", true);
-    const trimmed = currentRemote?.stdout.trim();
-    if (!trimmed) {
-      log("INFO", "[AUTOCOMMIT] Adding origin remote", {
-        branchName,
-        remoteUrl,
-      });
-      await runGitCommand(`git remote add origin ${remoteUrl}`);
-    } else if (trimmed !== remoteUrl) {
-      log("INFO", "[AUTOCOMMIT] Updating origin remote before push", {
-        branchName,
-        currentRemote: trimmed,
-        remoteUrl,
-      });
-      await runGitCommand(`git remote set-url origin ${remoteUrl}`);
-    }
-    const updatedRemote = await runGitCommand("git remote -v", true);
-    if (updatedRemote) {
-      log("INFO", "[AUTOCOMMIT] Current git remotes after potential update", {
-        branchName,
-        remotes: updatedRemote.stdout.trim().split("\n"),
-      });
-    }
+    await configureRemote(remoteUrl);
   }
 
-  const addResult = await runGitCommand(`git add -A`);
-  log("INFO", "[AUTOCOMMIT] git add completed", {
-    branchName,
-    stdout: addResult?.stdout ? addResult.stdout.trim().slice(0, 200) : undefined,
-    stderr: addResult?.stderr ? addResult.stderr.trim().slice(0, 200) : undefined,
-  });
+  await stageAndCommitChanges(branchName, commitMessage);
+  await syncWithRemote(branchName);
 
-  const checkoutResult = await runGitCommand(`git checkout -B ${branchName}`);
-  log("INFO", "[AUTOCOMMIT] git checkout -B completed", {
-    branchName,
-    stdout: checkoutResult?.stdout
-      ? checkoutResult.stdout.trim().slice(0, 200)
-      : undefined,
-    stderr: checkoutResult?.stderr
-      ? checkoutResult.stderr.trim().slice(0, 200)
-      : undefined,
-  });
-
-  const status = await runGitCommand(`git status --short`, true);
-  const hasChanges = Boolean(status?.stdout.trim());
-  if (status) {
-    const preview = status.stdout.trim().split("\n").slice(0, 10);
-    log("INFO", "[AUTOCOMMIT] git status before commit", {
-      branchName,
-      entries: preview,
-      totalLines:
-        status.stdout.trim() === "" ? 0 : status.stdout.trim().split("\n").length,
-    });
-  }
-
-  if (hasChanges) {
-    const commitResult = await runGitCommand(
-      `git commit -m ${JSON.stringify(commitMessage)}`,
-      true
-    );
-    if (commitResult) {
-      log("INFO", "[AUTOCOMMIT] Created commit before push", {
-        branchName,
-        stdout: commitResult.stdout.trim().slice(0, 200),
-        stderr: commitResult.stderr.trim().slice(0, 200),
-      });
-    } else {
-      log("WARN", "[AUTOCOMMIT] Commit command did not produce output", {
-        branchName,
-      });
-    }
-  } else {
-    log("INFO", "[AUTOCOMMIT] No changes detected before commit", { branchName });
-  }
-
-  const remoteExists = await runGitCommand(
-    `git ls-remote --heads origin ${branchName}`,
-    true
-  );
-
-  if (remoteExists?.stdout.trim()) {
-    log("INFO", "[AUTOCOMMIT] Remote branch exists before push", {
-      branchName,
-      remoteHead: remoteExists.stdout.trim().slice(0, 120),
-    });
-    const pullResult = await runGitCommand(
-      `git pull --rebase origin ${branchName}`
-    );
-    if (pullResult) {
-      log("INFO", "[AUTOCOMMIT] Rebased branch onto remote", {
-        branchName,
-        stdout: pullResult.stdout.trim().slice(0, 200),
-        stderr: pullResult.stderr.trim().slice(0, 200),
-      });
-    }
-  } else {
-    log("INFO", "[AUTOCOMMIT] Remote branch missing before push; creating new remote ref", {
-      branchName,
-    });
-  }
-
-  log("INFO", "[AUTOCOMMIT] About to execute git push", {
+  log("INFO", "Pushing to remote", {
     branchName,
     command: `git push -u origin ${branchName}`,
   });
 
   const pushResult = await runGitCommand(`git push -u origin ${branchName}`);
+
   if (pushResult) {
-    log("INFO", "[AUTOCOMMIT] git push output", {
+    log("INFO", "Push completed", {
       branchName,
-      stdout: pushResult.stdout.trim().slice(0, 200),
-      stderr: pushResult.stderr.trim().slice(0, 200),
+      exitCode: pushResult.exitCode,
+      stdout: truncateOutput(pushResult.stdout),
+      stderr: truncateOutput(pushResult.stderr),
     });
   }
 
-  log("INFO", "[AUTOCOMMIT] Worker auto-commit finished successfully", {
+  log("INFO", "Auto-commit finished successfully", {
     branchName,
     exitCode: pushResult?.exitCode,
   });
 }
 
-export function cacheBranchDiff(branch: string, diff: string) {
-  branchDiffCache.set(branch, diff);
-}
-
-export function listCachedBranches(): string[] {
-  return Array.from(branchDiffCache.keys());
-}

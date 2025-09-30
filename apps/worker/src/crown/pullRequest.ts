@@ -88,7 +88,7 @@ function parseGhPrCreateResponse(input: unknown): GhPrCreateResponse | null {
   return result.data;
 }
 
-export async function createPullRequestIfEnabled(options: {
+export async function createPullRequest(options: {
   check: CrownWorkerCheckResponse;
   winner: CandidateData;
   summary?: string;

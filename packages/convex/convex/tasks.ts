@@ -17,7 +17,7 @@ export const get = authQuery({
     let q = ctx.db
       .query("tasks")
       .withIndex("by_team_user", (idx) =>
-        idx.eq("teamId", teamId).eq("userId", userId)
+        idx.eq("teamId", teamId).eq("userId", userId),
       );
 
     if (args.archived === true) {
@@ -28,7 +28,7 @@ export const get = authQuery({
 
     if (args.projectFullName) {
       q = q.filter((qq) =>
-        qq.eq(qq.field("projectFullName"), args.projectFullName)
+        qq.eq(qq.field("projectFullName"), args.projectFullName),
       );
     }
 
@@ -50,7 +50,7 @@ export const getTasksWithTaskRuns = authQuery({
     let q = ctx.db
       .query("tasks")
       .withIndex("by_team_user", (idx) =>
-        idx.eq("teamId", teamId).eq("userId", userId)
+        idx.eq("teamId", teamId).eq("userId", userId),
       );
 
     if (args.archived === true) {
@@ -61,13 +61,13 @@ export const getTasksWithTaskRuns = authQuery({
 
     if (args.projectFullName) {
       q = q.filter((qq) =>
-        qq.eq(qq.field("projectFullName"), args.projectFullName)
+        qq.eq(qq.field("projectFullName"), args.projectFullName),
       );
     }
 
     const tasks = await q.collect();
     const sortedTasks = tasks.sort(
-      (a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)
+      (a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0),
     );
 
     const tasksWithRuns = await Promise.all(
@@ -93,7 +93,7 @@ export const getTasksWithTaskRuns = authQuery({
           ...task,
           selectedTaskRun,
         };
-      })
+      }),
     );
 
     return tasksWithRuns;
@@ -114,8 +114,8 @@ export const create = authMutation({
           storageId: v.id("_storage"),
           fileName: v.optional(v.string()),
           altText: v.string(),
-        })
-      )
+        }),
+      ),
     ),
     environmentId: v.optional(v.id("environments")),
   },
@@ -211,7 +211,7 @@ export const getById = authQuery({
   args: { teamSlugOrId: v.string(), id: taskIdWithFake },
   handler: async (ctx, args) => {
     // Handle fake IDs by returning null
-    if (typeof args.id === 'string' && args.id.startsWith('fake-')) {
+    if (typeof args.id === "string" && args.id.startsWith("fake-")) {
       return null;
     }
 
@@ -228,7 +228,7 @@ export const getById = authQuery({
             ...image,
             url,
           };
-        })
+        }),
       );
       return {
         ...task,
@@ -379,7 +379,7 @@ export const createVersion = authMutation({
       v.object({
         path: v.string(),
         changes: v.string(),
-      })
+      }),
     ),
   },
   handler: async (ctx, args) => {
@@ -421,10 +421,10 @@ export const getTasksWithPendingCrownEvaluation = authQuery({
     const tasks = await ctx.db
       .query("tasks")
       .withIndex("by_team_user", (q) =>
-        q.eq("teamId", teamId).eq("userId", userId)
+        q.eq("teamId", teamId).eq("userId", userId),
       )
       .filter((q) =>
-        q.eq(q.field("crownEvaluationError"), "pending_evaluation")
+        q.eq(q.field("crownEvaluationError"), "pending_evaluation"),
       )
       .collect();
 
@@ -458,7 +458,7 @@ export const updateMergeStatus = authMutation({
       v.literal("pr_approved"),
       v.literal("pr_changes_requested"),
       v.literal("pr_merged"),
-      v.literal("pr_closed")
+      v.literal("pr_closed"),
     ),
   },
   handler: async (ctx, args) => {
@@ -498,12 +498,12 @@ export const checkAndEvaluateCrown = authMutation({
         id: r._id,
         status: r.status,
         isCrowned: r.isCrowned,
-      }))
+      })),
     );
 
     // Check if all runs are completed or failed
     const allCompleted = taskRuns.every(
-      (run) => run.status === "completed" || run.status === "failed"
+      (run) => run.status === "completed" || run.status === "failed",
     );
 
     if (!allCompleted) {
@@ -525,7 +525,7 @@ export const checkAndEvaluateCrown = authMutation({
       const singleRun = taskRuns[0];
       if (singleRun.status === "completed") {
         console.log(
-          `[CheckCrown] Single agent completed successfully: ${singleRun._id}`
+          `[CheckCrown] Single agent completed successfully: ${singleRun._id}`,
         );
         return singleRun._id;
       }
@@ -549,7 +549,7 @@ export const checkAndEvaluateCrown = authMutation({
 
     if (existingEvaluation) {
       console.log(
-        `[CheckCrown] Crown already evaluated for task ${args.taskId}, winner: ${existingEvaluation.winnerRunId}`
+        `[CheckCrown] Crown already evaluated for task ${args.taskId}, winner: ${existingEvaluation.winnerRunId}`,
       );
       return existingEvaluation.winnerRunId;
     }
@@ -561,20 +561,20 @@ export const checkAndEvaluateCrown = authMutation({
       task?.crownEvaluationError === "in_progress"
     ) {
       console.log(
-        `[CheckCrown] Crown evaluation already ${task.crownEvaluationError} for task ${args.taskId}`
+        `[CheckCrown] Crown evaluation already ${task.crownEvaluationError} for task ${args.taskId}`,
       );
       return "pending";
     }
 
     console.log(
-      `[CheckCrown] No existing evaluation, proceeding with crown evaluation`
+      `[CheckCrown] No existing evaluation, proceeding with crown evaluation`,
     );
 
     // Only evaluate if we have at least 2 completed runs
     const completedRuns = taskRuns.filter((run) => run.status === "completed");
     if (completedRuns.length < 2) {
       console.log(
-        `[CheckCrown] Not enough completed runs (${completedRuns.length} < 2)`
+        `[CheckCrown] Not enough completed runs (${completedRuns.length} < 2)`,
       );
       return null;
     }
@@ -583,14 +583,14 @@ export const checkAndEvaluateCrown = authMutation({
     let winnerId = null;
     try {
       console.log(
-        `[CheckCrown] Starting crown evaluation for task ${args.taskId}`
+        `[CheckCrown] Starting crown evaluation for task ${args.taskId}`,
       );
       winnerId = await ctx.runMutation(api.crown.evaluateAndCrownWinner, {
         teamSlugOrId: args.teamSlugOrId,
         taskId: args.taskId,
       });
       console.log(
-        `[CheckCrown] Crown evaluation completed, winner: ${winnerId}`
+        `[CheckCrown] Crown evaluation completed, winner: ${winnerId}`,
       );
     } catch (error) {
       console.error(`[CheckCrown] Crown evaluation failed:`, error);

@@ -316,21 +316,6 @@ export const updateStatus = internalMutation({
   },
 });
 
-// Append to task run log (deprecated – no-op)
-export const appendLog = internalMutation({
-  args: {
-    id: v.id("taskRuns"),
-    content: v.string(),
-  },
-  handler: async (ctx, args) => {
-    // Intentionally no-op to reduce DB bandwidth. Keep for backward compatibility.
-    // Touch updatedAt so callers relying on progress timestamps still see activity.
-    const exists = await ctx.db.get(args.id);
-    if (!exists) throw new Error("Task run not found");
-    await ctx.db.patch(args.id, { updatedAt: Date.now() });
-  },
-});
-
 export const getRunDiffContext = authQuery({
   args: {
     teamSlugOrId: v.string(),
@@ -548,26 +533,6 @@ export const updateStatusPublic = authMutation({
     }
 
     await ctx.db.patch(args.id, updates);
-  },
-});
-
-// Append to task run log (deprecated – no-op)
-export const appendLogPublic = authMutation({
-  args: {
-    teamSlugOrId: v.string(),
-    id: v.id("taskRuns"),
-    content: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const userId = ctx.identity.subject;
-    const run = await ctx.db.get(args.id);
-    if (!run) throw new Error("Task run not found");
-    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
-    if (run.teamId !== teamId || run.userId !== userId) {
-      throw new Error("Unauthorized");
-    }
-    // Intentionally no-op to reduce DB bandwidth. Keep for backward compatibility.
-    await ctx.db.patch(args.id, { updatedAt: Date.now() });
   },
 });
 
@@ -827,37 +792,6 @@ export const workerComplete = internalMutation({
   },
 });
 
-export const updateScheduledStopInternal = internalMutation({
-  args: {
-    taskRunId: v.id("taskRuns"),
-    scheduledStopAt: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    const run = await ctx.db.get(args.taskRunId);
-    if (!run) {
-      throw new Error("Task run not found");
-    }
-
-    const vscodeInfo = run.vscode ?? null;
-    if (!vscodeInfo) {
-      await ctx.db.patch(args.taskRunId, {
-        updatedAt: Date.now(),
-      });
-      return run;
-    }
-
-    await ctx.db.patch(args.taskRunId, {
-      vscode: {
-        ...vscodeInfo,
-        scheduledStopAt: args.scheduledStopAt ?? vscodeInfo.scheduledStopAt,
-      },
-      updatedAt: Date.now(),
-    });
-
-    return run;
-  },
-});
-
 // Get all active VSCode instances
 export const getActiveVSCodeInstances = authQuery({
   args: { teamSlugOrId: v.string() },
@@ -949,25 +883,18 @@ export const toggleKeepAlive = authMutation({
   },
 });
 
-// Update scheduled stop time for a container
-export const updateScheduledStop = authMutation({
+export const updateScheduledStopInternal = internalMutation({
   args: {
-    teamSlugOrId: v.string(),
-    id: v.id("taskRuns"),
-    scheduledStopAt: v.optional(v.number()),
+    taskRunId: v.id("taskRuns"),
+    scheduledStopAt: v.number(),
   },
   handler: async (ctx, args) => {
-    const userId = ctx.identity.subject;
-    const run = await ctx.db.get(args.id);
+    const run = await ctx.db.get(args.taskRunId);
     if (!run || !run.vscode) {
-      throw new Error("Task run or VSCode instance not found");
-    }
-    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
-    if (run.teamId !== teamId || run.userId !== userId) {
-      throw new Error("Unauthorized");
+      return;
     }
 
-    await ctx.db.patch(args.id, {
+    await ctx.db.patch(args.taskRunId, {
       vscode: {
         ...run.vscode,
         scheduledStopAt: args.scheduledStopAt,
