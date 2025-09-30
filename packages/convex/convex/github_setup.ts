@@ -293,6 +293,13 @@ export const githubSetup = httpAction(async (ctx, req) => {
     }
   );
 
+  // Trigger initial repository sync for this installation
+  await ctx.scheduler.runAfter(0, internal.github_sync.syncRepositoriesForInstallation, {
+    installationId,
+    teamId: payload.teamId,
+    userId: payload.userId,
+  });
+
   // Resolve slug for nicer redirect when available
   const team = await ctx.runQuery(internal.teams.getByTeamIdInternal, {
     teamId: payload.teamId,

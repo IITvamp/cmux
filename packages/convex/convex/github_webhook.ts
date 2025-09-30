@@ -110,6 +110,22 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
                   account.type === "Organization" ? "Organization" : "User",
               }
             );
+
+            // Sync repositories for newly created installation
+            // Note: This will sync repos without a teamId initially, which will be
+            // associated when the user completes the setup flow
+            const connection = await _ctx.runQuery(
+              internal.github_app.getProviderConnectionByInstallationId,
+              { installationId }
+            );
+            if (connection?.teamId) {
+              // If we already have a teamId (e.g., from setup flow that completed first),
+              // trigger the repository sync
+              await _ctx.scheduler.runAfter(0, internal.github_sync.syncRepositoriesForInstallation, {
+                installationId,
+                teamId: connection.teamId,
+              });
+            }
           }
         } else if (action === "deleted") {
           if (installationId !== undefined) {
@@ -123,7 +139,22 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
         }
         break;
       }
-      case "installation_repositories":
+      case "installation_repositories": {
+        // Re-sync repositories when repos are added/removed from the installation
+        if (installationId !== undefined) {
+          const conn = await _ctx.runQuery(
+            internal.github_app.getProviderConnectionByInstallationId,
+            { installationId }
+          );
+          if (conn?.teamId) {
+            await _ctx.scheduler.runAfter(0, internal.github_sync.syncRepositoriesForInstallation, {
+              installationId,
+              teamId: conn.teamId,
+            });
+          }
+        }
+        break;
+      }
       case "repository":
       case "create":
       case "delete":
