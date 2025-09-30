@@ -1,4 +1,3 @@
-import { ClientIcon } from "@/components/client-icon";
 import CmuxLogo from "@/components/logo/cmux-logo";
 import {
   Cloud,
@@ -16,7 +15,7 @@ import cmuxDemo1 from "@/docs/assets/cmux-demo-10.png";
 import cmuxDemo2 from "@/docs/assets/cmux-demo-20.png";
 import cmuxDemo3 from "@/docs/assets/cmux-demo-30.png";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 3600;
 
 const RELEASE_PAGE_URL = "https://github.com/manaflow-ai/cmux/releases/latest";
 const GITHUB_RELEASE_URL =
@@ -388,8 +387,7 @@ export default async function LandingPage() {
             <div className="space-y-6">
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <ClientIcon
-                    icon={GitBranch}
+                  <GitBranch
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
@@ -403,8 +401,7 @@ export default async function LandingPage() {
 
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <ClientIcon
-                    icon={Users}
+                  <Users
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
@@ -419,8 +416,7 @@ export default async function LandingPage() {
 
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <ClientIcon
-                    icon={Star}
+                  <Star
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
@@ -436,8 +432,7 @@ export default async function LandingPage() {
             <div className="space-y-6">
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <ClientIcon
-                    icon={Cloud}
+                  <Cloud
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
@@ -451,8 +446,7 @@ export default async function LandingPage() {
 
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <ClientIcon
-                    icon={GitPullRequest}
+                  <GitPullRequest
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
@@ -466,8 +460,7 @@ export default async function LandingPage() {
 
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <ClientIcon
-                    icon={Zap}
+                  <Zap
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
@@ -617,11 +610,7 @@ export default async function LandingPage() {
       <footer className="py-8 px-4 sm:px-6 lg:px-12">
         <div className="container max-w-5xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-2">
-            <ClientIcon
-              icon={Terminal}
-              className="h-4 w-4 text-neutral-500"
-              aria-hidden="true"
-            />
+            <Terminal className="h-4 w-4 text-neutral-500" aria-hidden="true" />
             <span className="text-sm text-neutral-500 font-mono">
               cmux by manaflow
             </span>
