@@ -223,13 +223,18 @@ export const create = authMutation({
 export const getByTask = authQuery({
   args: { teamSlugOrId: v.string(), taskId: taskIdWithFake },
   handler: async (ctx, args) => {
-    if (typeof args.taskId === "string") {
+    if (typeof args.taskId === "string" && args.taskId.startsWith("fake-")) {
       return [];
     }
 
     const userId = ctx.identity.subject;
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
-    return await fetchTaskRunsForTask(ctx, teamId, userId, args.taskId);
+    return await fetchTaskRunsForTask(
+      ctx,
+      teamId,
+      userId,
+      args.taskId as Id<"tasks">,
+    );
   },
 });
 
