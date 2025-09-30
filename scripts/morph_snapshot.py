@@ -667,15 +667,10 @@ def build_snapshot(
     vcpus = 8
     memory = 16384
     disk_size = 32768
-    digest_prefix = "cmux"
-    # Include lockfile hash to invalidate cache when dependencies change
-    lock_hash = _file_sha256_hex("bun.lock")[:16]
-    digest = f"{digest_prefix}_{vcpus}_{memory}_{disk_size}_{lock_hash}"
     snapshot = client.snapshots.create(
         vcpus=vcpus,
         memory=memory,
         disk_size=disk_size,
-        digest=digest,
     )
     snapshot = ensure_docker(snapshot)
     with open(dockerfile_path, "r", encoding="utf-8") as f:

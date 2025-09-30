@@ -1,10 +1,5 @@
-import { env } from "@/lib/utils/www-env";
 import { jwtVerify } from "jose";
 import { z } from "zod";
-
-const taskRunJwtSecret = new TextEncoder().encode(
-  env.CMUX_TASK_RUN_JWT_SECRET
-);
 
 const TaskRunTokenPayloadSchema = z.object({
   taskRunId: z.string().min(1),
@@ -14,14 +9,21 @@ const TaskRunTokenPayloadSchema = z.object({
 
 export type TaskRunTokenPayload = z.infer<typeof TaskRunTokenPayloadSchema>;
 
+function toKey(secret: string | Uint8Array): Uint8Array {
+  return typeof secret === "string" ? new TextEncoder().encode(secret) : secret;
+}
+
 export async function verifyTaskRunToken(
-  token: string
+  token: string,
+  secret: string | Uint8Array
 ): Promise<TaskRunTokenPayload> {
-  const verification = await jwtVerify(token, taskRunJwtSecret);
+  const verification = await jwtVerify(token, toKey(secret));
   const parsed = TaskRunTokenPayloadSchema.safeParse(verification.payload);
+
   if (!parsed.success) {
-    throw new Error("Invalid CMUX token payload");
+    throw new Error("Invalid CMUX task run token payload");
   }
 
   return parsed.data;
 }
+
