@@ -9,8 +9,9 @@ import { PersistentWebView } from "@/components/persistent-webview";
 import { preloadTaskRunIframes } from "../lib/preloadTaskRunIframes";
 import { getTaskRunPersistKey } from "@/lib/persistent-webview-keys";
 
+
 export const Route = createFileRoute(
-  "/_layout/$teamSlugOrId/task/$taskId/run/$taskRunId",
+  "/_layout/$teamSlugOrId/task/$taskId/run/$taskRunId"
 )({
   component: TaskRunComponent,
   parseParams: (params) => ({
@@ -22,7 +23,7 @@ export const Route = createFileRoute(
       convexQuery(api.taskRuns.get, {
         teamSlugOrId: opts.params.teamSlugOrId,
         id: opts.params.taskRunId,
-      }),
+      })
     );
     if (result) {
       void preloadTaskRunIframes([
@@ -41,7 +42,7 @@ function TaskRunComponent() {
     convexQuery(api.taskRuns.get, {
       teamSlugOrId,
       id: taskRunId,
-    }),
+    })
   );
 
   const workspaceUrl = taskRun?.data?.vscode?.workspaceUrl ?? null;
@@ -54,12 +55,9 @@ function TaskRunComponent() {
 
   const onError = useCallback(
     (error: Error) => {
-      console.error(
-        `Failed to load workspace view for task run ${taskRunId}:`,
-        error,
-      );
+      console.error(`Failed to load workspace view for task run ${taskRunId}:`, error);
     },
-    [taskRunId],
+    [taskRunId]
   );
 
   return (
@@ -88,7 +86,7 @@ function TaskRunComponent() {
               {
                 "opacity-100": !hasWorkspace,
                 "opacity-0": hasWorkspace,
-              },
+              }
             )}
           >
             <div className="flex flex-col items-center gap-3">

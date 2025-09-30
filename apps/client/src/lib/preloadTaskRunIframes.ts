@@ -14,8 +14,7 @@ export async function preloadTaskRunIframes(
     return {
       key,
       url,
-      allow:
-        "clipboard-read; clipboard-write; usb; serial; hid; cross-origin-isolated; autoplay; camera; microphone; geolocation; payment; fullscreen",
+      allow: "clipboard-read; clipboard-write",
       sandbox:
         "allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-top-navigation",
     };
@@ -34,8 +33,7 @@ export async function preloadTaskRunIframe(
   url: string
 ): Promise<void> {
   await persistentIframeManager.preloadIframe(getTaskRunPersistKey(taskRunId), url, {
-    allow:
-      "clipboard-read; clipboard-write; usb; serial; hid; cross-origin-isolated; autoplay; camera; microphone; geolocation; payment; fullscreen",
+    allow: "clipboard-read; clipboard-write",
     sandbox:
       "allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-top-navigation",
   });
