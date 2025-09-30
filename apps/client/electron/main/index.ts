@@ -37,7 +37,6 @@ import {
   appendLogWithRotation,
   type LogRotationOptions,
 } from "./log-management/log-rotation";
-import { ensureEmbedCspForSession } from "./chrome-camouflage";
 const { autoUpdater } = electronUpdater;
 
 import util from "node:util";
@@ -455,11 +454,6 @@ function createWindow(): void {
   }
 
   mainWindow = new BrowserWindow(windowOptions);
-
-  const mainSession = mainWindow.webContents.session;
-  if (mainSession) {
-    ensureEmbedCspForSession(mainSession);
-  }
 
   // Capture renderer console output into renderer.log
   mainWindow.webContents.on(
