@@ -12,7 +12,6 @@ import cmuxDemo3 from "@/docs/assets/cmux-demo-30.png";
 import { useEffect, useState } from "react";
 
 const RELEASE_PAGE_URL = "https://github.com/manaflow-ai/cmux/releases/latest";
-
 const RELEASE_API_URL = "/api/integrations/github/releases/latest";
 
 type ReleaseInfo = {
@@ -21,32 +20,10 @@ type ReleaseInfo = {
   releaseUrl: string;
 };
 
-type ReleaseApiResponse = ReleaseInfo & {
-  tagName: string | null;
-  publishedAt: string | null;
-};
-
 const DEFAULT_RELEASE_INFO: ReleaseInfo = {
   latestVersion: null,
   macDownloadUrl: null,
   releaseUrl: RELEASE_PAGE_URL,
-};
-
-const isReleaseApiResponse = (value: unknown): value is ReleaseApiResponse => {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const candidate = value as Partial<ReleaseApiResponse>;
-
-  const isValidStringOrNull = (input: unknown) =>
-    typeof input === "string" || input === null;
-
-  return (
-    isValidStringOrNull(candidate.latestVersion) &&
-    isValidStringOrNull(candidate.macDownloadUrl) &&
-    typeof candidate.releaseUrl === "string"
-  );
 };
 
 export default function LandingPage() {
@@ -55,40 +32,18 @@ export default function LandingPage() {
   useEffect(() => {
     const abortController = new AbortController();
 
-    const fetchReleaseInfo = async () => {
-      try {
-        const response = await fetch(RELEASE_API_URL, {
-          signal: abortController.signal,
-        });
-
-        if (!response.ok) {
-          throw new Error(`Request failed: ${response.status}`);
+    fetch(RELEASE_API_URL, { signal: abortController.signal })
+      .then((response) => response.json())
+      .then((data: ReleaseInfo) => {
+        setReleaseInfo(data);
+      })
+      .catch((error) => {
+        if (error.name !== "AbortError") {
+          console.error("Failed to fetch latest release info", error);
         }
+      });
 
-        const payload: unknown = await response.json();
-
-        if (isReleaseApiResponse(payload)) {
-          setReleaseInfo({
-            latestVersion: payload.latestVersion,
-            macDownloadUrl: payload.macDownloadUrl,
-            releaseUrl: payload.releaseUrl,
-          });
-        }
-      } catch (error) {
-        if ((error as Error).name === "AbortError") {
-          return;
-        }
-
-        console.error("Failed to fetch latest release info", error);
-        setReleaseInfo(DEFAULT_RELEASE_INFO);
-      }
-    };
-
-    fetchReleaseInfo();
-
-    return () => {
-      abortController.abort();
-    };
+    return () => abortController.abort();
   }, []);
 
   const { macDownloadUrl, latestVersion, releaseUrl } = releaseInfo;

@@ -102,6 +102,14 @@ export type GithubReposResponse = {
     repos: Array<GithubRepo>;
 };
 
+export type GithubLatestReleaseResponse = {
+    latestVersion: string | null;
+    tagName: string | null;
+    releaseUrl: string;
+    macDownloadUrl: string | null;
+    publishedAt: string | null;
+};
+
 export type GithubPullRequestItem = {
     id: number;
     number: number;
@@ -872,6 +880,29 @@ export type GetApiIntegrationsGithubReposResponses = {
 };
 
 export type GetApiIntegrationsGithubReposResponse = GetApiIntegrationsGithubReposResponses[keyof GetApiIntegrationsGithubReposResponses];
+
+export type GetApiIntegrationsGithubReleasesLatestData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/integrations/github/releases/latest';
+};
+
+export type GetApiIntegrationsGithubReleasesLatestErrors = {
+    /**
+     * Failed to reach GitHub
+     */
+    502: unknown;
+};
+
+export type GetApiIntegrationsGithubReleasesLatestResponses = {
+    /**
+     * OK
+     */
+    200: GithubLatestReleaseResponse;
+};
+
+export type GetApiIntegrationsGithubReleasesLatestResponse = GetApiIntegrationsGithubReleasesLatestResponses[keyof GetApiIntegrationsGithubReleasesLatestResponses];
 
 export type GetApiIntegrationsGithubPrsData = {
     body?: never;
