@@ -8,7 +8,7 @@ import {
   internalQuery,
   type QueryCtx,
 } from "./_generated/server";
-import { authMutation, authQuery } from "./users/utils";
+import { authMutation, authQuery, taskIdWithFake } from "./users/utils";
 import {
   aggregatePullRequestState,
   type StoredPullRequestInfo,
@@ -221,8 +221,12 @@ export const create = authMutation({
 
 // Get all task runs for a task, organized in tree structure
 export const getByTask = authQuery({
-  args: { teamSlugOrId: v.string(), taskId: v.id("tasks") },
+  args: { teamSlugOrId: v.string(), taskId: taskIdWithFake },
   handler: async (ctx, args) => {
+    if (typeof args.taskId === "string") {
+      return [];
+    }
+
     const userId = ctx.identity.subject;
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
     return await fetchTaskRunsForTask(ctx, teamId, userId, args.taskId);
