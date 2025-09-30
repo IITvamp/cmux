@@ -24,7 +24,6 @@ export async function getClaudeEnvironment(
   const claudeSecretsDir = `${claudeLifecycleDir}/secrets`;
   const claudeApiKeyPath = `${claudeSecretsDir}/.anthropic_key`;
   const claudeApiKeyHelperPath = `${claudeSecretsDir}/anthropic_key_helper.sh`;
-  const claudeSettingsPath = `${claudeLifecycleDir}/settings.json`;
 
   // Prepare .claude.json
   try {
@@ -179,7 +178,7 @@ exit 0`;
 
   // Add settings.json to files array as well
   files.push({
-    destinationPath: claudeSettingsPath,
+    destinationPath: `${claudeLifecycleDir}/settings.json`,
     contentBase64: Buffer.from(
       JSON.stringify(settingsConfig, null, 2)
     ).toString("base64"),
@@ -198,7 +197,7 @@ exec cat "${claudeApiKeyPath}"`;
   // Create symlink from ~/.claude/settings.json to /root/lifecycle/claude/settings.json
   // Claude looks for settings in ~/.claude/settings.json
   startupCommands.push(
-    `ln -sf ${claudeSettingsPath} /root/.claude/settings.json`
+    "ln -sf /root/lifecycle/claude/settings.json /root/.claude/settings.json"
   );
 
   // Log the files for debugging
