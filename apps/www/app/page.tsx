@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import clientPackageJson from "../../client/package.json" assert { type: "json" };
 
 import { ClientIcon } from "@/components/client-icon";
@@ -13,8 +15,15 @@ import cmuxDemo2 from "@/docs/assets/cmux-demo-20.png";
 import cmuxDemo3 from "@/docs/assets/cmux-demo-30.png";
 
 const RELEASE_PAGE_URL = "https://github.com/manaflow-ai/cmux/releases/latest";
+const GITHUB_RELEASE_API_URL = "https://api.github.com/repos/manaflow-ai/cmux/releases/latest";
 
-const normalizeVersion = (tag: string): string => (tag.startsWith("v") ? tag.slice(1) : tag);
+const normalizeVersion = (tag: string): string => {
+  const trimmed = tag.trim();
+  if (trimmed === "") {
+    return trimmed;
+  }
+  return trimmed.startsWith("v") ? trimmed.slice(1) : trimmed;
+};
 
 const ensureTagPrefix = (value: string): string => (value.startsWith("v") ? value : `v${value}`);
 
@@ -23,7 +32,18 @@ type ReleaseInfo = {
   macDownloadUrl: string;
 };
 
-const deriveReleaseInfo = (): ReleaseInfo => {
+type GitHubReleaseAsset = {
+  name?: string;
+  browser_download_url?: string;
+};
+
+type GitHubReleaseResponse = {
+  tag_name?: string;
+  html_url?: string;
+  assets?: GitHubReleaseAsset[];
+};
+
+const deriveFallbackReleaseInfo = (): ReleaseInfo => {
   const versionValue = clientPackageJson.version;
 
   if (typeof versionValue !== "string" || versionValue.trim() === "") {
@@ -33,8 +53,9 @@ const deriveReleaseInfo = (): ReleaseInfo => {
     };
   }
 
-  const normalizedVersion = normalizeVersion(versionValue);
-  const releaseTag = ensureTagPrefix(versionValue);
+  const trimmedVersion = versionValue.trim();
+  const normalizedVersion = normalizeVersion(trimmedVersion);
+  const releaseTag = ensureTagPrefix(trimmedVersion);
 
   return {
     latestVersion: normalizedVersion,
@@ -42,10 +63,95 @@ const deriveReleaseInfo = (): ReleaseInfo => {
   };
 };
 
-const RELEASE_INFO = deriveReleaseInfo();
+const DEFAULT_RELEASE_INFO = deriveFallbackReleaseInfo();
+
+const pickDmgDownloadUrl = (assets: GitHubReleaseAsset[] | undefined): string | null => {
+  if (!Array.isArray(assets)) {
+    return null;
+  }
+
+  let fallbackUrl: string | null = null;
+
+  for (const asset of assets) {
+    if (typeof asset.name !== "string" || typeof asset.browser_download_url !== "string") {
+      continue;
+    }
+
+    const lowerName = asset.name.toLowerCase();
+
+    if (!lowerName.endsWith(".dmg")) {
+      continue;
+    }
+
+    if (lowerName.includes("arm64")) {
+      return asset.browser_download_url;
+    }
+
+    if (fallbackUrl === null) {
+      fallbackUrl = asset.browser_download_url;
+    }
+  }
+
+  return fallbackUrl;
+};
+
+const isAbortError = (error: unknown): boolean => error instanceof DOMException && error.name === "AbortError";
 
 export default function LandingPage() {
-  const { macDownloadUrl, latestVersion } = RELEASE_INFO;
+  const [releaseInfo, setReleaseInfo] = useState<ReleaseInfo>(DEFAULT_RELEASE_INFO);
+
+  useEffect(() => {
+    let isActive = true;
+    const controller = new AbortController();
+
+    const loadLatestRelease = async () => {
+      try {
+        const response = await fetch(GITHUB_RELEASE_API_URL, {
+          headers: {
+            Accept: "application/vnd.github+json",
+          },
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          if (process.env.NODE_ENV !== "production") {
+            console.warn(`Failed to fetch GitHub release: ${response.status}`);
+          }
+          return;
+        }
+
+        const data = (await response.json()) as GitHubReleaseResponse;
+        const releaseUrl = typeof data.html_url === "string" && data.html_url.trim() !== "" ? data.html_url : RELEASE_PAGE_URL;
+        const dmgDownloadUrl = pickDmgDownloadUrl(data.assets) ?? releaseUrl;
+        const tagName = typeof data.tag_name === "string" ? data.tag_name : null;
+        const normalizedTag = tagName ? normalizeVersion(tagName) : null;
+
+        if (isActive) {
+          setReleaseInfo((current) => ({
+            latestVersion: normalizedTag ?? current.latestVersion,
+            macDownloadUrl: dmgDownloadUrl,
+          }));
+        }
+      } catch (error) {
+        if (isAbortError(error)) {
+          return;
+        }
+
+        if (process.env.NODE_ENV !== "production") {
+          console.error("Failed to load latest GitHub release", error);
+        }
+      }
+    };
+
+    void loadLatestRelease();
+
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
+  }, []);
+
+  const { macDownloadUrl, latestVersion } = releaseInfo;
 
   return (
     <div className="min-h-dvh bg-background text-foreground overflow-y-auto">
