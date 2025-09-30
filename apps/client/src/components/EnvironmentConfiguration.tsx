@@ -585,6 +585,11 @@ export function EnvironmentConfiguration({
                 Script that runs after git pull in case new dependencies were
                 added.
               </p>
+              <p className="text-xs text-neutral-500 dark:text-neutral-500">
+                We execute this from <code>/root/workspace</code>, where your
+                repositories are cloned. For example, <code>cd my-repo && npm install</code>
+                installs dependencies inside <code>/root/workspace/my-repo</code>.
+              </p>
               <TextareaAutosize
                 value={maintenanceScript}
                 onChange={(e) => setMaintenanceScript(e.target.value)}
@@ -610,6 +615,10 @@ etc.`}
               <div className="space-y-2">
                 <p className="text-sm text-neutral-600 dark:text-neutral-400">
                   Script that starts the development server.
+                </p>
+                <p className="text-xs text-neutral-500 dark:text-neutral-500">
+                  Runs from <code>/root/workspace</code> as well, so reference
+                  repos with relative paths—e.g. <code>cd web && npm run dev</code>.
                 </p>
                 <TextareaAutosize
                   value={devScript}
