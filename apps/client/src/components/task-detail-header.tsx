@@ -10,8 +10,19 @@ import type { Doc, Id } from "@cmux/convex/dataModel";
 import type { TaskRunWithChildren } from "@/types/task";
 import { Skeleton } from "@heroui/react";
 import { useClipboard } from "@mantine/hooks";
-import { useMutation, useQueries } from "@tanstack/react-query";
-import { postApiIntegrationsGithubPrsOpenMutation } from "@cmux/www-openapi-client/react-query";
+import {
+  useMutation,
+  useQueries,
+  type DefaultError,
+} from "@tanstack/react-query";
+import {
+  postApiIntegrationsGithubPrsOpenMutation,
+} from "@cmux/www-openapi-client/react-query";
+import type {
+  Options,
+  PostApiIntegrationsGithubPrsOpenData,
+  PostApiIntegrationsGithubPrsOpenResponse,
+} from "@cmux/www-openapi-client";
 import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import {
@@ -603,19 +614,18 @@ function SocketActions({
     : "Failed to merge PR";
   const mergeBranchErrorLabel = "Failed to merge branch";
 
-  const openPrMutation = useMutation(
-    postApiIntegrationsGithubPrsOpenMutation(),
-  );
-
-  const handleOpenPRs = async () => {
-    const toastId = toast.loading(openingLabel);
-    try {
-      const response = await openPrMutation.mutateAsync({
-        body: {
-          teamSlugOrId,
-          taskRunId,
-        },
-      });
+  const openPrMutation = useMutation<
+    PostApiIntegrationsGithubPrsOpenResponse,
+    DefaultError,
+    Options<PostApiIntegrationsGithubPrsOpenData>,
+    ToastFeedbackContext
+  >({
+    ...postApiIntegrationsGithubPrsOpenMutation(),
+    onMutate: () => {
+      const toastId = toast.loading(openingLabel);
+      return { toastId } satisfies ToastFeedbackContext;
+    },
+    onSuccess: (response, _variables, context) => {
       const actionable = response.results.filter(
         (result) => result.url && !result.error,
       );
@@ -623,7 +633,7 @@ function SocketActions({
         openUrls(actionable);
       }
       toast.success(openedLabel, {
-        id: toastId,
+        id: context?.toastId,
         description: summarizeResults(response.results),
         action:
           actionable.length > 0
@@ -633,14 +643,24 @@ function SocketActions({
               }
             : undefined,
       });
-    } catch (error) {
+    },
+    onError: (error, _variables, context) => {
       toast.error(openErrorLabel, {
-        id: toastId,
+        id: context?.toastId,
         description:
           getErrorDescription(error) ??
           (error instanceof Error ? error.message : undefined),
       });
-    }
+    },
+  });
+
+  const handleOpenPRs = () => {
+    openPrMutation.mutate({
+      body: {
+        teamSlugOrId,
+        taskRunId,
+      },
+    });
   };
 
   const createDraftPrMutation = useMutation<
