@@ -15,12 +15,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     git \
     python3 \
+    python3-pip \
+    cargo \
     make \
     g++ \
     bash \
     unzip \
     gnupg \
     && rm -rf /var/lib/apt/lists/*
+
+RUN ln -sf /usr/bin/pip3 /usr/bin/pip
+
+# Install uv (Python packaging CLI)
+RUN curl -fsSL https://astral.sh/uv/install.sh | sh && \
+    install -m 0755 /root/.local/bin/uv /usr/local/bin/uv
+
+RUN uv --version
 
 # Install Node.js 24.x
 RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
@@ -128,6 +138,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     git \
     python3 \
+    python3-pip \
+    cargo \
     bash \
     nano \
     net-tools \
@@ -144,6 +156,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     && rm -rf /var/lib/apt/lists/*
 
+RUN ln -sf /usr/bin/pip3 /usr/bin/pip
+
 # Install GitHub CLI
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
     && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
@@ -159,12 +173,18 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
     corepack enable && \
     corepack prepare pnpm@10.14.0 --activate
 
+# Copy uv CLI from builder
+COPY --from=builder /usr/local/bin/uv /usr/local/bin/uv
+
 # Copy Bun from builder
 COPY --from=builder /usr/local/bin/bun /usr/local/bin/bun
 COPY --from=builder /usr/local/bin/bunx /usr/local/bin/bunx
 
 # Verify bun works in runtime
 RUN bun --version && bunx --version
+
+# Verify uv is available in runtime
+RUN uv --version
 
 RUN bun add -g @openai/codex@0.42.0 @anthropic-ai/claude-code@2.0.0 @google/gemini-cli@0.1.21 opencode-ai@0.6.4 codebuff @devcontainers/cli @sourcegraph/amp
 
