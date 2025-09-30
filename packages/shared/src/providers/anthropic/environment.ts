@@ -20,6 +20,11 @@ export async function getClaudeEnvironment(
     ANTHROPIC_CUSTOM_HEADERS: `x-cmux-token:${ctx.taskRunJwt}`,
   };
   const startupCommands: string[] = [];
+  const claudeLifecycleDir = "/root/lifecycle/claude";
+  const claudeSecretsDir = `${claudeLifecycleDir}/secrets`;
+  const claudeApiKeyPath = `${claudeSecretsDir}/.anthropic_key`;
+  const claudeApiKeyHelperPath = `${claudeSecretsDir}/anthropic_key_helper.sh`;
+  const claudeSettingsPath = `${claudeLifecycleDir}/settings.json`;
 
   // Prepare .claude.json
   try {
@@ -96,9 +101,9 @@ export async function getClaudeEnvironment(
       );
       const apiKey = execResult.stdout.trim();
 
-      // Write the key to ~/.claude/bin/.anthropic_key with strict perms
+      // Write the key to a persistent location with strict perms
       files.push({
-        destinationPath: `$HOME/.claude/bin/.anthropic_key`,
+        destinationPath: claudeApiKeyPath,
         contentBase64: Buffer.from(apiKey).toString("base64"),
         mode: "600",
       });
@@ -109,8 +114,8 @@ export async function getClaudeEnvironment(
 
   // Ensure directories exist
   startupCommands.unshift("mkdir -p ~/.claude");
-  startupCommands.push("mkdir -p ~/.claude/bin");
-  startupCommands.push("mkdir -p /root/lifecycle/claude");
+  startupCommands.push(`mkdir -p ${claudeLifecycleDir}`);
+  startupCommands.push(`mkdir -p ${claudeSecretsDir}`);
 
   // Clean up any previous Claude completion markers
   // This should run before the agent starts to ensure clean state
@@ -149,7 +154,7 @@ exit 0`;
 
   // Add stop hook script to files array (like Codex does) to ensure it's created before git init
   files.push({
-    destinationPath: "/root/lifecycle/claude/stop-hook.sh",
+    destinationPath: `${claudeLifecycleDir}/stop-hook.sh`,
     contentBase64: Buffer.from(stopHookScript).toString("base64"),
     mode: "755",
   });
@@ -157,14 +162,14 @@ exit 0`;
   // Create settings.json with hooks configuration
   const settingsConfig: Record<string, unknown> = {
     // Configure helper to avoid env-var based prompting
-    apiKeyHelper: "/root/.claude/bin/anthropic_key_helper.sh",
+    apiKeyHelper: claudeApiKeyHelperPath,
     hooks: {
       Stop: [
         {
           hooks: [
             {
               type: "command",
-              command: "/root/lifecycle/claude/stop-hook.sh",
+              command: `${claudeLifecycleDir}/stop-hook.sh`,
             },
           ],
         },
@@ -174,7 +179,7 @@ exit 0`;
 
   // Add settings.json to files array as well
   files.push({
-    destinationPath: "/root/lifecycle/claude/settings.json",
+    destinationPath: claudeSettingsPath,
     contentBase64: Buffer.from(
       JSON.stringify(settingsConfig, null, 2)
     ).toString("base64"),
@@ -183,9 +188,9 @@ exit 0`;
 
   // Add apiKey helper script to read key from file
   const helperScript = `#!/bin/sh
-exec cat "$HOME/.claude/bin/.anthropic_key"`;
+exec cat "${claudeApiKeyPath}"`;
   files.push({
-    destinationPath: `$HOME/.claude/bin/anthropic_key_helper.sh`,
+    destinationPath: claudeApiKeyHelperPath,
     contentBase64: Buffer.from(helperScript).toString("base64"),
     mode: "700",
   });
@@ -193,12 +198,12 @@ exec cat "$HOME/.claude/bin/.anthropic_key"`;
   // Create symlink from ~/.claude/settings.json to /root/lifecycle/claude/settings.json
   // Claude looks for settings in ~/.claude/settings.json
   startupCommands.push(
-    "ln -sf /root/lifecycle/claude/settings.json /root/.claude/settings.json"
+    `ln -sf ${claudeSettingsPath} /root/.claude/settings.json`
   );
 
   // Log the files for debugging
   startupCommands.push(
-    "echo '[CMUX] Created Claude hook files in /root/lifecycle:' && ls -la /root/lifecycle/claude/"
+    `echo '[CMUX] Created Claude hook files in /root/lifecycle:' && ls -la ${claudeLifecycleDir}/`
   );
   startupCommands.push(
     "echo '[CMUX] Settings symlink in ~/.claude:' && ls -la /root/.claude/"
