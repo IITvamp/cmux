@@ -50,7 +50,7 @@ export async function syncTeamMembershipsFromStack(
 
 async function upsertTeamFromEventData(
   ctx: ActionCtx,
-  t: StackWebhookPayload["data"] & { created_at_millis: number }
+  t: Extract<StackWebhookPayload, { type: "team.created" | "team.updated" }>["data"]
 ) {
   await ctx.runMutation(internal.stack.upsertTeam, {
     id: t.id,
