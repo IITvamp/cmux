@@ -58,8 +58,6 @@ export const hydrateWorkspace = async ({
     .map(([key, value]) => `export ${key}=${singleQuote(value)}`)
     .join("\n");
 
-  const envModePrefix = environmentId ? "[ENVIRONMENT MODE]" : "";
-
   const command = `
 set -e
 ${envString}
