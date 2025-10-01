@@ -8,7 +8,7 @@ import type { Id } from "@cmux/convex/dataModel";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useUser, type Team } from "@stackframe/react";
 import { useNavigate, useRouter } from "@tanstack/react-router";
-import { Command } from "cmdk";
+import { Command, useCommandState } from "cmdk";
 import { useQuery } from "convex/react";
 import {
   GitPullRequest,
@@ -68,6 +68,31 @@ type TeamCommandItem = {
   keywords: string[];
 };
 
+function CommandHighlightListener({
+  onHighlight,
+}: {
+  onHighlight: (value: string) => void;
+}) {
+  const value = useCommandState((state) => state.value);
+  const previousValueRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (!value) {
+      previousValueRef.current = undefined;
+      return;
+    }
+
+    if (previousValueRef.current === value) {
+      return;
+    }
+
+    previousValueRef.current = value;
+    onHighlight(value);
+  }, [value, onHighlight]);
+
+  return null;
+}
+
 export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -80,6 +105,17 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   const navigate = useNavigate();
   const router = useRouter();
   const { setTheme } = useTheme();
+  const preloadTeamDashboard = useCallback(
+    async (targetTeamSlugOrId: string | undefined) => {
+      if (!targetTeamSlugOrId) return;
+      console.log("Preloading team dashboard for", targetTeamSlugOrId);
+      await router.preloadRoute({
+        to: "/$teamSlugOrId/dashboard",
+        params: { teamSlugOrId: targetTeamSlugOrId },
+      });
+    },
+    [router],
+  );
 
   const closeCommand = useCallback(() => {
     setOpen(false);
@@ -285,23 +321,12 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
       } else if (value?.startsWith("team:")) {
         const [teamIdPart, slugPart] = value.slice(5).split(":");
         const targetTeamSlugOrId = slugPart || teamIdPart;
-        if (targetTeamSlugOrId) {
-          try {
-            await router.preloadRoute({
-              to: "/$teamSlugOrId/dashboard",
-              params: { teamSlugOrId: targetTeamSlugOrId },
-            });
-          } catch {
-            // ignore preload errors
-          }
-        }
+        await preloadTeamDashboard(targetTeamSlugOrId);
       } else if (value?.startsWith("task:")) {
         const parts = value.slice(5).split(":");
         const taskId = parts[0];
         const action = parts[1];
-        const task = allTasks?.find(
-          (t) => t._id === (taskId as Id<"tasks">)
-        );
+        const task = allTasks?.find((t) => t._id === (taskId as Id<"tasks">));
         const runId = task?.selectedTaskRun?._id;
 
         try {
@@ -349,7 +374,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
         }
       }
     },
-    [router, teamSlugOrId, allTasks]
+    [router, teamSlugOrId, allTasks, preloadTeamDashboard],
   );
 
   const handleSelect = useCallback(
@@ -386,7 +411,8 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
           toast.error("Update checks are only available in the desktop app.");
         } else {
           try {
-            const cmux = typeof window === "undefined" ? undefined : window.cmux;
+            const cmux =
+              typeof window === "undefined" ? undefined : window.cmux;
             if (!cmux?.autoUpdate?.check) {
               toast.error("Update checks are currently unavailable.");
             } else {
@@ -399,9 +425,11 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
                   toast.error("Failed to check for updates.");
                 }
               } else if (result.updateAvailable) {
-                const versionLabel = result.version ? ` (${result.version})` : "";
+                const versionLabel = result.version
+                  ? ` (${result.version})`
+                  : "";
                 toast.success(
-                  `Update available${versionLabel}. Downloading in the background.`
+                  `Update available${versionLabel}. Downloading in the background.`,
                 );
               } else {
                 toast.info("You're up to date.");
@@ -457,8 +485,13 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
         }
 
         try {
-          const targetTeam = stackTeams.find((team) => team.id === teamId) ?? null;
-          if (stackUser && targetTeam && stackUser.selectedTeam?.id !== teamId) {
+          const targetTeam =
+            stackTeams.find((team) => team.id === teamId) ?? null;
+          if (
+            stackUser &&
+            targetTeam &&
+            stackUser.selectedTeam?.id !== teamId
+          ) {
             await stackUser.setSelectedTeam(targetTeam);
           }
         } catch (error) {
@@ -523,7 +556,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
       stackUser,
       stackTeams,
       closeCommand,
-    ]
+    ],
   );
 
   if (!open) return null;
@@ -563,7 +596,6 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
             setActivePage("root");
           }
         }}
-        onValueChange={handleHighlight}
         defaultValue={openedWithShift ? "new-task" : undefined}
       >
         <Dialog.Title className="sr-only">Command Menu</Dialog.Title>
@@ -576,6 +608,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
             ref={inputRef}
             className="w-full px-4 py-3 text-sm bg-transparent border-b border-neutral-200 dark:border-neutral-700 outline-none placeholder:text-neutral-500 dark:placeholder:text-neutral-400"
           />
+          <CommandHighlightListener onHighlight={handleHighlight} />
           <Command.List className="max-h-[400px] overflow-y-auto px-1 pb-2 flex flex-col gap-2">
             <Command.Empty className="py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
               {activePage === "teams"
@@ -666,12 +699,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
                 data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
                   >
                     <Users className="h-4 w-4 text-neutral-500" />
-                    <div className="flex flex-col flex-1 overflow-hidden">
-                      <span className="text-sm truncate">Switch team…</span>
-                      <span className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
-                        Browse available teams
-                      </span>
-                    </div>
+                    <span className="flex-1 truncate text-sm">Switch team</span>
                   </Command.Item>
                 </Command.Group>
 
@@ -682,7 +710,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
                   <Command.Item
                     value="theme-light"
                     onSelect={() => handleSelect("theme-light")}
-                    className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer                 hover:bg-neutral-100 dark:hover:bg-neutral-800 
+                    className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer                 hover:bg-neutral-100 dark:hover:bg-neutral-800
                 data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
                 data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
                   >
@@ -692,7 +720,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
                   <Command.Item
                     value="theme-dark"
                     onSelect={() => handleSelect("theme-dark")}
-                    className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer                 hover:bg-neutral-100 dark:hover:bg-neutral-800 
+                    className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer                 hover:bg-neutral-100 dark:hover:bg-neutral-800
                 data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
                 data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
                   >
@@ -702,7 +730,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
                   <Command.Item
                     value="theme-system"
                     onSelect={() => handleSelect("theme-system")}
-                    className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer                 hover:bg-neutral-100 dark:hover:bg-neutral-800 
+                    className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer                 hover:bg-neutral-100 dark:hover:bg-neutral-800
                 data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
                 data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
                   >
@@ -743,7 +771,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
                           value={`${index + 1}:task:${task._id}`}
                           onSelect={() => handleSelect(`task:${task._id}`)}
                           data-value={`task:${task._id}`}
-                          className="flex items-center gap-3 px-3 py-2.5 mx-1 rounded-md cursor-pointer                     hover:bg-neutral-100 dark:hover:bg-neutral-800 
+                          className="flex items-center gap-3 px-3 py-2.5 mx-1 rounded-md cursor-pointer                     hover:bg-neutral-100 dark:hover:bg-neutral-800
                     data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
                     data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100
                     group"
@@ -777,7 +805,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
                             value={`${index + 1} vs:task:${task._id}`}
                             onSelect={() => handleSelect(`task:${task._id}:vs`)}
                             data-value={`task:${task._id}:vs`}
-                            className="flex items-center gap-3 px-3 py-2.5 mx-1 rounded-md cursor-pointer                     hover:bg-neutral-100 dark:hover:bg-neutral-800 
+                            className="flex items-center gap-3 px-3 py-2.5 mx-1 rounded-md cursor-pointer                     hover:bg-neutral-100 dark:hover:bg-neutral-800
                     data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
                     data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100
                     group"
@@ -801,16 +829,18 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
                                 in progress
                               </span>
                             )}
-                          </Command.Item>
+                          </Command.Item>,
                         );
 
                         items.push(
                           <Command.Item
                             key={`${task._id}-gitdiff-${run._id}`}
                             value={`${index + 1} git diff:task:${task._id}`}
-                            onSelect={() => handleSelect(`task:${task._id}:gitdiff`)}
+                            onSelect={() =>
+                              handleSelect(`task:${task._id}:gitdiff`)
+                            }
                             data-value={`task:${task._id}:gitdiff`}
-                            className="flex items-center gap-3 px-3 py-2.5 mx-1 rounded-md cursor-pointer                     hover:bg-neutral-100 dark:hover:bg-neutral-800 
+                            className="flex items-center gap-3 px-3 py-2.5 mx-1 rounded-md cursor-pointer                     hover:bg-neutral-100 dark:hover:bg-neutral-800
                     data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
                     data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100
                     group"
@@ -834,7 +864,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
                                 in progress
                               </span>
                             )}
-                          </Command.Item>
+                          </Command.Item>,
                         );
                       }
 
@@ -898,12 +928,9 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
                 data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
                       >
                         <Users className="h-4 w-4 text-neutral-500" />
-                        <div className="flex flex-col flex-1 overflow-hidden">
-                          <span className="text-sm truncate">{item.label}</span>
-                          <span className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
-                            {item.teamSlugOrId}
-                          </span>
-                        </div>
+                        <span className="flex-1 truncate text-sm">
+                          {item.label}
+                        </span>
                         {item.isCurrent ? (
                           <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
                             current
