@@ -1,12 +1,15 @@
 import { RunDiffSection } from "@/components/RunDiffSection";
+import { Button } from "@/components/ui/button";
 import { Dropdown } from "@/components/ui/dropdown";
 import { normalizeGitRef } from "@/lib/refWithOrigin";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
+import { client } from "@cmux/www-openapi-client";
 import { useQuery as useRQ } from "@tanstack/react-query";
 import { useQuery as useConvexQuery } from "convex/react";
 import { ExternalLink } from "lucide-react";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useCallback, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 type PullRequestDetailViewProps = {
   teamSlugOrId: string;
@@ -93,6 +96,73 @@ export function PullRequestDetailView({
   }, [prs, owner, repo, number]);
 
   const [diffControls, setDiffControls] = useState<DiffControls | null>(null);
+  const [isClosing, setIsClosing] = useState(false);
+  const [isMerging, setIsMerging] = useState(false);
+
+  const handleClosePR = useCallback(async () => {
+    if (!currentPR) return;
+
+    setIsClosing(true);
+    try {
+      const response = await client.POST("/api/integrations/github/prs/close", {
+        body: {
+          teamSlugOrId,
+          owner,
+          repo,
+          number: currentPR.number,
+        },
+      });
+
+      if (response.data?.success) {
+        toast.success("Pull request closed successfully");
+        // Refresh PR data
+        window.location.reload();
+      } else {
+        toast.error(response.data?.error || "Failed to close pull request");
+      }
+    } catch (error) {
+      console.error("Failed to close PR:", error);
+      toast.error("Failed to close pull request");
+    } finally {
+      setIsClosing(false);
+    }
+  }, [currentPR, teamSlugOrId, owner, repo]);
+
+  const handleMergePR = useCallback(
+    async (method: "squash" | "rebase" | "merge") => {
+      if (!currentPR) return;
+
+      setIsMerging(true);
+      try {
+        const response = await client.POST(
+          "/api/integrations/github/prs/merge-direct",
+          {
+            body: {
+              teamSlugOrId,
+              owner,
+              repo,
+              number: currentPR.number,
+              method,
+            },
+          },
+        );
+
+        if (response.data?.success) {
+          toast.success("Pull request merged successfully");
+          // Refresh PR data
+          window.location.reload();
+        } else {
+          toast.error(response.data?.error || "Failed to merge pull request");
+        }
+      } catch (error) {
+        console.error("Failed to merge PR:", error);
+        toast.error("Failed to merge pull request");
+      } finally {
+        setIsMerging(false);
+      }
+    },
+    [currentPR, teamSlugOrId, owner, repo],
+  );
 
   if (!currentPR) {
     return (
@@ -151,6 +221,28 @@ export function PullRequestDetailView({
                     Open
                   </span>
                 )}
+                {currentPR.state === "open" && !currentPR.merged ? (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="default"
+                      onClick={() => handleMergePR("squash")}
+                      disabled={isMerging || isClosing}
+                      className="text-xs"
+                    >
+                      {isMerging ? "Merging..." : "Merge"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleClosePR}
+                      disabled={isMerging || isClosing}
+                      className="text-xs"
+                    >
+                      {isClosing ? "Closing..." : "Close"}
+                    </Button>
+                  </>
+                ) : null}
                 {currentPR.htmlUrl ? (
                   <a
                     className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none whitespace-nowrap"

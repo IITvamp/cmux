@@ -84,6 +84,25 @@ const MergePullRequestBody = z
   })
   .openapi("GithubMergePrRequest");
 
+const ClosePullRequestBody = z
+  .object({
+    teamSlugOrId: z.string(),
+    owner: z.string(),
+    repo: z.string(),
+    number: z.number(),
+  })
+  .openapi("GithubClosePrRequest");
+
+const DirectMergePullRequestBody = z
+  .object({
+    teamSlugOrId: z.string(),
+    owner: z.string(),
+    repo: z.string(),
+    number: z.number(),
+    method: z.enum(["squash", "rebase", "merge"]),
+  })
+  .openapi("GithubDirectMergePrRequest");
+
 const OpenPullRequestResponse = z
   .object({
     success: z.boolean(),
@@ -641,6 +660,215 @@ githubPrsOpenRouter.openapi(
           success: false,
           results,
           aggregate: emptyAggregate(),
+          error: message,
+        },
+        500,
+      );
+    }
+  },
+);
+
+githubPrsOpenRouter.openapi(
+  createRoute({
+    method: "post" as const,
+    path: "/integrations/github/prs/close",
+    tags: ["Integrations"],
+    summary: "Close a GitHub pull request using the user's GitHub OAuth token",
+    request: {
+      body: {
+        content: {
+          "application/json": {
+            schema: ClosePullRequestBody,
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "PR closed",
+        content: {
+          "application/json": {
+            schema: z.object({
+              success: z.boolean(),
+              error: z.string().optional(),
+            }),
+          },
+        },
+      },
+      400: { description: "Invalid request" },
+      401: { description: "Unauthorized" },
+      403: { description: "Forbidden" },
+      404: { description: "Pull request not found" },
+      500: { description: "Failed to close PR" },
+    },
+  }),
+  async (c) => {
+    const user = await stackServerAppJs.getUser({ tokenStore: c.req.raw });
+    if (!user) {
+      return c.text("Unauthorized", 401);
+    }
+
+    const [{ accessToken }, githubAccount] = await Promise.all([
+      user.getAuthJson(),
+      user.getConnectedAccount("github"),
+    ]);
+
+    if (!accessToken) {
+      return c.text("Unauthorized", 401);
+    }
+
+    if (!githubAccount) {
+      return c.json(
+        {
+          success: false,
+          error: "GitHub account is not connected",
+        },
+        401,
+      );
+    }
+
+    const { accessToken: githubAccessToken } = await githubAccount.getAccessToken();
+    if (!githubAccessToken) {
+      return c.json(
+        {
+          success: false,
+          error: "GitHub access token unavailable",
+        },
+        401,
+      );
+    }
+
+    const body = c.req.valid("json");
+    const { teamSlugOrId, owner, repo, number } = body;
+
+    await verifyTeamAccess({ req: c.req.raw, teamSlugOrId });
+
+    const octokit = createOctokit(githubAccessToken);
+
+    try {
+      await octokit.rest.pulls.update({
+        owner,
+        repo,
+        pull_number: number,
+        state: "closed",
+      });
+
+      return c.json({
+        success: true,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return c.json(
+        {
+          success: false,
+          error: message,
+        },
+        500,
+      );
+    }
+  },
+);
+
+githubPrsOpenRouter.openapi(
+  createRoute({
+    method: "post" as const,
+    path: "/integrations/github/prs/merge-direct",
+    tags: ["Integrations"],
+    summary: "Merge a GitHub pull request directly using the user's GitHub OAuth token",
+    request: {
+      body: {
+        content: {
+          "application/json": {
+            schema: DirectMergePullRequestBody,
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "PR merged",
+        content: {
+          "application/json": {
+            schema: z.object({
+              success: z.boolean(),
+              error: z.string().optional(),
+            }),
+          },
+        },
+      },
+      400: { description: "Invalid request" },
+      401: { description: "Unauthorized" },
+      403: { description: "Forbidden" },
+      404: { description: "Pull request not found" },
+      500: { description: "Failed to merge PR" },
+    },
+  }),
+  async (c) => {
+    const user = await stackServerAppJs.getUser({ tokenStore: c.req.raw });
+    if (!user) {
+      return c.text("Unauthorized", 401);
+    }
+
+    const [{ accessToken }, githubAccount] = await Promise.all([
+      user.getAuthJson(),
+      user.getConnectedAccount("github"),
+    ]);
+
+    if (!accessToken) {
+      return c.text("Unauthorized", 401);
+    }
+
+    if (!githubAccount) {
+      return c.json(
+        {
+          success: false,
+          error: "GitHub account is not connected",
+        },
+        401,
+      );
+    }
+
+    const { accessToken: githubAccessToken } = await githubAccount.getAccessToken();
+    if (!githubAccessToken) {
+      return c.json(
+        {
+          success: false,
+          error: "GitHub access token unavailable",
+        },
+        401,
+      );
+    }
+
+    const body = c.req.valid("json");
+    const { teamSlugOrId, owner, repo, number, method } = body;
+
+    await verifyTeamAccess({ req: c.req.raw, teamSlugOrId });
+
+    const octokit = createOctokit(githubAccessToken);
+
+    try {
+      const repoFullName = `${owner}/${repo}`;
+
+      await mergePullRequest({
+        octokit,
+        owner,
+        repo,
+        number,
+        method,
+        commitTitle: `Merge pull request #${number}`,
+        commitMessage: `Merged via cmux`,
+      });
+
+      return c.json({
+        success: true,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return c.json(
+        {
+          success: false,
           error: message,
         },
         500,
