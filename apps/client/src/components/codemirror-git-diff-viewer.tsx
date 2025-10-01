@@ -14,6 +14,45 @@ import {
 import { kitties } from "./kitties";
 import { FileDiffHeader } from "./file-diff-header";
 
+const LOCKFILE_BASENAMES = new Set([
+  "bun.lock",
+  "bun.lockb",
+  "Cargo.lock",
+  "composer.lock",
+  "Gemfile.lock",
+  "go.sum",
+  "mix.lock",
+  "npm-shrinkwrap.json",
+  "package-lock.json",
+  "Pipfile.lock",
+  "pnpm-lock.yaml",
+  "poetry.lock",
+  "Podfile.lock",
+  "uv.lock",
+  "yarn.lock",
+]);
+
+const LOCKFILE_SUFFIXES = [".lock", ".lockb"];
+
+function isLockfilePath(filePath: string): boolean {
+  if (!filePath) {
+    return false;
+  }
+
+  const normalizedPath = filePath.replaceAll("\\", "/");
+  const lastSlashIndex = normalizedPath.lastIndexOf("/");
+  const basename =
+    lastSlashIndex === -1
+      ? normalizedPath
+      : normalizedPath.slice(lastSlashIndex + 1);
+
+  if (LOCKFILE_BASENAMES.has(basename)) {
+    return true;
+  }
+
+  return LOCKFILE_SUFFIXES.some((suffix) => basename.endsWith(suffix));
+}
+
 type FileDiffRowClassNames = {
   button?: string;
   container?: string;
@@ -73,14 +112,19 @@ export function GitDiffViewer({
     return kitties[Math.floor(Math.random() * kitties.length)];
   }, []);
 
+  const visibleDiffs = useMemo(
+    () => diffs.filter((diff) => !isLockfilePath(diff.filePath)),
+    [diffs],
+  );
+
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(
-    () => new Set(diffs.map((diff) => diff.filePath)),
+    () => new Set(visibleDiffs.map((diff) => diff.filePath)),
   );
 
   // Group diffs by file
   const fileGroups: FileGroup[] = useMemo(
     () =>
-      (diffs || []).map((diff) => ({
+      (visibleDiffs || []).map((diff) => ({
         filePath: diff.filePath,
         oldPath: diff.oldPath,
         status: diff.status,
@@ -91,7 +135,7 @@ export function GitDiffViewer({
         patch: diff.patch,
         isBinary: diff.isBinary,
       })),
-    [diffs],
+    [visibleDiffs],
   );
 
   const toggleFile = (filePath: string) => {
@@ -128,8 +172,9 @@ export function GitDiffViewer({
   };
 
   // Compute totals consistently before any conditional early-returns
-  const totalAdditions = diffs.reduce((sum, d) => sum + d.additions, 0);
-  const totalDeletions = diffs.reduce((sum, d) => sum + d.deletions, 0);
+  const totalAdditions = visibleDiffs.reduce((sum, d) => sum + d.additions, 0);
+  const totalDeletions = visibleDiffs.reduce((sum, d) => sum + d.deletions, 0);
+  const showLockfileMessage = diffs.length > 0 && visibleDiffs.length === 0;
 
   // Keep a stable ref to the controls handler to avoid effect loops
   const controlsHandlerRef = useRef<
@@ -151,25 +196,33 @@ export function GitDiffViewer({
       totalAdditions,
       totalDeletions,
     });
-    // Totals update when diffs change; avoid including function identities
+    // Totals update when the visible diffs change; avoid including function identities
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totalAdditions, totalDeletions, diffs.length]);
+  }, [totalAdditions, totalDeletions, visibleDiffs.length]);
 
   return (
     <div className="grow bg-white dark:bg-neutral-900">
       {/* Diff sections */}
       <div className="flex flex-col -space-y-px">
         {/* - space-y-px is to account for the border between each file diff row */}
-        {fileGroups.map((file) => (
-          <MemoFileDiffRow
-            key={`refs:${file.filePath}`}
-            file={file}
-            isExpanded={expandedFiles.has(file.filePath)}
-            onToggle={() => toggleFile(file.filePath)}
-            theme={theme}
-            classNames={classNames?.fileDiffRow}
-          />
-        ))}
+        {fileGroups.length > 0
+          ? fileGroups.map((file) => (
+              <MemoFileDiffRow
+                key={`refs:${file.filePath}`}
+                file={file}
+                isExpanded={expandedFiles.has(file.filePath)}
+                onToggle={() => toggleFile(file.filePath)}
+                theme={theme}
+                classNames={classNames?.fileDiffRow}
+              />
+            ))
+          : showLockfileMessage
+            ? (
+                <div className="px-3 py-6 text-center text-xs text-neutral-500 dark:text-neutral-400 select-none">
+                  Lockfiles are hidden from this diff view.
+                </div>
+              )
+            : null}
         <hr className="border-neutral-200 dark:border-neutral-800" />
         {/* End-of-diff message */}
         <div className="px-3 py-6 text-center">
