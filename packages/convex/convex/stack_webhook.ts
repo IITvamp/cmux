@@ -4,45 +4,11 @@ import {
   StackWebhookPayloadSchema,
   type StackWebhookPayload,
 } from "../_shared/stack-webhook-schema";
-import { stackServerAppJs } from "../_shared/stackServerAppJs";
 import { internal } from "./_generated/api";
 import { httpAction, type ActionCtx } from "./_generated/server";
 
 function undefIfNull<T>(value: T | null | undefined): T | undefined {
   return value === null || value === undefined ? undefined : value;
-}
-
-export async function syncTeamMembershipsFromStack(
-  ctx: ActionCtx,
-  teamId: string,
-): Promise<void> {
-  try {
-    const team = await stackServerAppJs.getTeam(teamId);
-    if (!team) {
-      console.warn(
-        "[stack_webhook] Team not found in Stack during membership sync",
-        {
-          teamId,
-        },
-      );
-      return;
-    }
-
-    const members = await team.listUsers();
-    await Promise.all(
-      members.map((member) =>
-        ctx.runMutation(internal.stack.ensureMembership, {
-          teamId,
-          userId: member.id,
-        }),
-      ),
-    );
-  } catch (error) {
-    console.error("[stack_webhook] Failed to sync team memberships", {
-      teamId,
-      error,
-    });
-  }
 }
 
 async function upsertTeamFromEventData(
@@ -133,7 +99,12 @@ export const stackWebhook = httpAction(async (ctx, req) => {
       const t = event.data;
       await Promise.all([
         upsertTeamFromEventData(ctx, t),
-        syncTeamMembershipsFromStack(ctx, t.id),
+        ctx.runAction(
+          internal.stack_webhook_actions.syncTeamMembershipsFromStack,
+          {
+            teamId: t.id,
+          },
+        ),
       ]);
       break;
     }
