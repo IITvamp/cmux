@@ -1,7 +1,13 @@
 import { v } from "convex/values";
+import { env } from "../_shared/convex-env";
+import {
+  generateInstallationAccessToken,
+  normalizeGithubPrivateKey,
+} from "../_shared/githubApp";
 import { getTeamId } from "../_shared/team";
 import type { Doc } from "./_generated/dataModel";
-import { internalMutation } from "./_generated/server";
+import { internal } from "./_generated/api";
+import { internalAction, internalMutation } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
 
 const SYSTEM_USER_ID = "__system__";
@@ -590,6 +596,187 @@ export const ingestInstallationRepoPage = internalMutation({
         lastSyncedAt: now,
         lastPushedAt: repo.lastPushedAt,
       });
+    }
+  },
+});
+
+export const syncAllReposForInstallation = internalAction({
+  args: {
+    installationId: v.number(),
+  },
+  handler: async (ctx, { installationId }) => {
+    const connection = await ctx.runQuery(
+      internal.github_app.getProviderConnectionByInstallationId,
+      { installationId }
+    );
+    if (!connection?.teamId) {
+      return;
+    }
+    if (!env.CMUX_GITHUB_APP_ID || !env.CMUX_GITHUB_APP_PRIVATE_KEY) {
+      console.error(
+        "github syncAllReposForInstallation missing app credentials"
+      );
+      return;
+    }
+
+    const normalizedKey = normalizeGithubPrivateKey(
+      env.CMUX_GITHUB_APP_PRIVATE_KEY
+    );
+    const tokenInfo = await generateInstallationAccessToken({
+      installationId,
+      appId: env.CMUX_GITHUB_APP_ID,
+      privateKey: normalizedKey,
+      userAgent: "cmux-github-sync",
+    });
+    const accessToken = tokenInfo?.token;
+    if (!accessToken) {
+      return;
+    }
+
+    const perPage = 100;
+    let page = 1;
+    while (true) {
+      const url = new URL("https://api.github.com/installation/repositories");
+      url.searchParams.set("per_page", String(perPage));
+      url.searchParams.set("page", String(page));
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/vnd.github+json",
+          "User-Agent": "cmux-github-sync",
+        },
+      });
+      if (!response.ok) {
+        console.error("github syncAllReposForInstallation fetch failed", {
+          installationId,
+          status: response.status,
+        });
+        break;
+      }
+      const data = (await response.json()) as {
+        repositories?: Array<{
+          id?: number;
+          full_name?: string;
+          name?: string;
+          owner?: {
+            login?: string | null;
+            type?: string | null;
+          } | null;
+          clone_url?: string | null;
+          default_branch?: string | null;
+          visibility?: string | null;
+          private?: boolean | null;
+          pushed_at?: string | number | null;
+        }>;
+      };
+      const repos = Array.isArray(data.repositories) ? data.repositories : [];
+      if (repos.length === 0) {
+        break;
+      }
+
+      const toIngest = repos
+        .map((repo) => {
+          const providerRepoId =
+            typeof repo.id === "number" ? repo.id : undefined;
+          const fullName =
+            typeof repo.full_name === "string" && repo.full_name
+              ? repo.full_name
+              : undefined;
+          if (!providerRepoId || !fullName) {
+            return null;
+          }
+          const name =
+            typeof repo.name === "string" && repo.name
+              ? repo.name
+              : fullName.split("/")[1] ?? fullName;
+          const ownerLoginRaw =
+            typeof repo.owner?.login === "string" && repo.owner.login
+              ? repo.owner.login
+              : fullName.split("/")[0] ?? "";
+          if (!ownerLoginRaw) {
+            return null;
+          }
+          const ownerTypeRaw = repo.owner?.type ?? undefined;
+          const ownerType =
+            ownerTypeRaw === "Organization"
+              ? ("Organization" as const)
+              : ownerTypeRaw === "User"
+              ? ("User" as const)
+              : undefined;
+          const visibility =
+            repo.visibility === "public"
+              ? ("public" as const)
+              : repo.visibility === "private" || repo.private
+              ? ("private" as const)
+              : undefined;
+          const defaultBranch =
+            typeof repo.default_branch === "string" && repo.default_branch
+              ? repo.default_branch
+              : undefined;
+          const gitRemote =
+            typeof repo.clone_url === "string" && repo.clone_url
+              ? repo.clone_url
+              : `https://github.com/${fullName}.git`;
+
+          const normalizeTimestamp = (
+            value: number | string | null | undefined
+          ): number | undefined => {
+            if (value === null || value === undefined) return undefined;
+            const MILLIS_THRESHOLD = 1_000_000_000_000;
+            if (typeof value === "number") {
+              if (!Number.isFinite(value)) return undefined;
+              const normalized =
+                value > MILLIS_THRESHOLD ? value : value * 1000;
+              return Math.round(normalized);
+            }
+            const numeric = Number(value);
+            if (Number.isFinite(numeric)) {
+              const normalized =
+                numeric > MILLIS_THRESHOLD ? numeric : numeric * 1000;
+              return Math.round(normalized);
+            }
+            const parsed = Date.parse(value);
+            if (!Number.isNaN(parsed)) {
+              return parsed;
+            }
+            return undefined;
+          };
+
+          const lastPushedAt = normalizeTimestamp(repo.pushed_at);
+
+          return {
+            providerRepoId,
+            fullName,
+            org: ownerLoginRaw,
+            name,
+            gitRemote,
+            ownerLogin: ownerLoginRaw,
+            ...(ownerType !== undefined && { ownerType }),
+            ...(visibility !== undefined && { visibility }),
+            ...(defaultBranch !== undefined && { defaultBranch }),
+            ...(lastPushedAt !== undefined && { lastPushedAt }),
+          };
+        })
+        .filter((row) => row !== null);
+
+      if (toIngest.length > 0) {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.github.ingestInstallationRepoPage,
+          {
+            teamId: connection.teamId,
+            connectionId: connection._id,
+            installationId,
+            connectedByUserId: connection.connectedByUserId ?? undefined,
+            repos: toIngest,
+          }
+        );
+      }
+
+      if (repos.length < perPage) {
+        break;
+      }
+      page += 1;
     }
   },
 });

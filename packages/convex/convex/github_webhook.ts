@@ -276,7 +276,6 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
                   account.type === "Organization" ? "Organization" : "User",
               }
             );
-            await ingestAllReposForInstallation(_ctx, installationId);
           }
         } else if (action === "deleted") {
           if (installationId !== undefined) {

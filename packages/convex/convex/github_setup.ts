@@ -227,6 +227,10 @@ export const githubSetup = httpAction(async (ctx, req) => {
     }
   );
 
+  await ctx.runAction(internal.github.syncAllReposForInstallation, {
+    installationId,
+  });
+
   // Resolve slug for nicer redirect when available
   const team = await ctx.runQuery(internal.teams.getByTeamIdInternal, {
     teamId: payload.teamId,
