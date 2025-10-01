@@ -22,6 +22,7 @@ import {
   Settings,
   Sun,
   Users,
+  type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -67,6 +68,119 @@ type TeamCommandItem = {
   isCurrent: boolean;
   keywords: string[];
 };
+
+type CommandAccessoryConfig = {
+  text: string;
+  className?: string;
+};
+
+type CommandItemConfig = {
+  key: string;
+  value: string;
+  executeValue?: string;
+  dataValue?: string;
+  label: string;
+  labelClassName?: string;
+  icon?: LucideIcon;
+  iconClassName?: string;
+  keywords?: string[];
+  disabled?: boolean;
+  interactive?: boolean;
+  className?: string;
+  leadingAccessory?: CommandAccessoryConfig;
+  trailingAccessory?: CommandAccessoryConfig;
+};
+
+type CommandGroupConfig = {
+  id: string;
+  label: string;
+  items: CommandItemConfig[];
+};
+
+const combineClasses = (...classes: Array<string | undefined>) =>
+  classes.filter(Boolean).join(" ");
+
+const commandGroupHeadingClass =
+  "px-2 py-1.5 text-xs text-neutral-500 dark:text-neutral-400";
+
+const interactiveItemBaseClass =
+  "flex items-center px-3 py-2.5 mx-1 rounded-md cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800 data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100";
+
+const nonInteractiveItemBaseClass =
+  "flex items-center px-3 py-2.5 mx-1 rounded-md cursor-default";
+
+const leadingAccessoryBaseClass =
+  "flex items-center justify-center rounded text-xs font-semibold bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300 group-data-[selected=true]:bg-neutral-300 dark:group-data-[selected=true]:bg-neutral-600";
+
+const trailingAccessoryBaseClass = "text-xs px-2 py-0.5 rounded-full";
+
+const completedTaskStatusClass =
+  "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400";
+const inProgressTaskStatusClass =
+  "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400";
+const currentTeamBadgeClass =
+  "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400";
+
+const defaultItemSpacingClass = "gap-2";
+const teamItemSpacingClass = "gap-3";
+const taskItemSpacingClass = "gap-3 group";
+const passiveItemSpacingClass = "gap-3";
+
+const defaultIconClass = "h-4 w-4 text-neutral-500";
+const defaultLabelClass = "text-sm";
+const truncatedLabelClass = "flex-1 truncate text-sm";
+
+function renderCommandItem(
+  item: CommandItemConfig,
+  onSelect: (value: string) => void,
+) {
+  const Icon = item.icon;
+  const baseClassName =
+    item.interactive === false ? nonInteractiveItemBaseClass : interactiveItemBaseClass;
+  const className = combineClasses(baseClassName, item.className);
+  const labelClassName = item.labelClassName ?? defaultLabelClass;
+  const onSelectHandler =
+    item.interactive === false
+      ? undefined
+      : () => onSelect(item.executeValue ?? item.value);
+
+  return (
+    <Command.Item
+      key={item.key}
+      value={item.value}
+      data-value={item.dataValue}
+      keywords={item.keywords}
+      disabled={item.disabled}
+      onSelect={onSelectHandler}
+      className={className}
+    >
+      {item.leadingAccessory ? (
+        <span
+          className={combineClasses(
+            leadingAccessoryBaseClass,
+            item.leadingAccessory.className,
+          )}
+        >
+          {item.leadingAccessory.text}
+        </span>
+      ) : null}
+      {Icon ? (
+        <Icon className={item.iconClassName ?? defaultIconClass} />
+      ) : null}
+      <span className={labelClassName}>{item.label}</span>
+      {item.trailingAccessory ? (
+        <span
+          className={combineClasses(
+            trailingAccessoryBaseClass,
+            item.trailingAccessory.className,
+          )}
+        >
+          {item.trailingAccessory.text}
+        </span>
+      ) : null}
+    </Command.Item>
+  );
+}
 
 function CommandHighlightListener({
   onHighlight,
