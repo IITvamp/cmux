@@ -492,7 +492,10 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
             targetTeam &&
             stackUser.selectedTeam?.id !== teamId
           ) {
-            await stackUser.setSelectedTeam(targetTeam);
+            navigate({
+              to: "/$teamSlugOrId/dashboard",
+              params: { teamSlugOrId: targetTeamSlugOrId },
+            });
           }
         } catch (error) {
           console.error("Failed to set selected team", error);
