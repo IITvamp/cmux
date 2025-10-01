@@ -20,6 +20,7 @@ import type * as environments from "../environments.js";
 import type * as github from "../github.js";
 import type * as github_app from "../github_app.js";
 import type * as github_prs from "../github_prs.js";
+import type * as github_repos from "../github_repos.js";
 import type * as github_setup from "../github_setup.js";
 import type * as github_webhook from "../github_webhook.js";
 import type * as http from "../http.js";
@@ -64,6 +65,7 @@ declare const fullApi: ApiFromModules<{
   github: typeof github;
   github_app: typeof github_app;
   github_prs: typeof github_prs;
+  github_repos: typeof github_repos;
   github_setup: typeof github_setup;
   github_webhook: typeof github_webhook;
   http: typeof http;

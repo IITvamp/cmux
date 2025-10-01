@@ -110,6 +110,28 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
                   account.type === "Organization" ? "Organization" : "User",
               }
             );
+
+            // After creating the installation, check if it's mapped to a team
+            // and if so, trigger repository sync
+            const conn = await _ctx.runQuery(
+              internal.github_app.getProviderConnectionByInstallationId,
+              { installationId }
+            );
+            const teamId = conn?.teamId;
+            const connectedByUserId = conn?.connectedByUserId;
+            if (teamId && connectedByUserId && conn._id) {
+              // Trigger background sync of all repositories for this installation
+              await _ctx.scheduler.runAfter(
+                0,
+                internal.github_repos.syncRepositoriesForInstallation,
+                {
+                  installationId,
+                  teamId,
+                  userId: connectedByUserId,
+                  connectionId: conn._id,
+                }
+              );
+            }
           }
         } else if (action === "deleted") {
           if (installationId !== undefined) {
@@ -123,7 +145,37 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
         }
         break;
       }
-      case "installation_repositories":
+      case "installation_repositories": {
+        // Sync repositories when the installation's repository list changes
+        try {
+          if (installationId === undefined) break;
+          const conn = await _ctx.runQuery(
+            internal.github_app.getProviderConnectionByInstallationId,
+            { installationId }
+          );
+          const teamId = conn?.teamId;
+          const connectedByUserId = conn?.connectedByUserId;
+          if (!teamId || !connectedByUserId || !conn._id) break;
+
+          // Trigger background sync of all repositories for this installation
+          await _ctx.scheduler.runAfter(
+            0,
+            internal.github_repos.syncRepositoriesForInstallation,
+            {
+              installationId,
+              teamId,
+              userId: connectedByUserId,
+              connectionId: conn._id,
+            }
+          );
+        } catch (err) {
+          console.error("github_webhook installation_repositories handler failed", {
+            err,
+            delivery,
+          });
+        }
+        break;
+      }
       case "repository":
       case "create":
       case "delete":

@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { getTeamId } from "../_shared/team";
 import type { Doc } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
 
@@ -198,6 +199,7 @@ export const assignProviderConnectionToTeam = authMutation({
   args: { teamSlugOrId: v.string(), installationId: v.number() },
   handler: async (ctx, { teamSlugOrId, installationId }) => {
     const teamId = await getTeamId(ctx, teamSlugOrId);
+    const userId = ctx.identity.subject;
     const now = Date.now();
     const row = await ctx.db
       .query("providerConnections")
@@ -208,10 +210,23 @@ export const assignProviderConnectionToTeam = authMutation({
     if (!row) throw new Error("Installation not found");
     await ctx.db.patch(row._id, {
       teamId,
-      connectedByUserId: ctx.identity.subject,
+      connectedByUserId: userId,
       updatedAt: now,
       isActive: true,
     });
+
+    // Trigger background sync of repositories for this installation
+    await ctx.scheduler.runAfter(
+      0,
+      internal.github_repos.syncRepositoriesForInstallation,
+      {
+        installationId,
+        teamId,
+        userId,
+        connectionId: row._id,
+      }
+    );
+
     return { ok: true as const };
   },
 });
