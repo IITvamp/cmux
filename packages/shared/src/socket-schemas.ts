@@ -192,17 +192,24 @@ export const OpenInEditorResponseSchema = z.object({
 });
 
 // File listing events
-export const ListFilesRequestSchema = z.object({
-  repoPath: z.string(),
-  branch: z.string().optional(),
-  pattern: z.string().optional(), // Optional glob pattern for filtering
-});
+export const ListFilesRequestSchema = z
+  .object({
+    repoPath: z.string().optional(),
+    environmentId: typedZid("environments").optional(),
+    branch: z.string().optional(),
+    pattern: z.string().optional(), // Optional glob pattern for filtering
+  })
+  .refine(
+    (value) => Boolean(value.repoPath || value.environmentId),
+    "repoPath or environmentId is required"
+  );
 
 export const FileInfoSchema = z.object({
   path: z.string(),
   name: z.string(),
   isDirectory: z.boolean(),
   relativePath: z.string(),
+  repoFullName: z.string().optional(),
 });
 
 export const ListFilesResponseSchema = z.object({
