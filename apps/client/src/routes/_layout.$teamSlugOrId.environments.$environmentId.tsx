@@ -262,6 +262,47 @@ function EnvironmentDetailsPage() {
     });
   };
 
+  const handleModifyVm = () => {
+    startSandboxMutation.mutate(
+      {
+        body: {
+          teamSlugOrId,
+          environmentId: String(environmentId),
+          snapshotId: environment.morphSnapshotId ?? undefined,
+        },
+      },
+      {
+        onSuccess: (data) => {
+          const baseUrl = data.vscodeUrl;
+          const hasQuery = baseUrl.includes("?");
+          const vscodeUrlWithFolder = `${baseUrl}${
+            hasQuery ? "&" : "?"
+          }folder=/root/workspace`;
+          navigate({
+            to: "/$teamSlugOrId/environments/new-version",
+            params: { teamSlugOrId },
+            search: {
+              sourceEnvironmentId: String(environmentId),
+              selectedRepos: environment.selectedRepos ?? [],
+              connectionLogin: undefined,
+              repoSearch: undefined,
+              instanceId: data.instanceId,
+              vscodeUrl: vscodeUrlWithFolder,
+              step: "configure",
+            },
+          });
+        },
+        onError: (error) => {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Failed to launch snapshot environment";
+          toast.error(message);
+        },
+      },
+    );
+  };
+
   return (
     <FloatingPane
       header={<TitleBar title={environment?.name || "Environment Details"} />}
@@ -315,6 +356,21 @@ function EnvironmentDetailsPage() {
                 >
                   <Play className="w-4 h-4" />
                   Launch Environment
+                </button>
+                <button
+                  type="button"
+                  onClick={handleModifyVm}
+                  disabled={startSandboxMutation.isPending}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
+                >
+                  {startSandboxMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Launching…
+                    </>
+                  ) : (
+                    "Modify VM"
+                  )}
                 </button>
               </div>
             </div>
@@ -513,51 +569,8 @@ function EnvironmentDetailsPage() {
                   </h3>
                   <button
                     type="button"
+                    onClick={handleModifyVm}
                     disabled={startSandboxMutation.isPending}
-                    onClick={() => {
-                      if (startSandboxMutation.isPending) {
-                        return;
-                      }
-                      startSandboxMutation.mutate(
-                        {
-                          body: {
-                            teamSlugOrId,
-                            environmentId: String(environmentId),
-                            snapshotId:
-                              environment.morphSnapshotId ?? undefined,
-                          },
-                        },
-                        {
-                          onSuccess: (data) => {
-                            const baseUrl = data.vscodeUrl;
-                            const hasQuery = baseUrl.includes("?");
-                            const vscodeUrlWithFolder = `${baseUrl}${
-                              hasQuery ? "&" : "?"
-                            }folder=/root/workspace`;
-                            navigate({
-                              to: "/$teamSlugOrId/environments/new-version",
-                              params: { teamSlugOrId },
-                              search: {
-                                sourceEnvironmentId: String(environmentId),
-                                selectedRepos: environment.selectedRepos ?? [],
-                                connectionLogin: undefined,
-                                repoSearch: undefined,
-                                instanceId: data.instanceId,
-                                vscodeUrl: vscodeUrlWithFolder,
-                                step: "configure",
-                              },
-                            });
-                          },
-                          onError: (error) => {
-                            const message =
-                              error instanceof Error
-                                ? error.message
-                                : "Failed to launch snapshot environment";
-                            toast.error(message);
-                          },
-                        },
-                      );
-                    }}
                     className="inline-flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
                   >
                     {startSandboxMutation.isPending ? (
@@ -628,41 +641,6 @@ function EnvironmentDetailsPage() {
                     ))
                   )}
                 </div>
-              </div>
-
-              {/* Technical Details */}
-              <div className="pt-4 border-t border-neutral-200 dark:border-neutral-800">
-                <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100 mb-3">
-                  Current Version Details
-                </h3>
-                <dl className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <dt className="text-neutral-500">Environment ID</dt>
-                    <dd className="text-neutral-700 dark:text-neutral-300 font-mono text-xs">
-                      {environment._id}
-                    </dd>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <dt className="text-neutral-500">Snapshot ID</dt>
-                    <dd className="text-neutral-700 dark:text-neutral-300 font-mono text-xs">
-                      {environment.morphSnapshotId}
-                    </dd>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <dt className="text-neutral-500">Data Vault Key</dt>
-                    <dd className="text-neutral-700 dark:text-neutral-300 font-mono text-xs">
-                      {environment.dataVaultKey}
-                    </dd>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <dt className="text-neutral-500">Last Updated</dt>
-                    <dd className="text-neutral-700 dark:text-neutral-300">
-                      {formatDistanceToNow(new Date(environment.updatedAt), {
-                        addSuffix: true,
-                      })}
-                    </dd>
-                  </div>
-                </dl>
               </div>
             </div>
 
