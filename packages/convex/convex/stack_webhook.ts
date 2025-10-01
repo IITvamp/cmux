@@ -4,10 +4,7 @@ import {
   StackWebhookPayloadSchema,
   type StackWebhookPayload,
 } from "../_shared/stack-webhook-schema";
-import {
-  stackServerAppJs,
-  type StackServerAppJsInstance,
-} from "../_shared/stackServerAppJs";
+import { stackServerAppJs } from "../_shared/stackServerAppJs";
 import { internal } from "./_generated/api";
 import { httpAction, type ActionCtx } from "./_generated/server";
 
@@ -18,16 +15,16 @@ function undefIfNull<T>(value: T | null | undefined): T | undefined {
 export async function syncTeamMembershipsFromStack(
   ctx: ActionCtx,
   teamId: string,
-  appOverride?: StackServerAppJsInstance
 ): Promise<void> {
-  const stackApp = appOverride ?? stackServerAppJs;
-
   try {
-    const team = await stackApp.getTeam(teamId);
+    const team = await stackServerAppJs.getTeam(teamId);
     if (!team) {
-      console.warn("[stack_webhook] Team not found in Stack during membership sync", {
-        teamId,
-      });
+      console.warn(
+        "[stack_webhook] Team not found in Stack during membership sync",
+        {
+          teamId,
+        },
+      );
       return;
     }
 
@@ -37,8 +34,8 @@ export async function syncTeamMembershipsFromStack(
         ctx.runMutation(internal.stack.ensureMembership, {
           teamId,
           userId: member.id,
-        })
-      )
+        }),
+      ),
     );
   } catch (error) {
     console.error("[stack_webhook] Failed to sync team memberships", {
@@ -50,7 +47,10 @@ export async function syncTeamMembershipsFromStack(
 
 async function upsertTeamFromEventData(
   ctx: ActionCtx,
-  t: Extract<StackWebhookPayload, { type: "team.created" | "team.updated" }>["data"]
+  t: Extract<
+    StackWebhookPayload,
+    { type: "team.created" | "team.updated" }
+  >["data"],
 ) {
   await ctx.runMutation(internal.stack.upsertTeam, {
     id: t.id,
@@ -105,10 +105,10 @@ export const stackWebhook = httpAction(async (ctx, req) => {
         displayName: undefIfNull(u.display_name || undefined),
         selectedTeamId: undefIfNull(u.selected_team_id || undefined),
         selectedTeamDisplayName: undefIfNull(
-          u.selected_team?.display_name || undefined
+          u.selected_team?.display_name || undefined,
         ),
         selectedTeamProfileImageUrl: undefIfNull(
-          u.selected_team?.profile_image_url || undefined
+          u.selected_team?.profile_image_url || undefined,
         ),
         profileImageUrl: undefIfNull(u.profile_image_url || undefined),
         signedUpAtMillis: u.signed_up_at_millis,
