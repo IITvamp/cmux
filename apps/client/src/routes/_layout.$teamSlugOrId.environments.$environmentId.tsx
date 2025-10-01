@@ -1,3 +1,4 @@
+import { EditableLabel } from "@/components/editable-label";
 import { FloatingPane } from "@/components/floating-pane";
 import { TitleBar } from "@/components/TitleBar";
 import { queryClient } from "@/query-client";
@@ -33,13 +34,12 @@ import {
   Loader2,
   Package,
   Plus,
-  Pencil,
   Server,
   Terminal,
   Trash2,
   X,
 } from "lucide-react";
-import { type FormEvent, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute(
@@ -103,8 +103,6 @@ function EnvironmentDetailsPage() {
   );
   const modifyVmMutation = useRQMutation(postApiSandboxesStartMutation());
   const snapshotLaunchMutation = useRQMutation(postApiSandboxesStartMutation());
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [nameDraft, setNameDraft] = useState(environment.name);
   const [renameError, setRenameError] = useState<string | null>(null);
   const [isEditingPorts, setIsEditingPorts] = useState(false);
   const [portsDraft, setPortsDraft] = useState<number[]>(
@@ -117,64 +115,51 @@ function EnvironmentDetailsPage() {
   );
   const [deletingVersionId, setDeletingVersionId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!isEditingName) {
-      setNameDraft(environment.name);
-      setRenameError(null);
-    }
-  }, [environment.name, isEditingName]);
-
-  const handleStartEditingName = () => {
+  const handleRenameStart = () => {
     updateEnvironmentMutation.reset();
-    setIsEditingName(true);
-    setNameDraft(environment.name);
     setRenameError(null);
   };
 
-  const handleCancelName = () => {
+  const handleRenameCancel = () => {
     updateEnvironmentMutation.reset();
-    setIsEditingName(false);
-    setNameDraft(environment.name);
     setRenameError(null);
   };
 
-  const handleRenameSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (updateEnvironmentMutation.isPending) {
-      return;
-    }
-
-    const trimmedName = nameDraft.trim();
+  const handleRename = async (nextName: string) => {
+    const trimmedName = nextName.trim();
     if (trimmedName.length === 0) {
       setRenameError("Environment name is required.");
-      return;
+      return false;
     }
 
-    updateEnvironmentMutation.mutate(
-      {
+    const currentName = environment.name.trim();
+    if (trimmedName === currentName) {
+      setRenameError(null);
+      return true;
+    }
+
+    try {
+      setRenameError(null);
+      updateEnvironmentMutation.reset();
+      await updateEnvironmentMutation.mutateAsync({
         path: { id: String(environmentId) },
         body: {
           teamSlugOrId,
           name: trimmedName,
         },
-      },
-      {
-        onSuccess: () => {
-          setIsEditingName(false);
-          setRenameError(null);
-          setNameDraft(trimmedName);
-          toast.success("Environment renamed");
-        },
-        onError: (error) => {
-          const message =
-            error instanceof Error
-              ? error.message
-              : "Failed to update environment name";
-          setRenameError(message);
-          toast.error(message);
-        },
-      },
-    );
+      });
+      setRenameError(null);
+      toast.success("Environment renamed");
+      return true;
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to update environment name";
+      setRenameError(message);
+      toast.error(message);
+      return false;
+    }
   };
 
   useEffect(() => {
@@ -472,75 +457,20 @@ function EnvironmentDetailsPage() {
                 <div className="w-10 h-10 rounded-lg bg-neutral-100 dark:bg-neutral-900 flex items-center justify-center">
                   <Server className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
                 </div>
-                <div className="space-y-2">
-                  {isEditingName ? (
-                    <form
-                      onSubmit={handleRenameSubmit}
-                      className="flex flex-col gap-2"
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <input
-                          type="text"
-                          value={nameDraft}
-                          onChange={(event) => {
-                            setNameDraft(event.target.value);
-                            if (renameError) {
-                              setRenameError(null);
-                            }
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key === "Escape") {
-                              event.preventDefault();
-                              handleCancelName();
-                            }
-                          }}
-                          disabled={updateEnvironmentMutation.isPending}
-                          autoFocus
-                          placeholder="Environment name"
-                          className="w-64 flex-1 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm font-semibold text-neutral-900 outline-none focus:border-neutral-400 focus:ring-2 focus:ring-neutral-200 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-neutral-600 dark:focus:ring-neutral-800"
-                        />
-                        <button
-                          type="submit"
-                          disabled={updateEnvironmentMutation.isPending}
-                          className="inline-flex items-center gap-1.5 rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60 dark:bg-neutral-100 dark:text-neutral-900"
-                        >
-                          {updateEnvironmentMutation.isPending ? (
-                            <>
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                              Saving…
-                            </>
-                          ) : (
-                            "Save"
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleCancelName}
-                          disabled={updateEnvironmentMutation.isPending}
-                          className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 px-3 py-1.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-900"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                      {renameError && (
-                        <p className="text-xs text-red-500">{renameError}</p>
-                      )}
-                    </form>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
-                        {environment.name}
-                      </h2>
-                      <button
-                        type="button"
-                        onClick={handleStartEditingName}
-                        className="inline-flex items-center rounded-md border border-transparent p-1 text-neutral-500 transition-colors hover:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-200 dark:text-neutral-400 dark:hover:text-neutral-100 dark:focus:ring-neutral-800"
-                      >
-                        <Pencil className="h-4 w-4" />
-                        <span className="sr-only">Rename environment</span>
-                      </button>
-                    </div>
-                  )}
+                <div className="">
+                  <EditableLabel
+                    value={environment.name}
+                    onEditStart={handleRenameStart}
+                    onCancel={handleRenameCancel}
+                    onSubmit={handleRename}
+                    isSaving={updateEnvironmentMutation.isPending}
+                    error={renameError}
+                    className="gap-1"
+                    labelClassName="text-xl font-semibold text-neutral-900 dark:text-neutral-100"
+                    buttonLabel="Rename environment"
+                    placeholder="Environment name"
+                    ariaLabel="Environment name"
+                  />
                   <div className="flex items-center gap-2 text-sm text-neutral-500 dark:text-neutral-500">
                     <Calendar className="w-3 h-3" />
                     Created{" "}
