@@ -1,5 +1,10 @@
 import { v } from "convex/values";
-import { extractSlugFromMetadata, buildSlugCandidate, validateSlug } from "../_shared/teamSlug";
+import {
+  extractSlugFromMetadata,
+  buildSlugCandidate,
+  validateSlug,
+  deriveSlugSuffix,
+} from "../_shared/teamSlug";
 import { internalMutation, type MutationCtx } from "./_generated/server";
 import { authMutation } from "./users/utils";
 
@@ -197,8 +202,9 @@ async function generateSlugFromName(
 ): Promise<string | undefined> {
   const name = displayName ?? "";
   const MAX_ATTEMPTS = 32;
+  const suffix = await deriveSlugSuffix(teamId);
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
-    const candidate = buildSlugCandidate(teamId, name, attempt);
+    const candidate = await buildSlugCandidate(teamId, name, attempt, suffix);
     try {
       validateSlug(candidate);
     } catch (_error) {

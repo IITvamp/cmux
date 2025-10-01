@@ -32,11 +32,11 @@ export function slugifyTeamName(name: string): string {
 }
 
 function extractEmailLocalPart(input: string): string | undefined {
-  const match = input.match(/^[^@\s]+@[^@\s]+$/);
+  const match = input.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i);
   if (!match) {
     return undefined;
   }
-  const [local] = input.split("@");
+  const [local] = match[0]?.split("@") ?? [];
   return local ?? undefined;
 }
 
@@ -45,19 +45,48 @@ function sanitizeTeamId(teamId: string): string {
   return sanitized.length > 0 ? sanitized : "team";
 }
 
-export function deriveSlugSuffix(teamId: string): string {
-  const sanitized = sanitizeTeamId(teamId);
-  const suffixSource = sanitized.length >= 4 ? sanitized : `${sanitized}team`;
-  return suffixSource.slice(0, 4);
+const encoder = new TextEncoder();
+
+async function digestTeamId(teamId: string): Promise<string> {
+  const subtle = globalThis.crypto?.subtle;
+  if (subtle) {
+    const digest = await subtle.digest("SHA-256", encoder.encode(teamId));
+    return Array.from(new Uint8Array(digest))
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  // Deterministic fallback when SubtleCrypto is unavailable (e.g., bare V8 without crypto)
+  let hash = 0;
+  for (let i = 0; i < teamId.length; i += 1) {
+    hash = (hash * 31 + teamId.charCodeAt(i)) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
 }
 
-export function buildSlugCandidate(teamId: string, displayName: string, attempt: number): string {
+export async function deriveSlugSuffix(teamId: string): Promise<string> {
+  const sanitized = sanitizeTeamId(teamId);
+  if (sanitized.length >= 3) {
+    return sanitized.slice(0, 3);
+  }
+  const hex = await digestTeamId(teamId);
+  return (sanitized + hex).slice(0, 3);
+}
+
+export async function buildSlugCandidate(
+  teamId: string,
+  displayName: string,
+  attempt: number,
+  suffixOverride?: string,
+): Promise<string> {
   const rawBase = slugifyTeamName(displayName);
   const baseFallback = rawBase.length > 0 ? rawBase : "team";
-  const suffix = deriveSlugSuffix(teamId);
-  const attemptSuffix = attempt > 0 ? `${suffix}-${attempt.toString(36)}` : suffix;
+  const suffix = suffixOverride ?? (await deriveSlugSuffix(teamId));
+  const attemptPart = attempt > 0 ? attempt.toString(36) : undefined;
+  const trailing = attemptPart ? `${suffix}-${attemptPart}` : suffix;
 
-  const maxBaseLength = Math.max(1, SLUG_MAX_LENGTH - attemptSuffix.length - 1);
+  const hyphenCount = attemptPart ? 2 : 1;
+  const maxBaseLength = Math.max(1, SLUG_MAX_LENGTH - trailing.length - hyphenCount);
   let base = baseFallback.slice(0, maxBaseLength);
   if (base.length === 0) {
     base = "team".slice(0, Math.max(1, maxBaseLength));
@@ -67,7 +96,7 @@ export function buildSlugCandidate(teamId: string, displayName: string, attempt:
     base = padded.length >= SLUG_MIN_LENGTH ? padded : (padded + "team").slice(0, Math.max(SLUG_MIN_LENGTH, maxBaseLength));
   }
 
-  const slug = `${base}-${attemptSuffix}`;
+  const slug = attemptPart ? `${base}-${suffix}-${attemptPart}` : `${base}-${suffix}`;
   return normalizeSlug(slug).replace(/-+/g, "-").replace(/^-+|-+$/g, "");
 }
 
