@@ -6,7 +6,7 @@ import { stackClientApp } from "@/lib/stack";
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import * as Dialog from "@radix-ui/react-dialog";
-import { useUser } from "@stackframe/react";
+import { useUser, type Team } from "@stackframe/react";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { useQuery } from "convex/react";
@@ -57,6 +57,8 @@ const compactStrings = (values: ReadonlyArray<unknown>): string[] => {
   return out;
 };
 
+const EMPTY_TEAM_LIST: Team[] = [];
+
 type TeamCommandItem = {
   id: string;
   label: string;
@@ -78,7 +80,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   const { setTheme } = useTheme();
 
   const stackUser = useUser({ or: "return-null" });
-  const stackTeams = stackUser?.useTeams() ?? [];
+  const stackTeams = stackUser?.useTeams() ?? EMPTY_TEAM_LIST;
   const selectedTeamId = stackUser?.selectedTeam?.id ?? null;
   const teamMemberships = useQuery(api.teams.listTeamMemberships, {});
 
