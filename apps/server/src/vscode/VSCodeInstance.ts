@@ -1,4 +1,5 @@
 import { Id } from "@cmux/convex/dataModel";
+import type { PrewarmedSandbox } from "@cmux/shared/socket-schemas";
 import { connectToWorkerManagement } from "@cmux/shared/socket";
 import { EventEmitter } from "node:events";
 import { dockerLogger } from "../utils/fileLogger";
@@ -19,6 +20,8 @@ export interface VSCodeInstanceConfig {
   environmentId?: Id<"environments"> | string;
   // Optional: JWT token for crown workflow authentication
   taskRunJwt?: string;
+  // Optional: reuse a prewarmed sandbox instead of starting a new one
+  prewarmedSandbox?: PrewarmedSandbox;
 }
 
 export interface VSCodeInstanceInfo {

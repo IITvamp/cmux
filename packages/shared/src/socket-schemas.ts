@@ -28,6 +28,27 @@ export const CloseTerminalSchema = z.object({
   terminalId: z.string(),
 });
 
+const PrewarmedSandboxContextSchema = z.object({
+  teamSlugOrId: z.string().optional(),
+  projectFullName: z.string().nullable().optional(),
+  branch: z.string().nullable().optional(),
+  environmentId: typedZid("environments").nullable().optional(),
+  repoUrl: z.string().nullable().optional(),
+  isCloudMode: z.boolean().optional(),
+});
+
+export const PrewarmedSandboxSchema = z.object({
+  agentName: z.string(),
+  instanceId: z.string(),
+  workerUrl: z.string(),
+  vscodeUrl: z.string(),
+  provider: z.enum(["morph", "docker", "daytona"]).default("morph"),
+  createdAt: z.number().optional(),
+  context: PrewarmedSandboxContextSchema.optional(),
+});
+
+export type PrewarmedSandbox = z.infer<typeof PrewarmedSandboxSchema>;
+
 export const StartTaskSchema = z.object({
   repoUrl: z.string().optional(),
   branch: z.string().optional(),
@@ -43,10 +64,11 @@ export const StartTaskSchema = z.object({
         fileName: z.string().optional(),
         altText: z.string(),
       })
-    )
+  )
     .optional(),
   theme: z.enum(["dark", "light", "system"]).optional(),
   environmentId: typedZid("environments").optional(),
+  prewarmedSandboxes: z.array(PrewarmedSandboxSchema).optional(),
 });
 
 // Server to Client Events

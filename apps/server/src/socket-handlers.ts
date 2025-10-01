@@ -368,6 +368,7 @@ export function setupSocketHandlers(
             images: taskData.images,
             theme: taskData.theme,
             environmentId: taskData.environmentId,
+            prewarmedSandboxes: taskData.prewarmedSandboxes,
           },
           safeTeam,
         );

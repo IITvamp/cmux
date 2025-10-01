@@ -5,6 +5,7 @@ import {
   type AgentConfig,
   type EnvironmentResult,
 } from "@cmux/shared/agentConfig";
+import type { PrewarmedSandbox } from "@cmux/shared/socket-schemas";
 import type {
   WorkerCreateTerminal,
   WorkerTerminalFailed,
@@ -60,6 +61,7 @@ export async function spawnAgent(
     }>;
     theme?: "dark" | "light" | "system";
     newBranch?: string; // Optional pre-generated branch name
+    prewarmedSandbox?: PrewarmedSandbox;
   },
   teamSlugOrId: string,
 ): Promise<AgentSpawnResult> {
@@ -324,12 +326,64 @@ export async function spawnAgent(
     serverLogger.info(`  Agent command: ${agentCommand}`);
     serverLogger.info(`  Tmux session name: ${tmuxSessionName}`);
 
+    let prewarmedSandbox = options.prewarmedSandbox;
+    if (prewarmedSandbox?.context) {
+      const ctx = prewarmedSandbox.context;
+      if (ctx.teamSlugOrId && ctx.teamSlugOrId !== teamSlugOrId) {
+        serverLogger.warn(
+          `[AgentSpawner] Ignoring prewarmed sandbox ${prewarmedSandbox.instanceId} due to team mismatch`,
+        );
+        prewarmedSandbox = undefined;
+      }
+
+      if (
+        prewarmedSandbox &&
+        ctx.environmentId &&
+        options.environmentId &&
+        String(ctx.environmentId) !== String(options.environmentId)
+      ) {
+        serverLogger.warn(
+          `[AgentSpawner] Ignoring prewarmed sandbox ${prewarmedSandbox.instanceId} due to environment mismatch`,
+        );
+        prewarmedSandbox = undefined;
+      }
+
+      if (
+        prewarmedSandbox &&
+        ctx.repoUrl &&
+        options.repoUrl &&
+        ctx.repoUrl !== options.repoUrl
+      ) {
+        serverLogger.warn(
+          `[AgentSpawner] Ignoring prewarmed sandbox ${prewarmedSandbox.instanceId} due to repo mismatch`,
+        );
+        prewarmedSandbox = undefined;
+      }
+
+      if (
+        prewarmedSandbox &&
+        ctx.branch &&
+        options.branch &&
+        ctx.branch !== options.branch
+      ) {
+        serverLogger.warn(
+          `[AgentSpawner] Ignoring prewarmed sandbox ${prewarmedSandbox.instanceId} due to branch mismatch`,
+        );
+        prewarmedSandbox = undefined;
+      }
+    }
+
     let vscodeInstance: VSCodeInstance;
     let worktreePath: string;
 
     console.log("[AgentSpawner] [isCloudMode]", options.isCloudMode);
 
     if (options.isCloudMode) {
+      if (prewarmedSandbox) {
+        serverLogger.info(
+          `[AgentSpawner] Reusing prewarmed sandbox ${prewarmedSandbox.instanceId} for ${agent.name}`,
+        );
+      }
       // For remote sandboxes (Morph-backed via www API)
       vscodeInstance = new CmuxVSCodeInstance({
         agentName: agent.name,
@@ -342,6 +396,7 @@ export async function spawnAgent(
         newBranch,
         environmentId: options.environmentId,
         taskRunJwt,
+        prewarmedSandbox,
       });
 
       worktreePath = "/root/workspace";
@@ -826,6 +881,7 @@ export async function spawnAllAgents(
       altText: string;
     }>;
     theme?: "dark" | "light" | "system";
+    prewarmedSandboxes?: PrewarmedSandbox[];
   },
   teamSlugOrId: string,
 ): Promise<AgentSpawnResult[]> {
@@ -835,6 +891,25 @@ export async function spawnAllAgents(
         .map((name) => AGENT_CONFIGS.find((agent) => agent.name === name))
         .filter((a): a is AgentConfig => Boolean(a))
     : AGENT_CONFIGS;
+
+  const prewarmQueues = new Map<string, PrewarmedSandbox[]>();
+  if (options.prewarmedSandboxes && options.prewarmedSandboxes.length > 0) {
+    for (const sandbox of options.prewarmedSandboxes) {
+      if (!sandbox || !sandbox.agentName) {
+        continue;
+      }
+      const list = prewarmQueues.get(sandbox.agentName) ?? [];
+      list.push(sandbox);
+      prewarmQueues.set(sandbox.agentName, list);
+    }
+
+    prewarmQueues.forEach((list, key) => {
+      if (list.length > 1) {
+        list.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+      }
+      prewarmQueues.set(key, list);
+    });
+  }
 
   // Generate unique branch names for all agents at once to ensure no collisions
   const branchNames = options.prTitle
@@ -851,17 +926,24 @@ export async function spawnAllAgents(
 
   // Spawn all agents in parallel with their pre-generated branch names
   const results = await Promise.all(
-    agentsToSpawn.map((agent, index) =>
-      spawnAgent(
+    agentsToSpawn.map((agent, index) => {
+      const queue = prewarmQueues.get(agent.name);
+      const prewarmedSandbox = queue?.shift();
+      if (queue && queue.length === 0) {
+        prewarmQueues.delete(agent.name);
+      }
+
+      return spawnAgent(
         agent,
         taskId,
         {
           ...options,
           newBranch: branchNames[index],
+          prewarmedSandbox,
         },
         teamSlugOrId,
-      ),
-    ),
+      );
+    }),
   );
 
   return results;

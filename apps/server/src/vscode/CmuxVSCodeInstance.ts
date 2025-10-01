@@ -1,3 +1,4 @@
+import type { PrewarmedSandbox } from "@cmux/shared/socket-schemas";
 import { dockerLogger } from "../utils/fileLogger";
 import { getWwwClient } from "../utils/wwwClient";
 import { getWwwOpenApiModule } from "../utils/wwwOpenApiModule";
@@ -24,6 +25,7 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
   private newBranch?: string;
   private environmentId?: string;
   private taskRunJwt?: string;
+  private prewarmedSandbox?: PrewarmedSandbox;
 
   constructor(config: VSCodeInstanceConfig) {
     super(config);
@@ -39,9 +41,48 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
     this.newBranch = cfg.newBranch;
     this.environmentId = cfg.environmentId;
     this.taskRunJwt = cfg.taskRunJwt;
+    this.prewarmedSandbox = cfg.prewarmedSandbox;
   }
 
   async start(): Promise<VSCodeInstanceInfo> {
+    if (this.prewarmedSandbox) {
+      dockerLogger.info(
+        `[CmuxVSCodeInstance ${this.instanceId}] Reusing prewarmed sandbox ${this.prewarmedSandbox.instanceId}`
+      );
+      this.sandboxId = this.prewarmedSandbox.instanceId;
+      this.vscodeBaseUrl = this.prewarmedSandbox.vscodeUrl;
+      this.workerUrl = this.prewarmedSandbox.workerUrl;
+      this.provider = this.prewarmedSandbox.provider || "morph";
+
+      if (!this.vscodeBaseUrl) {
+        throw new Error("Prewarmed sandbox missing VSCode URL");
+      }
+
+      const workspaceUrl = this.getWorkspaceUrl(this.vscodeBaseUrl);
+
+      if (this.workerUrl) {
+        try {
+          await this.connectToWorker(this.workerUrl);
+          dockerLogger.info(
+            `[CmuxVSCodeInstance ${this.instanceId}] Connected to prewarmed worker`
+          );
+        } catch (error) {
+          dockerLogger.error(
+            `[CmuxVSCodeInstance ${this.instanceId}] Failed to connect to prewarmed worker`,
+            error
+          );
+        }
+      }
+
+      return {
+        url: this.vscodeBaseUrl,
+        workspaceUrl,
+        instanceId: this.instanceId,
+        taskRunId: this.taskRunId,
+        provider: this.provider,
+      };
+    }
+
     dockerLogger.info(
       `[CmuxVSCodeInstance ${this.instanceId}] Requesting sandbox start via www API`
     );

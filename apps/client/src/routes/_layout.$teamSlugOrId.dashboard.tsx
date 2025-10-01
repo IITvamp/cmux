@@ -19,6 +19,11 @@ import {
 import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { createFakeConvexId } from "@/lib/fakeConvexId";
+import {
+  consumePrewarmedSandboxes,
+  ensurePrewarmedSandboxes,
+  type SandboxPrewarmContext,
+} from "@/lib/sandboxPrewarm";
 import { branchesQueryOptions } from "@/queries/branches";
 import { api } from "@cmux/convex/api";
 import type { Doc, Id } from "@cmux/convex/dataModel";
@@ -231,6 +236,59 @@ function DashboardComponent() {
     [selectedBranch, branches]
   );
 
+  const prewarmContext = useMemo<SandboxPrewarmContext | null>(() => {
+    const project = selectedProject[0];
+    if (!project) {
+      return null;
+    }
+
+    const environmentId = isEnvSelected
+      ? (project.replace(/^env:/, "") as Id<"environments">)
+      : null;
+    const projectFullName = isEnvSelected ? null : project;
+    const repoUrl = projectFullName
+      ? `https://github.com/${projectFullName}.git`
+      : null;
+    const branchValue = isEnvSelected
+      ? null
+      : effectiveSelectedBranch[0] ?? null;
+
+    const cloudMode = isEnvSelected ? true : isCloudMode;
+
+    if (!cloudMode) {
+      return null;
+    }
+
+    return {
+      teamSlugOrId,
+      environmentId,
+      projectFullName,
+      repoUrl,
+      branch: branchValue,
+      isCloudMode: cloudMode,
+    } satisfies SandboxPrewarmContext;
+  }, [
+    selectedProject,
+    isEnvSelected,
+    effectiveSelectedBranch,
+    isCloudMode,
+    teamSlugOrId,
+  ]);
+
+  useEffect(() => {
+    if (!prewarmContext) {
+      return;
+    }
+    if (selectedAgents.length === 0) {
+      return;
+    }
+    if (!taskDescription.trim()) {
+      return;
+    }
+
+    void ensurePrewarmedSandboxes(prewarmContext, selectedAgents);
+  }, [prewarmContext, selectedAgents, taskDescription]);
+
   const handleStartTask = useCallback(async () => {
     // For local mode, perform a fresh docker check right before starting
     if (!isEnvSelected && !isCloudMode) {
@@ -275,6 +333,11 @@ function DashboardComponent() {
     const environmentId = envSelected
       ? (projectFullName.replace(/^env:/, "") as Id<"environments">)
       : undefined;
+
+    const prewarmedSandboxes =
+      prewarmContext && prewarmContext.isCloudMode
+        ? consumePrewarmedSandboxes(prewarmContext, selectedAgents)
+        : [];
 
     try {
       // Extract content including images from the editor
@@ -352,9 +415,11 @@ function DashboardComponent() {
           projectFullName,
           taskId,
           selectedAgents:
-            selectedAgents.length > 0 ? selectedAgents : undefined,
+          selectedAgents.length > 0 ? selectedAgents : undefined,
           isCloudMode: envSelected ? true : isCloudMode,
           ...(environmentId ? { environmentId } : {}),
+          prewarmedSandboxes:
+            prewarmedSandboxes.length > 0 ? prewarmedSandboxes : undefined,
           images: images.length > 0 ? images : undefined,
           theme,
         },
@@ -385,6 +450,7 @@ function DashboardComponent() {
     isEnvSelected,
     theme,
     generateUploadUrl,
+    prewarmContext,
   ]);
 
   // Fetch repos on mount if none exist
