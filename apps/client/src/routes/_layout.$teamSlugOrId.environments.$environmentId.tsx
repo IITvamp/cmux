@@ -36,7 +36,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute(
-  "/_layout/$teamSlugOrId/environments/$environmentId"
+  "/_layout/$teamSlugOrId/environments/$environmentId",
 )({
   parseParams: (params) => ({
     ...params,
@@ -47,19 +47,19 @@ export const Route = createFileRoute(
       convexQuery(api.environments.get, {
         teamSlugOrId: params.teamSlugOrId,
         id: params.environmentId,
-      })
+      }),
     );
     void queryClient.ensureQueryData(
       convexQuery(api.environmentSnapshots.list, {
         teamSlugOrId: params.teamSlugOrId,
         environmentId: params.environmentId,
-      })
+      }),
     );
     void queryClient.ensureQueryData(
       convexQuery(api.environments.get, {
         teamSlugOrId: params.teamSlugOrId,
         id: params.environmentId,
-      })
+      }),
     );
   },
   component: EnvironmentDetailsPage,
@@ -85,20 +85,20 @@ function EnvironmentDetailsPage() {
   const { data: snapshotVersions } = useSuspenseQuery(snapshotsQuery);
   const deleteEnvironment = useMutation(api.environments.remove);
   const updatePortsMutation = useRQMutation(
-    patchApiEnvironmentsByIdPortsMutation()
+    patchApiEnvironmentsByIdPortsMutation(),
   );
   const activateSnapshotMutation = useRQMutation(
-    postApiEnvironmentsByIdSnapshotsBySnapshotVersionIdActivateMutation()
+    postApiEnvironmentsByIdSnapshotsBySnapshotVersionIdActivateMutation(),
   );
   const startSandboxMutation = useRQMutation(postApiSandboxesStartMutation());
   const [isEditingPorts, setIsEditingPorts] = useState(false);
   const [portsDraft, setPortsDraft] = useState<number[]>(
-    environment.exposedPorts ?? []
+    environment.exposedPorts ?? [],
   );
   const [portInput, setPortInput] = useState("");
   const [portsError, setPortsError] = useState<string | null>(null);
   const [activatingVersionId, setActivatingVersionId] = useState<string | null>(
-    null
+    null,
   );
 
   useEffect(() => {
@@ -135,7 +135,7 @@ function EnvironmentDetailsPage() {
     const validation = validateExposedPorts([...portsDraft, parsed]);
     if (validation.reserved.length > 0) {
       setPortsError(
-        `Reserved ports cannot be exposed: ${validation.reserved.join(", ")}`
+        `Reserved ports cannot be exposed: ${validation.reserved.join(", ")}`,
       );
       return;
     }
@@ -157,7 +157,7 @@ function EnvironmentDetailsPage() {
     const validation = validateExposedPorts(portsDraft);
     if (validation.reserved.length > 0) {
       setPortsError(
-        `Reserved ports cannot be exposed: ${validation.reserved.join(", ")}`
+        `Reserved ports cannot be exposed: ${validation.reserved.join(", ")}`,
       );
       return;
     }
@@ -182,15 +182,15 @@ function EnvironmentDetailsPage() {
           setPortsError(
             error instanceof Error
               ? error.message
-              : "Failed to update exposed ports"
+              : "Failed to update exposed ports",
           );
         },
-      }
+      },
     );
   };
 
   const handleActivateSnapshot = (
-    versionId: Id<"environmentSnapshotVersions">
+    versionId: Id<"environmentSnapshotVersions">,
   ) => {
     const versionIdString = String(versionId);
     setActivatingVersionId(versionIdString);
@@ -212,17 +212,17 @@ function EnvironmentDetailsPage() {
           toast.error(
             error instanceof Error
               ? error.message
-              : "Failed to activate snapshot"
+              : "Failed to activate snapshot",
           );
         },
-      }
+      },
     );
   };
 
   const handleDelete = async () => {
     if (
       !confirm(
-        "Are you sure you want to delete this environment? This action cannot be undone."
+        "Are you sure you want to delete this environment? This action cannot be undone.",
       )
     ) {
       return;
@@ -266,7 +266,7 @@ function EnvironmentDetailsPage() {
     <FloatingPane
       header={<TitleBar title={environment?.name || "Environment Details"} />}
     >
-      <div className="p-6">
+      <div className="p-6 max-w-5xl mx-auto w-full">
         {environment ? (
           <div className="space-y-6">
             {/* Back button */}
@@ -393,41 +393,11 @@ function EnvironmentDetailsPage() {
 
               {/* Exposed Ports */}
               <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <Package className="w-4 h-4 text-neutral-500" />
-                    <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                      Exposed Ports
-                    </h3>
-                  </div>
-                  {isEditingPorts ? (
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={handleSavePorts}
-                        disabled={updatePortsMutation.isPending}
-                        className="inline-flex items-center rounded-md bg-neutral-900 text-white px-3 py-1 text-xs font-medium hover:bg-neutral-800 disabled:opacity-60 disabled:cursor-not-allowed dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
-                      >
-                        {updatePortsMutation.isPending ? "Saving..." : "Save"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleCancelPorts}
-                        disabled={updatePortsMutation.isPending}
-                        className="inline-flex items-center rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-60 disabled:cursor-not-allowed dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={handleStartEditingPorts}
-                      className="inline-flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
-                    >
-                      Add port
-                    </button>
-                  )}
+                <div className="mb-3 flex items-center gap-2">
+                  <Package className="w-4 h-4 text-neutral-500" />
+                  <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                    Exposed Ports
+                  </h3>
                 </div>
                 {isEditingPorts ? (
                   <div className="space-y-3">
@@ -461,15 +431,33 @@ function EnvironmentDetailsPage() {
                         value={portInput}
                         onChange={(event) => setPortInput(event.target.value)}
                         placeholder="Add port"
-                        className="w-28 rounded-md border border-neutral-300 px-3 py-1 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:ring-neutral-700"
+                        className="h-7 w-28 rounded-md border border-neutral-300 px-3 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:ring-neutral-700 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                       />
                       <button
                         type="button"
                         onClick={handleAddPort}
-                        className="inline-flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
+                        className="inline-flex h-7 items-center gap-1 rounded-md border border-neutral-300 px-3 text-sm font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
                       >
                         <Plus className="w-3 h-3" />
                         Add port
+                      </button>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleSavePorts}
+                        disabled={updatePortsMutation.isPending}
+                        className="inline-flex h-7 items-center justify-center rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
+                      >
+                        {updatePortsMutation.isPending ? "Saving..." : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelPorts}
+                        disabled={updatePortsMutation.isPending}
+                        className="inline-flex h-7 items-center justify-center rounded-md border border-neutral-300 px-4 text-sm font-medium text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
+                      >
+                        Cancel
                       </button>
                     </div>
                     {portsError && (
@@ -477,31 +465,42 @@ function EnvironmentDetailsPage() {
                     )}
                   </div>
                 ) : (
-                  <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex flex-wrap gap-2">
-                      {environment.exposedPorts &&
-                      environment.exposedPorts.length > 0 ? (
-                        environment.exposedPorts.map((port: number) => (
+                  <div className="space-y-3">
+                    {environment.exposedPorts &&
+                    environment.exposedPorts.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {environment.exposedPorts.map((port: number) => (
                           <span
                             key={port}
-                            className="inline-flex items-center rounded-full bg-neutral-100 dark:bg-neutral-900 px-3 py-1 text-sm text-neutral-700 dark:text-neutral-300"
+                            className="inline-flex items-center rounded-full bg-neutral-100 px-3 py-1 text-sm text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300"
                           >
                             {port}
                           </span>
-                        ))
-                      ) : (
+                        ))}
+                        <button
+                          type="button"
+                          onClick={handleStartEditingPorts}
+                          className="inline-flex h-7 items-center gap-1 rounded-md border border-neutral-300 px-3 text-sm font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
+                        >
+                          <Plus className="w-3 h-3" />
+                          Add port
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-start gap-2">
                         <span className="text-sm text-neutral-500 dark:text-neutral-500">
                           No ports configured.
                         </span>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleStartEditingPorts}
-                      className="inline-flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
-                    >
-                      Add port
-                    </button>
+                        <button
+                          type="button"
+                          onClick={handleStartEditingPorts}
+                          className="inline-flex h-7 items-center gap-1 rounded-md border border-neutral-300 px-3 text-sm font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
+                        >
+                          <Plus className="w-3 h-3" />
+                          Add port
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -556,7 +555,7 @@ function EnvironmentDetailsPage() {
                                 : "Failed to launch snapshot environment";
                             toast.error(message);
                           },
-                        }
+                        },
                       );
                     }}
                     className="inline-flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
