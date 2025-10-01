@@ -89,13 +89,13 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       if (lower.startsWith("codex/")) return "openai";
       if (lower.startsWith("claude/")) return "claude";
       if (lower.startsWith("gemini/")) return "gemini";
+      if (lower.startsWith("opencode/")) return "opencode";
       if (lower.includes("kimi")) return "kimi";
       if (lower.includes("glm")) return "glm";
       if (lower.includes("grok")) return "grok";
       if (lower.includes("qwen")) return "qwen";
       if (lower.startsWith("cursor/")) return "cursor";
       if (lower.startsWith("amp")) return "amp";
-      if (lower.startsWith("opencode/")) return "opencode";
       return "other";
     };
     const shortName = (label: string): string => {
