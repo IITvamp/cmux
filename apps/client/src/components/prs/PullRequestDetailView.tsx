@@ -1,12 +1,14 @@
 import { RunDiffSection } from "@/components/RunDiffSection";
 import { Dropdown } from "@/components/ui/dropdown";
+import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { normalizeGitRef } from "@/lib/refWithOrigin";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
 import { useQuery as useRQ } from "@tanstack/react-query";
 import { useQuery as useConvexQuery } from "convex/react";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, X } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 type PullRequestDetailViewProps = {
   teamSlugOrId: string;
@@ -93,6 +95,38 @@ export function PullRequestDetailView({
   }, [prs, owner, repo, number]);
 
   const [diffControls, setDiffControls] = useState<DiffControls | null>(null);
+  const [isMerging, setIsMerging] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
+
+  const handleMerge = async (method: MergeMethod) => {
+    if (!currentPR) return;
+
+    setIsMerging(true);
+    try {
+      toast.info(`Merge functionality coming soon (${method})`);
+      // TODO: Implement merge endpoint for GitHub PRs by owner/repo/number
+      // This would need a new backend endpoint similar to /integrations/github/prs/merge
+      // but accepting owner, repo, number instead of taskRunId
+    } catch (error) {
+      toast.error("Failed to merge PR");
+    } finally {
+      setIsMerging(false);
+    }
+  };
+
+  const handleClose = async () => {
+    if (!currentPR) return;
+
+    setIsClosing(true);
+    try {
+      toast.info("Close functionality coming soon");
+      // TODO: Implement close endpoint for GitHub PRs by owner/repo/number
+    } catch (error) {
+      toast.error("Failed to close PR");
+    } finally {
+      setIsClosing(false);
+    }
+  };
 
   if (!currentPR) {
     return (
@@ -147,9 +181,25 @@ export function PullRequestDetailView({
                     Closed
                   </span>
                 ) : (
-                  <span className="text-xs px-2 py-1 rounded-md bg-green-200 dark:bg-green-900/40 text-green-900 dark:text-green-200 select-none">
-                    Open
-                  </span>
+                  <>
+                    <span className="text-xs px-2 py-1 rounded-md bg-green-200 dark:bg-green-900/40 text-green-900 dark:text-green-200 select-none">
+                      Open
+                    </span>
+                    <MergeButton
+                      onMerge={handleMerge}
+                      isOpen={true}
+                      disabled={isMerging || isClosing}
+                      prCount={1}
+                    />
+                    <button
+                      onClick={handleClose}
+                      disabled={isMerging || isClosing}
+                      className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      Close PR
+                    </button>
+                  </>
                 )}
                 {currentPR.htmlUrl ? (
                   <a
