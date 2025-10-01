@@ -14,13 +14,35 @@ export PAGER=cat
 
 MAX_SIZE=${CMUX_DIFF_MAX_SIZE_BYTES:-200000}
 
+# Detect git repository location
+# First try current directory
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
+
+# If not found, search in subdirectories (for environment mode where repo is in /root/workspace/cmux)
 if [[ -z "${repo_root}" ]]; then
-  echo "Not a git repository" >&2
+  echo "[collect-crown-diff] No git repo in current directory, searching subdirectories..." >&2
+  workspace_root="${PWD}"
+
+  # Check if .git exists in any immediate subdirectory
+  for dir in "${workspace_root}"/*/; do
+    if [[ -d "${dir}.git" ]]; then
+      cd "${dir}"
+      repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
+      if [[ -n "${repo_root}" ]]; then
+        echo "[collect-crown-diff] Found git repository in subdirectory: ${repo_root}" >&2
+        break
+      fi
+    fi
+  done
+fi
+
+if [[ -z "${repo_root}" ]]; then
+  echo "[collect-crown-diff] ERROR: Not a git repository" >&2
   exit 1
 fi
 
 cd "${repo_root}"
+echo "[collect-crown-diff] Using git repository at: ${repo_root}" >&2
 
 is_ignored_path() {
   local p="$1"
@@ -61,25 +83,33 @@ determine_base_ref() {
 base_ref=$(determine_base_ref)
 head_ref=${CMUX_DIFF_HEAD_REF:-HEAD}
 
+echo "[collect-crown-diff] Base ref: ${base_ref:-none}, Head ref: ${head_ref}" >&2
+
 if [[ -n "$base_ref" ]]; then
   if [[ "$base_ref" == origin/* ]]; then
+    echo "[collect-crown-diff] Fetching base branch: ${base_ref#origin/}" >&2
     git fetch --quiet origin "${base_ref#origin/}" >/dev/null 2>&1 || true
   fi
   if [[ "$head_ref" == origin/* ]]; then
+    echo "[collect-crown-diff] Fetching head branch: ${head_ref#origin/}" >&2
     git fetch --quiet origin "${head_ref#origin/}" >/dev/null 2>&1 || true
   fi
 
+  echo "[collect-crown-diff] Computing merge-base between ${base_ref} and ${head_ref}" >&2
   merge_base=$(git merge-base "$base_ref" "$head_ref" 2>/dev/null || echo "")
   if [[ -z "$merge_base" ]]; then
-    echo "Could not determine merge-base" >&2
+    echo "[collect-crown-diff] ERROR: Could not determine merge-base between ${base_ref} and ${head_ref}" >&2
     exit 1
   fi
+  echo "[collect-crown-diff] Merge-base: ${merge_base}" >&2
 
   if [[ "$head_ref" == HEAD ]]; then
     has_uncommitted=false
     if [[ -n $(git status --porcelain 2>/dev/null) ]]; then
       has_uncommitted=true
     fi
+
+    echo "[collect-crown-diff] Collecting diff for HEAD (has_uncommitted=${has_uncommitted})" >&2
 
     if [[ "$has_uncommitted" == true ]]; then
       changed_tracked=$(git --no-pager diff --name-only "$merge_base" || true)
@@ -165,6 +195,7 @@ if [[ -n "$base_ref" ]]; then
       fi
     fi
   else
+    echo "[collect-crown-diff] Collecting diff between ${merge_base} and ${head_ref}" >&2
     changed_files=$(git --no-pager diff --name-only "$merge_base" "$head_ref" || true)
     filtered_files=()
     OIFS="$IFS"; IFS=$'\n'

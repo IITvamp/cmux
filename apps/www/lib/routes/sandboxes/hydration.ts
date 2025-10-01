@@ -26,9 +26,11 @@ const getHydrateScript = (): string => {
 export const hydrateWorkspace = async ({
   instance,
   repo,
+  environmentId,
 }: {
   instance: MorphInstance;
   repo?: HydrateRepoConfig;
+  environmentId?: string;
 }): Promise<void> => {
   const hydrateScript = getHydrateScript();
 
@@ -56,6 +58,8 @@ export const hydrateWorkspace = async ({
     .map(([key, value]) => `export ${key}=${singleQuote(value)}`)
     .join("\n");
 
+  const envModePrefix = environmentId ? "[ENVIRONMENT MODE]" : "";
+
   const command = `
 set -e
 ${envString}
@@ -68,7 +72,14 @@ rm -f ${scriptPath}
 exit $EXIT_CODE
 `;
 
-  console.log("[sandboxes.start] Starting hydration with Bun script");
+  if (environmentId) {
+    console.log(`[sandboxes.start] ENVIRONMENT MODE: Starting git hydration with Bun script for environmentId=${environmentId}`);
+    if (repo) {
+      console.log(`[sandboxes.start] ENVIRONMENT MODE: Git params - repo=${repo.repoFull}, baseBranch=${repo.baseBranch}, newBranch=${repo.newBranch}, depth=${repo.depth}`);
+    }
+  } else {
+    console.log("[sandboxes.start] Starting hydration with Bun script");
+  }
   const hydrateRes = await instance.exec(`bash -c ${singleQuote(command)}`);
 
   // Log the full output for debugging
@@ -76,20 +87,39 @@ exit $EXIT_CODE
   const maskedStderr = maskSensitive(hydrateRes.stderr || "");
 
   if (maskedStdout) {
-    console.log(
-      `[sandboxes.start] hydration stdout:\n${maskedStdout.slice(0, 2000)}`
-    );
+    if (environmentId) {
+      console.log(
+        `[sandboxes.start] ENVIRONMENT MODE: Git hydration stdout:\n${maskedStdout.slice(0, 2000)}`
+      );
+    } else {
+      console.log(
+        `[sandboxes.start] hydration stdout:\n${maskedStdout.slice(0, 2000)}`
+      );
+    }
   }
 
   if (maskedStderr) {
-    console.log(
-      `[sandboxes.start] hydration stderr:\n${maskedStderr.slice(0, 1000)}`
-    );
+    if (environmentId) {
+      console.log(
+        `[sandboxes.start] ENVIRONMENT MODE: Git hydration stderr:\n${maskedStderr.slice(0, 1000)}`
+      );
+    } else {
+      console.log(
+        `[sandboxes.start] hydration stderr:\n${maskedStderr.slice(0, 1000)}`
+      );
+    }
   }
 
-  console.log(`[sandboxes.start] hydration exit code: ${hydrateRes.exit_code}`);
+  if (environmentId) {
+    console.log(`[sandboxes.start] ENVIRONMENT MODE: Git hydration exit code: ${hydrateRes.exit_code}`);
+  } else {
+    console.log(`[sandboxes.start] hydration exit code: ${hydrateRes.exit_code}`);
+  }
 
   if (hydrateRes.exit_code !== 0) {
+    if (environmentId) {
+      throw new Error(`ENVIRONMENT MODE: Git hydration failed with exit code ${hydrateRes.exit_code} for environmentId=${environmentId}`);
+    }
     throw new Error(`Hydration failed with exit code ${hydrateRes.exit_code}`);
   }
 };

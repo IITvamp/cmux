@@ -139,7 +139,8 @@ function clearWorkspace(workspacePath: string) {
 function cloneRepository(config: HydrateConfig) {
   const { workspacePath, cloneUrl, maskedCloneUrl, depth } = config;
 
-  log(`Cloning ${maskedCloneUrl || cloneUrl} with depth=${depth}`);
+  log(`GIT CLONE: Starting clone of ${maskedCloneUrl || cloneUrl} with depth=${depth}`);
+  log(`GIT CLONE: Target directory: ${workspacePath}`);
 
   const { exitCode, stderr } = exec(
     `git clone --depth ${depth} "${cloneUrl}" "${workspacePath}"`,
@@ -147,15 +148,15 @@ function cloneRepository(config: HydrateConfig) {
   );
 
   if (exitCode !== 0) {
-    log(`Clone failed: ${stderr}`, "error");
+    log(`GIT CLONE: Failed with exit code ${exitCode}: ${stderr}`, "error");
     throw new Error(`Failed to clone repository: ${stderr}`);
   }
 
-  log("Repository cloned successfully");
+  log("GIT CLONE: Repository cloned successfully");
 }
 
 function fetchUpdates(workspacePath: string) {
-  log("Fetching updates from remote");
+  log("GIT FETCH: Fetching updates from remote");
 
   const { exitCode, stderr } = exec(
     `git fetch --all --prune`,
@@ -163,14 +164,14 @@ function fetchUpdates(workspacePath: string) {
   );
 
   if (exitCode !== 0) {
-    log(`Fetch warning: ${stderr}`, "debug");
+    log(`GIT FETCH: Failed with exit code ${exitCode}: ${stderr}`, "debug");
   } else {
-    log("Fetched updates successfully");
+    log("GIT FETCH: Fetched updates successfully");
   }
 }
 
 function checkoutBranch(workspacePath: string, baseBranch: string, newBranch?: string) {
-  log(`Checking out base branch: ${baseBranch}`);
+  log(`GIT CHECKOUT: Checking out base branch: ${baseBranch}`);
 
   // Try to checkout the base branch
   let checkoutResult = exec(
@@ -179,7 +180,7 @@ function checkoutBranch(workspacePath: string, baseBranch: string, newBranch?: s
   );
 
   if (checkoutResult.exitCode !== 0) {
-    log(`Direct checkout failed, trying to create from origin/${baseBranch}`);
+    log(`GIT CHECKOUT: Direct checkout failed, trying to create from origin/${baseBranch}`);
     checkoutResult = exec(
       `git checkout -b "${baseBranch}" "origin/${baseBranch}"`,
       { cwd: workspacePath, throwOnError: false }
@@ -187,35 +188,36 @@ function checkoutBranch(workspacePath: string, baseBranch: string, newBranch?: s
   }
 
   if (checkoutResult.exitCode === 0) {
-    log(`Checked out ${baseBranch}`);
+    log(`GIT CHECKOUT: Successfully checked out ${baseBranch}`);
 
     // Pull latest changes
-    const { exitCode: pullExitCode } = exec(
+    log(`GIT PULL: Pulling latest changes for ${baseBranch}`);
+    const { exitCode: pullExitCode, stderr: pullStderr } = exec(
       `git pull --ff-only`,
       { cwd: workspacePath, throwOnError: false }
     );
 
     if (pullExitCode === 0) {
-      log("Pulled latest changes");
+      log("GIT PULL: Pulled latest changes successfully");
     } else {
-      log("Could not pull latest changes (may be up to date or have conflicts)", "debug");
+      log(`GIT PULL: Failed with exit code ${pullExitCode} (may be up to date or have conflicts): ${pullStderr}`, "debug");
     }
   } else {
-    log(`Could not checkout ${baseBranch}: ${checkoutResult.stderr}`, "error");
+    log(`GIT CHECKOUT: Failed to checkout ${baseBranch} with exit code ${checkoutResult.exitCode}: ${checkoutResult.stderr}`, "error");
   }
 
   // Create and switch to new branch if specified
   if (newBranch) {
-    log(`Creating new branch: ${newBranch}`);
-    const { exitCode } = exec(
+    log(`GIT BRANCH: Creating new branch: ${newBranch}`);
+    const { exitCode, stderr } = exec(
       `git switch -C "${newBranch}"`,
       { cwd: workspacePath, throwOnError: false }
     );
 
     if (exitCode === 0) {
-      log(`Switched to new branch: ${newBranch}`);
+      log(`GIT BRANCH: Successfully switched to new branch: ${newBranch}`);
     } else {
-      log(`Could not create branch ${newBranch}`, "error");
+      log(`GIT BRANCH: Failed to create branch ${newBranch} with exit code ${exitCode}: ${stderr}`, "error");
     }
   }
 }
@@ -253,6 +255,7 @@ async function main() {
       log(`Hydrating single repository: ${config.maskedCloneUrl || config.cloneUrl}`);
 
       // Check existing repo
+      log("GIT STATUS: Checking for existing repository");
       const { hasGit, needsClear } = checkExistingRepo(
         config.workspacePath,
         config.owner,
@@ -260,6 +263,7 @@ async function main() {
       );
 
       if (needsClear) {
+        log("GIT SETUP: Clearing workspace due to repo mismatch");
         clearWorkspace(config.workspacePath);
       }
 
@@ -268,15 +272,23 @@ async function main() {
         cloneRepository(config);
       } else {
         // Fetch updates
+        log("GIT SETUP: Existing repo found, fetching updates");
         fetchUpdates(config.workspacePath);
       }
 
       // Checkout branch
       if (config.baseBranch) {
+        log(`GIT SETUP: Checking out baseBranch=${config.baseBranch}, newBranch=${config.newBranch || '(none)'}`);
         checkoutBranch(config.workspacePath, config.baseBranch, config.newBranch);
       }
 
-      // List files for verification
+      // List files and git status for verification
+      log("GIT STATUS: Verifying final state");
+      const { stdout: gitStatus } = exec(`git status --short --branch`, { cwd: config.workspacePath, throwOnError: false });
+      log(`GIT STATUS: ${gitStatus.trim()}`);
+      const { stdout: currentBranch } = exec(`git branch --show-current`, { cwd: config.workspacePath, throwOnError: false });
+      log(`GIT STATUS: Current branch: ${currentBranch.trim()}`);
+
       log("Listing workspace contents:");
       const { stdout } = exec(`ls -la | head -50`, { cwd: config.workspacePath });
       console.log(stdout);
