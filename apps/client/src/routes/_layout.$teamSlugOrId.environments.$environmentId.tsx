@@ -12,6 +12,7 @@ import type { Id } from "@cmux/convex/dataModel";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { validateExposedPorts } from "@cmux/shared/utils/validate-exposed-ports";
 import {
+  patchApiEnvironmentsByIdMutation,
   patchApiEnvironmentsByIdPortsMutation,
   postApiEnvironmentsByIdSnapshotsBySnapshotVersionIdActivateMutation,
   postApiSandboxesStartMutation,
@@ -31,6 +32,7 @@ import {
   GitBranch,
   Loader2,
   Package,
+  Pencil,
   Plus,
   Server,
   Terminal,
@@ -38,6 +40,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import type { ChangeEvent, FormEvent } from "react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute(
@@ -83,6 +86,14 @@ function EnvironmentDetailsPage() {
   if (!environment) {
     throw new Error("Environment not found");
   }
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(() => environment.name);
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [optimisticName, setOptimisticName] = useState<string | null>(null);
+  const updateEnvironmentMutation = useRQMutation(
+    patchApiEnvironmentsByIdMutation(),
+  );
+  const isRenaming = updateEnvironmentMutation.isPending;
   const snapshotsQuery = convexQuery(api.environmentSnapshots.list, {
     teamSlugOrId,
     environmentId,
@@ -106,6 +117,78 @@ function EnvironmentDetailsPage() {
   const [activatingVersionId, setActivatingVersionId] = useState<string | null>(
     null,
   );
+
+  const displayName = optimisticName ?? environment.name;
+
+  const handleStartRenaming = () => {
+    setIsEditingName(true);
+    setNameDraft(environment.name);
+    setRenameError(null);
+  };
+
+  const handleCancelRename = () => {
+    setIsEditingName(false);
+    setNameDraft(environment.name);
+    setRenameError(null);
+  };
+
+  const handleNameChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setNameDraft(event.target.value);
+    if (renameError) {
+      setRenameError(null);
+    }
+  };
+
+  const handleRenameSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmed = nameDraft.trim();
+    if (trimmed.length === 0) {
+      setRenameError("Environment name cannot be empty.");
+      return;
+    }
+    if (trimmed === environment.name) {
+      setIsEditingName(false);
+      setRenameError(null);
+      return;
+    }
+    updateEnvironmentMutation.mutate(
+      {
+        path: { id: String(environmentId) },
+        body: {
+          teamSlugOrId,
+          name: trimmed,
+        },
+      },
+      {
+        onSuccess: () => {
+          setOptimisticName(trimmed);
+          setIsEditingName(false);
+          setRenameError(null);
+          toast.success("Environment renamed");
+        },
+        onError: (error) => {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Failed to rename environment";
+          setRenameError(message);
+          toast.error(message);
+        },
+      },
+    );
+  };
+
+  useEffect(() => {
+    if (!isEditingName) {
+      setNameDraft(environment.name);
+    }
+    if (
+      optimisticName !== null &&
+      environment.name === optimisticName
+    ) {
+      setOptimisticName(null);
+    }
+  }, [environment.name, isEditingName, optimisticName]);
 
   useEffect(() => {
     if (!isEditingPorts) {
@@ -340,7 +423,7 @@ function EnvironmentDetailsPage() {
 
   return (
     <FloatingPane
-      header={<TitleBar title={environment?.name || "Environment Details"} />}
+      header={<TitleBar title={displayName || "Environment Details"} />}
     >
       <div className="p-6 max-w-5xl mx-auto w-full">
         {environment ? (
@@ -370,10 +453,66 @@ function EnvironmentDetailsPage() {
                 <div className="w-10 h-10 rounded-lg bg-neutral-100 dark:bg-neutral-900 flex items-center justify-center">
                   <Server className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
                 </div>
-                <div>
-                  <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
-                    {environment.name}
-                  </h2>
+                <div className="space-y-2">
+                  {isEditingName ? (
+                    <form
+                      className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3"
+                      onSubmit={handleRenameSubmit}
+                    >
+                      <div className="w-full max-w-sm">
+                        <input
+                          autoFocus
+                          className="w-full rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-neutral-400 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:ring-neutral-600"
+                          disabled={isRenaming}
+                          onChange={handleNameChange}
+                          value={nameDraft}
+                        />
+                        {renameError ? (
+                          <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                            {renameError}
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="submit"
+                          disabled={isRenaming}
+                          className="inline-flex items-center rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
+                        >
+                          {isRenaming ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Saving…
+                            </>
+                          ) : (
+                            "Save"
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCancelRename}
+                          disabled={isRenaming}
+                          className="inline-flex items-center rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
+                        {displayName}
+                      </h2>
+                      <button
+                        type="button"
+                        onClick={handleStartRenaming}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-600 transition-colors hover:bg-neutral-50 hover:text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-400 dark:hover:bg-neutral-900 dark:hover:text-neutral-100 dark:focus:ring-neutral-700"
+                      >
+                        <Pencil className="h-4 w-4" />
+                        <span className="sr-only">Rename environment</span>
+                      </button>
+                    </div>
+                  )}
                   <div className="flex items-center gap-2 text-sm text-neutral-500 dark:text-neutral-500">
                     <Calendar className="w-3 h-3" />
                     Created{" "}

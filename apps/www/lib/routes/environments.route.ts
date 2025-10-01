@@ -72,6 +72,16 @@ const ListEnvironmentsResponse = z
   .array(GetEnvironmentResponse)
   .openapi("ListEnvironmentsResponse");
 
+const UpdateEnvironmentBody = z
+  .object({
+    teamSlugOrId: z.string(),
+    name: z.string().optional(),
+    description: z.string().optional(),
+  })
+  .openapi("UpdateEnvironmentBody");
+
+const UpdateEnvironmentResponse = GetEnvironmentResponse;
+
 const GetEnvironmentVarsResponse = z
   .object({
     envVarsContent: z.string(),
@@ -388,6 +398,114 @@ environmentsRouter.openapi(
     } catch (error) {
       console.error("Failed to get environment:", error);
       return c.text("Failed to get environment", 500);
+    }
+  }
+);
+
+// Update environment details
+environmentsRouter.openapi(
+  createRoute({
+    method: "patch" as const,
+    path: "/environments/{id}",
+    tags: ["Environments"],
+    summary: "Update environment details",
+    request: {
+      params: z.object({
+        id: z.string(),
+      }),
+      body: {
+        content: {
+          "application/json": {
+            schema: UpdateEnvironmentBody,
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        content: {
+          "application/json": {
+            schema: UpdateEnvironmentResponse,
+          },
+        },
+        description: "Environment updated successfully",
+      },
+      400: { description: "No fields to update" },
+      401: { description: "Unauthorized" },
+      404: { description: "Environment not found" },
+      500: { description: "Failed to update environment" },
+    },
+  }),
+  async (c) => {
+    const accessToken = await getAccessTokenFromRequest(c.req.raw);
+    if (!accessToken) return c.text("Unauthorized", 401);
+
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+
+    if (body.name === undefined && body.description === undefined) {
+      return c.text("No fields to update", 400);
+    }
+
+    const trimmedName =
+      body.name !== undefined ? body.name.trim() : undefined;
+    if (trimmedName !== undefined && trimmedName.length === 0) {
+      return c.text("Environment name cannot be empty", 400);
+    }
+
+    const trimmedDescription =
+      body.description !== undefined ? body.description.trim() : undefined;
+
+    try {
+      await verifyTeamAccess({
+        req: c.req.raw,
+        teamSlugOrId: body.teamSlugOrId,
+      });
+
+      const convexClient = getConvex({ accessToken });
+      const environmentId = typedZid("environments").parse(id);
+
+      await convexClient.mutation(api.environments.update, {
+        teamSlugOrId: body.teamSlugOrId,
+        id: environmentId,
+        ...(trimmedName !== undefined ? { name: trimmedName } : {}),
+        ...(trimmedDescription !== undefined
+          ? { description: trimmedDescription }
+          : {}),
+      });
+
+      const updatedEnvironment = await convexClient.query(
+        api.environments.get,
+        {
+          teamSlugOrId: body.teamSlugOrId,
+          id: environmentId,
+        }
+      );
+
+      if (!updatedEnvironment) {
+        return c.text("Environment not found", 404);
+      }
+
+      return c.json({
+        id: updatedEnvironment._id,
+        name: updatedEnvironment.name,
+        morphSnapshotId: updatedEnvironment.morphSnapshotId,
+        dataVaultKey: updatedEnvironment.dataVaultKey,
+        selectedRepos: updatedEnvironment.selectedRepos,
+        description: updatedEnvironment.description,
+        maintenanceScript: updatedEnvironment.maintenanceScript,
+        devScript: updatedEnvironment.devScript,
+        exposedPorts: updatedEnvironment.exposedPorts,
+        createdAt: updatedEnvironment.createdAt,
+        updatedAt: updatedEnvironment.updatedAt,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "Environment not found") {
+        return c.text("Environment not found", 404);
+      }
+      console.error("Failed to update environment:", error);
+      return c.text("Failed to update environment", 500);
     }
   }
 );

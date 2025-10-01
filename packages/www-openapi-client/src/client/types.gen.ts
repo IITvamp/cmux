@@ -353,6 +353,12 @@ export type GetEnvironmentResponse = {
 
 export type ListEnvironmentsResponse = Array<GetEnvironmentResponse>;
 
+export type UpdateEnvironmentBody = {
+    teamSlugOrId: string;
+    name?: string;
+    description?: string;
+};
+
 export type GetEnvironmentVarsResponse = {
     envVarsContent: string;
 };
@@ -1435,6 +1441,43 @@ export type GetApiEnvironmentsByIdResponses = {
 };
 
 export type GetApiEnvironmentsByIdResponse = GetApiEnvironmentsByIdResponses[keyof GetApiEnvironmentsByIdResponses];
+
+export type PatchApiEnvironmentsByIdData = {
+    body: UpdateEnvironmentBody;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/environments/{id}';
+};
+
+export type PatchApiEnvironmentsByIdErrors = {
+    /**
+     * No fields to update
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Environment not found
+     */
+    404: unknown;
+    /**
+     * Failed to update environment
+     */
+    500: unknown;
+};
+
+export type PatchApiEnvironmentsByIdResponses = {
+    /**
+     * Environment updated successfully
+     */
+    200: GetEnvironmentResponse;
+};
+
+export type PatchApiEnvironmentsByIdResponse = PatchApiEnvironmentsByIdResponses[keyof PatchApiEnvironmentsByIdResponses];
 
 export type GetApiEnvironmentsByIdVarsData = {
     body?: never;
