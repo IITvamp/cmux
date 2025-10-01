@@ -1,6 +1,5 @@
 import type { Id } from "@cmux/convex/dataModel";
 import { z } from "zod";
-import { AGENT_CONFIGS } from "./agentConfig";
 import { typedZid } from "./utils/typed-zid";
 
 // Auth file schema for file uploads and environment setup
@@ -63,14 +62,9 @@ export const WorkerCreateTerminalSchema = z.object({
   args: z.array(z.string()).optional(),
   taskId: typedZid("tasks").optional(),
   taskRunId: typedZid("taskRuns").optional(),
-  // Preferred: validated against AgentConfig names at runtime (browser-safe)
-  agentModel: z
-    .string()
-    .optional()
-    .refine(
-      (val) => !val || new Set(AGENT_CONFIGS.map((c) => c.name)).has(val),
-      { message: "agentModel must be one of AGENT_CONFIGS names" }
-    ),
+  // Validation happens on the server where configs can be updated without
+  // rebuilding the worker image.
+  agentModel: z.string().optional(),
   authFiles: z.array(AuthFileSchema).optional(),
   startupCommands: z.array(z.string()).optional(),
 });
@@ -125,13 +119,7 @@ export const WorkerTerminalIdleSchema = z.object({
 export const WorkerTaskCompleteSchema = z.object({
   workerId: z.string(),
   taskRunId: typedZid("taskRuns"),
-  agentModel: z
-    .string()
-    .optional()
-    .refine(
-      (val) => !val || new Set(AGENT_CONFIGS.map((c) => c.name)).has(val),
-      { message: "agentModel must be one of AGENT_CONFIGS names" }
-    ),
+  agentModel: z.string().optional(),
   elapsedMs: z.number(),
 });
 

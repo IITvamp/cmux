@@ -7,7 +7,17 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { useQuery } from "convex/react";
-import { GitPullRequest, Home, Monitor, Moon, Plus, Server, Settings, Sun } from "lucide-react";
+import {
+  GitPullRequest,
+  Home,
+  Monitor,
+  Moon,
+  Plus,
+  RefreshCw,
+  Server,
+  Settings,
+  Sun,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ElectronLogsCommandItems } from "./command-bar/ElectronLogsCommandItems";
@@ -243,6 +253,37 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
           }
         } catch {
           toast.error("Unable to copy logs");
+        }
+      } else if (value === "updates:check") {
+        if (!isElectron) {
+          toast.error("Update checks are only available in the desktop app.");
+        } else {
+          try {
+            const cmux = typeof window === "undefined" ? undefined : window.cmux;
+            if (!cmux?.autoUpdate?.check) {
+              toast.error("Update checks are currently unavailable.");
+            } else {
+              const result = await cmux.autoUpdate.check();
+
+              if (!result?.ok) {
+                if (result?.reason === "not-packaged") {
+                  toast.info("Updates are only available in packaged builds.");
+                } else {
+                  toast.error("Failed to check for updates.");
+                }
+              } else if (result.updateAvailable) {
+                const versionLabel = result.version ? ` (${result.version})` : "";
+                toast.success(
+                  `Update available${versionLabel}. Downloading in the background.`
+                );
+              } else {
+                toast.info("You're up to date.");
+              }
+            }
+          } catch (error) {
+            console.error("Update check failed", error);
+            toast.error("Failed to check for updates.");
+          }
         }
       } else if (value === "theme-light") {
         setTheme("light");
@@ -574,7 +615,26 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
             )}
 
             {isElectron ? (
-              <ElectronLogsCommandItems onSelect={handleSelect} />
+              <>
+                <Command.Group>
+                  <div className="px-2 py-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+                    Desktop
+                  </div>
+                  <Command.Item
+                    value="updates:check"
+                    onSelect={() => handleSelect("updates:check")}
+                    className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer
+                hover:bg-neutral-100 dark:hover:bg-neutral-800
+                data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
+                data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
+                  >
+                    <RefreshCw className="h-4 w-4 text-neutral-500" />
+                    <span className="text-sm">Check for Updates</span>
+                  </Command.Item>
+                </Command.Group>
+
+                <ElectronLogsCommandItems onSelect={handleSelect} />
+              </>
             ) : null}
           </Command.List>
         </div>

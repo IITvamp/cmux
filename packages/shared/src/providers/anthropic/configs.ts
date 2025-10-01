@@ -4,6 +4,10 @@ import { checkClaudeRequirements } from "./check-requirements";
 import { startClaudeCompletionDetector } from "./completion-detector";
 import { getClaudeEnvironment } from "./environment";
 
+const CLAUDE_LIFECYCLE_DIR = "/root/lifecycle/claude";
+const CLAUDE_SECRETS_DIR = `${CLAUDE_LIFECYCLE_DIR}/secrets`;
+const CLAUDE_API_KEY_PATH = `${CLAUDE_SECRETS_DIR}/.anthropic_key`;
+
 export const CLAUDE_SONNET_4_CONFIG: AgentConfig = {
   name: "claude/sonnet-4",
   command: "bunx",
@@ -25,12 +29,12 @@ export const CLAUDE_SONNET_4_CONFIG: AgentConfig = {
     return {
       files: [
         {
-          destinationPath: "$HOME/.claude/bin/.anthropic_key",
+          destinationPath: CLAUDE_API_KEY_PATH,
           contentBase64: Buffer.from(key).toString("base64"),
           mode: "600",
         },
       ],
-      startupCommands: ["mkdir -p ~/.claude/bin"],
+      startupCommands: [`mkdir -p ${CLAUDE_SECRETS_DIR}`],
     };
   },
   completionDetector: startClaudeCompletionDetector,
@@ -57,12 +61,12 @@ export const CLAUDE_OPUS_4_CONFIG: AgentConfig = {
     return {
       files: [
         {
-          destinationPath: "$HOME/.claude/bin/.anthropic_key",
+          destinationPath: CLAUDE_API_KEY_PATH,
           contentBase64: Buffer.from(key).toString("base64"),
           mode: "600",
         },
       ],
-      startupCommands: ["mkdir -p ~/.claude/bin"],
+      startupCommands: [`mkdir -p ${CLAUDE_SECRETS_DIR}`],
     };
   },
   completionDetector: startClaudeCompletionDetector,
@@ -89,12 +93,12 @@ export const CLAUDE_OPUS_4_1_CONFIG: AgentConfig = {
     return {
       files: [
         {
-          destinationPath: "$HOME/.claude/bin/.anthropic_key",
+          destinationPath: CLAUDE_API_KEY_PATH,
           contentBase64: Buffer.from(key).toString("base64"),
           mode: "600",
         },
       ],
-      startupCommands: ["mkdir -p ~/.claude/bin"],
+      startupCommands: [`mkdir -p ${CLAUDE_SECRETS_DIR}`],
     };
   },
   completionDetector: startClaudeCompletionDetector,
@@ -121,12 +125,12 @@ export const CLAUDE_SONNET_4_5_CONFIG: AgentConfig = {
     return {
       files: [
         {
-          destinationPath: "$HOME/.claude/bin/.anthropic_key",
+          destinationPath: CLAUDE_API_KEY_PATH,
           contentBase64: Buffer.from(key).toString("base64"),
           mode: "600",
         },
       ],
-      startupCommands: ["mkdir -p ~/.claude/bin"],
+      startupCommands: [`mkdir -p ${CLAUDE_SECRETS_DIR}`],
     };
   },
   completionDetector: startClaudeCompletionDetector,
