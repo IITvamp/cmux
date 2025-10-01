@@ -1,5 +1,6 @@
 import type {
   InstallationEvent,
+  InstallationRepositoriesEvent,
   PullRequestEvent,
   PushEvent,
   WebhookEvent,
@@ -110,6 +111,34 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
                   account.type === "Organization" ? "Organization" : "User",
               }
             );
+
+            // After creating the connection, check if it has a teamId and sync repos
+            const conn = await _ctx.runQuery(
+              internal.github_app.getProviderConnectionByInstallationId,
+              { installationId }
+            );
+            const teamId = conn?.teamId;
+            const userId = conn?.connectedByUserId;
+
+            if (teamId) {
+              // Schedule repository sync for the new installation
+              await _ctx.scheduler.runAfter(
+                0,
+                internal.github_repos.syncRepositoriesForInstallation,
+                {
+                  installationId,
+                  teamId,
+                  userId,
+                }
+              );
+              console.log(
+                `Scheduled initial repository sync for new installation ${installationId}, team ${teamId}`
+              );
+            } else {
+              console.log(
+                `Installation ${installationId} created but no team mapped yet, skipping initial sync`
+              );
+            }
           }
         } else if (action === "deleted") {
           if (installationId !== undefined) {
@@ -123,7 +152,50 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
         }
         break;
       }
-      case "installation_repositories":
+      case "installation_repositories": {
+        try {
+          const repoEvent = body as InstallationRepositoriesEvent;
+          const installation = Number(repoEvent.installation?.id ?? 0);
+          if (!installation) break;
+
+          const conn = await _ctx.runQuery(
+            internal.github_app.getProviderConnectionByInstallationId,
+            { installationId: installation }
+          );
+          const teamId = conn?.teamId;
+          const userId = conn?.connectedByUserId;
+
+          // Only sync if we have a team mapped to this installation
+          if (!teamId) {
+            console.log(
+              `Skipping repo sync for installation ${installation}: no team mapped yet`
+            );
+            break;
+          }
+
+          // Schedule the repository sync action to run in the background
+          // This will paginate through all repos and insert them without blocking
+          await _ctx.scheduler.runAfter(
+            0,
+            internal.github_repos.syncRepositoriesForInstallation,
+            {
+              installationId: installation,
+              teamId,
+              userId,
+            }
+          );
+
+          console.log(
+            `Scheduled repository sync for installation ${installation}, team ${teamId}`
+          );
+        } catch (err) {
+          console.error("github_webhook installation_repositories handler failed", {
+            err,
+            delivery,
+          });
+        }
+        break;
+      }
       case "repository":
       case "create":
       case "delete":
