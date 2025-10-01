@@ -21,6 +21,7 @@ import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import clsx from "clsx";
+import type { Id } from "@cmux/convex/dataModel";
 import {
   $createParagraphNode,
   $getRoot,
@@ -479,6 +480,7 @@ interface LexicalEditorProps {
   value?: string;
   repoUrl?: string;
   branch?: string;
+  environmentId?: Id<"environments">;
   persistenceKey?: string; // Key for localStorage persistence
   maxHeight?: string;
   onEditorReady?: (editor: {
@@ -504,6 +506,7 @@ export default function LexicalEditor({
   value,
   repoUrl,
   branch,
+  environmentId,
   persistenceKey,
   maxHeight,
   onEditorReady,
@@ -577,7 +580,11 @@ export default function LexicalEditor({
           persistenceKey={persistenceKey}
           clearOnSubmit={true}
         />
-        <MentionPlugin repoUrl={repoUrl} branch={branch} />
+        <MentionPlugin
+          repoUrl={repoUrl}
+          branch={branch}
+          environmentId={environmentId}
+        />
         <ImagePlugin />
         <EditorStatePlugin onEditorReady={onEditorReady} />
       </div>
