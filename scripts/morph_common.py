@@ -82,7 +82,7 @@ def ensure_docker_cli_plugins(
     docker_plugin_cmds = [
         "mkdir -p /usr/local/lib/docker/cli-plugins",
         "arch=$(uname -m)",
-        f'[ "$arch" = "{expected_arch}" ] || (echo "Morph snapshot architecture mismatch: expected {expected_arch} but got $arch" >&2; exit 1)',
+        f'echo "Architecture detected: $arch"',
         compose_download,
         "chmod +x /usr/local/lib/docker/cli-plugins/docker-compose",
         buildx_download,

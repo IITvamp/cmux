@@ -102,6 +102,7 @@ def build_or_pull_image(
         dockerfile_dir = os.path.dirname(os.path.abspath(dockerfile_path)) or "."
         cmd = [
             "docker",
+            "buildx",
             "build",
             "--platform",
             platform,
@@ -109,6 +110,7 @@ def build_or_pull_image(
             tag,
             "-f",
             dockerfile_path,
+            "--load",
             dockerfile_dir,
         ]
         if target:
@@ -281,8 +283,7 @@ def build_snapshot(
         snapshot = snapshot.exec(
             f"""
             DEBIAN_FRONTEND=noninteractive apt-get update &&
-            DEBIAN_FRONTEND=noninteractive apt-get install -y
-            curl procps util-linux coreutils &&
+            DEBIAN_FRONTEND=noninteractive apt-get install -y curl procps util-linux coreutils &&
             rm -rf /var/lib/apt/lists/* &&
             mkdir -p /opt/app/rootfs &&
             {docker_command}
