@@ -1,5 +1,3 @@
-import { webcrypto } from "node:crypto";
-
 export const SLUG_MIN_LENGTH = 3;
 export const SLUG_MAX_LENGTH = 48;
 const SLUG_REGEX = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
@@ -49,15 +47,29 @@ function sanitizeTeamId(teamId: string): string {
 
 const encoder = new TextEncoder();
 
+async function digestTeamId(teamId: string): Promise<string> {
+  const subtle = globalThis.crypto?.subtle;
+  if (subtle) {
+    const digest = await subtle.digest("SHA-256", encoder.encode(teamId));
+    return Array.from(new Uint8Array(digest))
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  // Deterministic fallback when SubtleCrypto is unavailable (e.g., bare V8 without crypto)
+  let hash = 0;
+  for (let i = 0; i < teamId.length; i += 1) {
+    hash = (hash * 31 + teamId.charCodeAt(i)) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
 export async function deriveSlugSuffix(teamId: string): Promise<string> {
   const sanitized = sanitizeTeamId(teamId);
   if (sanitized.length >= 3) {
     return sanitized.slice(0, 3);
   }
-  const digest = await webcrypto.subtle.digest("SHA-256", encoder.encode(teamId));
-  const hex = Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+  const hex = await digestTeamId(teamId);
   return (sanitized + hex).slice(0, 3);
 }
 
