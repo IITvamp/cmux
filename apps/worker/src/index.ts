@@ -1025,15 +1025,15 @@ async function createTerminal(
   const stopErrorCaptureAt = Date.now() + INITIAL_ERROR_CAPTURE_WINDOW_MS;
 
   // Config-driven completion detector
-  const agentConfig = AGENT_CONFIGS.find((c) => c.name === options.agentModel);
+  const agentConfig = options.agentModel
+    ? AGENT_CONFIGS.find((c) => c.name === options.agentModel)
+    : undefined;
 
-  // if missing need to return early
-  if (!agentConfig) {
-    log("ERROR", `Agent config not found for ${options.agentModel}`, {
+  if (!agentConfig && options.agentModel) {
+    log("WARN", `Agent config not found for ${options.agentModel}`, {
       agentModel: options.agentModel,
       availableConfigs: AGENT_CONFIGS.map((c) => c.name),
     });
-    return;
   }
 
   if (options.taskRunId && agentConfig?.completionDetector) {
