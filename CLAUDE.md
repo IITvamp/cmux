@@ -14,6 +14,7 @@ After finishing a task, run `bun run check` in root to typecheck and lint everyt
 
 This project uses Convex and Hono.
 Schemas are defined in packages/convex/convex/schema.ts.
+If you're working in convex dir, you cannot use node APIs. eg. use crypto.subtle instead of node:crypto. Exception is if the file defines only actions and includes a "use node" directive at the top of the file.
 Hono is defined in apps/www/lib/hono-app.ts as well as apps/www/lib/routes/\*
 The Hono app generates a client in @cmux/www-openapi-client. This is automatically re-generated when the dev-server is running. If you change the Hono app (and the dev server isn't running), you should run `(cd apps/www && bun run generate-openapi-client)` to re-generate the client. Note that the generator is in www and not www-openapi-client.
 We MUST force validation of requests that do not have the proper `Content-Type`. Set the value of `request.body.required` to `true`. For example:
