@@ -17,6 +17,7 @@ import {
   Server,
   Settings,
   Sun,
+  Users,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -149,6 +150,14 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
           await router.preloadRoute({
             to: "/$teamSlugOrId/dashboard",
             params: { teamSlugOrId },
+          });
+        } catch {
+          // ignore preload errors
+        }
+      } else if (value === "team-picker") {
+        try {
+          await router.preloadRoute({
+            to: "/team-picker",
           });
         } catch {
           // ignore preload errors
@@ -296,6 +305,8 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
           to: "/$teamSlugOrId/dashboard",
           params: { teamSlugOrId },
         });
+      } else if (value === "team-picker") {
+        navigate({ to: "/team-picker" });
       } else if (value === "environments") {
         navigate({
           to: "/$teamSlugOrId/environments",
@@ -440,6 +451,17 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
               >
                 <Home className="h-4 w-4 text-neutral-500" />
                 <span className="text-sm">Home</span>
+              </Command.Item>
+              <Command.Item
+                value="team-picker"
+                onSelect={() => handleSelect("team-picker")}
+                className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer
+                hover:bg-neutral-100 dark:hover:bg-neutral-800
+                data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
+                data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
+              >
+                <Users className="h-4 w-4 text-neutral-500" />
+                <span className="text-sm">Team Picker</span>
               </Command.Item>
               <Command.Item
                 value="environments"
