@@ -63,28 +63,34 @@ type TaskRunWithChildren = Doc<"taskRuns"> & {
 
 const AVAILABLE_AGENT_NAMES = new Set(AGENT_CONFIGS.map((agent) => agent.name));
 
-function collectAgentNamesFromRuns(
+export function collectAgentNamesFromRuns(
   runs: TaskRunWithChildren[] | undefined,
 ): string[] {
   if (!runs) return [];
 
-  const seen = new Set<string>();
-  const ordered: string[] = [];
-
-  const traverse = (items: TaskRunWithChildren[]) => {
-    for (const run of items) {
-      const trimmed = run.agentName?.trim();
-      if (trimmed && AVAILABLE_AGENT_NAMES.has(trimmed) && !seen.has(trimmed)) {
-        seen.add(trimmed);
-        ordered.push(trimmed);
-      }
-      if (run.children && run.children.length > 0) {
-        traverse(run.children);
+  const findAgentName = (
+    run: TaskRunWithChildren,
+  ): string | undefined => {
+    const trimmed = run.agentName?.trim();
+    if (trimmed && AVAILABLE_AGENT_NAMES.has(trimmed)) {
+      return trimmed;
+    }
+    for (const child of run.children) {
+      const candidate = findAgentName(child);
+      if (candidate) {
+        return candidate;
       }
     }
+    return undefined;
   };
 
-  traverse(runs);
+  const ordered: string[] = [];
+  for (const run of runs) {
+    const agentName = findAgentName(run);
+    if (agentName) {
+      ordered.push(agentName);
+    }
+  }
   return ordered;
 }
 
