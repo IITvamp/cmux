@@ -91,6 +91,7 @@ function EnvironmentDetailsPage() {
   });
   const { data: snapshotVersions } = useSuspenseQuery(snapshotsQuery);
   const deleteEnvironment = useMutation(api.environments.remove);
+  const deleteSnapshotVersion = useMutation(api.environmentSnapshots.remove);
   const updatePortsMutation = useRQMutation(
     patchApiEnvironmentsByIdPortsMutation(),
   );
@@ -114,6 +115,7 @@ function EnvironmentDetailsPage() {
   const [activatingVersionId, setActivatingVersionId] = useState<string | null>(
     null,
   );
+  const [deletingVersionId, setDeletingVersionId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isEditingName) {
@@ -330,6 +332,38 @@ function EnvironmentDetailsPage() {
 
   const isModifyPending = modifyVmMutation.isPending;
   const isSnapshotPending = snapshotLaunchMutation.isPending;
+
+  const handleDeleteSnapshotVersion = async (
+    versionId: Id<"environmentSnapshotVersions">,
+  ) => {
+    if (
+      !confirm(
+        "Are you sure you want to delete this snapshot version? This action cannot be undone.",
+      )
+    ) {
+      return;
+    }
+
+    const versionIdString = String(versionId);
+    setDeletingVersionId(versionIdString);
+    try {
+      await deleteSnapshotVersion({
+        teamSlugOrId,
+        environmentId,
+        snapshotVersionId: versionId,
+      });
+      toast.success("Snapshot version deleted");
+      await queryClient.invalidateQueries({ queryKey: snapshotsQuery.queryKey });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to delete snapshot version";
+      toast.error(message);
+    } finally {
+      setDeletingVersionId(null);
+    }
+  };
 
   const handleSandboxSuccess = (data: { vscodeUrl: string; instanceId: string }) => {
     const baseUrl = data.vscodeUrl;
@@ -797,24 +831,54 @@ function EnvironmentDetailsPage() {
                               Snapshot ID: {version.morphSnapshotId}
                             </p>
                           </div>
-                          {!version.isActive && (
+                          <div className="flex items-center gap-2">
+                            {!version.isActive && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleActivateSnapshot(version._id)
+                                }
+                                disabled={
+                                  activateSnapshotMutation.isPending &&
+                                  activatingVersionId === String(version._id)
+                                }
+                                className="inline-flex items-center rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-60 disabled:cursor-not-allowed dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
+                              >
+                                {activateSnapshotMutation.isPending &&
+                                activatingVersionId === String(version._id)
+                                  ? "Activating..."
+                                  : "Activate"}
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() =>
-                                handleActivateSnapshot(version._id)
+                                handleDeleteSnapshotVersion(version._id)
                               }
                               disabled={
-                                activateSnapshotMutation.isPending &&
-                                activatingVersionId === String(version._id)
+                                version.isActive ||
+                                deletingVersionId === String(version._id)
                               }
-                              className="inline-flex items-center rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-60 disabled:cursor-not-allowed dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
+                              title={
+                                version.isActive
+                                  ? "Cannot delete the active snapshot version"
+                                  : undefined
+                              }
+                              className="inline-flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
                             >
-                              {activateSnapshotMutation.isPending &&
-                              activatingVersionId === String(version._id)
-                                ? "Activating..."
-                                : "Activate"}
+                              {deletingVersionId === String(version._id) ? (
+                                <>
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                  Deleting…
+                                </>
+                              ) : (
+                                <>
+                                  <Trash2 className="h-3 w-3" />
+                                  Delete
+                                </>
+                              )}
                             </button>
-                          )}
+                          </div>
                         </div>
                         <div className="mt-2 space-y-1 text-xs text-neutral-500 dark:text-neutral-500">
                           <p>
