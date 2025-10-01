@@ -1,5 +1,7 @@
 "use node";
 
+// TODO: we don't need a node action for this once stack auth can run in v8 environments
+
 import { v } from "convex/values";
 import { stackServerAppJs } from "../_shared/stackServerAppJs";
 import { internal } from "./_generated/api";
