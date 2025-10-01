@@ -28,13 +28,17 @@ import {
   Suspense,
   useCallback,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
   type KeyboardEvent,
 } from "react";
-import TextareaAutosize from "react-textarea-autosize";
 import { toast } from "sonner";
 import z from "zod";
+import {
+  DashboardInput,
+  type EditorApi,
+} from "@/components/dashboard/DashboardInput";
 
 const paramsSchema = z.object({
   taskId: typedZid("tasks"),
@@ -210,6 +214,7 @@ function RunDiffPage() {
   const [followUpText, setFollowUpText] = useState("");
   const [isRestartingTask, setIsRestartingTask] = useState(false);
   const [overridePrompt, setOverridePrompt] = useState(false);
+  const editorApiRef = useRef<EditorApi>(null);
   const task = useQuery(api.tasks.getById, {
     teamSlugOrId,
     id: taskId,
@@ -311,7 +316,8 @@ function RunDiffPage() {
       return;
     }
 
-    const followUp = followUpText.trim();
+    const editorContent = editorApiRef.current?.getContent();
+    const followUp = editorContent?.text.trim() ?? "";
     if (!followUp && overridePrompt) {
       toast.error("Add new instructions when overriding the prompt.");
       return;
@@ -394,6 +400,7 @@ function RunDiffPage() {
             if ("error" in response) {
               toast.error(`Task restart error: ${response.error}`);
             } else {
+              editorApiRef.current?.clear();
               setFollowUpText("");
               toast.success("Started follow-up task");
             }
@@ -410,7 +417,6 @@ function RunDiffPage() {
   }, [
     addTaskToExpand,
     createTask,
-    followUpText,
     overridePrompt,
     socket,
     task,
@@ -456,16 +462,27 @@ function RunDiffPage() {
     return undefined;
   }, [isRestartingTask, overridePrompt, socket, task, trimmedFollowUp]);
 
-  const handleFollowUpKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-        event.preventDefault();
-        if (!isRestartDisabled) {
-          void handleRestartTask();
+  const handleOverridePromptChange = useCallback(
+    (value: boolean) => {
+      setOverridePrompt(value);
+      if (value) {
+        if (!task?.text) {
+          return;
         }
+        const promptText = task.text;
+        const currentContent = editorApiRef.current?.getContent();
+        const currentText = currentContent?.text ?? "";
+        if (!currentText) {
+          editorApiRef.current?.insertText?.(promptText);
+        } else if (!currentText.includes(promptText)) {
+          editorApiRef.current?.insertText?.(`${promptText}`);
+        }
+      } else {
+        editorApiRef.current?.clear();
+        setFollowUpText("");
       }
     },
-    [handleRestartTask, isRestartDisabled],
+    [task?.text],
   );
 
   // 404 if selected run is missing
@@ -538,45 +555,23 @@ function RunDiffPage() {
                 onSubmit={handleFormSubmit}
                 className="mx-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-neutral-500/15 bg-white dark:border-neutral-500/15 dark:bg-neutral-950"
               >
-                <div className="px-3.5 pt-3.5">
-                  <TextareaAutosize
-                    value={followUpText}
-                    onChange={(event) => setFollowUpText(event.target.value)}
-                    onKeyDown={handleFollowUpKeyDown}
-                    minRows={1}
-                    maxRows={2}
-                    placeholder={
-                      overridePrompt
-                        ? "Edit original task instructions..."
-                        : "Add updated instructions or context..."
-                    }
-                    className="w-full max-h-24 resize-none overflow-y-auto border-none bg-transparent p-0 text-[15px] leading-relaxed text-neutral-900 outline-none placeholder:text-neutral-400 focus:outline-none dark:text-neutral-100 dark:placeholder:text-neutral-500"
-                  />
-                </div>
+                <DashboardInput
+                  ref={editorApiRef}
+                  onTaskDescriptionChange={setFollowUpText}
+                  onSubmit={handleRestartTask}
+                  repoUrl={
+                    task?.projectFullName
+                      ? `https://github.com/${task.projectFullName}.git`
+                      : undefined
+                  }
+                  branch={task?.baseBranch ?? undefined}
+                  maxHeight="96px"
+                />
                 <div className="flex items-center justify-between gap-2 px-3.5 pb-3 pt-2">
                   <div className="flex items-center gap-2.5">
                     <Switch
                       isSelected={overridePrompt}
-                      onValueChange={(value) => {
-                        setOverridePrompt(value);
-                        if (value) {
-                          if (!task?.text) {
-                            return;
-                          }
-                          const promptText = task.text;
-                          setFollowUpText((current) => {
-                            if (!current) {
-                              return promptText;
-                            }
-                            if (current.includes(promptText)) {
-                              return current;
-                            }
-                            return `${current}${promptText}`;
-                          });
-                        } else {
-                          setFollowUpText("");
-                        }
-                      }}
+                      onValueChange={handleOverridePromptChange}
                       size="sm"
                       aria-label="Override prompt"
                       classNames={{
