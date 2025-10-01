@@ -1,13 +1,12 @@
 import { v } from "convex/values";
 import { getTeamId } from "../_shared/team";
+import { internal } from "./_generated/api";
 import {
   internalMutation,
   internalQuery,
   type MutationCtx,
 } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
-
-const SYSTEM_BRANCH_USER_ID = "__system__";
 
 type WebhookUser = {
   login?: string;
@@ -122,13 +121,12 @@ async function upsertBranchMetadata(
     }
   }
 
-  const hasSystemRow = rows.some((row) => row.userId === SYSTEM_BRANCH_USER_ID);
-  if (!hasSystemRow) {
+  if (rows.length === 0) {
     await ctx.db.insert("branches", {
       repo: repoFullName,
       repoId,
       name: branchName,
-      userId: SYSTEM_BRANCH_USER_ID,
+      userId,
       teamId,
       lastKnownBaseSha: baseSha,
       lastKnownMergeCommitSha: mergeCommitSha,
@@ -300,9 +298,10 @@ export const upsertFromWebhookPayload = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
+    userId: v.string(),
     payload: v.any(),
   },
-  handler: async (ctx, { installationId, repoFullName, teamId, payload }) => {
+  handler: async (ctx, { installationId, repoFullName, teamId, userId, payload }) => {
     try {
       const envelope = (payload ?? {}) as PullRequestWebhookEnvelope;
       const pr = envelope.pull_request ?? {};

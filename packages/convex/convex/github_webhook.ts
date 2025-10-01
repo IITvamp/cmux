@@ -12,6 +12,11 @@ import {
   generateInstallationAccessToken,
   normalizeGithubPrivateKey,
 } from "../_shared/githubApp";
+import {
+  transformGitHubRepo,
+  normalizeTimestamp,
+  type GitHubRepository,
+} from "../_shared/github";
 import { internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 
@@ -31,43 +36,27 @@ async function verifySignature(
   return safeEqualHex(computedHex, expectedHex);
 }
 
-const MILLIS_THRESHOLD = 1_000_000_000_000;
-
-function normalizeTimestamp(
-  value: number | string | null | undefined
-): number | undefined {
-  if (value === null || value === undefined) return undefined;
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) return undefined;
-    const normalized = value > MILLIS_THRESHOLD ? value : value * 1000;
-    return Math.round(normalized);
-  }
-  const numeric = Number(value);
-  if (Number.isFinite(numeric)) {
-    const normalized = numeric > MILLIS_THRESHOLD ? numeric : numeric * 1000;
-    return Math.round(normalized);
-  }
-  const parsed = Date.parse(value);
-  if (!Number.isNaN(parsed)) {
-    return parsed;
-  }
-  return undefined;
-}
-
 async function ingestAllReposForInstallation(
-  _ctx: any,
+  _ctx: {
+    runQuery: (fn: any, args: any) => Promise<any>;
+    scheduler: { runAfter: (delay: number, fn: any, args: any) => void };
+  },
   installation: number
 ) {
   const connection = await _ctx.runQuery(
     internal.github_app.getProviderConnectionByInstallationId,
     { installationId: installation }
   );
-  if (!connection?.teamId) {
+  if (!connection?.teamId || !connection?.connectedByUserId) {
+    console.error(
+      "github_webhook: connection missing teamId or connectedByUserId",
+      { installation }
+    );
     return;
   }
   if (!env.CMUX_GITHUB_APP_ID || !env.CMUX_GITHUB_APP_PRIVATE_KEY) {
     console.error(
-      "github_webhook ingestAllReposForInstallation missing app credentials"
+      "github_webhook: missing GitHub app credentials"
     );
     return;
   }
@@ -83,6 +72,9 @@ async function ingestAllReposForInstallation(
   });
   const accessToken = tokenInfo?.token;
   if (!accessToken) {
+    console.error("github_webhook: failed to get installation token", {
+      installation,
+    });
     return;
   }
 
@@ -100,93 +92,30 @@ async function ingestAllReposForInstallation(
       },
     });
     if (!response.ok) {
-      console.error(
-        "github_webhook ingestAllReposForInstallation fetch failed",
-        {
-          installation,
-          status: response.status,
-        }
-      );
+      console.error("github_webhook: fetch failed", {
+        installation,
+        status: response.status,
+        page,
+      });
       break;
     }
-    const data =
-      (await response.json()) as InstallationRepositoriesListResponse;
+    const data = (await response.json()) as {
+      repositories?: GitHubRepository[];
+    };
     const repos = Array.isArray(data.repositories) ? data.repositories : [];
     if (repos.length === 0) {
       break;
     }
-    const toIngest = repos
-      .map((repo) => {
-        const providerRepoId =
-          typeof repo.id === "number" ? repo.id : undefined;
-        const fullName =
-          typeof repo.full_name === "string" && repo.full_name
-            ? repo.full_name
-            : undefined;
-        if (!providerRepoId || !fullName) {
-          return null;
-        }
-        const name =
-          typeof repo.name === "string" && repo.name
-            ? repo.name
-            : fullName.split("/")[1] ?? fullName;
-        const ownerLoginRaw =
-          typeof repo.owner?.login === "string" && repo.owner.login
-            ? repo.owner.login
-            : fullName.split("/")[0] ?? "";
-        if (!ownerLoginRaw) {
-          return null;
-        }
-        const ownerTypeRaw = repo.owner?.type ?? undefined;
-        const ownerType =
-          ownerTypeRaw === "Organization"
-            ? "Organization"
-            : ownerTypeRaw === "User"
-            ? "User"
-            : undefined;
-        const visibility =
-          repo.visibility === "public"
-            ? "public"
-            : repo.visibility === "private" || repo.private
-            ? "private"
-            : undefined;
-        const defaultBranch =
-          typeof repo.default_branch === "string" && repo.default_branch
-            ? repo.default_branch
-            : undefined;
-        const gitRemote =
-          typeof repo.clone_url === "string" && repo.clone_url
-            ? repo.clone_url
-            : `https://github.com/${fullName}.git`;
-        const lastPushedAt = normalizeTimestamp(repo.pushed_at);
 
-        return {
-          providerRepoId,
-          fullName,
-          org: ownerLoginRaw,
-          name,
-          gitRemote,
-          ownerLogin: ownerLoginRaw,
-          ...(ownerType !== undefined && { ownerType }),
-          ...(visibility !== undefined && { visibility }),
-          ...(defaultBranch !== undefined && { defaultBranch }),
-          ...(lastPushedAt !== undefined && { lastPushedAt }),
-        };
-      })
-      .filter((row) => row !== null);
+    const transformed = repos.map(transformGitHubRepo).filter((r) => r !== null);
 
-    if (toIngest.length > 0) {
-      await _ctx.scheduler.runAfter(
-        0,
-        internal.github.ingestInstallationRepoPage,
-        {
-          teamId: connection.teamId,
-          connectionId: connection._id,
-          installationId: installation,
-          connectedByUserId: connection.connectedByUserId ?? undefined,
-          repos: toIngest,
-        }
-      );
+    if (transformed.length > 0) {
+      _ctx.scheduler.runAfter(0, internal.github.upsertRepos, {
+        teamId: connection.teamId,
+        connectionId: connection._id,
+        userId: connection.connectedByUserId,
+        repos: transformed,
+      });
     }
 
     if (repos.length < perPage) {
@@ -195,25 +124,6 @@ async function ingestAllReposForInstallation(
     page += 1;
   }
 }
-
-type InstallationRepositoriesListResponse = {
-  total_count?: number;
-  repository_selection?: string;
-  repositories?: Array<{
-    id?: number;
-    full_name?: string;
-    name?: string;
-    owner?: {
-      login?: string | null;
-      type?: string | null;
-    } | null;
-    clone_url?: string | null;
-    default_branch?: string | null;
-    visibility?: string | null;
-    private?: boolean | null;
-    pushed_at?: string | number | null;
-  }>;
-};
 
 export const githubWebhook = httpAction(async (_ctx, req) => {
   if (!env.GITHUB_APP_WEBHOOK_SECRET) {
@@ -333,11 +243,13 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             { installationId: installation }
           );
           const teamId = conn?.teamId;
-          if (!teamId) break;
+          const userId = conn?.connectedByUserId;
+          if (!teamId || !userId) break;
           await _ctx.runMutation(internal.github_prs.upsertFromWebhookPayload, {
             installationId: installation,
             repoFullName,
             teamId,
+            userId,
             payload: prPayload,
           });
         } catch (err) {

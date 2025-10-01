@@ -4,52 +4,23 @@ import {
   generateInstallationAccessToken,
   normalizeGithubPrivateKey,
 } from "../_shared/githubApp";
+import { transformGitHubRepo, type GitHubRepository } from "../_shared/github";
 import { getTeamId } from "../_shared/team";
 import type { Doc } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { internalAction, internalMutation } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
 
-const SYSTEM_USER_ID = "__system__";
-const SYSTEM_REPO_USER_ID = SYSTEM_USER_ID;
-
 export const getReposByOrg = authQuery({
   args: { teamSlugOrId: v.string() },
   handler: async (ctx, args) => {
-    const userId = ctx.identity.subject;
     const teamId = await getTeamId(ctx, args.teamSlugOrId);
-    const [userRepos, systemRepos] = await Promise.all([
-      ctx.db
-        .query("repos")
-        .withIndex("by_team_user", (q) =>
-          q.eq("teamId", teamId).eq("userId", userId)
-        )
-        .collect(),
-      ctx.db
-        .query("repos")
-        .withIndex("by_team_user", (q) =>
-          q.eq("teamId", teamId).eq("userId", SYSTEM_REPO_USER_ID)
-        )
-        .collect(),
-    ]);
+    const allRepos = await ctx.db
+      .query("repos")
+      .withIndex("by_team", (q) => q.eq("teamId", teamId))
+      .collect();
 
-    const deduped = [...systemRepos, ...userRepos].reduce(
-      (acc, repo) => {
-        const existing = acc.get(repo.fullName);
-        if (!existing) {
-          acc.set(repo.fullName, repo);
-          return acc;
-        }
-        const existingActivity = existing.lastPushedAt ?? Number.NEGATIVE_INFINITY;
-        const candidateActivity = repo.lastPushedAt ?? Number.NEGATIVE_INFINITY;
-        if (candidateActivity > existingActivity) {
-          acc.set(repo.fullName, repo);
-        }
-        return acc;
-      },
-      new Map<string, Doc<"repos">>()
-    );
-    const repos = Array.from(deduped.values());
+    const repos = deduplicateRepos(allRepos);
 
     // Group by organization
     const reposByOrg = repos.reduce(
@@ -120,79 +91,47 @@ export const getRepoByFullName = authQuery({
       .filter((q) => q.eq(q.field("fullName"), fullName))
       .first();
 
-    if (repo) {
-      return repo;
-    }
-
-    const systemRepo = await ctx.db
-      .query("repos")
-      .withIndex("by_team_user", (q) =>
-        q.eq("teamId", teamId).eq("userId", SYSTEM_REPO_USER_ID)
-      )
-      .filter((q) => q.eq(q.field("fullName"), fullName))
-      .first();
-
-    return systemRepo ?? null;
+    return repo ?? null;
   },
 });
 
 // Queries
+function deduplicateRepos(repos: Doc<"repos">[]): Doc<"repos">[] {
+  const map = new Map<string, Doc<"repos">>();
+  for (const repo of repos) {
+    const existing = map.get(repo.fullName);
+    if (!existing ||
+        (repo.lastPushedAt ?? Number.NEGATIVE_INFINITY) >
+        (existing.lastPushedAt ?? Number.NEGATIVE_INFINITY)) {
+      map.set(repo.fullName, repo);
+    }
+  }
+  return Array.from(map.values());
+}
+
 export const getAllRepos = authQuery({
   args: { teamSlugOrId: v.string() },
   handler: async (ctx, { teamSlugOrId }) => {
-    const userId = ctx.identity.subject;
     const teamId = await getTeamId(ctx, teamSlugOrId);
-    const [userRepos, systemRepos] = await Promise.all([
-      ctx.db
-        .query("repos")
-        .withIndex("by_team_user", (q) =>
-          q.eq("teamId", teamId).eq("userId", userId)
-        )
-        .collect(),
-      ctx.db
-        .query("repos")
-        .withIndex("by_team_user", (q) =>
-          q.eq("teamId", teamId).eq("userId", SYSTEM_REPO_USER_ID)
-        )
-        .collect(),
-    ]);
-    const deduped = [...systemRepos, ...userRepos].reduce(
-      (acc, repo) => {
-        const existing = acc.get(repo.fullName);
-        if (!existing) {
-          acc.set(repo.fullName, repo);
-          return acc;
-        }
-        const existingActivity = existing.lastPushedAt ?? Number.NEGATIVE_INFINITY;
-        const candidateActivity = repo.lastPushedAt ?? Number.NEGATIVE_INFINITY;
-        if (candidateActivity > existingActivity) {
-          acc.set(repo.fullName, repo);
-        }
-        return acc;
-      },
-      new Map<string, Doc<"repos">>()
-    );
-    return Array.from(deduped.values());
+    const allRepos = await ctx.db
+      .query("repos")
+      .withIndex("by_team", (q) => q.eq("teamId", teamId))
+      .collect();
+    return deduplicateRepos(allRepos);
   },
 });
-
-const SYSTEM_BRANCH_USER_ID = SYSTEM_USER_ID;
 
 export const getBranchesByRepo = authQuery({
   args: { teamSlugOrId: v.string(), repo: v.string() },
   handler: async (ctx, { teamSlugOrId, repo }) => {
-    const userId = ctx.identity.subject;
     const teamId = await getTeamId(ctx, teamSlugOrId);
-
     const rows = await ctx.db
       .query("branches")
       .withIndex("by_repo", (q) => q.eq("repo", repo))
       .filter((q) => q.eq(q.field("teamId"), teamId))
       .collect();
 
-    const relevant = rows.filter(
-      (row) => row.userId === userId || row.userId === SYSTEM_BRANCH_USER_ID
-    );
+    const relevant = rows;
 
     const byName = new Map<string, Doc<"branches">>();
     for (const row of relevant) {
@@ -493,12 +432,11 @@ export const bulkInsertRepos = authMutation({
   },
 });
 
-export const ingestInstallationRepoPage = internalMutation({
+export const upsertRepos = internalMutation({
   args: {
     teamId: v.string(),
     connectionId: v.id("providerConnections"),
-    installationId: v.number(),
-    connectedByUserId: v.optional(v.string()),
+    userId: v.string(),
     repos: v.array(
       v.object({
         providerRepoId: v.number(),
@@ -520,82 +458,61 @@ export const ingestInstallationRepoPage = internalMutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
-    const userId = args.connectedByUserId ?? SYSTEM_REPO_USER_ID;
+
+    const existingRepos = await ctx.db
+      .query("repos")
+      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .collect();
+
+    const byProviderId = new Map(
+      existingRepos
+        .filter((r) => r.providerRepoId !== undefined)
+        .map((r) => [r.providerRepoId!, r])
+    );
+    const byFullName = new Map(existingRepos.map((r) => [r.fullName, r]));
 
     for (const repo of args.repos) {
-      const existingByProvider = await ctx.db
-        .query("repos")
-        .withIndex("by_providerRepoId", (q) =>
-          q.eq("teamId", args.teamId).eq("providerRepoId", repo.providerRepoId)
-        )
-        .first();
+      const existing =
+        byProviderId.get(repo.providerRepoId) ??
+        byFullName.get(repo.fullName);
 
-      const applyPatch = async (existing: Doc<"repos">) => {
-        const patch: Partial<Doc<"repos">> = {};
-        if (existing.fullName !== repo.fullName) patch.fullName = repo.fullName;
-        if (existing.org !== repo.org) patch.org = repo.org;
-        if (existing.name !== repo.name) patch.name = repo.name;
-        if (existing.gitRemote !== repo.gitRemote)
-          patch.gitRemote = repo.gitRemote;
-        if (existing.provider !== "github") patch.provider = "github";
-        if (existing.providerRepoId !== repo.providerRepoId)
-          patch.providerRepoId = repo.providerRepoId;
-        if (existing.ownerLogin !== repo.ownerLogin)
-          patch.ownerLogin = repo.ownerLogin;
-        if (existing.ownerType !== repo.ownerType)
-          patch.ownerType = repo.ownerType;
-        if (existing.visibility !== repo.visibility)
-          patch.visibility = repo.visibility;
-        if (existing.defaultBranch !== repo.defaultBranch)
-          patch.defaultBranch = repo.defaultBranch;
-        if (existing.connectionId !== args.connectionId)
-          patch.connectionId = args.connectionId;
-        if (
-          typeof repo.lastPushedAt === "number" &&
-          repo.lastPushedAt !== existing.lastPushedAt
-        ) {
-          patch.lastPushedAt = repo.lastPushedAt;
-        }
-        patch.lastSyncedAt = now;
-        if (!existing.userId) {
-          patch.userId = userId;
-        }
-        await ctx.db.patch(existing._id, patch);
-      };
-
-      if (existingByProvider) {
-        await applyPatch(existingByProvider);
-        continue;
+      if (existing) {
+        await ctx.db.patch(existing._id, {
+          fullName: repo.fullName,
+          org: repo.org,
+          name: repo.name,
+          gitRemote: repo.gitRemote,
+          provider: "github",
+          providerRepoId: repo.providerRepoId,
+          ownerLogin: repo.ownerLogin,
+          ownerType: repo.ownerType,
+          visibility: repo.visibility,
+          defaultBranch: repo.defaultBranch,
+          connectionId: args.connectionId,
+          lastSyncedAt: now,
+          ...(repo.lastPushedAt !== undefined && {
+            lastPushedAt: repo.lastPushedAt,
+          }),
+        });
+      } else {
+        await ctx.db.insert("repos", {
+          fullName: repo.fullName,
+          org: repo.org,
+          name: repo.name,
+          gitRemote: repo.gitRemote,
+          provider: "github",
+          providerRepoId: repo.providerRepoId,
+          ownerLogin: repo.ownerLogin,
+          ownerType: repo.ownerType,
+          visibility: repo.visibility,
+          defaultBranch: repo.defaultBranch,
+          connectionId: args.connectionId,
+          userId: args.userId,
+          teamId: args.teamId,
+          lastSyncedAt: now,
+          lastPushedAt: repo.lastPushedAt,
+        });
       }
-
-      const existingByName = await ctx.db
-        .query("repos")
-        .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
-        .filter((q) => q.eq(q.field("fullName"), repo.fullName))
-        .first();
-
-      if (existingByName) {
-        await applyPatch(existingByName);
-        continue;
-      }
-
-      await ctx.db.insert("repos", {
-        fullName: repo.fullName,
-        org: repo.org,
-        name: repo.name,
-        gitRemote: repo.gitRemote,
-        provider: "github",
-        providerRepoId: repo.providerRepoId,
-        ownerLogin: repo.ownerLogin,
-        ownerType: repo.ownerType,
-        visibility: repo.visibility,
-        defaultBranch: repo.defaultBranch,
-        connectionId: args.connectionId,
-        userId,
-        teamId: args.teamId,
-        lastSyncedAt: now,
-        lastPushedAt: repo.lastPushedAt,
-      });
     }
   },
 });
@@ -609,12 +526,16 @@ export const syncAllReposForInstallation = internalAction({
       internal.github_app.getProviderConnectionByInstallationId,
       { installationId }
     );
-    if (!connection?.teamId) {
+    if (!connection?.teamId || !connection?.connectedByUserId) {
+      console.error(
+        "syncAllReposForInstallation: connection missing teamId or connectedByUserId",
+        { installationId }
+      );
       return;
     }
     if (!env.CMUX_GITHUB_APP_ID || !env.CMUX_GITHUB_APP_PRIVATE_KEY) {
       console.error(
-        "github syncAllReposForInstallation missing app credentials"
+        "syncAllReposForInstallation: missing GitHub app credentials"
       );
       return;
     }
@@ -630,6 +551,10 @@ export const syncAllReposForInstallation = internalAction({
     });
     const accessToken = tokenInfo?.token;
     if (!accessToken) {
+      console.error(
+        "syncAllReposForInstallation: failed to get installation token",
+        { installationId }
+      );
       return;
     }
 
@@ -647,130 +572,30 @@ export const syncAllReposForInstallation = internalAction({
         },
       });
       if (!response.ok) {
-        console.error("github syncAllReposForInstallation fetch failed", {
+        console.error("syncAllReposForInstallation: fetch failed", {
           installationId,
           status: response.status,
+          page,
         });
         break;
       }
       const data = (await response.json()) as {
-        repositories?: Array<{
-          id?: number;
-          full_name?: string;
-          name?: string;
-          owner?: {
-            login?: string | null;
-            type?: string | null;
-          } | null;
-          clone_url?: string | null;
-          default_branch?: string | null;
-          visibility?: string | null;
-          private?: boolean | null;
-          pushed_at?: string | number | null;
-        }>;
+        repositories?: GitHubRepository[];
       };
       const repos = Array.isArray(data.repositories) ? data.repositories : [];
       if (repos.length === 0) {
         break;
       }
 
-      const toIngest = repos
-        .map((repo) => {
-          const providerRepoId =
-            typeof repo.id === "number" ? repo.id : undefined;
-          const fullName =
-            typeof repo.full_name === "string" && repo.full_name
-              ? repo.full_name
-              : undefined;
-          if (!providerRepoId || !fullName) {
-            return null;
-          }
-          const name =
-            typeof repo.name === "string" && repo.name
-              ? repo.name
-              : fullName.split("/")[1] ?? fullName;
-          const ownerLoginRaw =
-            typeof repo.owner?.login === "string" && repo.owner.login
-              ? repo.owner.login
-              : fullName.split("/")[0] ?? "";
-          if (!ownerLoginRaw) {
-            return null;
-          }
-          const ownerTypeRaw = repo.owner?.type ?? undefined;
-          const ownerType =
-            ownerTypeRaw === "Organization"
-              ? ("Organization" as const)
-              : ownerTypeRaw === "User"
-              ? ("User" as const)
-              : undefined;
-          const visibility =
-            repo.visibility === "public"
-              ? ("public" as const)
-              : repo.visibility === "private" || repo.private
-              ? ("private" as const)
-              : undefined;
-          const defaultBranch =
-            typeof repo.default_branch === "string" && repo.default_branch
-              ? repo.default_branch
-              : undefined;
-          const gitRemote =
-            typeof repo.clone_url === "string" && repo.clone_url
-              ? repo.clone_url
-              : `https://github.com/${fullName}.git`;
+      const transformed = repos.map(transformGitHubRepo).filter((r) => r !== null);
 
-          const normalizeTimestamp = (
-            value: number | string | null | undefined
-          ): number | undefined => {
-            if (value === null || value === undefined) return undefined;
-            const MILLIS_THRESHOLD = 1_000_000_000_000;
-            if (typeof value === "number") {
-              if (!Number.isFinite(value)) return undefined;
-              const normalized =
-                value > MILLIS_THRESHOLD ? value : value * 1000;
-              return Math.round(normalized);
-            }
-            const numeric = Number(value);
-            if (Number.isFinite(numeric)) {
-              const normalized =
-                numeric > MILLIS_THRESHOLD ? numeric : numeric * 1000;
-              return Math.round(normalized);
-            }
-            const parsed = Date.parse(value);
-            if (!Number.isNaN(parsed)) {
-              return parsed;
-            }
-            return undefined;
-          };
-
-          const lastPushedAt = normalizeTimestamp(repo.pushed_at);
-
-          return {
-            providerRepoId,
-            fullName,
-            org: ownerLoginRaw,
-            name,
-            gitRemote,
-            ownerLogin: ownerLoginRaw,
-            ...(ownerType !== undefined && { ownerType }),
-            ...(visibility !== undefined && { visibility }),
-            ...(defaultBranch !== undefined && { defaultBranch }),
-            ...(lastPushedAt !== undefined && { lastPushedAt }),
-          };
-        })
-        .filter((row) => row !== null);
-
-      if (toIngest.length > 0) {
-        await ctx.scheduler.runAfter(
-          0,
-          internal.github.ingestInstallationRepoPage,
-          {
-            teamId: connection.teamId,
-            connectionId: connection._id,
-            installationId,
-            connectedByUserId: connection.connectedByUserId ?? undefined,
-            repos: toIngest,
-          }
-        );
+      if (transformed.length > 0) {
+        ctx.scheduler.runAfter(0, internal.github.upsertRepos, {
+          teamId: connection.teamId,
+          connectionId: connection._id,
+          userId: connection.connectedByUserId,
+          repos: transformed,
+        });
       }
 
       if (repos.length < perPage) {

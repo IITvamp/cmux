@@ -238,8 +238,6 @@ export const getByTask = authQuery({
   },
 });
 
-const SYSTEM_BRANCH_USER_ID = "__system__";
-
 async function fetchBranchMetadataForRepo(
   ctx: QueryCtx,
   teamId: string,
@@ -252,9 +250,7 @@ async function fetchBranchMetadataForRepo(
     .filter((q) => q.eq(q.field("teamId"), teamId))
     .collect();
 
-  const relevant = rows.filter(
-    (row) => row.userId === userId || row.userId === SYSTEM_BRANCH_USER_ID,
-  );
+  const relevant = rows;
 
   const byName = new Map<string, Doc<"branches">>();
   for (const row of relevant) {
