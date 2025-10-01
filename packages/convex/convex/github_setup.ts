@@ -60,7 +60,7 @@ async function importPrivateKey(pem: string): Promise<CryptoKey> {
       : der.slice();
   const key = await subtle.importKey(
     "pkcs8",
-    keyData,
+    keyData as BufferSource,
     {
       name: "RSASSA-PKCS1-v1_5",
       hash: "SHA-256",
