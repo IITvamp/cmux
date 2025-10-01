@@ -1,3 +1,4 @@
+import LexicalEditor from "@/components/lexical/LexicalEditor";
 import { FloatingPane } from "@/components/floating-pane";
 import { type GitDiffViewerProps } from "@/components/git-diff-viewer";
 import { RunDiffSection } from "@/components/RunDiffSection";
@@ -24,15 +25,7 @@ import { useQuery as useRQ } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import { Command } from "lucide-react";
-import {
-  Suspense,
-  useCallback,
-  useMemo,
-  useState,
-  type FormEvent,
-  type KeyboardEvent,
-} from "react";
-import TextareaAutosize from "react-textarea-autosize";
+import { Suspense, useCallback, useMemo, useRef, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import z from "zod";
 
@@ -59,6 +52,11 @@ type RunEnvironmentSummary = Pick<
 type TaskRunWithChildren = Doc<"taskRuns"> & {
   children: TaskRunWithChildren[];
   environment: RunEnvironmentSummary | null;
+};
+
+type RestartEditorApi = {
+  clear: () => void;
+  insertText?: (text: string) => void;
 };
 
 const AVAILABLE_AGENT_NAMES = new Set(AGENT_CONFIGS.map((agent) => agent.name));
@@ -210,6 +208,29 @@ function RunDiffPage() {
   const [followUpText, setFollowUpText] = useState("");
   const [isRestartingTask, setIsRestartingTask] = useState(false);
   const [overridePrompt, setOverridePrompt] = useState(false);
+  const editorApiRef = useRef<RestartEditorApi | null>(null);
+
+  const syncEditorContent = useCallback((text: string) => {
+    const editor = editorApiRef.current;
+    if (!editor) {
+      return;
+    }
+    editor.clear();
+    if (text) {
+      editor.insertText?.(text);
+    }
+  }, []);
+
+  const handleEditorReady = useCallback(
+    (api: RestartEditorApi) => {
+      editorApiRef.current = api;
+      if (followUpText) {
+        api.clear();
+        api.insertText?.(followUpText);
+      }
+    },
+    [followUpText],
+  );
   const task = useQuery(api.tasks.getById, {
     teamSlugOrId,
     id: taskId,
@@ -252,6 +273,39 @@ function RunDiffPage() {
   }, [task?.projectFullName, environmentRepos]);
 
   const [primaryRepo, ...additionalRepos] = repoFullNames;
+
+  const lexicalRepoUrl = useMemo(() => {
+    if (!primaryRepo) {
+      return undefined;
+    }
+    if (primaryRepo.startsWith("env:")) {
+      return undefined;
+    }
+    return `https://github.com/${primaryRepo}.git`;
+  }, [primaryRepo]);
+
+  const lexicalBranch = useMemo(
+    () => selectedRun?.newBranch || task?.baseBranch || undefined,
+    [selectedRun?.newBranch, task?.baseBranch],
+  );
+
+  const followUpPlaceholder = useMemo(
+    () =>
+      overridePrompt
+        ? "Edit original task instructions..."
+        : "Add updated instructions or context...",
+    [overridePrompt],
+  );
+
+  const followUpEditorClassName = useMemo(
+    () =>
+      cn(
+        "w-full text-[15px] leading-relaxed text-neutral-900 dark:text-neutral-100",
+        "bg-transparent focus:outline-none caret-neutral-600 dark:caret-neutral-300",
+        "min-h-[40px] hide-scrollbar",
+      ),
+    [],
+  );
 
   const branchMetadataQuery = useRQ({
     ...convexQuery(api.github.getBranchesByRepo, {
@@ -395,6 +449,7 @@ function RunDiffPage() {
               toast.error(`Task restart error: ${response.error}`);
             } else {
               setFollowUpText("");
+              syncEditorContent("");
               toast.success("Started follow-up task");
             }
             resolve();
@@ -418,6 +473,7 @@ function RunDiffPage() {
     theme,
     restartAgents,
     restartIsCloudMode,
+    syncEditorContent,
   ]);
 
   const handleFormSubmit = useCallback(
@@ -455,18 +511,6 @@ function RunDiffPage() {
     }
     return undefined;
   }, [isRestartingTask, overridePrompt, socket, task, trimmedFollowUp]);
-
-  const handleFollowUpKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-        event.preventDefault();
-        if (!isRestartDisabled) {
-          void handleRestartTask();
-        }
-      }
-    },
-    [handleRestartTask, isRestartDisabled],
-  );
 
   // 404 if selected run is missing
   if (!selectedRun) {
@@ -539,18 +583,18 @@ function RunDiffPage() {
                 className="mx-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-neutral-500/15 bg-white dark:border-neutral-500/15 dark:bg-neutral-950"
               >
                 <div className="px-3.5 pt-3.5">
-                  <TextareaAutosize
-                    value={followUpText}
-                    onChange={(event) => setFollowUpText(event.target.value)}
-                    onKeyDown={handleFollowUpKeyDown}
-                    minRows={1}
-                    maxRows={2}
-                    placeholder={
-                      overridePrompt
-                        ? "Edit original task instructions..."
-                        : "Add updated instructions or context..."
-                    }
-                    className="w-full max-h-24 resize-none overflow-y-auto border-none bg-transparent p-0 text-[15px] leading-relaxed text-neutral-900 outline-none placeholder:text-neutral-400 focus:outline-none dark:text-neutral-100 dark:placeholder:text-neutral-500"
+                  <LexicalEditor
+                    placeholder={followUpPlaceholder}
+                    onChange={setFollowUpText}
+                    onSubmit={() => {
+                      void handleRestartTask();
+                    }}
+                    repoUrl={lexicalRepoUrl}
+                    branch={lexicalBranch}
+                    maxHeight="96px"
+                    onEditorReady={handleEditorReady}
+                    contentEditableClassName={followUpEditorClassName}
+                    className="w-full"
                   />
                 </div>
                 <div className="flex items-center justify-between gap-2 px-3.5 pb-3 pt-2">
@@ -564,17 +608,17 @@ function RunDiffPage() {
                             return;
                           }
                           const promptText = task.text;
-                          setFollowUpText((current) => {
-                            if (!current) {
-                              return promptText;
-                            }
-                            if (current.includes(promptText)) {
-                              return current;
-                            }
-                            return `${current}${promptText}`;
-                          });
+                          const nextValue =
+                            followUpText && followUpText.includes(promptText)
+                              ? followUpText
+                              : followUpText
+                                ? `${followUpText}${promptText}`
+                                : promptText;
+                          setFollowUpText(nextValue);
+                          syncEditorContent(nextValue);
                         } else {
                           setFollowUpText("");
+                          syncEditorContent("");
                         }
                       }}
                       size="sm"
