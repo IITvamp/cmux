@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   buildSlugCandidate,
-  deriveSlugPrefix,
+  deriveSlugSuffix,
   extractSlugFromMetadata,
   normalizeSlug,
   slugifyTeamName,
@@ -29,29 +29,33 @@ describe("teamSlug helpers", () => {
     expect(slugifyTeamName("Frontend Wizards!")).toBe("frontend-wizards");
   });
 
-  test("deriveSlugPrefix uses sanitized team id", () => {
-    expect(deriveSlugPrefix("550e8400-e29b-41d4-a716-446655440000")).toBe(
-      "550e",
-    );
-    expect(deriveSlugPrefix("@@id")).toBe("idte");
+  test("slugifyTeamName extracts email local part", () => {
+    expect(slugifyTeamName("user@example.com")).toBe("user");
   });
 
-  test("buildSlugCandidate combines prefix and slugified name", () => {
+  test("deriveSlugSuffix uses sanitized team id", () => {
+    expect(deriveSlugSuffix("550e8400-e29b-41d4-a716-446655440000")).toBe(
+      "550e",
+    );
+    expect(deriveSlugSuffix("@@id")).toBe("idte");
+  });
+
+  test("buildSlugCandidate combines name and suffix", () => {
     const slug = buildSlugCandidate(
       "550e8400-e29b-41d4-a716-446655440000",
       "Frontend Wizards",
       0,
     );
-    expect(slug).toBe("550e-frontend-wizards");
+    expect(slug).toBe("frontend-wizards-550e");
   });
 
-  test("buildSlugCandidate appends suffix for later attempts", () => {
+  test("buildSlugCandidate appends attempt suffix", () => {
     const slug = buildSlugCandidate(
       "550e8400-e29b-41d4-a716-446655440000",
       "Frontend Wizards",
       2,
     );
-    expect(slug).toBe("550e-frontend-wizards-2");
+    expect(slug).toBe("frontend-wizards-550e-2");
   });
 
   test("buildSlugCandidate respects maximum length", () => {
@@ -63,6 +67,15 @@ describe("teamSlug helpers", () => {
     );
     expect(slug.length).toBeLessThanOrEqual(48);
     expect(() => validateSlug(slug)).not.toThrow();
+  });
+
+  test("buildSlugCandidate handles email names", () => {
+    const slug = buildSlugCandidate(
+      "550e8400-e29b-41d4-a716-446655440000",
+      "user@example.com",
+      0,
+    );
+    expect(slug).toBe("user-550e");
   });
 
   test("extractSlugFromMetadata normalizes valid slug", () => {
