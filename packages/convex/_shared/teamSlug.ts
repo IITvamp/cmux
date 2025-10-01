@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { webcrypto } from "node:crypto";
 
 export const SLUG_MIN_LENGTH = 3;
 export const SLUG_MAX_LENGTH = 48;
@@ -47,19 +47,29 @@ function sanitizeTeamId(teamId: string): string {
   return sanitized.length > 0 ? sanitized : "team";
 }
 
-export function deriveSlugSuffix(teamId: string): string {
+const encoder = new TextEncoder();
+
+export async function deriveSlugSuffix(teamId: string): Promise<string> {
   const sanitized = sanitizeTeamId(teamId);
   if (sanitized.length >= 3) {
     return sanitized.slice(0, 3);
   }
-  const hash = createHash("sha256").update(teamId).digest("hex");
-  return (sanitized + hash).slice(0, 3);
+  const digest = await webcrypto.subtle.digest("SHA-256", encoder.encode(teamId));
+  const hex = Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  return (sanitized + hex).slice(0, 3);
 }
 
-export function buildSlugCandidate(teamId: string, displayName: string, attempt: number): string {
+export async function buildSlugCandidate(
+  teamId: string,
+  displayName: string,
+  attempt: number,
+  suffixOverride?: string,
+): Promise<string> {
   const rawBase = slugifyTeamName(displayName);
   const baseFallback = rawBase.length > 0 ? rawBase : "team";
-  const suffix = deriveSlugSuffix(teamId);
+  const suffix = suffixOverride ?? (await deriveSlugSuffix(teamId));
   const attemptPart = attempt > 0 ? attempt.toString(36) : undefined;
   const trailing = attemptPart ? `${suffix}-${attemptPart}` : suffix;
 
