@@ -4,7 +4,10 @@ import {
   StackWebhookPayloadSchema,
   type StackWebhookPayload,
 } from "../_shared/stack-webhook-schema";
-import { stackServerAppJs, type MaybeStackServerApp } from "../_shared/stackServerAppJs";
+import {
+  stackServerAppJs,
+  type StackServerAppJsInstance,
+} from "../_shared/stackServerAppJs";
 import { internal } from "./_generated/api";
 import { httpAction, type ActionCtx } from "./_generated/server";
 
@@ -15,10 +18,9 @@ function undefIfNull<T>(value: T | null | undefined): T | undefined {
 export async function syncTeamMembershipsFromStack(
   ctx: ActionCtx,
   teamId: string,
-  appOverride?: MaybeStackServerApp
+  appOverride?: StackServerAppJsInstance
 ): Promise<void> {
-  const stackApp = appOverride ?? stackServerAppJs();
-  if (!stackApp) return;
+  const stackApp = appOverride ?? stackServerAppJs;
 
   try {
     const team = await stackApp.getTeam(teamId);
