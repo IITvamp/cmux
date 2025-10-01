@@ -225,6 +225,28 @@ export type GithubMergePrRequest = {
     method: 'squash' | 'rebase' | 'merge';
 };
 
+export type GithubPrMergeResponse = {
+    success: boolean;
+    merged?: boolean;
+    commitSha?: string;
+    message?: string;
+    error?: string;
+};
+
+export type GithubPrMergeBody = {
+    method?: 'merge' | 'squash' | 'rebase';
+};
+
+export type GithubPrCloseResponse = {
+    success: boolean;
+    state?: 'open' | 'closed';
+    error?: string;
+};
+
+export type GithubPrCloseBody = {
+    reason?: 'completed' | 'not_planned';
+};
+
 export type GithubPrsFilesResponse = {
     repoFullName: string;
     number: number;
@@ -1144,6 +1166,102 @@ export type PostApiIntegrationsGithubPrsMergeResponses = {
 };
 
 export type PostApiIntegrationsGithubPrsMergeResponse = PostApiIntegrationsGithubPrsMergeResponses[keyof PostApiIntegrationsGithubPrsMergeResponses];
+
+export type PostApiIntegrationsGithubPrsByOwnerByRepoByNumberMergeData = {
+    body: GithubPrMergeBody;
+    path: {
+        owner: string;
+        repo: string;
+        number: number;
+    };
+    query: {
+        /**
+         * Team slug or UUID
+         */
+        team: string;
+    };
+    url: '/api/integrations/github/prs/{owner}/{repo}/{number}/merge';
+};
+
+export type PostApiIntegrationsGithubPrsByOwnerByRepoByNumberMergeErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Forbidden
+     */
+    403: unknown;
+    /**
+     * Pull request not found
+     */
+    404: unknown;
+    /**
+     * Pull request could not be merged
+     */
+    409: unknown;
+    /**
+     * Internal error
+     */
+    500: unknown;
+};
+
+export type PostApiIntegrationsGithubPrsByOwnerByRepoByNumberMergeResponses = {
+    /**
+     * Merge result
+     */
+    200: GithubPrMergeResponse;
+};
+
+export type PostApiIntegrationsGithubPrsByOwnerByRepoByNumberMergeResponse = PostApiIntegrationsGithubPrsByOwnerByRepoByNumberMergeResponses[keyof PostApiIntegrationsGithubPrsByOwnerByRepoByNumberMergeResponses];
+
+export type PostApiIntegrationsGithubPrsByOwnerByRepoByNumberCloseData = {
+    body: GithubPrCloseBody;
+    path: {
+        owner: string;
+        repo: string;
+        number: number;
+    };
+    query: {
+        /**
+         * Team slug or UUID
+         */
+        team: string;
+    };
+    url: '/api/integrations/github/prs/{owner}/{repo}/{number}/close';
+};
+
+export type PostApiIntegrationsGithubPrsByOwnerByRepoByNumberCloseErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Forbidden
+     */
+    403: unknown;
+    /**
+     * Pull request not found
+     */
+    404: unknown;
+    /**
+     * Pull request could not be closed
+     */
+    409: unknown;
+    /**
+     * Internal error
+     */
+    500: unknown;
+};
+
+export type PostApiIntegrationsGithubPrsByOwnerByRepoByNumberCloseResponses = {
+    /**
+     * Close result
+     */
+    200: GithubPrCloseResponse;
+};
+
+export type PostApiIntegrationsGithubPrsByOwnerByRepoByNumberCloseResponse = PostApiIntegrationsGithubPrsByOwnerByRepoByNumberCloseResponses[keyof PostApiIntegrationsGithubPrsByOwnerByRepoByNumberCloseResponses];
 
 export type GetApiIntegrationsGithubPrsRawData = {
     body?: never;

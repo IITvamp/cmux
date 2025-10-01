@@ -1,12 +1,26 @@
 import { RunDiffSection } from "@/components/RunDiffSection";
 import { Dropdown } from "@/components/ui/dropdown";
+import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
+import { getErrorDescription } from "@/components/task-detail-header.mutations";
 import { normalizeGitRef } from "@/lib/refWithOrigin";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
-import { useQuery as useRQ } from "@tanstack/react-query";
+import {
+  postApiIntegrationsGithubPrsByOwnerByRepoByNumberCloseMutation,
+  postApiIntegrationsGithubPrsByOwnerByRepoByNumberMergeMutation,
+} from "@cmux/www-openapi-client/react-query";
+import type {
+  Options,
+  PostApiIntegrationsGithubPrsByOwnerByRepoByNumberCloseData,
+  PostApiIntegrationsGithubPrsByOwnerByRepoByNumberCloseResponse,
+  PostApiIntegrationsGithubPrsByOwnerByRepoByNumberMergeData,
+  PostApiIntegrationsGithubPrsByOwnerByRepoByNumberMergeResponse,
+} from "@cmux/www-openapi-client";
+import { useMutation, type DefaultError, useQuery as useRQ } from "@tanstack/react-query";
 import { useQuery as useConvexQuery } from "convex/react";
-import { ExternalLink } from "lucide-react";
-import { Suspense, useMemo, useState } from "react";
+import { ExternalLink, GitPullRequestClosed } from "lucide-react";
+import { Suspense, useCallback, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 type PullRequestDetailViewProps = {
   teamSlugOrId: string;
@@ -26,6 +40,10 @@ type AdditionsAndDeletionsProps = {
   repoFullName: string;
   ref1: string;
   ref2: string;
+};
+
+type ToastContext = {
+  toastId: string | number;
 };
 
 function AdditionsAndDeletions({
@@ -94,7 +112,131 @@ export function PullRequestDetailView({
 
   const [diffControls, setDiffControls] = useState<DiffControls | null>(null);
 
-  if (!currentPR) {
+  const isMissingPR = !currentPR;
+  const repoFullName = (currentPR?.repoFullName ?? `${owner}/${repo}`).trim();
+
+  const [prOwner, prRepo] = useMemo(() => {
+    const [ownerPart = owner, repoPart = repo] = repoFullName.split("/", 2);
+    return [ownerPart, repoPart];
+  }, [repoFullName, owner, repo]);
+
+  const prNumber = currentPR?.number ?? Number(number);
+  const isOpen = currentPR?.state === "open";
+  const isMerged = Boolean(currentPR?.merged);
+  const isDraft = Boolean(currentPR?.draft);
+  const hasRepoParts =
+    Boolean(prOwner) && Boolean(prRepo) && Number.isFinite(prNumber);
+
+  const mergeMutation = useMutation<
+    PostApiIntegrationsGithubPrsByOwnerByRepoByNumberMergeResponse,
+    DefaultError,
+    Options<PostApiIntegrationsGithubPrsByOwnerByRepoByNumberMergeData>,
+    ToastContext
+  >({
+    ...postApiIntegrationsGithubPrsByOwnerByRepoByNumberMergeMutation(),
+    onMutate: (variables) => {
+      const method = variables.body?.method ?? "merge";
+      const label =
+        method === "squash"
+          ? "Squash merging PR..."
+          : method === "rebase"
+            ? "Rebase merging PR..."
+            : "Merging PR...";
+      const toastId = toast.loading(label);
+      return { toastId } satisfies ToastContext;
+    },
+    onSuccess: (data, _variables, context) => {
+      toast.success("PR merged", {
+        id: context?.toastId,
+        description:
+          data.commitSha && data.commitSha.length > 0
+            ? `Commit ${data.commitSha.slice(0, 7)}`
+            : data.message,
+      });
+    },
+    onError: (error, _variables, context) => {
+      toast.error("Failed to merge PR", {
+        id: context?.toastId,
+        description: getErrorDescription(error),
+      });
+    },
+  });
+
+  const closeMutation = useMutation<
+    PostApiIntegrationsGithubPrsByOwnerByRepoByNumberCloseResponse,
+    DefaultError,
+    Options<PostApiIntegrationsGithubPrsByOwnerByRepoByNumberCloseData>,
+    ToastContext
+  >({
+    ...postApiIntegrationsGithubPrsByOwnerByRepoByNumberCloseMutation(),
+    onMutate: () => {
+      const toastId = toast.loading("Closing PR...");
+      return { toastId } satisfies ToastContext;
+    },
+    onSuccess: (_data, _variables, context) => {
+      toast.success("PR closed", {
+        id: context?.toastId,
+      });
+    },
+    onError: (error, _variables, context) => {
+      toast.error("Failed to close PR", {
+        id: context?.toastId,
+        description: getErrorDescription(error),
+      });
+    },
+  });
+
+  const mergeDisabled =
+    !hasRepoParts || isDraft || mergeMutation.isPending || closeMutation.isPending;
+  const closeDisabled =
+    !hasRepoParts || mergeMutation.isPending || closeMutation.isPending;
+
+  const mergeDisabledReason = !hasRepoParts
+    ? "Missing repository information"
+    : isDraft
+      ? "Convert draft to ready for review before merging"
+      : mergeMutation.isPending
+        ? "Merging pull request..."
+        : closeMutation.isPending
+          ? "Closing pull request..."
+          : undefined;
+
+  const closeDisabledReason = !hasRepoParts
+    ? "Missing repository information"
+    : mergeMutation.isPending
+      ? "Merging pull request..."
+      : closeMutation.isPending
+        ? "Closing pull request..."
+        : undefined;
+
+  const handleMerge = useCallback(
+    (method: MergeMethod) => {
+      if (!hasRepoParts) {
+        toast.error("Repository information is missing for this pull request.");
+        return;
+      }
+      mergeMutation.mutate({
+        body: { method },
+        path: { owner: prOwner, repo: prRepo, number: prNumber },
+        query: { team: teamSlugOrId },
+      });
+    },
+    [hasRepoParts, mergeMutation, prOwner, prRepo, prNumber, teamSlugOrId],
+  );
+
+  const handleClose = useCallback(() => {
+    if (!hasRepoParts) {
+      toast.error("Repository information is missing for this pull request.");
+      return;
+    }
+    closeMutation.mutate({
+      body: {},
+      path: { owner: prOwner, repo: prRepo, number: prNumber },
+      query: { team: teamSlugOrId },
+    });
+  }, [closeMutation, hasRepoParts, prOwner, prRepo, prNumber, teamSlugOrId]);
+
+  if (isMissingPR) {
     return (
       <div className="h-full w-full flex items-center justify-center text-neutral-500 dark:text-neutral-400">
         PR not found
@@ -151,6 +293,28 @@ export function PullRequestDetailView({
                     Open
                   </span>
                 )}
+                {isOpen && !isMerged ? (
+                  <>
+                    <div title={mergeDisabledReason ?? undefined}>
+                      <MergeButton
+                        onMerge={handleMerge}
+                        isOpen
+                        disabled={mergeDisabled}
+                        className="h-[26px]"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleClose}
+                      disabled={closeDisabled}
+                      title={closeDisabledReason ?? undefined}
+                      className="flex items-center gap-1.5 px-3 py-1 h-[26px] bg-red-600 text-white rounded border border-red-700 hover:bg-red-600/90 dark:bg-red-700 dark:border-red-800 dark:hover:bg-red-700/90 font-medium text-xs select-none disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <GitPullRequestClosed className="w-3.5 h-3.5" />
+                      {closeMutation.isPending ? "Closing..." : "Close PR"}
+                    </button>
+                  </>
+                ) : null}
                 {currentPR.htmlUrl ? (
                   <a
                     className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none whitespace-nowrap"

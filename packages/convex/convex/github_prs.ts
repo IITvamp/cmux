@@ -282,6 +282,24 @@ export const listPullRequests = authQuery({
   },
 });
 
+export const getByRepoAndNumber = authQuery({
+  args: {
+    teamSlugOrId: v.string(),
+    repoFullName: v.string(),
+    number: v.number(),
+  },
+  handler: async (ctx, { teamSlugOrId, repoFullName, number }) => {
+    const teamId = await getTeamId(ctx, teamSlugOrId);
+    const record = await ctx.db
+      .query("pullRequests")
+      .withIndex("by_team_repo_number", (q) =>
+        q.eq("teamId", teamId).eq("repoFullName", repoFullName).eq("number", number),
+      )
+      .first();
+    return record ?? null;
+  },
+});
+
 // Helper to look up a provider connection for a repository owner
 export const getConnectionForOwnerInternal = internalQuery({
   args: { owner: v.string() },
