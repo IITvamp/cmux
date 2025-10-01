@@ -44,6 +44,17 @@ export interface AgentSpawnResult {
   error?: string;
 }
 
+export interface PreSpawnedSandbox {
+  instanceId: string;
+  vscodeUrl: string;
+  workerUrl: string;
+  provider: "morph";
+  createdAt: number;
+  teamId: string;
+  environmentId?: string;
+  snapshotId?: string;
+}
+
 export async function spawnAgent(
   agent: AgentConfig,
   taskId: Id<"tasks">,
@@ -60,6 +71,7 @@ export async function spawnAgent(
     }>;
     theme?: "dark" | "light" | "system";
     newBranch?: string; // Optional pre-generated branch name
+    preSpawnedSandbox?: PreSpawnedSandbox; // Optional pre-spawned sandbox to use
   },
   teamSlugOrId: string,
 ): Promise<AgentSpawnResult> {
@@ -342,6 +354,7 @@ export async function spawnAgent(
         newBranch,
         environmentId: options.environmentId,
         taskRunJwt,
+        preSpawnedSandbox: options.preSpawnedSandbox,
       });
 
       worktreePath = "/root/workspace";
@@ -826,6 +839,7 @@ export async function spawnAllAgents(
       altText: string;
     }>;
     theme?: "dark" | "light" | "system";
+    preSpawnedSandboxes?: PreSpawnedSandbox[]; // Optional pre-spawned sandboxes to use
   },
   teamSlugOrId: string,
 ): Promise<AgentSpawnResult[]> {
@@ -850,6 +864,7 @@ export async function spawnAllAgents(
   );
 
   // Spawn all agents in parallel with their pre-generated branch names
+  // Assign pre-spawned sandboxes if available
   const results = await Promise.all(
     agentsToSpawn.map((agent, index) =>
       spawnAgent(
@@ -858,6 +873,7 @@ export async function spawnAllAgents(
         {
           ...options,
           newBranch: branchNames[index],
+          preSpawnedSandbox: options.preSpawnedSandboxes?.[index],
         },
         teamSlugOrId,
       ),

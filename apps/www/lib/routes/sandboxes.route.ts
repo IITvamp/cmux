@@ -22,6 +22,7 @@ import {
   encodeEnvContentForEnvctl,
   envctlLoadCommand,
 } from "./utils/ensure-env-vars";
+import { createSandbox } from "./sandboxes/sandbox-utils";
 
 export const sandboxesRouter = new OpenAPIHono();
 
@@ -66,6 +67,37 @@ const UpdateSandboxEnvResponse = z
     applied: z.literal(true),
   })
   .openapi("UpdateSandboxEnvResponse");
+
+const PreSpawnSandboxesBody = z
+  .object({
+    teamSlugOrId: z.string(),
+    count: z.number().min(1).max(10).default(3),
+    environmentId: z.string().optional(),
+    snapshotId: z.string().optional(),
+    ttlSeconds: z
+      .number()
+      .optional()
+      .default(20 * 60),
+    metadata: z.record(z.string(), z.string()).optional(),
+  })
+  .openapi("PreSpawnSandboxesBody");
+
+const PreSpawnSandboxesResponse = z
+  .object({
+    sandboxes: z.array(
+      z.object({
+        instanceId: z.string(),
+        vscodeUrl: z.string(),
+        workerUrl: z.string(),
+        provider: z.enum(["morph"]),
+        createdAt: z.number(),
+        teamId: z.string(),
+        environmentId: z.string().optional(),
+        snapshotId: z.string().optional(),
+      }),
+    ),
+  })
+  .openapi("PreSpawnSandboxesResponse");
 
 // Start a new sandbox (currently Morph-backed)
 sandboxesRouter.openapi(
@@ -140,160 +172,37 @@ sandboxesRouter.openapi(
     }
 
     try {
-      const convex = getConvex({ accessToken });
-
-      const { team, resolvedSnapshotId, environmentDataVaultKey } =
-        await resolveTeamAndSnapshot({
-          req: c.req.raw,
-          convex,
-          teamSlugOrId: body.teamSlugOrId,
-          environmentId: body.environmentId,
-          snapshotId: body.snapshotId,
-        });
-
-      const environmentEnvVarsPromise = environmentDataVaultKey
-        ? loadEnvironmentEnvVars(environmentDataVaultKey)
-        : Promise.resolve<string | null>(null);
-
-      const gitIdentityPromise = githubAccessTokenPromise.then(
-        ({ githubAccessToken }) => {
-          if (!githubAccessToken) {
-            throw new Error("GitHub access token not found");
-          }
-          return fetchGitIdentityInputs(convex, githubAccessToken);
-        }
-      );
-
-      const client = new MorphCloudClient({ apiKey: env.MORPH_API_KEY });
-      const instance = await client.instances.start({
-        snapshotId: resolvedSnapshotId,
-        ttlSeconds: body.ttlSeconds ?? 20 * 60,
-        ttlAction: "pause",
-        metadata: {
-          app: "cmux",
-          teamId: team.uuid,
-          ...(body.environmentId ? { environmentId: body.environmentId } : {}),
-          ...(body.metadata || {}),
-        },
-      });
-
-      const exposed = instance.networking.httpServices;
-      const vscodeService = exposed.find((s) => s.port === 39378);
-      const workerService = exposed.find((s) => s.port === 39377);
-      if (!vscodeService || !workerService) {
-        await instance.stop().catch(() => {});
-        return c.text("VSCode or worker service not found", 500);
-      }
-
-      // Get environment variables from the environment if configured
-      const environmentEnvVarsContent = await environmentEnvVarsPromise;
-
-      // Prepare environment variables including task JWT if present
-      let envVarsToApply = environmentEnvVarsContent || "";
-
-      // Add CMUX task-related env vars if present
-      if (body.taskRunId) {
-        envVarsToApply += `\nCMUX_TASK_RUN_ID="${body.taskRunId}"`;
-      }
-      if (body.taskRunJwt) {
-        envVarsToApply += `\nCMUX_TASK_RUN_JWT="${body.taskRunJwt}"`;
-      }
-      
-      // Apply all environment variables if any
-      if (envVarsToApply.trim().length > 0) {
-        try {
-          const encodedEnv = encodeEnvContentForEnvctl(envVarsToApply);
-          const loadRes = await instance.exec(envctlLoadCommand(encodedEnv));
-          if (loadRes.exit_code === 0) {
-            console.log(
-              `[sandboxes.start] Applied environment variables via envctl`,
-              {
-                hasEnvironmentVars: Boolean(environmentEnvVarsContent),
-                hasTaskRunId: Boolean(body.taskRunId),
-                hasTaskRunJwt: Boolean(body.taskRunJwt),
-              }
-            );
-          } else {
-            console.error(
-              `[sandboxes.start] Env var bootstrap failed exit=${loadRes.exit_code} stderr=${(loadRes.stderr || "").slice(0, 200)}`
-            );
-          }
-        } catch (error) {
-          console.error(
-            "[sandboxes.start] Failed to apply environment variables",
-            error
-          );
-        }
-      }
-
-      const configureGitIdentityTask = gitIdentityPromise
-        .then(([who, gh]) => {
-          const { name, email } = selectGitIdentity(who, gh);
-          return configureGitIdentity(instance, { name, email });
-        })
-        .catch((error) => {
-          console.log(
-            `[sandboxes.start] Failed to configure git identity; continuing...`,
-            error
-          );
-        });
-
       const { githubAccessToken, githubAccessTokenError } =
         await githubAccessTokenPromise;
       if (githubAccessTokenError) {
         console.error(
-          `[sandboxes.start] GitHub access token error: ${githubAccessTokenError}`
+          `[sandboxes.start] GitHub access token error: ${githubAccessTokenError}`,
         );
         return c.text("Failed to resolve GitHub credentials", 401);
       }
 
-      // Sandboxes run as the requesting user, so prefer their OAuth scope over GitHub App installation tokens.
-      await configureGithubAccess(instance, githubAccessToken);
-
-      let repoConfig: HydrateRepoConfig | undefined;
-      if (body.repoUrl) {
-        console.log(`[sandboxes.start] Hydrating repo for ${instance.id}`);
-        const match = body.repoUrl.match(
-          /github\.com\/?([^\s/]+)\/([^\s/.]+)(?:\.git)?/i
-        );
-        if (!match) {
-          return c.text("Unsupported repo URL; expected GitHub URL", 400);
-        }
-        const owner = match[1]!;
-        const name = match[2]!;
-        const repoFull = `${owner}/${name}`;
-        console.log(`[sandboxes.start] Parsed owner/repo: ${repoFull}`);
-
-        repoConfig = {
-          owner,
-          name,
-          repoFull,
-          cloneUrl: `https://github.com/${owner}/${name}.git`,
-          maskedCloneUrl: `https://github.com/${owner}/${name}.git`,
-          depth: Math.max(1, Math.floor(body.depth ?? 1)),
-          baseBranch: body.branch || "main",
-          newBranch: body.newBranch ?? "",
-        };
-      }
-
-      try {
-        await hydrateWorkspace({
-          instance,
-          repo: repoConfig,
-        });
-      } catch (error) {
-        console.error(`[sandboxes.start] Hydration failed:`, error);
-        await instance.stop().catch(() => {});
-        return c.text("Failed to hydrate sandbox", 500);
-      }
-
-      await configureGitIdentityTask;
+      const sandbox = await createSandbox({
+        teamSlugOrId: body.teamSlugOrId,
+        environmentId: body.environmentId,
+        snapshotId: body.snapshotId,
+        ttlSeconds: body.ttlSeconds,
+        metadata: body.metadata,
+        taskRunId: body.taskRunId,
+        taskRunJwt: body.taskRunJwt,
+        repoUrl: body.repoUrl,
+        branch: body.branch,
+        newBranch: body.newBranch,
+        depth: body.depth,
+        req: c.req.raw,
+        accessToken,
+        githubAccessToken,
+      });
 
       return c.json({
-        instanceId: instance.id,
-        vscodeUrl: vscodeService.url,
-        workerUrl: workerService.url,
-        provider: "morph",
+        instanceId: sandbox.instanceId,
+        vscodeUrl: sandbox.vscodeUrl,
+        workerUrl: sandbox.workerUrl,
+        provider: sandbox.provider,
       });
     } catch (error) {
       if (error instanceof HTTPException) {
@@ -306,7 +215,128 @@ sandboxesRouter.openapi(
       console.error("Failed to start sandbox:", error);
       return c.text("Failed to start sandbox", 500);
     }
-  }
+  },
+);
+
+// Pre-spawn sandboxes for faster task startup
+sandboxesRouter.openapi(
+  createRoute({
+    method: "post" as const,
+    path: "/sandboxes/pre-spawn",
+    tags: ["Sandboxes"],
+    summary: "Pre-spawn sandboxes for faster task startup",
+    request: {
+      body: {
+        content: {
+          "application/json": {
+            schema: PreSpawnSandboxesBody,
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        content: {
+          "application/json": {
+            schema: PreSpawnSandboxesResponse,
+          },
+        },
+        description: "Sandboxes pre-spawned successfully",
+      },
+      401: { description: "Unauthorized" },
+      500: { description: "Failed to pre-spawn sandboxes" },
+    },
+  }),
+  async (c) => {
+    const user = await stackServerAppJs.getUser({ tokenStore: c.req.raw });
+    if (!user) {
+      return c.text("Unauthorized", 401);
+    }
+    const { accessToken } = await user.getAuthJson();
+    if (!accessToken) {
+      return c.text("Unauthorized", 401);
+    }
+
+    const githubAccessTokenPromise = (async () => {
+      const githubAccount = await user.getConnectedAccount("github");
+      if (!githubAccount) {
+        return {
+          githubAccessTokenError: "GitHub account not found",
+          githubAccessToken: null,
+        } as const;
+      }
+      const { accessToken: githubAccessToken } =
+        await githubAccount.getAccessToken();
+      if (!githubAccessToken) {
+        return {
+          githubAccessTokenError: "GitHub access token not found",
+          githubAccessToken: null,
+        } as const;
+      }
+
+      return { githubAccessTokenError: null, githubAccessToken } as const;
+    })();
+
+    const body = c.req.valid("json");
+
+    try {
+      console.log("[sandboxes.pre-spawn] incoming", {
+        teamSlugOrId: body.teamSlugOrId,
+        count: body.count,
+        hasEnvId: Boolean(body.environmentId),
+        hasSnapshotId: Boolean(body.snapshotId),
+      });
+    } catch {
+      /* noop */
+    }
+
+    try {
+      const { githubAccessToken, githubAccessTokenError } =
+        await githubAccessTokenPromise;
+      if (githubAccessTokenError) {
+        console.error(
+          `[sandboxes.pre-spawn] GitHub access token error: ${githubAccessTokenError}`,
+        );
+        return c.text("Failed to resolve GitHub credentials", 401);
+      }
+
+      // Pre-spawn sandboxes in parallel
+      const sandboxPromises = Array.from({ length: body.count }, () =>
+        createSandbox({
+          teamSlugOrId: body.teamSlugOrId,
+          environmentId: body.environmentId,
+          snapshotId: body.snapshotId,
+          ttlSeconds: body.ttlSeconds,
+          metadata: {
+            ...body.metadata,
+            preSpawned: "true",
+          },
+          req: c.req.raw,
+          accessToken,
+          githubAccessToken,
+        }),
+      );
+
+      const sandboxes = await Promise.all(sandboxPromises);
+
+      console.log(
+        `[sandboxes.pre-spawn] Successfully pre-spawned ${sandboxes.length} sandboxes`,
+      );
+
+      return c.json({ sandboxes });
+    } catch (error) {
+      if (error instanceof HTTPException) {
+        const message =
+          typeof error.message === "string" && error.message.length > 0
+            ? error.message
+            : "Request failed";
+        return c.text(message, error.status);
+      }
+      console.error("Failed to pre-spawn sandboxes:", error);
+      return c.text("Failed to pre-spawn sandboxes", 500);
+    }
+  },
 );
 
 sandboxesRouter.openapi(
@@ -381,7 +411,7 @@ sandboxesRouter.openapi(
       const execResult = await instance.exec(command);
       if (execResult.exit_code !== 0) {
         console.error(
-          `[sandboxes.env] envctl load failed exit=${execResult.exit_code} stderr=${(execResult.stderr || "").slice(0, 200)}`
+          `[sandboxes.env] envctl load failed exit=${execResult.exit_code} stderr=${(execResult.stderr || "").slice(0, 200)}`,
         );
         return c.text("Failed to apply environment variables", 500);
       }
@@ -390,11 +420,11 @@ sandboxesRouter.openapi(
     } catch (error) {
       console.error(
         "[sandboxes.env] Failed to apply environment variables",
-        error
+        error,
       );
       return c.text("Failed to apply environment variables", 500);
     }
-  }
+  },
 );
 
 // Stop/pause a sandbox
@@ -428,7 +458,7 @@ sandboxesRouter.openapi(
       console.error("Failed to stop sandbox:", error);
       return c.text("Failed to stop sandbox", 500);
     }
-  }
+  },
 );
 
 // Query status of sandbox
@@ -467,10 +497,10 @@ sandboxesRouter.openapi(
       const client = new MorphCloudClient({ apiKey: env.MORPH_API_KEY });
       const instance = await client.instances.get({ instanceId: id });
       const vscodeService = instance.networking.httpServices.find(
-        (s) => s.port === 39378
+        (s) => s.port === 39378,
       );
       const workerService = instance.networking.httpServices.find(
-        (s) => s.port === 39377
+        (s) => s.port === 39377,
       );
       const running = Boolean(vscodeService);
       return c.json({
@@ -483,7 +513,7 @@ sandboxesRouter.openapi(
       console.error("Failed to get sandbox status:", error);
       return c.text("Failed to get status", 500);
     }
-  }
+  },
 );
 
 // Publish devcontainer forwarded ports (read devcontainer.json inside instance, expose, persist to Convex)
@@ -517,7 +547,7 @@ sandboxesRouter.openapi(
                 status: z.enum(["running"]).default("running"),
                 port: z.number(),
                 url: z.string(),
-              })
+              }),
             ),
           },
         },
@@ -540,7 +570,7 @@ sandboxesRouter.openapi(
 
       // Attempt to read devcontainer.json for declared forwarded ports
       const devcontainerJson = await instance.exec(
-        "cat /root/workspace/.devcontainer/devcontainer.json"
+        "cat /root/workspace/.devcontainer/devcontainer.json",
       );
       const parsed =
         devcontainerJson.exit_code === 0
@@ -592,7 +622,7 @@ sandboxesRouter.openapi(
       ).forEach(addAllowed);
 
       const desiredPorts = Array.from(allowedPorts.values()).sort(
-        (a, b) => a - b
+        (a, b) => a - b,
       );
       const serviceNameForPort = (port: number) => `port-${port}`;
 
@@ -622,7 +652,7 @@ sandboxesRouter.openapi(
       for (const port of desiredPorts) {
         const serviceName = serviceNameForPort(port);
         const alreadyExposed = workingInstance.networking.httpServices.some(
-          (service) => service.name === serviceName
+          (service) => service.name === serviceName,
         );
         if (alreadyExposed) {
           continue;
@@ -632,7 +662,7 @@ sandboxesRouter.openapi(
         } catch (error) {
           console.error(
             `[sandboxes.publishNetworking] Failed to expose ${serviceName}`,
-            error
+            error,
           );
         }
       }
@@ -655,5 +685,5 @@ sandboxesRouter.openapi(
       console.error("Failed to publish devcontainer networking:", error);
       return c.text("Failed to publish devcontainer networking", 500);
     }
-  }
+  },
 );

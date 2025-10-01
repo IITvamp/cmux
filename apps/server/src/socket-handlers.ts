@@ -368,6 +368,7 @@ export function setupSocketHandlers(
             images: taskData.images,
             theme: taskData.theme,
             environmentId: taskData.environmentId,
+            preSpawnedSandboxes: taskData.preSpawnedSandboxes,
           },
           safeTeam,
         );
@@ -1351,7 +1352,6 @@ ${title}`;
         });
       }
     });
-
 
     socket.on("check-provider-status", async (callback) => {
       try {

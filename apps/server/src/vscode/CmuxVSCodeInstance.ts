@@ -24,6 +24,7 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
   private newBranch?: string;
   private environmentId?: string;
   private taskRunJwt?: string;
+  private preSpawnedSandbox?: import("../vscode/VSCodeInstance").PreSpawnedSandbox;
 
   constructor(config: VSCodeInstanceConfig) {
     super(config);
@@ -33,49 +34,62 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
       newBranch?: string;
       environmentId?: string;
       taskRunJwt?: string;
+      preSpawnedSandbox?: import("../vscode/VSCodeInstance").PreSpawnedSandbox;
     };
     this.repoUrl = cfg.repoUrl;
     this.branch = cfg.branch;
     this.newBranch = cfg.newBranch;
     this.environmentId = cfg.environmentId;
     this.taskRunJwt = cfg.taskRunJwt;
+    this.preSpawnedSandbox = cfg.preSpawnedSandbox;
   }
 
   async start(): Promise<VSCodeInstanceInfo> {
-    dockerLogger.info(
-      `[CmuxVSCodeInstance ${this.instanceId}] Requesting sandbox start via www API`
-    );
-    const startRes = await postApiSandboxesStart({
-      client: getWwwClient(),
-      body: {
-        teamSlugOrId: this.teamSlugOrId,
-        ttlSeconds: 20 * 60,
-        metadata: {
-          instance: `cmux-${this.taskRunId}`,
-          taskRunId: String(this.taskRunId),
-          agentName: this.config.agentName || "",
-          taskRunJwt: this.taskRunJwt || "",
-        },
-        ...(this.environmentId ? { environmentId: this.environmentId } : {}),
-        ...(this.repoUrl
-          ? {
-              repoUrl: this.repoUrl,
-              branch: this.branch,
-              newBranch: this.newBranch,
-              depth: 1,
-            }
-          : {}),
-      },
-    });
-    const data = startRes.data;
-    if (!data) {
-      throw new Error("Failed to start sandbox");
-    }
+    if (this.preSpawnedSandbox) {
+      dockerLogger.info(
+        `[CmuxVSCodeInstance ${this.instanceId}] Using pre-spawned sandbox ${this.preSpawnedSandbox.instanceId}`,
+      );
 
-    this.sandboxId = data.instanceId;
-    this.vscodeBaseUrl = data.vscodeUrl;
-    this.workerUrl = data.workerUrl;
-    this.provider = data.provider || "morph";
+      this.sandboxId = this.preSpawnedSandbox.instanceId;
+      this.vscodeBaseUrl = this.preSpawnedSandbox.vscodeUrl;
+      this.workerUrl = this.preSpawnedSandbox.workerUrl;
+      this.provider = this.preSpawnedSandbox.provider;
+    } else {
+      dockerLogger.info(
+        `[CmuxVSCodeInstance ${this.instanceId}] Requesting sandbox start via www API`,
+      );
+      const startRes = await postApiSandboxesStart({
+        client: getWwwClient(),
+        body: {
+          teamSlugOrId: this.teamSlugOrId,
+          ttlSeconds: 20 * 60,
+          metadata: {
+            instance: `cmux-${this.taskRunId}`,
+            taskRunId: String(this.taskRunId),
+            agentName: this.config.agentName || "",
+            taskRunJwt: this.taskRunJwt || "",
+          },
+          ...(this.environmentId ? { environmentId: this.environmentId } : {}),
+          ...(this.repoUrl
+            ? {
+                repoUrl: this.repoUrl,
+                branch: this.branch,
+                newBranch: this.newBranch,
+                depth: 1,
+              }
+            : {}),
+        },
+      });
+      const data = startRes.data;
+      if (!data) {
+        throw new Error("Failed to start sandbox");
+      }
+
+      this.sandboxId = data.instanceId;
+      this.vscodeBaseUrl = data.vscodeUrl;
+      this.workerUrl = data.workerUrl;
+      this.provider = data.provider || "morph";
+    }
 
     const workspaceUrl = this.getWorkspaceUrl(this.vscodeBaseUrl);
     dockerLogger.info(`[CmuxVSCodeInstance] VS Code URL: ${workspaceUrl}`);
@@ -86,12 +100,12 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
       try {
         await this.connectToWorker(this.workerUrl);
         dockerLogger.info(
-          `[CmuxVSCodeInstance ${this.instanceId}] Connected to worker`
+          `[CmuxVSCodeInstance ${this.instanceId}] Connected to worker`,
         );
       } catch (error) {
         dockerLogger.error(
           `[CmuxVSCodeInstance ${this.instanceId}] Failed to connect to worker`,
-          error
+          error,
         );
       }
     }
@@ -168,7 +182,7 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
     } catch (e) {
       dockerLogger.warn(
         `[CmuxVSCodeInstance] setupDevcontainer failed for sandbox ${this.sandboxId}`,
-        e
+        e,
       );
     }
   }

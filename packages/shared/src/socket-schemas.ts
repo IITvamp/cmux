@@ -42,11 +42,25 @@ export const StartTaskSchema = z.object({
         src: z.string(),
         fileName: z.string().optional(),
         altText: z.string(),
-      })
+      }),
     )
     .optional(),
   theme: z.enum(["dark", "light", "system"]).optional(),
   environmentId: typedZid("environments").optional(),
+  preSpawnedSandboxes: z
+    .array(
+      z.object({
+        instanceId: z.string(),
+        vscodeUrl: z.string(),
+        workerUrl: z.string(),
+        provider: z.literal("morph"),
+        createdAt: z.number(),
+        teamId: z.string(),
+        environmentId: z.string().optional(),
+        snapshotId: z.string().optional(),
+      }),
+    )
+    .optional(),
 });
 
 // Server to Client Events
@@ -218,7 +232,6 @@ export const VSCodeSpawnedSchema = z.object({
   provider: z.enum(["docker", "morph", "daytona"]),
 });
 
-
 // GitHub events
 export const GitHubFetchReposSchema = z.object({
   teamSlugOrId: z.string(),
@@ -244,8 +257,8 @@ export const GitHubReposResponseSchema = z.object({
         z.object({
           fullName: z.string(),
           name: z.string(),
-        })
-      )
+        }),
+      ),
     )
     .optional(),
   error: z.string().optional(),
@@ -412,7 +425,7 @@ export interface ClientToServerEvents {
   // Terminal operations
   "start-task": (
     data: StartTask,
-    callback: (response: TaskStarted | TaskError) => void
+    callback: (response: TaskStarted | TaskError) => void,
   ) => void;
   "git-status": (data: GitStatusRequest) => void;
   "git-diff": (
@@ -420,26 +433,26 @@ export interface ClientToServerEvents {
     callback: (
       response:
         | { ok: true; diffs: import("./diff-types.js").ReplaceDiffEntry[] }
-        | { ok: false; error: string; diffs: [] }
-    ) => void
+        | { ok: false; error: string; diffs: [] },
+    ) => void,
   ) => void;
   "git-full-diff": (data: GitFullDiffRequest) => void;
   "open-in-editor": (
     data: OpenInEditor,
-    callback: (response: OpenInEditorResponse) => void
+    callback: (response: OpenInEditorResponse) => void,
   ) => void;
   "list-files": (data: ListFilesRequest) => void;
   // GitHub operations
   "github-test-auth": (
-    callback: (response: GitHubAuthResponse) => void
+    callback: (response: GitHubAuthResponse) => void,
   ) => void;
   "github-fetch-repos": (
     data: GitHubFetchRepos,
-    callback: (response: GitHubReposResponse) => void
+    callback: (response: GitHubReposResponse) => void,
   ) => void;
   "github-fetch-branches": (
     data: GitHubFetchBranches,
-    callback: (response: GitHubBranchesResponse) => void
+    callback: (response: GitHubBranchesResponse) => void,
   ) => void;
   // Create a draft pull request for a given task run
   "github-create-draft-pr": (
@@ -449,7 +462,7 @@ export interface ClientToServerEvents {
       results: PullRequestActionResult[];
       aggregate: AggregatePullRequestSummary;
       error?: string;
-    }) => void
+    }) => void,
   ) => void;
   // Sync PR state with GitHub and update Convex
   "github-sync-pr-state": (
@@ -459,7 +472,7 @@ export interface ClientToServerEvents {
       results: PullRequestActionResult[];
       aggregate: AggregatePullRequestSummary;
       error?: string;
-    }) => void
+    }) => void,
   ) => void;
   // Merge branch directly
   "github-merge-branch": (
@@ -469,20 +482,20 @@ export interface ClientToServerEvents {
       merged?: boolean;
       commitSha?: string;
       error?: string;
-    }) => void
+    }) => void,
   ) => void;
   // Rust N-API test: returns current time
   "rust-get-time": (
     callback: (
-      response: { ok: true; time: string } | { ok: false; error: string }
-    ) => void
+      response: { ok: true; time: string } | { ok: false; error: string },
+    ) => void,
   ) => void;
   "check-provider-status": (
-    callback: (response: ProviderStatusResponse) => void
+    callback: (response: ProviderStatusResponse) => void,
   ) => void;
   "archive-task": (
     data: ArchiveTask,
-    callback: (response: { success: boolean; error?: string }) => void
+    callback: (response: { success: boolean; error?: string }) => void,
   ) => void;
   "spawn-from-comment": (
     data: SpawnFromComment,
@@ -494,7 +507,7 @@ export interface ClientToServerEvents {
       terminalId?: string;
       vscodeUrl?: string;
       error?: string;
-    }) => void
+    }) => void,
   ) => void;
 }
 

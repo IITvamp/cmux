@@ -31,12 +31,27 @@ import { Server as ServerIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+interface PreSpawnedSandbox {
+  instanceId: string;
+  vscodeUrl: string;
+  workerUrl: string;
+  provider: "morph";
+  createdAt: number;
+  teamId: string;
+  environmentId?: string;
+  snapshotId?: string;
+}
+
 export const Route = createFileRoute("/_layout/$teamSlugOrId/dashboard")({
   component: DashboardComponent,
 });
 
 // Default agents (not persisted to localStorage)
-const DEFAULT_AGENTS = ["claude/sonnet-4.5", "claude/opus-4.1", "codex/gpt-5-codex-high"];
+const DEFAULT_AGENTS = [
+  "claude/sonnet-4.5",
+  "claude/opus-4.1",
+  "codex/gpt-5-codex-high",
+];
 
 function DashboardComponent() {
   const { teamSlugOrId } = Route.useParams();
@@ -63,6 +78,12 @@ function DashboardComponent() {
     const stored = localStorage.getItem("isCloudMode");
     return stored ? JSON.parse(stored) : false;
   });
+  const [preSpawnedSandboxes, setPreSpawnedSandboxes] = useState<
+    PreSpawnedSandbox[]
+  >(() => {
+    const stored = sessionStorage.getItem("preSpawnedSandboxes");
+    return stored ? JSON.parse(stored) : [];
+  });
 
   const [, setDockerReady] = useState<boolean | null>(null);
   const [providerStatus, setProviderStatus] =
@@ -83,14 +104,107 @@ function DashboardComponent() {
   }, [searchParams?.environmentId]);
 
   // Callback for task description changes
-  const handleTaskDescriptionChange = useCallback((value: string) => {
-    setTaskDescription(value);
-  }, []);
+  const handleTaskDescriptionChange = useCallback(
+    (value: string) => {
+      setTaskDescription(value);
+
+      // Pre-spawn sandboxes when user starts typing and we have selected agents
+      if (
+        value.trim().length > 0 &&
+        selectedAgents.length > 0 &&
+        preSpawnedSandboxes.length === 0
+      ) {
+        preSpawnSandboxes();
+      }
+    },
+    [selectedAgents.length, preSpawnedSandboxes.length],
+  );
+
+  // Function to pre-spawn sandboxes
+  const preSpawnSandboxes = useCallback(async () => {
+    if (!selectedProject[0] || selectedAgents.length === 0) return;
+
+    try {
+      const response = await fetch("/api/sandboxes/pre-spawn", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          teamSlugOrId,
+          count: Math.min(selectedAgents.length, 3), // Pre-spawn up to 3 sandboxes
+          environmentId: selectedProject[0]?.startsWith("env:")
+            ? selectedProject[0].replace("env:", "")
+            : undefined,
+          snapshotId: undefined, // Could be enhanced to use a specific snapshot
+          ttlSeconds: 20 * 60,
+          metadata: {
+            preSpawned: "true",
+            dashboard: "true",
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        console.warn("Failed to pre-spawn sandboxes:", response.statusText);
+        return;
+      }
+
+      const data = await response.json();
+      setPreSpawnedSandboxes(data.sandboxes);
+      sessionStorage.setItem(
+        "preSpawnedSandboxes",
+        JSON.stringify(data.sandboxes),
+      );
+      console.log(`Pre-spawned ${data.sandboxes.length} sandboxes`);
+    } catch (error) {
+      console.warn("Error pre-spawning sandboxes:", error);
+    }
+  }, [selectedProject, selectedAgents.length, teamSlugOrId]);
+
+  // Function to clean up old pre-spawned sandboxes
+  const cleanupOldSandboxes = useCallback(async () => {
+    const now = Date.now();
+    const maxAge = 10 * 60 * 1000; // 10 minutes
+
+    const validSandboxes = preSpawnedSandboxes.filter((sandbox) => {
+      const age = now - sandbox.createdAt;
+      return age < maxAge;
+    });
+
+    // Stop old sandboxes
+    const oldSandboxes = preSpawnedSandboxes.filter((sandbox) => {
+      const age = now - sandbox.createdAt;
+      return age >= maxAge;
+    });
+
+    for (const sandbox of oldSandboxes) {
+      try {
+        await fetch(`/api/sandboxes/${sandbox.instanceId}/stop`, {
+          method: "POST",
+        });
+        console.log(`Cleaned up old sandbox: ${sandbox.instanceId}`);
+      } catch (error) {
+        console.warn(
+          `Failed to stop old sandbox ${sandbox.instanceId}:`,
+          error,
+        );
+      }
+    }
+
+    if (validSandboxes.length !== preSpawnedSandboxes.length) {
+      setPreSpawnedSandboxes(validSandboxes);
+      sessionStorage.setItem(
+        "preSpawnedSandboxes",
+        JSON.stringify(validSandboxes),
+      );
+    }
+  }, [preSpawnedSandboxes]);
 
   // Fetch branches for selected repo from Convex
   const isEnvSelected = useMemo(
     () => (selectedProject[0] || "").startsWith("env:"),
-    [selectedProject]
+    [selectedProject],
   );
 
   const branchesQuery = useQuery({
@@ -102,7 +216,7 @@ function DashboardComponent() {
   });
   const branches = useMemo(
     () => branchesQuery.data || [],
-    [branchesQuery.data]
+    [branchesQuery.data],
   );
   // Callback for project selection changes
   const handleProjectChange = useCallback(
@@ -118,7 +232,7 @@ function DashboardComponent() {
         localStorage.setItem("isCloudMode", JSON.stringify(true));
       }
     },
-    [selectedProject]
+    [selectedProject],
   );
 
   // Callback for branch selection changes
@@ -150,7 +264,7 @@ function DashboardComponent() {
   });
   const reposByOrg = useMemo(
     () => reposByOrgQuery.data || {},
-    [reposByOrgQuery.data]
+    [reposByOrgQuery.data],
   );
 
   // Socket-based functions to fetch data from GitHub
@@ -211,7 +325,7 @@ function DashboardComponent() {
           ...currentTasks,
         ]);
       }
-    }
+    },
   );
   const generateUploadUrl = useMutation(api.storage.generateUploadUrl);
 
@@ -228,7 +342,7 @@ function DashboardComponent() {
                   : branches[0],
             ]
           : [],
-    [selectedBranch, branches]
+    [selectedBranch, branches],
   );
 
   const handleStartTask = useCallback(async () => {
@@ -254,7 +368,9 @@ function DashboardComponent() {
       } else {
         // If socket is not connected, we can't verify Docker status
         console.error("Cannot verify Docker status: socket not connected");
-        toast.error("Cannot verify Docker status. Please ensure the server is running.");
+        toast.error(
+          "Cannot verify Docker status. Please ensure the server is running.",
+        );
         return;
       }
     }
@@ -313,8 +429,8 @@ function DashboardComponent() {
               fileName: image.fileName,
               altText: image.altText,
             };
-          }
-        )
+          },
+        ),
       );
 
       // Clear input after successful task creation
@@ -357,6 +473,8 @@ function DashboardComponent() {
           ...(environmentId ? { environmentId } : {}),
           images: images.length > 0 ? images : undefined,
           theme,
+          preSpawnedSandboxes:
+            preSpawnedSandboxes.length > 0 ? preSpawnedSandboxes : undefined,
         },
         (response) => {
           if ("error" in response) {
@@ -364,8 +482,11 @@ function DashboardComponent() {
             toast.error(`Task start error: ${JSON.stringify(response.error)}`);
           } else {
             console.log("Task started:", response);
+            // Clear pre-spawned sandboxes after successful task start
+            setPreSpawnedSandboxes([]);
+            sessionStorage.removeItem("preSpawnedSandboxes");
           }
-        }
+        },
       );
       console.log("Task created:", taskId);
     } catch (error) {
@@ -414,10 +535,24 @@ function DashboardComponent() {
     };
   }, [checkProviderStatus]);
 
+  // Clean up old pre-spawned sandboxes periodically
+  useEffect(() => {
+    const cleanupInterval = setInterval(
+      () => {
+        cleanupOldSandboxes();
+      },
+      5 * 60 * 1000,
+    ); // Clean up every 5 minutes
+
+    return () => {
+      clearInterval(cleanupInterval);
+    };
+  }, [cleanupOldSandboxes]);
+
   // Format repos for multiselect
   // Fetch environments
   const environmentsQuery = useQuery(
-    convexQuery(api.environments.list, { teamSlugOrId })
+    convexQuery(api.environments.list, { teamSlugOrId }),
   );
 
   const projectOptions = useMemo(() => {
@@ -538,7 +673,7 @@ function DashboardComponent() {
       setSelectedProject([data.repoFullName]);
       localStorage.setItem(
         "selectedProject",
-        JSON.stringify([data.repoFullName])
+        JSON.stringify([data.repoFullName]),
       );
 
       // Set the selected branch
@@ -641,7 +776,7 @@ function DashboardComponent() {
 
   const lexicalBranch = useMemo(
     () => effectiveSelectedBranch[0],
-    [effectiveSelectedBranch]
+    [effectiveSelectedBranch],
   );
 
   const canSubmit = useMemo(() => {

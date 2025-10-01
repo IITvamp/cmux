@@ -3,6 +3,17 @@ import { connectToWorkerManagement } from "@cmux/shared/socket";
 import { EventEmitter } from "node:events";
 import { dockerLogger } from "../utils/fileLogger";
 
+export interface PreSpawnedSandbox {
+  instanceId: string;
+  vscodeUrl: string;
+  workerUrl: string;
+  provider: "morph";
+  createdAt: number;
+  teamId: string;
+  environmentId?: string;
+  snapshotId?: string;
+}
+
 export interface VSCodeInstanceConfig {
   workspacePath?: string;
   initialCommand?: string;
@@ -19,6 +30,8 @@ export interface VSCodeInstanceConfig {
   environmentId?: Id<"environments"> | string;
   // Optional: JWT token for crown workflow authentication
   taskRunJwt?: string;
+  // Optional: use a pre-spawned sandbox instead of creating a new one
+  preSpawnedSandbox?: PreSpawnedSandbox;
 }
 
 export interface VSCodeInstanceInfo {
@@ -77,7 +90,7 @@ export abstract class VSCodeInstance extends EventEmitter {
 
   async connectToWorker(workerUrl: string): Promise<void> {
     dockerLogger.info(
-      `[VSCodeInstance ${this.instanceId}] Connecting to worker at ${workerUrl}`
+      `[VSCodeInstance ${this.instanceId}] Connecting to worker at ${workerUrl}`,
     );
 
     return new Promise((resolve, reject) => {
@@ -90,7 +103,7 @@ export abstract class VSCodeInstance extends EventEmitter {
 
       this.workerSocket.on("connect", () => {
         dockerLogger.info(
-          `[VSCodeInstance ${this.instanceId}] Connected to worker`
+          `[VSCodeInstance ${this.instanceId}] Connected to worker`,
         );
         this.workerConnected = true;
         this.emit("worker-connected");
@@ -99,7 +112,7 @@ export abstract class VSCodeInstance extends EventEmitter {
 
       this.workerSocket.on("disconnect", (reason) => {
         dockerLogger.warn(
-          `[VSCodeInstance ${this.instanceId}] Disconnected from worker: ${reason}`
+          `[VSCodeInstance ${this.instanceId}] Disconnected from worker: ${reason}`,
         );
         this.workerConnected = false;
         this.emit("worker-disconnected");
@@ -108,7 +121,7 @@ export abstract class VSCodeInstance extends EventEmitter {
       this.workerSocket.on("connect_error", (error) => {
         dockerLogger.error(
           `[VSCodeInstance ${this.instanceId}] Worker connection error:`,
-          error.message
+          error.message,
         );
         // Don't reject on connection errors after initial connection
         if (!this.workerConnected) {
@@ -120,7 +133,7 @@ export abstract class VSCodeInstance extends EventEmitter {
       this.workerSocket.on("worker:terminal-created", (data) => {
         dockerLogger.info(
           `[VSCodeInstance ${this.instanceId}] Terminal created:`,
-          data
+          data,
         );
         this.emit("terminal-created", data);
       });
@@ -132,7 +145,7 @@ export abstract class VSCodeInstance extends EventEmitter {
       this.workerSocket.on("worker:terminal-exit", (data) => {
         dockerLogger.info(
           `[VSCodeInstance ${this.instanceId}] Terminal exited:`,
-          data
+          data,
         );
         this.emit("terminal-exit", data);
       });
@@ -140,7 +153,7 @@ export abstract class VSCodeInstance extends EventEmitter {
       this.workerSocket.on("worker:terminal-idle", (data) => {
         dockerLogger.info(
           `[VSCodeInstance ${this.instanceId}] Terminal idle detected:`,
-          data
+          data,
         );
         this.emit("terminal-idle", data);
       });
@@ -148,7 +161,7 @@ export abstract class VSCodeInstance extends EventEmitter {
       this.workerSocket.on("worker:task-complete", (data) => {
         dockerLogger.info(
           `[VSCodeInstance ${this.instanceId}] Task complete detected:`,
-          data
+          data,
         );
         this.emit("task-complete", data);
       });
@@ -156,7 +169,7 @@ export abstract class VSCodeInstance extends EventEmitter {
       this.workerSocket.on("worker:terminal-failed", (data) => {
         dockerLogger.error(
           `[VSCodeInstance ${this.instanceId}] Terminal failed:`,
-          data
+          data,
         );
         this.emit("terminal-failed", data);
       });
@@ -164,7 +177,7 @@ export abstract class VSCodeInstance extends EventEmitter {
       this.workerSocket.on("worker:file-changes", (data) => {
         dockerLogger.info(
           `[VSCodeInstance ${this.instanceId}] File changes detected:`,
-          { taskId: data.taskRunId, changeCount: data.changes.length }
+          { taskId: data.taskRunId, changeCount: data.changes.length },
         );
         this.emit("file-changes", data);
       });
@@ -172,7 +185,7 @@ export abstract class VSCodeInstance extends EventEmitter {
       this.workerSocket.on("worker:error", (data) => {
         dockerLogger.error(
           `[VSCodeInstance ${this.instanceId}] Worker error:`,
-          data
+          data,
         );
         this.emit("worker-error", data);
       });
@@ -195,7 +208,7 @@ export abstract class VSCodeInstance extends EventEmitter {
       // Always watch the container workspace path; host paths are not valid inside the container
       const containerWorkspace = "/root/workspace";
       dockerLogger.info(
-        `[VSCodeInstance ${this.instanceId}] Starting file watch for ${worktreePath} -> ${containerWorkspace}`
+        `[VSCodeInstance ${this.instanceId}] Starting file watch for ${worktreePath} -> ${containerWorkspace}`,
       );
       this.workerSocket.emit("worker:start-file-watch", {
         taskRunId: this.taskRunId,
@@ -203,7 +216,7 @@ export abstract class VSCodeInstance extends EventEmitter {
       });
     } else {
       dockerLogger.warn(
-        `[VSCodeInstance ${this.instanceId}] Cannot start file watch - worker not connected`
+        `[VSCodeInstance ${this.instanceId}] Cannot start file watch - worker not connected`,
       );
     }
   }
@@ -211,7 +224,7 @@ export abstract class VSCodeInstance extends EventEmitter {
   stopFileWatch(): void {
     if (this.workerSocket && this.workerConnected) {
       dockerLogger.info(
-        `[VSCodeInstance ${this.instanceId}] Stopping file watch`
+        `[VSCodeInstance ${this.instanceId}] Stopping file watch`,
       );
       this.workerSocket.emit("worker:stop-file-watch", {
         taskRunId: this.taskRunId,
@@ -236,7 +249,7 @@ export abstract class VSCodeInstance extends EventEmitter {
   protected async disconnectFromWorker(): Promise<void> {
     if (this.workerSocket) {
       dockerLogger.info(
-        `[VSCodeInstance ${this.instanceId}] Disconnecting from worker`
+        `[VSCodeInstance ${this.instanceId}] Disconnecting from worker`,
       );
       this.workerSocket.disconnect();
       this.workerSocket = null;
