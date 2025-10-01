@@ -425,7 +425,7 @@ function EnvironmentDetailsPage() {
                       onClick={handleStartEditingPorts}
                       className="inline-flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
                     >
-                      Edit
+                      Add port
                     </button>
                   )}
                 </div>
@@ -477,22 +477,31 @@ function EnvironmentDetailsPage() {
                     )}
                   </div>
                 ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {environment.exposedPorts &&
-                    environment.exposedPorts.length > 0 ? (
-                      environment.exposedPorts.map((port: number) => (
-                        <span
-                          key={port}
-                          className="inline-flex items-center rounded-full bg-neutral-100 dark:bg-neutral-900 px-3 py-1 text-sm text-neutral-700 dark:text-neutral-300"
-                        >
-                          {port}
+                  <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-wrap gap-2">
+                      {environment.exposedPorts &&
+                      environment.exposedPorts.length > 0 ? (
+                        environment.exposedPorts.map((port: number) => (
+                          <span
+                            key={port}
+                            className="inline-flex items-center rounded-full bg-neutral-100 dark:bg-neutral-900 px-3 py-1 text-sm text-neutral-700 dark:text-neutral-300"
+                          >
+                            {port}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-sm text-neutral-500 dark:text-neutral-500">
+                          No ports configured.
                         </span>
-                      ))
-                    ) : (
-                      <span className="text-sm text-neutral-500 dark:text-neutral-500">
-                        No ports configured.
-                      </span>
-                    )}
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleStartEditingPorts}
+                      className="inline-flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
+                    >
+                      Add port
+                    </button>
                   </div>
                 )}
               </div>
