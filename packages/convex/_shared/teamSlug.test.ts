@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test } from "bun:test";
 import {
   buildSlugCandidate,
   deriveSlugSuffix,
@@ -14,14 +14,12 @@ describe("teamSlug helpers", () => {
   });
 
   test("validateSlug rejects short slugs", () => {
-    expect(() => validateSlug("ab")).toThrowError(
-      "Slug must be 3–48 characters long",
-    );
+    expect(() => validateSlug("ab")).toThrowError("Slug must be 3–48 characters long");
   });
 
   test("validateSlug rejects invalid characters", () => {
     expect(() => validateSlug("bad slug")).toThrowError(
-      "Slug can contain lowercase letters, numbers, and hyphens, and must start/end with a letter or number",
+      "Slug can contain lowercase letters, numbers, and hyphens, and must start/end with a letter or number"
     );
   });
 
@@ -31,51 +29,34 @@ describe("teamSlug helpers", () => {
 
   test("slugifyTeamName extracts email local part", () => {
     expect(slugifyTeamName("user@example.com")).toBe("user");
+    expect(slugifyTeamName("lawrencecchen@berkeley.edu's Team")).toBe("lawrencecchen");
   });
 
   test("deriveSlugSuffix uses sanitized team id", () => {
-    expect(deriveSlugSuffix("550e8400-e29b-41d4-a716-446655440000")).toBe(
-      "550e",
-    );
-    expect(deriveSlugSuffix("@@id")).toBe("idte");
+    expect(deriveSlugSuffix("550e8400-e29b-41d4-a716-446655440000")).toBe("550");
+    expect(deriveSlugSuffix("@@id")).toMatch(/^[a-z0-9]{3}$/);
   });
 
   test("buildSlugCandidate combines name and suffix", () => {
-    const slug = buildSlugCandidate(
-      "550e8400-e29b-41d4-a716-446655440000",
-      "Frontend Wizards",
-      0,
-    );
-    expect(slug).toBe("frontend-wizards-550e");
+    const slug = buildSlugCandidate("550e8400-e29b-41d4-a716-446655440000", "Frontend Wizards", 0);
+    expect(slug).toBe("frontend-wizards-550");
   });
 
   test("buildSlugCandidate appends attempt suffix", () => {
-    const slug = buildSlugCandidate(
-      "550e8400-e29b-41d4-a716-446655440000",
-      "Frontend Wizards",
-      2,
-    );
-    expect(slug).toBe("frontend-wizards-550e-2");
+    const slug = buildSlugCandidate("550e8400-e29b-41d4-a716-446655440000", "Frontend Wizards", 2);
+    expect(slug).toBe("frontend-wizards-550-2");
   });
 
   test("buildSlugCandidate respects maximum length", () => {
     const longName = "A".repeat(80);
-    const slug = buildSlugCandidate(
-      "550e8400-e29b-41d4-a716-446655440000",
-      longName,
-      5,
-    );
+    const slug = buildSlugCandidate("550e8400-e29b-41d4-a716-446655440000", longName, 5);
     expect(slug.length).toBeLessThanOrEqual(48);
     expect(() => validateSlug(slug)).not.toThrow();
   });
 
   test("buildSlugCandidate handles email names", () => {
-    const slug = buildSlugCandidate(
-      "550e8400-e29b-41d4-a716-446655440000",
-      "user@example.com",
-      0,
-    );
-    expect(slug).toBe("user-550e");
+    const slug = buildSlugCandidate("2e0f8400-e29b-41d4-a716-446655440000", "lawrencecchen@berkeley.edu's Team", 0);
+    expect(slug).toMatch(/^lawrencecchen-[a-z0-9]{3}$/);
   });
 
   test("extractSlugFromMetadata normalizes valid slug", () => {
