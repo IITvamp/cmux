@@ -104,7 +104,7 @@ export const getAllRepos = authQuery({
   },
 });
 
-const SYSTEM_BRANCH_USER_ID = "__system__";
+const SYSTEM_USER_ID = "__system__";
 
 export const getBranchesByRepo = authQuery({
   args: { teamSlugOrId: v.string(), repo: v.string() },
@@ -119,7 +119,7 @@ export const getBranchesByRepo = authQuery({
       .collect();
 
     const relevant = rows.filter(
-      (row) => row.userId === userId || row.userId === SYSTEM_BRANCH_USER_ID
+      (row) => row.userId === userId || row.userId === SYSTEM_USER_ID
     );
 
     const byName = new Map<string, Doc<"branches">>();
@@ -276,6 +276,123 @@ export const updateRepoActivityFromWebhook = internalMutation({
 
     await ctx.db.patch(repo._id, patch);
     return { updated: true as const };
+  },
+});
+
+const RepoVisibility = v.union(v.literal("public"), v.literal("private"));
+
+export const syncReposFromWebhookBatch = internalMutation({
+  args: {
+    teamId: v.string(),
+    connectionId: v.id("providerConnections"),
+    userId: v.optional(v.string()),
+    repos: v.array(
+      v.object({
+        providerRepoId: v.number(),
+        fullName: v.string(),
+        org: v.string(),
+        name: v.string(),
+        gitRemote: v.string(),
+        ownerLogin: v.optional(v.string()),
+        ownerType: v.optional(
+          v.union(v.literal("User"), v.literal("Organization")),
+        ),
+        visibility: RepoVisibility,
+        defaultBranch: v.optional(v.string()),
+        lastPushedAt: v.optional(v.number()),
+      }),
+    ),
+  },
+  handler: async (ctx, { teamId, connectionId, userId, repos }) => {
+    const effectiveUserId = userId ?? SYSTEM_USER_ID;
+    const now = Date.now();
+    for (const repo of repos) {
+      let existing = await ctx.db
+        .query("repos")
+        .withIndex("by_providerRepoId", (q) =>
+          q.eq("teamId", teamId).eq("providerRepoId", repo.providerRepoId),
+        )
+        .first();
+
+      if (!existing) {
+        existing = await ctx.db
+          .query("repos")
+          .withIndex("by_team", (q) => q.eq("teamId", teamId))
+          .filter((q) => q.eq(q.field("fullName"), repo.fullName))
+          .first();
+      }
+
+      if (existing) {
+        const patch: Partial<Doc<"repos">> = {
+          lastSyncedAt: now,
+          connectionId,
+        };
+        if (existing.provider !== "github") {
+          patch.provider = "github";
+        }
+        if (existing.fullName !== repo.fullName) {
+          patch.fullName = repo.fullName;
+        }
+        if (existing.org !== repo.org) {
+          patch.org = repo.org;
+        }
+        if (existing.name !== repo.name) {
+          patch.name = repo.name;
+        }
+        if (existing.gitRemote !== repo.gitRemote) {
+          patch.gitRemote = repo.gitRemote;
+        }
+        if (existing.ownerLogin !== repo.ownerLogin) {
+          patch.ownerLogin = repo.ownerLogin;
+        }
+        if (existing.ownerType !== repo.ownerType) {
+          patch.ownerType = repo.ownerType;
+        }
+        if (existing.visibility !== repo.visibility) {
+          patch.visibility = repo.visibility;
+        }
+        if (existing.defaultBranch !== repo.defaultBranch) {
+          patch.defaultBranch = repo.defaultBranch;
+        }
+        if (existing.userId !== effectiveUserId) {
+          patch.userId = effectiveUserId;
+        }
+        if (existing.providerRepoId !== repo.providerRepoId) {
+          patch.providerRepoId = repo.providerRepoId;
+        }
+        if (
+          typeof repo.lastPushedAt === "number" &&
+          (existing.lastPushedAt === undefined ||
+            repo.lastPushedAt > existing.lastPushedAt)
+        ) {
+          patch.lastPushedAt = repo.lastPushedAt;
+        }
+        if (Object.keys(patch).length > 0) {
+          await ctx.db.patch(existing._id, patch);
+        }
+        continue;
+      }
+
+      await ctx.db.insert("repos", {
+        fullName: repo.fullName,
+        org: repo.org,
+        name: repo.name,
+        gitRemote: repo.gitRemote,
+        provider: "github",
+        userId: effectiveUserId,
+        teamId,
+        providerRepoId: repo.providerRepoId,
+        ownerLogin: repo.ownerLogin,
+        ownerType: repo.ownerType,
+        visibility: repo.visibility,
+        defaultBranch: repo.defaultBranch,
+        connectionId,
+        lastSyncedAt: now,
+        lastPushedAt: repo.lastPushedAt,
+      });
+    }
+
+    return { processed: repos.length } as const;
   },
 });
 

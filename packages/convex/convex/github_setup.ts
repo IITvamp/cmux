@@ -4,6 +4,10 @@ import {
   base64urlToBytes,
   bytesToHex,
 } from "../_shared/encoding";
+import {
+  createGithubAppJwt,
+  normalizeGithubPrivateKey,
+} from "../_shared/githubAppAuth";
 import { hmacSha256, safeEqualHex } from "../_shared/crypto";
 import { internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
@@ -13,79 +17,6 @@ type InstallationAccountInfo = {
   accountId?: number;
   accountType?: "Organization" | "User";
 };
-
-const textEncoder = new TextEncoder();
-const privateKeyCache = new Map<string, CryptoKey>();
-
-function pemToDer(pem: string): Uint8Array {
-  const cleaned = pem
-    .replace(/-----BEGIN [A-Z ]+-----/g, "")
-    .replace(/-----END [A-Z ]+-----/g, "")
-    .replace(/\s+/g, "");
-  const base64Url = cleaned
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
-  return base64urlToBytes(base64Url);
-}
-
-function base64urlEncodeJson(value: unknown): string {
-  return base64urlFromBytes(textEncoder.encode(JSON.stringify(value)));
-}
-
-async function importPrivateKey(pem: string): Promise<CryptoKey> {
-  const cached = privateKeyCache.get(pem);
-  if (cached) return cached;
-  const subtle = globalThis.crypto?.subtle;
-  if (!subtle) {
-    throw new Error("SubtleCrypto is not available in this environment");
-  }
-  const der = pemToDer(pem);
-  const keyData =
-    der.byteOffset === 0 && der.byteLength === der.buffer.byteLength
-      ? der
-      : der.slice();
-  const key = await subtle.importKey(
-    "pkcs8",
-    keyData,
-    {
-      name: "RSASSA-PKCS1-v1_5",
-      hash: "SHA-256",
-    },
-    false,
-    ["sign"]
-  );
-  privateKeyCache.set(pem, key);
-  return key;
-}
-
-async function createGithubAppJwt(
-  appId: string,
-  privateKey: string
-): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
-  const header = { alg: "RS256", typ: "JWT" } as const;
-  const payload = {
-    iat: now - 60,
-    exp: now + 600,
-    iss: appId,
-  } as const;
-  const signingInput = `${base64urlEncodeJson(header)}.${base64urlEncodeJson(
-    payload
-  )}`;
-  const subtle = globalThis.crypto?.subtle;
-  if (!subtle) {
-    throw new Error("SubtleCrypto is not available in this environment");
-  }
-  const key = await importPrivateKey(privateKey);
-  const signature = await subtle.sign(
-    "RSASSA-PKCS1-v1_5",
-    key,
-    textEncoder.encode(signingInput)
-  );
-  const signaturePart = base64urlFromBytes(new Uint8Array(signature));
-  return `${signingInput}.${signaturePart}`;
-}
 
 function normalizeAccountType(
   input: unknown
@@ -105,7 +36,7 @@ async function fetchInstallationAccountInfo(
   }
 
   try {
-    const normalizedPrivateKey = privateKey.replace(/\\n/g, "\n");
+    const normalizedPrivateKey = normalizeGithubPrivateKey(privateKey);
     const jwt = await createGithubAppJwt(appId, normalizedPrivateKey);
     const response = await fetch(
       `https://api.github.com/app/installations/${installationId}`,
@@ -292,6 +223,17 @@ export const githubSetup = httpAction(async (ctx, req) => {
         : {}),
     }
   );
+
+  ctx
+    .runAction(internal.github_webhook.syncInstallationRepos, {
+      installationId,
+    })
+    .catch((error) => {
+      console.error("github_setup repo sync trigger failed", {
+        error,
+        installationId,
+      });
+    });
 
   // Resolve slug for nicer redirect when available
   const team = await ctx.runQuery(internal.teams.getByTeamIdInternal, {

@@ -1,17 +1,59 @@
 import type {
   InstallationEvent,
+  InstallationRepositoriesEvent,
   PullRequestEvent,
   PushEvent,
   WebhookEvent,
 } from "@octokit/webhooks-types";
+import { v } from "convex/values";
 import { env } from "../_shared/convex-env";
 import { hmacSha256, safeEqualHex, sha256Hex } from "../_shared/crypto";
 import { bytesToHex } from "../_shared/encoding";
+import {
+  createInstallationAccessToken,
+  normalizeGithubPrivateKey,
+} from "../_shared/githubAppAuth";
 import { internal } from "./_generated/api";
-import { httpAction } from "./_generated/server";
+import { httpAction, internalAction } from "./_generated/server";
 
 const DEBUG_FLAGS = {
   githubWebhook: false, // set true to emit verbose push diagnostics
+};
+
+const SYSTEM_REPO_USER_ID = "__system__";
+const GITHUB_WEBHOOK_USER_AGENT = "cmux-github-webhook-sync";
+
+type InstallationRepositoryRecord = {
+  id?: number | null;
+  name?: string | null;
+  full_name?: string | null;
+  owner?: {
+    login?: string | null;
+    type?: string | null;
+  } | null;
+  private?: boolean | null;
+  visibility?: string | null;
+  clone_url?: string | null;
+  default_branch?: string | null;
+  pushed_at?: string | number | null;
+};
+
+type InstallationRepositoriesResponse = {
+  total_count?: number;
+  repositories?: InstallationRepositoryRecord[];
+};
+
+type RepoSyncPayload = {
+  providerRepoId: number;
+  fullName: string;
+  org: string;
+  name: string;
+  gitRemote: string;
+  ownerLogin?: string;
+  ownerType?: "User" | "Organization";
+  visibility: "public" | "private";
+  defaultBranch?: string;
+  lastPushedAt?: number;
 };
 
 async function verifySignature(
@@ -48,6 +90,185 @@ function normalizeTimestamp(
   }
   return undefined;
 }
+
+function hasNextPage(linkHeader: string | null): boolean {
+  if (!linkHeader) return false;
+  const parts = linkHeader.split(",");
+  for (const part of parts) {
+    if (part.includes('rel="next"')) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function coerceOwnerType(
+  input: unknown,
+): RepoSyncPayload["ownerType"] {
+  if (input === "Organization" || input === "User") {
+    return input;
+  }
+  return undefined;
+}
+
+export const syncInstallationRepos = internalAction({
+  args: { installationId: v.number() },
+  handler: async (ctx, { installationId }) => {
+    if (!env.CMUX_GITHUB_APP_ID || !env.CMUX_GITHUB_APP_PRIVATE_KEY) {
+      console.warn("[github_webhook] GitHub app credentials missing");
+      return;
+    }
+
+    const connection = await ctx.runQuery(
+      internal.github_app.getProviderConnectionByInstallationId,
+      { installationId },
+    );
+    if (!connection) {
+      console.warn("[github_webhook] Installation not found", {
+        installationId,
+      });
+      return;
+    }
+    if (!connection.teamId) {
+      console.warn(
+        "[github_webhook] Installation missing team mapping for repo sync",
+        {
+          installationId,
+        },
+      );
+      return;
+    }
+
+    const normalizedPrivateKey = normalizeGithubPrivateKey(
+      env.CMUX_GITHUB_APP_PRIVATE_KEY,
+    );
+    const tokenResult = await createInstallationAccessToken({
+      appId: env.CMUX_GITHUB_APP_ID,
+      privateKey: normalizedPrivateKey,
+      installationId,
+      userAgent: GITHUB_WEBHOOK_USER_AGENT,
+    });
+    if (!tokenResult) {
+      return;
+    }
+
+    const token = tokenResult.token;
+    let page = 1;
+    const perPage = 100;
+    const mutationPromises: Array<Promise<unknown>> = [];
+    const userId = connection.connectedByUserId ?? SYSTEM_REPO_USER_ID;
+    const connectionId = connection._id;
+
+    while (true) {
+      const response = await fetch(
+        `https://api.github.com/installation/repositories?per_page=${perPage}&page=${page}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/vnd.github+json",
+            "User-Agent": GITHUB_WEBHOOK_USER_AGENT,
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const bodyText = await response.text().catch(() => "");
+        console.error("[github_webhook] Failed to list installation repos", {
+          installationId,
+          status: response.status,
+          body: bodyText,
+        });
+        break;
+      }
+
+      const json = (await response.json()) as InstallationRepositoriesResponse;
+      const repos = json.repositories ?? [];
+      const payload: RepoSyncPayload[] = repos
+        .map((repo) => {
+          const repoId = typeof repo.id === "number" ? repo.id : undefined;
+          if (!repoId) {
+            return null;
+          }
+          const ownerLogin =
+            typeof repo.owner?.login === "string" && repo.owner.login.length > 0
+              ? repo.owner.login
+              : undefined;
+          const name =
+            typeof repo.name === "string" && repo.name.length > 0
+              ? repo.name
+              : undefined;
+          const fullNameRaw =
+            typeof repo.full_name === "string" && repo.full_name.length > 0
+              ? repo.full_name
+              : ownerLogin && name
+                ? `${ownerLogin}/${name}`
+                : undefined;
+          if (!fullNameRaw) {
+            return null;
+          }
+          const [orgPart, repoPart] = fullNameRaw.split("/");
+          const org = orgPart || ownerLogin || fullNameRaw;
+          const repoName = repoPart || name || fullNameRaw;
+          const gitRemote =
+            typeof repo.clone_url === "string" && repo.clone_url.length > 0
+              ? repo.clone_url
+              : `https://github.com/${fullNameRaw}.git`;
+          const visibility = repo.private ? "private" : "public";
+          const defaultBranch =
+            typeof repo.default_branch === "string" &&
+            repo.default_branch.length > 0
+              ? repo.default_branch
+              : undefined;
+          const lastPushedAt = normalizeTimestamp(repo.pushed_at);
+
+          return {
+            providerRepoId: repoId,
+            fullName: fullNameRaw,
+            org,
+            name: repoName,
+            gitRemote,
+            ownerLogin,
+            ownerType: coerceOwnerType(repo.owner?.type ?? undefined),
+            visibility,
+            defaultBranch,
+            lastPushedAt,
+          } satisfies RepoSyncPayload | null;
+        })
+        .filter((repo): repo is RepoSyncPayload => repo !== null);
+
+      if (payload.length > 0) {
+        mutationPromises.push(
+          ctx
+            .runMutation(internal.github.syncReposFromWebhookBatch, {
+              teamId: connection.teamId,
+              connectionId,
+              userId,
+              repos: payload,
+            })
+            .catch((error) => {
+              console.error(
+                "[github_webhook] Failed to upsert repos from webhook batch",
+                {
+                  installationId,
+                  error,
+                },
+              );
+            }),
+        );
+      }
+
+      if (!hasNextPage(response.headers.get("link"))) {
+        break;
+      }
+
+      page += 1;
+    }
+
+    if (mutationPromises.length > 0) {
+      await Promise.allSettled(mutationPromises);
+    }
+  },
+});
 
 export const githubWebhook = httpAction(async (_ctx, req) => {
   if (!env.GITHUB_APP_WEBHOOK_SECRET) {
@@ -110,6 +331,20 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
                   account.type === "Organization" ? "Organization" : "User",
               }
             );
+            _ctx
+              .runAction(internal.github_webhook.syncInstallationRepos, {
+                installationId,
+              })
+              .catch((error) => {
+                console.error(
+                  "github_webhook repo sync failed after installation create",
+                  {
+                    error,
+                    delivery,
+                    installationId,
+                  }
+                );
+              });
           }
         } else if (action === "deleted") {
           if (installationId !== undefined) {
@@ -123,7 +358,6 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
         }
         break;
       }
-      case "installation_repositories":
       case "repository":
       case "create":
       case "delete":
@@ -136,6 +370,30 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
       case "workflow_run":
       case "workflow_job": {
         // Acknowledge unsupported events without retries for now.
+        break;
+      }
+      case "installation_repositories": {
+        if (installationId !== undefined) {
+          const repoEvent = body as InstallationRepositoriesEvent;
+          const action = repoEvent.action;
+          if (action === "added" || action === "removed") {
+            _ctx
+              .runAction(internal.github_webhook.syncInstallationRepos, {
+                installationId,
+              })
+              .catch((error) => {
+                console.error(
+                  "github_webhook repo sync failed after installation_repositories",
+                  {
+                    error,
+                    delivery,
+                    installationId,
+                    action,
+                  }
+                );
+              });
+          }
+        }
         break;
       }
       case "pull_request": {
