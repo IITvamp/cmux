@@ -1,6 +1,12 @@
 import { FloatingPane } from "@/components/floating-pane";
 import { TitleBar } from "@/components/TitleBar";
 import { queryClient } from "@/query-client";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
@@ -25,7 +31,6 @@ import {
   GitBranch,
   Loader2,
   Package,
-  Play,
   Plus,
   Server,
   Terminal,
@@ -90,7 +95,8 @@ function EnvironmentDetailsPage() {
   const activateSnapshotMutation = useRQMutation(
     postApiEnvironmentsByIdSnapshotsBySnapshotVersionIdActivateMutation(),
   );
-  const startSandboxMutation = useRQMutation(postApiSandboxesStartMutation());
+  const modifyVmMutation = useRQMutation(postApiSandboxesStartMutation());
+  const snapshotLaunchMutation = useRQMutation(postApiSandboxesStartMutation());
   const [isEditingPorts, setIsEditingPorts] = useState(false);
   const [portsDraft, setPortsDraft] = useState<number[]>(
     environment.exposedPorts ?? [],
@@ -254,6 +260,36 @@ function EnvironmentDetailsPage() {
     }
   };
 
+  const isModifyPending = modifyVmMutation.isPending;
+  const isSnapshotPending = snapshotLaunchMutation.isPending;
+
+  const handleSandboxSuccess = (data: { vscodeUrl: string; instanceId: string }) => {
+    const baseUrl = data.vscodeUrl;
+    const hasQuery = baseUrl.includes("?");
+    const vscodeUrlWithFolder = `${baseUrl}${hasQuery ? "&" : "?"}folder=/root/workspace`;
+    navigate({
+      to: "/$teamSlugOrId/environments/new-version",
+      params: { teamSlugOrId },
+      search: {
+        sourceEnvironmentId: String(environmentId),
+        selectedRepos: environment.selectedRepos ?? [],
+        connectionLogin: undefined,
+        repoSearch: undefined,
+        instanceId: data.instanceId,
+        vscodeUrl: vscodeUrlWithFolder,
+        step: "configure",
+      },
+    });
+  };
+
+  const handleSandboxError = (error: unknown) => {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to launch snapshot environment";
+    toast.error(message);
+  };
+
   const handleLaunch = () => {
     navigate({
       to: "/$teamSlugOrId/dashboard",
@@ -263,7 +299,7 @@ function EnvironmentDetailsPage() {
   };
 
   const handleModifyVm = () => {
-    startSandboxMutation.mutate(
+    modifyVmMutation.mutate(
       {
         body: {
           teamSlugOrId,
@@ -272,36 +308,35 @@ function EnvironmentDetailsPage() {
         },
       },
       {
-        onSuccess: (data) => {
-          const baseUrl = data.vscodeUrl;
-          const hasQuery = baseUrl.includes("?");
-          const vscodeUrlWithFolder = `${baseUrl}${
-            hasQuery ? "&" : "?"
-          }folder=/root/workspace`;
-          navigate({
-            to: "/$teamSlugOrId/environments/new-version",
-            params: { teamSlugOrId },
-            search: {
-              sourceEnvironmentId: String(environmentId),
-              selectedRepos: environment.selectedRepos ?? [],
-              connectionLogin: undefined,
-              repoSearch: undefined,
-              instanceId: data.instanceId,
-              vscodeUrl: vscodeUrlWithFolder,
-              step: "configure",
-            },
-          });
-        },
-        onError: (error) => {
-          const message =
-            error instanceof Error
-              ? error.message
-              : "Failed to launch snapshot environment";
-          toast.error(message);
-        },
+        onSuccess: handleSandboxSuccess,
+        onError: handleSandboxError,
       },
     );
   };
+
+  const handleStartSnapshotVersion = () => {
+    if (!environment.morphSnapshotId) {
+      toast.error("Environment is missing a snapshot.");
+      return;
+    }
+
+    snapshotLaunchMutation.mutate(
+      {
+        body: {
+          teamSlugOrId,
+          environmentId: String(environmentId),
+          snapshotId: environment.morphSnapshotId,
+        },
+      },
+      {
+        onSuccess: handleSandboxSuccess,
+        onError: handleSandboxError,
+      },
+    );
+  };
+
+  const sandboxTooltipDescription =
+    "Starts a new VS Code instance where you can make changes before saving a snapshot.";
 
   return (
     <FloatingPane
@@ -352,26 +387,36 @@ function EnvironmentDetailsPage() {
               <div className="flex gap-2">
                 <button
                   onClick={handleLaunch}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-neutral-900 text-white px-4 py-2 text-sm font-medium hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200 transition-colors"
+                  className="inline-flex items-center rounded-md bg-neutral-900 text-white px-4 py-2 text-sm font-medium hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200 transition-colors"
                 >
-                  <Play className="w-4 h-4" />
-                  Launch Environment
+                  Start Task
                 </button>
-                <button
-                  type="button"
-                  onClick={handleModifyVm}
-                  disabled={startSandboxMutation.isPending}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
-                >
-                  {startSandboxMutation.isPending ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Launching…
-                    </>
-                  ) : (
-                    "Modify VM"
-                  )}
-                </button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={handleModifyVm}
+                      disabled={isModifyPending || isSnapshotPending}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 transition-colors disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-300",
+                        !(isModifyPending || isSnapshotPending) &&
+                          "hover:bg-neutral-100 dark:hover:bg-neutral-900",
+                      )}
+                    >
+                      {isModifyPending ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Launching…
+                        </>
+                      ) : (
+                        "Modify VM"
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs text-xs leading-snug">
+                    {sandboxTooltipDescription}
+                  </TooltipContent>
+                </Tooltip>
               </div>
             </div>
 
@@ -567,21 +612,32 @@ function EnvironmentDetailsPage() {
                   <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
                     Snapshot Versions
                   </h3>
-                  <button
-                    type="button"
-                    onClick={handleModifyVm}
-                    disabled={startSandboxMutation.isPending}
-                    className="inline-flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
-                  >
-                    {startSandboxMutation.isPending ? (
-                      <>
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                        Launching…
-                      </>
-                    ) : (
-                      "New snapshot version"
-                    )}
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={handleStartSnapshotVersion}
+                        disabled={isSnapshotPending || isModifyPending}
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 transition-colors disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-300",
+                          !(isSnapshotPending || isModifyPending) &&
+                            "hover:bg-neutral-100 dark:hover:bg-neutral-900",
+                        )}
+                      >
+                        {isSnapshotPending ? (
+                          <>
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Launching…
+                          </>
+                        ) : (
+                          "New snapshot version"
+                        )}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs text-xs leading-snug">
+                      {sandboxTooltipDescription}
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
                 <div className="space-y-2">
                   {snapshotVersions.length === 0 ? (
