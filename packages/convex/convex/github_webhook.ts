@@ -1,5 +1,6 @@
 import type {
   InstallationEvent,
+  InstallationRepositoriesEvent,
   PullRequestEvent,
   PushEvent,
   WebhookEvent,
@@ -7,6 +8,10 @@ import type {
 import { env } from "../_shared/convex-env";
 import { hmacSha256, safeEqualHex, sha256Hex } from "../_shared/crypto";
 import { bytesToHex } from "../_shared/encoding";
+import {
+  generateInstallationAccessToken,
+  normalizeGithubPrivateKey,
+} from "../_shared/githubApp";
 import { internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 
@@ -48,6 +53,38 @@ function normalizeTimestamp(
   }
   return undefined;
 }
+
+type InstallationRepositoriesListResponse = {
+  total_count?: number;
+  repository_selection?: string;
+  repositories?: Array<{
+    id?: number;
+    full_name?: string;
+    name?: string;
+    owner?: {
+      login?: string | null;
+      type?: string | null;
+    } | null;
+    clone_url?: string | null;
+    default_branch?: string | null;
+    visibility?: string | null;
+    private?: boolean | null;
+    pushed_at?: string | number | null;
+  }>;
+};
+
+type RepoIngestionPayload = {
+  providerRepoId: number;
+  fullName: string;
+  org: string;
+  name: string;
+  gitRemote: string;
+  ownerLogin?: string;
+  ownerType?: "User" | "Organization";
+  visibility?: "public" | "private";
+  defaultBranch?: string;
+  lastPushedAt?: number;
+};
 
 export const githubWebhook = httpAction(async (_ctx, req) => {
   if (!env.GITHUB_APP_WEBHOOK_SECRET) {
@@ -123,7 +160,6 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
         }
         break;
       }
-      case "installation_repositories":
       case "repository":
       case "create":
       case "delete":
@@ -136,6 +172,168 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
       case "workflow_run":
       case "workflow_job": {
         // Acknowledge unsupported events without retries for now.
+        break;
+      }
+      case "installation_repositories": {
+        try {
+          const repoPayload = body as InstallationRepositoriesEvent;
+          const installation = Number(
+            repoPayload.installation?.id ?? installationId ?? 0
+          );
+          if (!installation) break;
+
+          const connection = await _ctx.runQuery(
+            internal.github_app.getProviderConnectionByInstallationId,
+            { installationId: installation }
+          );
+          if (!connection?.teamId) {
+            break;
+          }
+          if (!env.CMUX_GITHUB_APP_ID || !env.CMUX_GITHUB_APP_PRIVATE_KEY) {
+            console.error(
+              "github_webhook installation_repositories missing app credentials"
+            );
+            break;
+          }
+
+          const normalizedKey = normalizeGithubPrivateKey(
+            env.CMUX_GITHUB_APP_PRIVATE_KEY
+          );
+          const tokenInfo = await generateInstallationAccessToken({
+            installationId: installation,
+            appId: env.CMUX_GITHUB_APP_ID,
+            privateKey: normalizedKey,
+            userAgent: "cmux-github-webhook",
+          });
+          const accessToken = tokenInfo?.token;
+          if (!accessToken) {
+            break;
+          }
+
+          const perPage = 100;
+          let page = 1;
+          // Use a fresh map each webhook delivery so that pagination stays responsive
+          while (true) {
+            const url = new URL(
+              "https://api.github.com/installation/repositories"
+            );
+            url.searchParams.set("per_page", String(perPage));
+            url.searchParams.set("page", String(page));
+            const response = await fetch(url, {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                Accept: "application/vnd.github+json",
+                "User-Agent": "cmux-github-webhook",
+              },
+            });
+            if (!response.ok) {
+              console.error(
+                "github_webhook installation_repositories fetch failed",
+                {
+                  installation,
+                  status: response.status,
+                }
+              );
+              break;
+            }
+            const data =
+              (await response.json()) as InstallationRepositoriesListResponse;
+            const repos = Array.isArray(data.repositories)
+              ? data.repositories
+              : [];
+            if (repos.length === 0) {
+              break;
+            }
+            const toIngest = repos
+              .map((repo) => {
+                const providerRepoId =
+                  typeof repo.id === "number" ? repo.id : undefined;
+                const fullName =
+                  typeof repo.full_name === "string" && repo.full_name
+                    ? repo.full_name
+                    : undefined;
+                if (!providerRepoId || !fullName) {
+                  return null;
+                }
+                const name =
+                  typeof repo.name === "string" && repo.name
+                    ? repo.name
+                    : fullName.split("/")[1] ?? fullName;
+                const ownerLoginRaw =
+                  typeof repo.owner?.login === "string" &&
+                  repo.owner.login
+                    ? repo.owner.login
+                    : fullName.split("/")[0] ?? "";
+                if (!ownerLoginRaw) {
+                  return null;
+                }
+                const ownerTypeRaw = repo.owner?.type ?? undefined;
+                const ownerType =
+                  ownerTypeRaw === "Organization"
+                    ? "Organization"
+                    : ownerTypeRaw === "User"
+                    ? "User"
+                    : undefined;
+                const visibility =
+                  repo.visibility === "public"
+                    ? "public"
+                    : repo.visibility === "private" || repo.private
+                    ? "private"
+                    : undefined;
+                const defaultBranch =
+                  typeof repo.default_branch === "string" &&
+                  repo.default_branch
+                    ? repo.default_branch
+                    : undefined;
+                const gitRemote =
+                  typeof repo.clone_url === "string" && repo.clone_url
+                    ? repo.clone_url
+                    : `https://github.com/${fullName}.git`;
+                const lastPushedAt = normalizeTimestamp(repo.pushed_at);
+
+                return {
+                  providerRepoId,
+                  fullName,
+                  org: ownerLoginRaw,
+                  name,
+                  gitRemote,
+                  ownerLogin: ownerLoginRaw,
+                  ownerType,
+                  visibility,
+                  defaultBranch,
+                  lastPushedAt,
+                } satisfies RepoIngestionPayload;
+              })
+              .filter((row): row is RepoIngestionPayload => row !== null);
+
+            if (toIngest.length > 0) {
+              await _ctx.scheduler.runAfter(
+                0,
+                internal.github.ingestInstallationRepoPage,
+                {
+                  teamId: connection.teamId,
+                  connectionId: connection._id,
+                  installationId: installation,
+                  connectedByUserId: connection.connectedByUserId ?? undefined,
+                  repos: toIngest,
+                }
+              );
+            }
+
+            if (repos.length < perPage) {
+              break;
+            }
+            page += 1;
+          }
+        } catch (err) {
+          console.error(
+            "github_webhook installation_repositories handler failed",
+            {
+              err,
+              delivery,
+            }
+          );
+        }
         break;
       }
       case "pull_request": {
