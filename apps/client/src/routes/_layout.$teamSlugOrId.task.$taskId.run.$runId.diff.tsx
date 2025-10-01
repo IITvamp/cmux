@@ -68,14 +68,12 @@ function collectAgentNamesFromRuns(
 ): string[] {
   if (!runs) return [];
 
-  const seen = new Set<string>();
   const ordered: string[] = [];
 
   const traverse = (items: TaskRunWithChildren[]) => {
     for (const run of items) {
       const trimmed = run.agentName?.trim();
-      if (trimmed && AVAILABLE_AGENT_NAMES.has(trimmed) && !seen.has(trimmed)) {
-        seen.add(trimmed);
+      if (trimmed && AVAILABLE_AGENT_NAMES.has(trimmed)) {
         ordered.push(trimmed);
       }
       if (run.children && run.children.length > 0) {
