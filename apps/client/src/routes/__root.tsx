@@ -126,12 +126,14 @@ function RootComponent() {
   useAutoUpdateNotifications();
 
   useEffect(() => {
-    console.log("[navigation] location-changed", {
-      pathname: location.pathname,
-      search: location.search,
-      hash: location.hash,
-      timestamp: new Date().toISOString(),
-    });
+    if (import.meta.env.DEV) {
+      console.log("[navigation] location-changed", {
+        pathname: location.pathname,
+        search: location.search,
+        hash: location.hash,
+        timestamp: new Date().toISOString(),
+      });
+    }
   }, [location]);
 
   return (
