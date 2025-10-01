@@ -30,6 +30,16 @@ declare global {
           callback: (eventName: string, ...args: unknown[]) => void
         ) => void;
       };
+      autoUpdate: {
+        check: () =>
+          Promise<{
+            ok: boolean;
+            reason?: string;
+            updateAvailable?: boolean;
+            version?: string | null;
+          }>;
+        install: () => Promise<{ ok: boolean; reason?: string }>;
+      };
     };
   }
 }
