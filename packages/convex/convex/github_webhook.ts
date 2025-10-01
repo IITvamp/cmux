@@ -167,13 +167,13 @@ async function ingestAllReposForInstallation(
           name,
           gitRemote,
           ownerLogin: ownerLoginRaw,
-          ownerType,
-          visibility,
-          defaultBranch,
-          lastPushedAt,
-        } satisfies RepoIngestionPayload;
+          ...(ownerType !== undefined && { ownerType }),
+          ...(visibility !== undefined && { visibility }),
+          ...(defaultBranch !== undefined && { defaultBranch }),
+          ...(lastPushedAt !== undefined && { lastPushedAt }),
+        };
       })
-      .filter((row): row is RepoIngestionPayload => row !== null);
+      .filter((row) => row !== null);
 
     if (toIngest.length > 0) {
       await _ctx.scheduler.runAfter(
@@ -213,19 +213,6 @@ type InstallationRepositoriesListResponse = {
     private?: boolean | null;
     pushed_at?: string | number | null;
   }>;
-};
-
-type RepoIngestionPayload = {
-  providerRepoId: number;
-  fullName: string;
-  org: string;
-  name: string;
-  gitRemote: string;
-  ownerLogin: string;
-  ownerType: "User" | "Organization" | undefined;
-  visibility: "public" | "private" | undefined;
-  defaultBranch: string | undefined;
-  lastPushedAt: number | undefined;
 };
 
 export const githubWebhook = httpAction(async (_ctx, req) => {
