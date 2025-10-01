@@ -1,14 +1,18 @@
 import { useTheme } from "@/components/theme/use-theme";
 import { isElectron } from "@/lib/electron";
 import { copyAllElectronLogs } from "@/lib/electron-logs/electron-logs";
+import { setLastTeamSlugOrId } from "@/lib/lastTeam";
+import { stackClientApp } from "@/lib/stack";
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import * as Dialog from "@radix-ui/react-dialog";
+import { useUser } from "@stackframe/react";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { useQuery } from "convex/react";
 import {
   GitPullRequest,
+  LogOut,
   Home,
   Monitor,
   Moon,
@@ -17,8 +21,9 @@ import {
   Server,
   Settings,
   Sun,
+  Users,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ElectronLogsCommandItems } from "./command-bar/ElectronLogsCommandItems";
 
@@ -34,6 +39,33 @@ const environmentSearchDefaults = {
   instanceId: undefined,
 } as const;
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const extractString = (value: unknown): string | undefined => {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const compactStrings = (values: ReadonlyArray<unknown>): string[] => {
+  const out: string[] = [];
+  for (const value of values) {
+    const str = extractString(value);
+    if (str) out.push(str);
+  }
+  return out;
+};
+
+type TeamCommandItem = {
+  id: string;
+  label: string;
+  slug?: string;
+  teamSlugOrId: string;
+  isCurrent: boolean;
+  keywords: string[];
+};
+
 export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -44,6 +76,66 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   const navigate = useNavigate();
   const router = useRouter();
   const { setTheme } = useTheme();
+
+  const stackUser = useUser({ or: "return-null" });
+  const stackTeams = stackUser?.useTeams() ?? [];
+  const selectedTeamId = stackUser?.selectedTeam?.id ?? null;
+  const teamMemberships = useQuery(api.teams.listTeamMemberships, {});
+
+  const getClientSlug = useCallback((meta: unknown): string | undefined => {
+    if (!isRecord(meta)) return undefined;
+    return extractString(meta["slug"]);
+  }, []);
+
+  const teamCommandItems = useMemo(() => {
+    const memberships = teamMemberships ?? [];
+    const items: TeamCommandItem[] = [];
+
+    for (const team of stackTeams) {
+      const membership = memberships.find((entry) => entry.teamId === team.id);
+
+      let membershipTeamSlug: string | undefined;
+      let membershipTeamDisplayName: string | undefined;
+      let membershipTeamName: string | undefined;
+
+      if (membership && isRecord(membership.team)) {
+        const teamRecord = membership.team;
+        membershipTeamSlug = extractString(teamRecord["slug"]);
+        membershipTeamDisplayName = extractString(teamRecord["displayName"]);
+        membershipTeamName = extractString(teamRecord["name"]);
+      }
+
+      const slugFromMetadata =
+        getClientSlug(team.clientMetadata) ||
+        getClientSlug(team.clientReadOnlyMetadata);
+
+      const slug = membershipTeamSlug || slugFromMetadata;
+      const label =
+        membershipTeamDisplayName ||
+        membershipTeamName ||
+        extractString(team.displayName) ||
+        team.id;
+
+      const teamSlugOrIdTarget = slug ?? team.id;
+
+      items.push({
+        id: team.id,
+        label,
+        slug,
+        teamSlugOrId: teamSlugOrIdTarget,
+        isCurrent: selectedTeamId === team.id,
+        keywords: compactStrings([label, slug, team.id, teamSlugOrIdTarget]),
+      });
+    }
+
+    items.sort((a, b) => {
+      if (a.isCurrent && !b.isCurrent) return -1;
+      if (!a.isCurrent && b.isCurrent) return 1;
+      return a.label.localeCompare(b.label, undefined, { sensitivity: "base" });
+    });
+
+    return items;
+  }, [stackTeams, teamMemberships, selectedTeamId, getClientSlug]);
 
   const allTasks = useQuery(api.tasks.getTasksWithTaskRuns, { teamSlugOrId });
 
@@ -172,6 +264,19 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
         } catch {
           // ignore preload errors
         }
+      } else if (value?.startsWith("team:")) {
+        const [teamIdPart, slugPart] = value.slice(5).split(":");
+        const targetTeamSlugOrId = slugPart || teamIdPart;
+        if (targetTeamSlugOrId) {
+          try {
+            await router.preloadRoute({
+              to: "/$teamSlugOrId/dashboard",
+              params: { teamSlugOrId: targetTeamSlugOrId },
+            });
+          } catch {
+            // ignore preload errors
+          }
+        }
       } else if (value?.startsWith("task:")) {
         const parts = value.slice(5).split(":");
         const taskId = parts[0];
@@ -285,6 +390,20 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
             toast.error("Failed to check for updates.");
           }
         }
+      } else if (value === "sign-out") {
+        try {
+          if (stackUser) {
+            await stackUser.signOut({
+              redirectUrl: stackClientApp.urls.afterSignOut,
+            });
+          } else {
+            await stackClientApp.redirectToSignOut({ replace: true });
+          }
+        } catch (error) {
+          console.error("Sign out failed", error);
+          toast.error("Unable to sign out");
+          return;
+        }
       } else if (value === "theme-light") {
         setTheme("light");
       } else if (value === "theme-dark") {
@@ -306,6 +425,30 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
         navigate({
           to: "/$teamSlugOrId/settings",
           params: { teamSlugOrId },
+        });
+      } else if (value.startsWith("team:")) {
+        const [teamId, slugPart] = value.slice(5).split(":");
+        const targetTeamSlugOrId = slugPart || teamId;
+        if (!teamId || !targetTeamSlugOrId) {
+          toast.error("Unable to switch teams right now.");
+          return;
+        }
+
+        try {
+          const targetTeam = stackTeams.find((team) => team.id === teamId) ?? null;
+          if (stackUser && targetTeam && stackUser.selectedTeam?.id !== teamId) {
+            await stackUser.setSelectedTeam(targetTeam);
+          }
+        } catch (error) {
+          console.error("Failed to set selected team", error);
+          toast.error("Unable to select that team");
+          return;
+        }
+
+        setLastTeamSlugOrId(targetTeamSlugOrId);
+        navigate({
+          to: "/$teamSlugOrId/dashboard",
+          params: { teamSlugOrId: targetTeamSlugOrId },
         });
       } else if (value.startsWith("task:")) {
         const parts = value.slice(5).split(":");
@@ -352,7 +495,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
       setSearch("");
       setOpenedWithShift(false);
     },
-    [navigate, teamSlugOrId, setTheme, allTasks]
+    [navigate, teamSlugOrId, setTheme, allTasks, stackUser, stackTeams]
   );
 
   if (!open) return null;
@@ -465,6 +608,42 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
               </Command.Item>
             </Command.Group>
 
+            {teamCommandItems.length > 0 ? (
+              <Command.Group>
+                <div className="px-2 py-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+                  Teams
+                </div>
+                {teamCommandItems.map((item) => (
+                  <Command.Item
+                    key={item.id}
+                    value={`team:${item.id}:${item.teamSlugOrId}`}
+                    data-value={`team:${item.id}:${item.teamSlugOrId}`}
+                    keywords={item.keywords}
+                    onSelect={() =>
+                      handleSelect(`team:${item.id}:${item.teamSlugOrId}`)
+                    }
+                    className="flex items-center gap-3 px-3 py-2.5 mx-1 rounded-md cursor-pointer
+                hover:bg-neutral-100 dark:hover:bg-neutral-800
+                data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
+                data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
+                  >
+                    <Users className="h-4 w-4 text-neutral-500" />
+                    <div className="flex flex-col flex-1 overflow-hidden">
+                      <span className="text-sm truncate">{item.label}</span>
+                      <span className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
+                        {item.teamSlugOrId}
+                      </span>
+                    </div>
+                    {item.isCurrent ? (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+                        current
+                      </span>
+                    ) : null}
+                  </Command.Item>
+                ))}
+              </Command.Group>
+            ) : null}
+
             <Command.Group>
               <div className="px-2 py-1.5 text-xs text-neutral-500 dark:text-neutral-400">
                 Theme
@@ -500,6 +679,25 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
                 <span className="text-sm">System Theme</span>
               </Command.Item>
             </Command.Group>
+
+            {stackUser ? (
+              <Command.Group>
+                <div className="px-2 py-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+                  Account
+                </div>
+                <Command.Item
+                  value="sign-out"
+                  onSelect={() => handleSelect("sign-out")}
+                  className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer
+                hover:bg-neutral-100 dark:hover:bg-neutral-800
+                data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
+                data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
+                >
+                  <LogOut className="h-4 w-4 text-neutral-500" />
+                  <span className="text-sm">Sign out</span>
+                </Command.Item>
+              </Command.Group>
+            ) : null}
 
             {allTasks && allTasks.length > 0 && (
               <Command.Group>
