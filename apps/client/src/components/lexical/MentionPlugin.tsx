@@ -1,3 +1,4 @@
+import type { Id } from "@cmux/convex/dataModel";
 import type { FileInfo } from "@cmux/shared";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import clsx from "clsx";
@@ -133,9 +134,14 @@ function MentionMenu({
 interface MentionPluginProps {
   repoUrl?: string;
   branch?: string;
+  environmentId?: Id<"environments">;
 }
 
-export function MentionPlugin({ repoUrl, branch }: MentionPluginProps) {
+export function MentionPlugin({
+  repoUrl,
+  branch,
+  environmentId,
+}: MentionPluginProps) {
   const [editor] = useLexicalComposerContext();
   const [isShowingMenu, setIsShowingMenu] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{
@@ -152,12 +158,12 @@ export function MentionPlugin({ repoUrl, branch }: MentionPluginProps) {
 
   // Fetch all files once when repository URL is available
   useEffect(() => {
-    if (repoUrl && socket) {
+    if ((repoUrl || environmentId) && socket) {
       setIsLoading(true);
       socket.emit("list-files", {
-        repoPath: repoUrl,
-        branch: branch || undefined,
-        // Don't send pattern - we want all files
+        ...(repoUrl ? { repoPath: repoUrl } : {}),
+        ...(environmentId ? { environmentId } : {}),
+        ...(branch ? { branch } : {}),
       });
 
       const handleFilesResponse = (data: {
@@ -166,7 +172,6 @@ export function MentionPlugin({ repoUrl, branch }: MentionPluginProps) {
       }) => {
         setIsLoading(false);
         if (!data.error) {
-          // Filter to only show actual files, not directories
           const fileList = data.files.filter((f) => !f.isDirectory);
           setFiles(fileList);
         } else {
@@ -179,12 +184,11 @@ export function MentionPlugin({ repoUrl, branch }: MentionPluginProps) {
       return () => {
         socket.off("list-files-response", handleFilesResponse);
       };
-    } else if (!repoUrl) {
-      // If no repository URL, set empty files list
-      setFiles([]);
-      setIsLoading(false);
     }
-  }, [repoUrl, branch, socket]);
+
+    setFiles([]);
+    setIsLoading(false);
+  }, [repoUrl, branch, environmentId, socket]);
 
   // Filter files based on search text using fuzzysort
   useEffect(() => {
@@ -463,7 +467,7 @@ export function MentionPlugin({ repoUrl, branch }: MentionPluginProps) {
       selectedIndex={selectedIndex}
       onSelect={selectFile}
       position={menuPosition}
-      hasRepository={!!repoUrl}
+      hasRepository={Boolean(repoUrl || environmentId)}
       isLoading={isLoading}
     />
   );

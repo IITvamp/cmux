@@ -8,6 +8,7 @@ import {
   useMemo,
   useRef,
 } from "react";
+import type { Id } from "@cmux/convex/dataModel";
 
 export interface EditorApi {
   getContent: () => {
@@ -28,6 +29,7 @@ interface DashboardInputProps {
   onSubmit: () => void;
   repoUrl?: string;
   branch?: string;
+  environmentId?: Id<"environments">;
   persistenceKey?: string;
   maxHeight?: string;
 }
@@ -39,6 +41,7 @@ export const DashboardInput = memo(
       onSubmit,
       repoUrl,
       branch,
+      environmentId,
       persistenceKey,
       maxHeight = "600px",
     },
@@ -319,6 +322,7 @@ export const DashboardInput = memo(
         onSubmit={onSubmit}
         repoUrl={repoUrl}
         branch={branch}
+        environmentId={environmentId}
         persistenceKey={persistenceKey}
         padding={lexicalPadding}
         contentEditableClassName={lexicalClassName}

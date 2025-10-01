@@ -633,6 +633,11 @@ function DashboardComponent() {
   }, [selectedProject, taskDescription, handleStartTask]);
 
   // Memoized computed values for editor props
+  const lexicalEnvironmentId = useMemo(() => {
+    if (!selectedProject[0] || !isEnvSelected) return undefined;
+    return selectedProject[0].replace(/^env:/, "") as Id<"environments">;
+  }, [selectedProject, isEnvSelected]);
+
   const lexicalRepoUrl = useMemo(() => {
     if (!selectedProject[0]) return undefined;
     if (isEnvSelected) return undefined;
@@ -669,6 +674,7 @@ function DashboardComponent() {
               onTaskDescriptionChange={handleTaskDescriptionChange}
               onSubmit={handleSubmit}
               lexicalRepoUrl={lexicalRepoUrl}
+              lexicalEnvironmentId={lexicalEnvironmentId}
               lexicalBranch={lexicalBranch}
               projectOptions={projectOptions}
               selectedProject={selectedProject}
@@ -704,6 +710,7 @@ type DashboardMainCardProps = {
   onTaskDescriptionChange: (value: string) => void;
   onSubmit: () => void;
   lexicalRepoUrl?: string;
+  lexicalEnvironmentId?: Id<"environments">;
   lexicalBranch?: string;
   projectOptions: SelectOption[];
   selectedProject: string[];
@@ -730,6 +737,7 @@ function DashboardMainCard({
   onTaskDescriptionChange,
   onSubmit,
   lexicalRepoUrl,
+  lexicalEnvironmentId,
   lexicalBranch,
   projectOptions,
   selectedProject,
@@ -757,6 +765,7 @@ function DashboardMainCard({
         onTaskDescriptionChange={onTaskDescriptionChange}
         onSubmit={onSubmit}
         repoUrl={lexicalRepoUrl}
+        environmentId={lexicalEnvironmentId}
         branch={lexicalBranch}
         persistenceKey="dashboard-task-description"
         maxHeight="300px"

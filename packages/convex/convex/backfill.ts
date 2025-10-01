@@ -1,9 +1,5 @@
 "use node";
 
-import { webcrypto } from "node:crypto";
-// @ts-expect-error - we need to use the node:crypto API in the browser
-globalThis.crypto = webcrypto;
-
 import {
   StackAdminApp,
   type ServerTeam,
@@ -49,7 +45,7 @@ export const backfillFromStack = internalAction({
 
     const projectId = requireEnv("NEXT_PUBLIC_STACK_PROJECT_ID");
     const publishableClientKey = requireEnv(
-      "NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY"
+      "NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY",
     );
     const secretServerKey = requireEnv("STACK_SECRET_SERVER_KEY");
     const superSecretAdminKey = requireEnv("STACK_SUPER_SECRET_ADMIN_KEY");

@@ -219,6 +219,12 @@ export type GithubOpenPrRequest = {
     taskRunId: string;
 };
 
+export type GithubMergePrRequest = {
+    teamSlugOrId: string;
+    taskRunId: string;
+    method: 'squash' | 'rebase' | 'merge';
+};
+
 export type GithubPrsFilesResponse = {
     repoFullName: string;
     number: number;
@@ -349,6 +355,12 @@ export type ListEnvironmentsResponse = Array<GetEnvironmentResponse>;
 
 export type GetEnvironmentVarsResponse = {
     envVarsContent: string;
+};
+
+export type UpdateEnvironmentBody = {
+    teamSlugOrId: string;
+    name?: string;
+    description?: string;
 };
 
 export type ExposedService = {
@@ -1094,6 +1106,45 @@ export type PostApiIntegrationsGithubPrsOpenResponses = {
 
 export type PostApiIntegrationsGithubPrsOpenResponse = PostApiIntegrationsGithubPrsOpenResponses[keyof PostApiIntegrationsGithubPrsOpenResponses];
 
+export type PostApiIntegrationsGithubPrsMergeData = {
+    body: GithubMergePrRequest;
+    path?: never;
+    query?: never;
+    url: '/api/integrations/github/prs/merge';
+};
+
+export type PostApiIntegrationsGithubPrsMergeErrors = {
+    /**
+     * Invalid request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Forbidden
+     */
+    403: unknown;
+    /**
+     * Task run not found
+     */
+    404: unknown;
+    /**
+     * Failed to merge PRs
+     */
+    500: unknown;
+};
+
+export type PostApiIntegrationsGithubPrsMergeResponses = {
+    /**
+     * PRs merged
+     */
+    200: GithubOpenPrResponse;
+};
+
+export type PostApiIntegrationsGithubPrsMergeResponse = PostApiIntegrationsGithubPrsMergeResponses[keyof PostApiIntegrationsGithubPrsMergeResponses];
+
 export type GetApiIntegrationsGithubPrsRawData = {
     body?: never;
     path?: never;
@@ -1390,6 +1441,43 @@ export type GetApiEnvironmentsByIdResponses = {
 };
 
 export type GetApiEnvironmentsByIdResponse = GetApiEnvironmentsByIdResponses[keyof GetApiEnvironmentsByIdResponses];
+
+export type PatchApiEnvironmentsByIdData = {
+    body: UpdateEnvironmentBody;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/environments/{id}';
+};
+
+export type PatchApiEnvironmentsByIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Forbidden
+     */
+    403: unknown;
+    /**
+     * Environment not found
+     */
+    404: unknown;
+    /**
+     * Failed to update environment
+     */
+    500: unknown;
+};
+
+export type PatchApiEnvironmentsByIdResponses = {
+    /**
+     * Environment updated successfully
+     */
+    200: GetEnvironmentResponse;
+};
+
+export type PatchApiEnvironmentsByIdResponse = PatchApiEnvironmentsByIdResponses[keyof PatchApiEnvironmentsByIdResponses];
 
 export type GetApiEnvironmentsByIdVarsData = {
     body?: never;

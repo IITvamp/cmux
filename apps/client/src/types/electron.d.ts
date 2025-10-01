@@ -103,6 +103,13 @@ interface CmuxAPI {
   logs: CmuxLogsAPI;
   webContentsView: CmuxWebContentsViewAPI;
   autoUpdate: {
+    check: () =>
+      Promise<{
+        ok: boolean;
+        reason?: string;
+        updateAvailable?: boolean;
+        version?: string | null;
+      }>;
     install: () => Promise<{ ok: boolean; reason?: string }>;
   };
 }

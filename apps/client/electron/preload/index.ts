@@ -133,6 +133,13 @@ const cmuxAPI = {
       ipcRenderer.invoke("cmux:logs:copy-all") as Promise<{ ok: boolean }>,
   },
   autoUpdate: {
+    check: () =>
+      ipcRenderer.invoke("cmux:auto-update:check") as Promise<{
+        ok: boolean;
+        reason?: string;
+        updateAvailable?: boolean;
+        version?: string | null;
+      }>,
     install: () =>
       ipcRenderer.invoke("cmux:auto-update:install") as Promise<{
         ok: boolean;

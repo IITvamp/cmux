@@ -79,26 +79,24 @@ export function EnvironmentConfiguration({
   const [iframeLoaded, setIframeLoaded] = useState(false);
   const [envName, setEnvName] = useState(() => initialEnvName);
   const [envVars, setEnvVars] = useState<EnvVar[]>(() =>
-    ensureInitialEnvVars(initialEnvVars)
+    ensureInitialEnvVars(initialEnvVars),
   );
   const [maintenanceScript, setMaintenanceScript] = useState(
-    () => initialMaintenanceScript
+    () => initialMaintenanceScript,
   );
   const [devScript, setDevScript] = useState(() => initialDevScript);
-  const [exposedPorts, setExposedPorts] = useState(
-    () => initialExposedPorts
-  );
+  const [exposedPorts, setExposedPorts] = useState(() => initialExposedPorts);
   const [portsError, setPortsError] = useState<string | null>(null);
   const keyInputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [pendingFocusIndex, setPendingFocusIndex] = useState<number | null>(
-    null
+    null,
   );
   const lastSubmittedEnvContent = useRef<string | null>(null);
   const [localInstanceId, setLocalInstanceId] = useState<string | undefined>(
-    () => instanceId
+    () => instanceId,
   );
   const [localVscodeUrl, setLocalVscodeUrl] = useState<string | undefined>(
-    () => vscodeUrl
+    () => vscodeUrl,
   );
 
   useEffect(() => {
@@ -108,15 +106,15 @@ export function EnvironmentConfiguration({
   useEffect(() => {
     setLocalVscodeUrl(vscodeUrl);
   }, [vscodeUrl]);
-  
+
   const createEnvironmentMutation = useRQMutation(
-    postApiEnvironmentsMutation()
+    postApiEnvironmentsMutation(),
   );
   const createSnapshotMutation = useRQMutation(
-    postApiEnvironmentsByIdSnapshotsMutation()
+    postApiEnvironmentsByIdSnapshotsMutation(),
   );
   const applySandboxEnvMutation = useRQMutation(
-    postApiSandboxesByIdEnvMutation()
+    postApiSandboxesByIdEnvMutation(),
   );
   const applySandboxEnv = applySandboxEnvMutation.mutate;
 
@@ -156,7 +154,7 @@ export function EnvironmentConfiguration({
     const envVarsContent = formatEnvVarsContent(
       envVars
         .filter((r) => r.name.trim().length > 0)
-        .map((r) => ({ name: r.name, value: r.value }))
+        .map((r) => ({ name: r.name, value: r.value })),
     );
 
     if (
@@ -183,7 +181,7 @@ export function EnvironmentConfiguration({
           onError: (error) => {
             console.error("Failed to apply sandbox environment vars", error);
           },
-        }
+        },
       );
     }, 400);
 
@@ -205,7 +203,7 @@ export function EnvironmentConfiguration({
     const envVarsContent = formatEnvVarsContent(
       envVars
         .filter((r) => r.name.trim().length > 0)
-        .map((r) => ({ name: r.name, value: r.value }))
+        .map((r) => ({ name: r.name, value: r.value })),
     );
 
     const parsedPorts = exposedPorts
@@ -216,7 +214,7 @@ export function EnvironmentConfiguration({
     const validation = validateExposedPorts(parsedPorts);
     if (validation.reserved.length > 0) {
       setPortsError(
-        `Reserved ports cannot be exposed: ${validation.reserved.join(", ")}`
+        `Reserved ports cannot be exposed: ${validation.reserved.join(", ")}`,
       );
       return;
     }
@@ -260,7 +258,7 @@ export function EnvironmentConfiguration({
           onError: (err) => {
             console.error("Failed to create snapshot version:", err);
           },
-        }
+        },
       );
     } else {
       // Create a new environment
@@ -295,7 +293,7 @@ export function EnvironmentConfiguration({
           onError: (err) => {
             console.error("Failed to create environment:", err);
           },
-        }
+        },
       );
     }
   };
@@ -351,10 +349,12 @@ export function EnvironmentConfiguration({
       </div>
 
       <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
-        {mode === "snapshot" ? "Configure Snapshot Version" : "Configure Environment"}
+        {mode === "snapshot"
+          ? "Configure Snapshot Version"
+          : "Configure Environment"}
       </h1>
       <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-        {mode === "snapshot" 
+        {mode === "snapshot"
           ? "Update configuration for the new snapshot version."
           : "Set up your environment name and variables."}
       </p>
@@ -370,12 +370,16 @@ export function EnvironmentConfiguration({
             onChange={(e) => setEnvName(e.target.value)}
             readOnly={mode === "snapshot"}
             aria-readonly={mode === "snapshot"}
-            placeholder={mode === "snapshot" ? "Auto-generated from environment" : "e.g. project-name"}
+            placeholder={
+              mode === "snapshot"
+                ? "Auto-generated from environment"
+                : "e.g. project-name"
+            }
             className={clsx(
               "w-full rounded-md border border-neutral-200 dark:border-neutral-800 px-3 py-2 text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2",
               mode === "snapshot"
                 ? "bg-neutral-100 text-neutral-600 cursor-not-allowed focus:ring-neutral-300/0 dark:bg-neutral-900 dark:text-neutral-400 dark:focus:ring-neutral-700/0"
-                : "bg-white text-neutral-900 focus:ring-neutral-300 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:ring-neutral-700"
+                : "bg-white text-neutral-900 focus:ring-neutral-300 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:ring-neutral-700",
             )}
           />
         </div>
@@ -433,9 +437,9 @@ export function EnvironmentConfiguration({
                           .filter(
                             (r) =>
                               r.name.trim().length > 0 ||
-                              r.value.trim().length > 0
+                              r.value.trim().length > 0,
                           )
-                          .map((r) => [r.name, r] as const)
+                          .map((r) => [r.name, r] as const),
                       );
                       for (const it of items) {
                         if (!it.name) continue;
@@ -585,6 +589,13 @@ export function EnvironmentConfiguration({
                 Script that runs after git pull in case new dependencies were
                 added.
               </p>
+              <p className="text-xs text-neutral-500 dark:text-neutral-500">
+                We execute this from <code>/root/workspace</code>, where your
+                repositories are cloned. For example,{" "}
+                <code>cd my-repo && npm install</code>
+                installs dependencies inside{" "}
+                <code>/root/workspace/my-repo</code>.
+              </p>
               <TextareaAutosize
                 value={maintenanceScript}
                 onChange={(e) => setMaintenanceScript(e.target.value)}
@@ -610,6 +621,11 @@ etc.`}
               <div className="space-y-2">
                 <p className="text-sm text-neutral-600 dark:text-neutral-400">
                   Script that starts the development server.
+                </p>
+                <p className="text-xs text-neutral-500 dark:text-neutral-500">
+                  Runs from <code>/root/workspace</code> as well, so reference
+                  repos with relative paths—e.g.{" "}
+                  <code>cd web && npm run dev</code>.
                 </p>
                 <TextareaAutosize
                   value={devScript}
@@ -670,8 +686,10 @@ etc.`}
                   ? "Creating snapshot..."
                   : "Creating environment..."}
               </>
+            ) : mode === "snapshot" ? (
+              "Create snapshot version"
             ) : (
-              mode === "snapshot" ? "Create snapshot version" : "Snapshot environment"
+              "Snapshot environment"
             )}
           </button>
         </div>
@@ -706,7 +724,7 @@ etc.`}
               "bg-white/60 dark:bg-neutral-950/60",
               iframeLoaded
                 ? "opacity-0 pointer-events-none"
-                : "opacity-100 pointer-events-auto"
+                : "opacity-100 pointer-events-auto",
             )}
           >
             <div className="text-center">
@@ -720,7 +738,8 @@ etc.`}
             src={localVscodeUrl}
             className="w-full h-full border-0"
             title="VSCode Environment"
-            allow="clipboard-read; clipboard-write"
+            allow="clipboard-read; clipboard-write; usb; serial; hid; cross-origin-isolated; autoplay; camera; microphone; geolocation; payment; fullscreen"
+            sandbox="allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-top-navigation"
             onLoad={() => setIframeLoaded(true)}
           />
         </div>

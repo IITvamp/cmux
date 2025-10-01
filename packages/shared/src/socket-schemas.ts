@@ -192,17 +192,24 @@ export const OpenInEditorResponseSchema = z.object({
 });
 
 // File listing events
-export const ListFilesRequestSchema = z.object({
-  repoPath: z.string(),
-  branch: z.string().optional(),
-  pattern: z.string().optional(), // Optional glob pattern for filtering
-});
+export const ListFilesRequestSchema = z
+  .object({
+    repoPath: z.string().optional(),
+    environmentId: typedZid("environments").optional(),
+    branch: z.string().optional(),
+    pattern: z.string().optional(), // Optional glob pattern for filtering
+  })
+  .refine(
+    (value) => Boolean(value.repoPath || value.environmentId),
+    "repoPath or environmentId is required"
+  );
 
 export const FileInfoSchema = z.object({
   path: z.string(),
   name: z.string(),
   isDirectory: z.boolean(),
   relativePath: z.string(),
+  repoFullName: z.string().optional(),
 });
 
 export const ListFilesResponseSchema = z.object({
@@ -275,12 +282,6 @@ export const GitHubCreateDraftPrSchema = z.object({
 // Sync PR state
 export const GitHubSyncPrStateSchema = z.object({
   taskRunId: typedZid("taskRuns"),
-});
-
-// Merge PR
-export const GitHubMergePrSchema = z.object({
-  taskRunId: typedZid("taskRuns"),
-  method: z.enum(["squash", "rebase", "merge"]),
 });
 
 // Merge branch directly
@@ -400,7 +401,6 @@ export type GitHubReposResponse = z.infer<typeof GitHubReposResponseSchema>;
 export type GitHubAuthResponse = z.infer<typeof GitHubAuthResponseSchema>;
 export type GitHubCreateDraftPr = z.infer<typeof GitHubCreateDraftPrSchema>;
 export type GitHubSyncPrState = z.infer<typeof GitHubSyncPrStateSchema>;
-export type GitHubMergePr = z.infer<typeof GitHubMergePrSchema>;
 export type GitHubMergeBranch = z.infer<typeof GitHubMergeBranchSchema>;
 export type ArchiveTask = z.infer<typeof ArchiveTaskSchema>;
 export type SpawnFromComment = z.infer<typeof SpawnFromCommentSchema>;
@@ -461,16 +461,6 @@ export interface ClientToServerEvents {
   // Sync PR state with GitHub and update Convex
   "github-sync-pr-state": (
     data: GitHubSyncPrState,
-    callback: (response: {
-      success: boolean;
-      results: PullRequestActionResult[];
-      aggregate: AggregatePullRequestSummary;
-      error?: string;
-    }) => void
-  ) => void;
-  // Merge PR with selected method
-  "github-merge-pr": (
-    data: GitHubMergePr,
     callback: (response: {
       success: boolean;
       results: PullRequestActionResult[];
