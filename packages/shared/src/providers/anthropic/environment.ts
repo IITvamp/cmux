@@ -7,19 +7,19 @@ export async function getClaudeEnvironment(
   ctx: EnvironmentContext,
 ): Promise<EnvironmentResult> {
   // These must be lazy since configs are imported into the browser
-  const { exec } = await import("node:child_process");
-  const { promisify } = await import("node:util");
+  // const { exec } = await import("node:child_process");
+  // const { promisify } = await import("node:util");
   const { readFile } = await import("node:fs/promises");
   const { homedir } = await import("node:os");
   const { Buffer } = await import("node:buffer");
-  const _execAsync = promisify(exec);
+  // const execAsync = promisify(exec);
 
   const files: EnvironmentResult["files"] = [];
   const env: Record<string, string> = {};
   const startupCommands: string[] = [];
   const claudeLifecycleDir = "/root/lifecycle/claude";
   const claudeSecretsDir = `${claudeLifecycleDir}/secrets`;
-  const _claudeApiKeyPath = `${claudeSecretsDir}/.anthropic_key`;
+  // const claudeApiKeyPath = `${claudeSecretsDir}/.anthropic_key`;
   const claudeApiKeyHelperPath = `${claudeSecretsDir}/anthropic_key_helper.sh`;
 
   // Prepare .claude.json
