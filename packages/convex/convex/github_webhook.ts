@@ -110,6 +110,25 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
                   account.type === "Organization" ? "Organization" : "User",
               }
             );
+
+            // Trigger repository sync if the installation is associated with a team
+            const conn = await _ctx.runQuery(
+              internal.github_app.getProviderConnectionByInstallationId,
+              { installationId }
+            );
+            if (conn?.teamId && conn._id) {
+              // Use a system user ID for initial sync
+              const systemUserId = conn.connectedByUserId ?? "__system__";
+              void _ctx.runAction(
+                internal.github_sync.syncRepositoriesFromInstallation,
+                {
+                  installationId,
+                  connectionId: conn._id,
+                  teamId: conn.teamId,
+                  userId: systemUserId,
+                }
+              );
+            }
           }
         } else if (action === "deleted") {
           if (installationId !== undefined) {
@@ -123,7 +142,28 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
         }
         break;
       }
-      case "installation_repositories":
+      case "installation_repositories": {
+        // Handle when repos are added or removed from an installation
+        if (installationId !== undefined) {
+          const conn = await _ctx.runQuery(
+            internal.github_app.getProviderConnectionByInstallationId,
+            { installationId }
+          );
+          if (conn?.teamId && conn._id) {
+            const systemUserId = conn.connectedByUserId ?? "__system__";
+            void _ctx.runAction(
+              internal.github_sync.syncRepositoriesFromInstallation,
+              {
+                installationId,
+                connectionId: conn._id,
+                teamId: conn.teamId,
+                userId: systemUserId,
+              }
+            );
+          }
+        }
+        break;
+      }
       case "repository":
       case "create":
       case "delete":

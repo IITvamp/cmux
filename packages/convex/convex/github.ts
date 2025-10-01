@@ -1,7 +1,8 @@
 import { v } from "convex/values";
 import { getTeamId } from "../_shared/team";
-import type { Doc } from "./_generated/dataModel";
-import { internalMutation } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
+import { internalMutation, internalQuery } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
 
 export const getReposByOrg = authQuery({
@@ -198,6 +199,7 @@ export const assignProviderConnectionToTeam = authMutation({
   args: { teamSlugOrId: v.string(), installationId: v.number() },
   handler: async (ctx, { teamSlugOrId, installationId }) => {
     const teamId = await getTeamId(ctx, teamSlugOrId);
+    const userId = ctx.identity.subject;
     const now = Date.now();
     const row = await ctx.db
       .query("providerConnections")
@@ -208,10 +210,19 @@ export const assignProviderConnectionToTeam = authMutation({
     if (!row) throw new Error("Installation not found");
     await ctx.db.patch(row._id, {
       teamId,
-      connectedByUserId: ctx.identity.subject,
+      connectedByUserId: userId,
       updatedAt: now,
       isActive: true,
     });
+
+    // Trigger initial repository sync in the background
+    void ctx.scheduler.runAfter(0, internal.github_sync.syncRepositoriesFromInstallation, {
+      installationId,
+      connectionId: row._id,
+      teamId,
+      userId,
+    });
+
     return { ok: true as const };
   },
 });
@@ -418,6 +429,80 @@ export const bulkInsertRepos = authMutation({
       )
     );
     return insertedIds;
+  },
+});
+
+// Internal query to get provider connection details
+export const getProviderConnectionById = internalQuery({
+  args: { connectionId: v.id("providerConnections") },
+  handler: async (ctx, { connectionId }) => {
+    return await ctx.db.get(connectionId);
+  },
+});
+
+// Internal mutation for upserting a repository from GitHub API data
+export const upsertRepoFromGitHubAPI = internalMutation({
+  args: {
+    teamId: v.string(),
+    userId: v.string(),
+    connectionId: v.id("providerConnections"),
+    fullName: v.string(),
+    org: v.string(),
+    name: v.string(),
+    providerRepoId: v.number(),
+    ownerLogin: v.string(),
+    ownerType: v.union(v.literal("User"), v.literal("Organization")),
+    visibility: v.union(v.literal("public"), v.literal("private")),
+    defaultBranch: v.optional(v.string()),
+    lastPushedAt: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+
+    // Check if repo exists by providerRepoId
+    const existing = await ctx.db
+      .query("repos")
+      .withIndex("by_providerRepoId", (q) =>
+        q.eq("teamId", args.teamId).eq("providerRepoId", args.providerRepoId)
+      )
+      .first();
+
+    if (existing) {
+      // Update existing repo
+      await ctx.db.patch(existing._id, {
+        fullName: args.fullName,
+        org: args.org,
+        name: args.name,
+        ownerLogin: args.ownerLogin,
+        ownerType: args.ownerType,
+        visibility: args.visibility,
+        defaultBranch: args.defaultBranch,
+        connectionId: args.connectionId,
+        lastSyncedAt: now,
+        ...(args.lastPushedAt !== undefined ? { lastPushedAt: args.lastPushedAt } : {}),
+      });
+      return existing._id;
+    }
+
+    // Insert new repo
+    const gitRemote = `https://github.com/${args.fullName}.git`;
+    return await ctx.db.insert("repos", {
+      fullName: args.fullName,
+      org: args.org,
+      name: args.name,
+      gitRemote,
+      provider: "github",
+      userId: args.userId,
+      teamId: args.teamId,
+      providerRepoId: args.providerRepoId,
+      ownerLogin: args.ownerLogin,
+      ownerType: args.ownerType,
+      visibility: args.visibility,
+      defaultBranch: args.defaultBranch,
+      connectionId: args.connectionId,
+      lastSyncedAt: now,
+      lastPushedAt: args.lastPushedAt,
+    });
   },
 });
 
