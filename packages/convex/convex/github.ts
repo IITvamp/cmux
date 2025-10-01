@@ -500,7 +500,7 @@ export const ingestInstallationRepoPage = internalMutation({
         org: v.string(),
         name: v.string(),
         gitRemote: v.string(),
-        ownerLogin: v.optional(v.string()),
+        ownerLogin: v.string(),
         ownerType: v.optional(
           v.union(v.literal("User"), v.literal("Organization"))
         ),
