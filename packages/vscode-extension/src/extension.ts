@@ -12,6 +12,8 @@ const debugShowOutput = process.env.CMUX_DEBUG_SHOW_OUTPUT === "1";
 // Log immediately when module loads
 console.log("[cmux] Extension module loaded");
 
+const DEFAULT_TMUX_SESSION_NAME = "cmux";
+
 // Socket.IO server instance
 let ioServer: Server | null = null;
 let httpServer: http.Server | null = null;
@@ -70,16 +72,16 @@ async function resolveDefaultBaseRef(repositoryPath: string): Promise<string> {
   return "origin/main";
 }
 
-async function hasTmuxSessions(): Promise<boolean> {
+async function hasTmuxSession(sessionName: string): Promise<boolean> {
   return new Promise((resolve) => {
     try {
-      execFile("tmux", ["list-sessions"], (error, stdout) => {
+      execFile("tmux", ["has-session", "-t", sessionName], (error) => {
         if (error) {
-          // tmux not installed or no server/sessions
+          // tmux not installed or session missing
           resolve(false);
           return;
         }
-        resolve(stdout.trim().length > 0);
+        resolve(true);
       });
     } catch {
       resolve(false);
@@ -269,10 +271,12 @@ async function setupDefaultTerminal() {
     return;
   }
 
-  // If no tmux sessions exist, skip any UI/terminal work entirely
-  const hasSessions = await hasTmuxSessions();
-  if (!hasSessions) {
-    log("No tmux sessions found; skipping terminal setup and attach");
+  // If the default tmux session does not exist, skip any UI/terminal work entirely
+  const hasDefaultSession = await hasTmuxSession(DEFAULT_TMUX_SESSION_NAME);
+  if (!hasDefaultSession) {
+    log(
+      `Tmux session '${DEFAULT_TMUX_SESSION_NAME}' not found; skipping terminal setup and attach`
+    );
     return;
   }
 
@@ -312,8 +316,10 @@ async function setupDefaultTerminal() {
 
   // Attach to default tmux session with a small delay to ensure it's ready
   setTimeout(() => {
-    terminal.sendText(`tmux attach`);
-    log("Attached to default tmux session");
+    terminal.sendText(`tmux attach -t ${DEFAULT_TMUX_SESSION_NAME}`);
+    log(
+      `Attached to default tmux session '${DEFAULT_TMUX_SESSION_NAME}'`
+    );
   }, 500); // 500ms delay to ensure tmux session is ready
 
   log("Created terminal successfully");
