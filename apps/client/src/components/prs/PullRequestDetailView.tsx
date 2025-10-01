@@ -1,12 +1,15 @@
 import { RunDiffSection } from "@/components/RunDiffSection";
 import { Dropdown } from "@/components/ui/dropdown";
+import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { normalizeGitRef } from "@/lib/refWithOrigin";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
+import { useMutation } from "@tanstack/react-query";
 import { useQuery as useRQ } from "@tanstack/react-query";
 import { useQuery as useConvexQuery } from "convex/react";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, GitMerge, X } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 type PullRequestDetailViewProps = {
   teamSlugOrId: string;
@@ -151,6 +154,12 @@ export function PullRequestDetailView({
                     Open
                   </span>
                 )}
+
+                <PRActions
+                  teamSlugOrId={teamSlugOrId}
+                  currentPR={currentPR}
+                />
+
                 {currentPR.htmlUrl ? (
                   <a
                     className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none whitespace-nowrap"
@@ -234,6 +243,153 @@ export function PullRequestDetailView({
       </div>
     </div>
   );
+}
+
+function PRActions({
+  teamSlugOrId,
+  currentPR,
+}: {
+  teamSlugOrId: string;
+  currentPR: {
+    repoFullName: string;
+    number: number;
+    state: string;
+    merged?: boolean;
+    draft?: boolean;
+  };
+}) {
+  const prIsOpen = currentPR.state === "open";
+  const prIsMerged = currentPR.merged === true;
+  const prIsClosed = currentPR.state === "closed" && !prIsMerged;
+
+  const [owner, repo] = currentPR.repoFullName.split("/");
+
+  const mergePrMutation = useMutation({
+    mutationFn: async (method: MergeMethod) => {
+      const response = await fetch("/api/integrations/github/prs/merge-direct", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          teamSlugOrId,
+          owner,
+          repo,
+          number: currentPR.number,
+          method,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to merge PR");
+      }
+
+      return response.json();
+    },
+    onMutate: (method) => {
+      const toastId = toast.loading(`Merging PR (${method})...`);
+      return { toastId };
+    },
+    onSuccess: (_data, _method, context) => {
+      toast.success("PR merged", {
+        id: context?.toastId,
+      });
+    },
+    onError: (error, _method, context) => {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error("Failed to merge PR", {
+        id: context?.toastId,
+        description: message,
+      });
+    },
+  });
+
+  const closePrMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/integrations/github/prs/close", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          teamSlugOrId,
+          owner,
+          repo,
+          number: currentPR.number,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to close PR");
+      }
+
+      return response.json();
+    },
+    onMutate: () => {
+      const toastId = toast.loading("Closing PR...");
+      return { toastId };
+    },
+    onSuccess: (_data, _variables, context) => {
+      toast.success("PR closed", {
+        id: context?.toastId,
+      });
+    },
+    onError: (error, _variables, context) => {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error("Failed to close PR", {
+        id: context?.toastId,
+        description: message,
+      });
+    },
+  });
+
+  const handleMerge = (method: MergeMethod) => {
+    mergePrMutation.mutate(method);
+  };
+
+  const handleClose = () => {
+    closePrMutation.mutate();
+  };
+
+  const isMerging = mergePrMutation.isPending;
+  const isClosing = closePrMutation.isPending;
+
+  if (prIsMerged) {
+    return (
+      <div
+        className="flex items-center gap-1.5 px-3 py-1 bg-[#8250df] text-white rounded font-medium text-xs select-none whitespace-nowrap border border-[#6e40cc] dark:bg-[#8250df] dark:border-[#6e40cc] cursor-not-allowed"
+        title="Pull request has been merged"
+      >
+        <GitMerge className="w-3.5 h-3.5" />
+        Merged
+      </div>
+    );
+  }
+
+  if (prIsClosed) {
+    return null;
+  }
+
+  if (prIsOpen) {
+    return (
+      <>
+        <MergeButton
+          onMerge={handleMerge}
+          isOpen={true}
+          disabled={isMerging || isClosing}
+          prCount={1}
+        />
+        <button
+          onClick={handleClose}
+          disabled={isClosing || isMerging}
+          className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-xs select-none whitespace-nowrap"
+        >
+          <X className="w-3.5 h-3.5" />
+          Close PR
+        </button>
+      </>
+    );
+  }
+
+  return null;
 }
 
 export default PullRequestDetailView;
