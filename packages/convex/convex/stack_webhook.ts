@@ -48,6 +48,21 @@ export async function syncTeamMembershipsFromStack(
   }
 }
 
+async function upsertTeamFromEventData(
+  ctx: ActionCtx,
+  t: StackWebhookPayload["data"] & { created_at_millis: number }
+) {
+  await ctx.runMutation(internal.stack.upsertTeam, {
+    id: t.id,
+    displayName: undefIfNull(t.display_name || undefined),
+    profileImageUrl: undefIfNull(t.profile_image_url || undefined),
+    clientMetadata: undefIfNull(t.client_metadata),
+    clientReadOnlyMetadata: undefIfNull(t.client_read_only_metadata),
+    serverMetadata: undefIfNull(t.server_metadata),
+    createdAtMillis: t.created_at_millis,
+  });
+}
+
 export const stackWebhook = httpAction(async (ctx, req) => {
   // Read payload text to preserve signature integrity
   const payload = await req.text();
@@ -114,18 +129,17 @@ export const stackWebhook = httpAction(async (ctx, req) => {
       await ctx.runMutation(internal.stack.deleteUser, { id: u.id });
       break;
     }
-    case "team.created":
+    case "team.created": {
+      const t = event.data;
+      await Promise.all([
+        upsertTeamFromEventData(ctx, t),
+        syncTeamMembershipsFromStack(ctx, t.id),
+      ]);
+      break;
+    }
     case "team.updated": {
       const t = event.data;
-      await ctx.runMutation(internal.stack.upsertTeam, {
-        id: t.id,
-        displayName: undefIfNull(t.display_name || undefined),
-        profileImageUrl: undefIfNull(t.profile_image_url || undefined),
-        clientMetadata: undefIfNull(t.client_metadata),
-        clientReadOnlyMetadata: undefIfNull(t.client_read_only_metadata),
-        serverMetadata: undefIfNull(t.server_metadata),
-        createdAtMillis: t.created_at_millis,
-      });
+      await upsertTeamFromEventData(ctx, t);
       break;
     }
     case "team.deleted": {
