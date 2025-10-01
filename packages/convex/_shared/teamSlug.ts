@@ -19,8 +19,10 @@ export function validateSlug(slug: string): void {
 }
 
 export function slugifyTeamName(name: string): string {
-  return name
-    .trim()
+  const trimmed = name.trim();
+  const emailLocal = extractEmailLocalPart(trimmed);
+  const source = emailLocal ?? trimmed;
+  return source
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, "")
     .replace(/\s+/g, "-")
@@ -29,43 +31,44 @@ export function slugifyTeamName(name: string): string {
     .replace(/-+$/, "");
 }
 
+function extractEmailLocalPart(input: string): string | undefined {
+  const match = input.match(/^[^@\s]+@[^@\s]+$/);
+  if (!match) {
+    return undefined;
+  }
+  const [local] = input.split("@");
+  return local ?? undefined;
+}
+
 function sanitizeTeamId(teamId: string): string {
   const sanitized = teamId.toLowerCase().replace(/[^a-z0-9]/g, "");
   return sanitized.length > 0 ? sanitized : "team";
 }
 
-export function deriveSlugPrefix(teamId: string): string {
+export function deriveSlugSuffix(teamId: string): string {
   const sanitized = sanitizeTeamId(teamId);
-  const prefixSource = sanitized.length >= 4 ? sanitized : `${sanitized}team`;
-  return prefixSource.slice(0, 4);
+  const suffixSource = sanitized.length >= 4 ? sanitized : `${sanitized}team`;
+  return suffixSource.slice(0, 4);
 }
 
 export function buildSlugCandidate(teamId: string, displayName: string, attempt: number): string {
-  const prefix = deriveSlugPrefix(teamId);
-  const rawName = slugifyTeamName(displayName);
-  const baseSource = rawName.length > 0 ? rawName : "team";
-  const suffix = attempt > 0 ? attempt.toString(36) : undefined;
+  const rawBase = slugifyTeamName(displayName);
+  const baseFallback = rawBase.length > 0 ? rawBase : "team";
+  const suffix = deriveSlugSuffix(teamId);
+  const attemptSuffix = attempt > 0 ? `${suffix}-${attempt.toString(36)}` : suffix;
 
-  const suffixLength = suffix ? suffix.length : 0;
-  const hyphenCount = suffix ? 2 : 1;
-  const maxBaseLength = Math.max(1, SLUG_MAX_LENGTH - prefix.length - suffixLength - hyphenCount);
-
-  let base = baseSource.slice(0, maxBaseLength);
+  const maxBaseLength = Math.max(1, SLUG_MAX_LENGTH - attemptSuffix.length - 1);
+  let base = baseFallback.slice(0, maxBaseLength);
   if (base.length === 0) {
     base = "team".slice(0, Math.max(1, maxBaseLength));
   }
   if (maxBaseLength >= SLUG_MIN_LENGTH && base.length < SLUG_MIN_LENGTH) {
-    base = (baseSource + "team").slice(0, Math.max(SLUG_MIN_LENGTH, Math.min(baseSource.length, maxBaseLength)));
-    if (base.length < SLUG_MIN_LENGTH) {
-      base = (base + "team").slice(0, Math.max(SLUG_MIN_LENGTH, Math.min(maxBaseLength, SLUG_MIN_LENGTH)));
-    }
-    base = base.slice(0, maxBaseLength);
+    const padded = (baseFallback + "team").slice(0, Math.max(SLUG_MIN_LENGTH, maxBaseLength));
+    base = padded.length >= SLUG_MIN_LENGTH ? padded : (padded + "team").slice(0, Math.max(SLUG_MIN_LENGTH, maxBaseLength));
   }
 
-  const parts = suffix ? [prefix, base, suffix] : [prefix, base];
-  let slug = parts.join("-");
-  slug = normalizeSlug(slug).replace(/-+/g, "-").replace(/^-+|-+$/g, "");
-  return slug;
+  const slug = `${base}-${attemptSuffix}`;
+  return normalizeSlug(slug).replace(/-+/g, "-").replace(/^-+|-+$/g, "");
 }
 
 export function extractSlugFromMetadata(meta: unknown): string | undefined {
