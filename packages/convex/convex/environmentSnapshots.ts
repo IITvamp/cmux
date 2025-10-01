@@ -120,6 +120,38 @@ export const activate = authMutation({
   },
 });
 
+export const remove = authMutation({
+  args: {
+    teamSlugOrId: v.string(),
+    environmentId: v.id("environments"),
+    snapshotVersionId: v.id("environmentSnapshotVersions"),
+  },
+  handler: async (ctx, args) => {
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+    const environment = await ctx.db.get(args.environmentId);
+
+    if (!environment || environment.teamId !== teamId) {
+      throw new Error("Environment not found");
+    }
+
+    const versionDoc = await ctx.db.get(args.snapshotVersionId);
+
+    if (
+      !versionDoc ||
+      versionDoc.environmentId !== args.environmentId ||
+      versionDoc.teamId !== teamId
+    ) {
+      throw new Error("Snapshot version not found");
+    }
+
+    if (versionDoc.morphSnapshotId === environment.morphSnapshotId) {
+      throw new Error("Cannot delete the active snapshot version.");
+    }
+
+    await ctx.db.delete(args.snapshotVersionId);
+  },
+});
+
 export const findBySnapshotId = authQuery({
   args: {
     teamSlugOrId: v.string(),
