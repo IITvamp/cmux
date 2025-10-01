@@ -29,6 +29,7 @@
     "@ai-sdk/gateway": "^1.0.28",
     "@ai-sdk/provider-utils": "^3.0.9",
     "@convex-dev/migrations": "^0.2.9",
+    "@octokit/auth-app": "^6.1.4",
     "@stackframe/js": "^2.8.41",
     "@stackframe/stack": "^2.8.41",
     "@t3-oss/env-core": "^0.13.8",
@@ -36,6 +37,7 @@
     "convex": "1.27.1",
     "convex-helpers": "^0.1.104",
     "jose": "^6.0.7",
+    "octokit": "^3.2.2",
     "socket.io-client": "^4.8.1",
     "svix": "^1.75.0",
     "zod": "^4.1.5"

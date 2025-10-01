@@ -1,5 +1,6 @@
 import type {
   InstallationEvent,
+  InstallationRepositoriesEvent,
   PullRequestEvent,
   PushEvent,
   WebhookEvent,
@@ -100,7 +101,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
         if (action === "created") {
           const account = inst?.installation?.account;
           if (account && installationId !== undefined) {
-            await _ctx.runMutation(
+            const connectionId = await _ctx.runMutation(
               internal.github_app.upsertProviderConnectionFromInstallation,
               {
                 installationId,
@@ -110,6 +111,29 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
                   account.type === "Organization" ? "Organization" : "User",
               }
             );
+
+            // Get the provider connection to find the teamId
+            const conn = await _ctx.runQuery(
+              internal.github_app.getProviderConnectionByInstallationId,
+              { installationId }
+            );
+
+            // If the connection has a teamId, sync repositories in the background
+            if (conn?.teamId && connectionId) {
+              // Use the connected user or fall back to a system user
+              const userId = conn.connectedByUserId ?? "__system__";
+
+              _ctx.scheduler.runAfter(
+                0,
+                internal.github_repos_sync.syncInstallationRepositories,
+                {
+                  installationId,
+                  teamId: conn.teamId,
+                  userId,
+                  connectionId,
+                }
+              );
+            }
           }
         } else if (action === "deleted") {
           if (installationId !== undefined) {
@@ -123,7 +147,40 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
         }
         break;
       }
-      case "installation_repositories":
+      case "installation_repositories": {
+        try {
+          const repoEvent = body as InstallationRepositoriesEvent;
+          const installation = Number(repoEvent.installation?.id ?? 0);
+          if (!installation) break;
+
+          const conn = await _ctx.runQuery(
+            internal.github_app.getProviderConnectionByInstallationId,
+            { installationId: installation }
+          );
+          const teamId = conn?.teamId;
+          if (!teamId || !conn._id) break;
+
+          // Sync repositories when they are added or removed from the installation
+          const userId = conn.connectedByUserId ?? "__system__";
+
+          _ctx.scheduler.runAfter(
+            0,
+            internal.github_repos_sync.syncInstallationRepositories,
+            {
+              installationId: installation,
+              teamId,
+              userId,
+              connectionId: conn._id,
+            }
+          );
+        } catch (err) {
+          console.error("github_webhook installation_repositories handler failed", {
+            err,
+            delivery,
+          });
+        }
+        break;
+      }
       case "repository":
       case "create":
       case "delete":
