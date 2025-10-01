@@ -40,3 +40,6 @@ apps/server/native/**/target/
 apps/server/native/**/*.node
 apps/server/native/**/Cargo.lock
 crates/**/target/
+
+# Python
+__pycache__

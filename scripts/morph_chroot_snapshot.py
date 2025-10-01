@@ -31,8 +31,13 @@ from urllib import request as urllib_request
 from urllib.error import HTTPError, URLError
 
 import dotenv
-from morphcloud.api import MorphCloudClient, Snapshot
-from morph_common import write_remote_file, write_remote_file_from_path
+from morphcloud.api import Instance, MorphCloudClient, Snapshot
+from morph_common import (
+    ensure_docker,
+    ensure_docker_cli_plugins,
+    write_remote_file,
+    write_remote_file_from_path,
+)
 
 dotenv.load_dotenv()
 
@@ -40,7 +45,7 @@ client = MorphCloudClient()
 
 ASSETS_DIR = Path(__file__).resolve().parent / "morph_assets"
 
-current_instance: t.Optional[object] = None
+current_instance: Instance | None = None
 
 
 def _cleanup_instance() -> None:
@@ -78,7 +83,6 @@ class DockerImageConfig(t.TypedDict):
     env: list[str]
     workdir: str
     user: str
-
 
 
 def build_or_pull_image(
@@ -143,7 +147,6 @@ def inspect_image(image: str) -> DockerImageConfig:
         "workdir": config.get("WorkingDir") or "/",
         "user": config.get("User") or "root",
     }
-
 
 
 def export_image_to_tar(image: str, *, platform: str) -> str:
@@ -243,7 +246,6 @@ def create_systemd_service(snapshot: Snapshot, config: DockerImageConfig) -> Sna
     return snapshot
 
 
-
 def build_snapshot(
     dockerfile_path: str | None,
     image_name: str | None,
@@ -258,7 +260,9 @@ def build_snapshot(
         target=target,
     )
     config = inspect_image(image)
-    print(f"Image config: entrypoint={config['entrypoint']}, cmd={config['cmd']}, workdir={config['workdir']}, user={config['user']}")
+    print(
+        f"Image config: entrypoint={config['entrypoint']}, cmd={config['cmd']}, workdir={config['workdir']}, user={config['user']}"
+    )
 
     rootfs_tar = export_image_to_tar(image, platform=platform)
 
@@ -270,15 +274,20 @@ def build_snapshot(
             disk_size=32768,
         )
 
-        print("Installing base utilities...")
-        snapshot = snapshot.setup(
-            "DEBIAN_FRONTEND=noninteractive apt-get update && "
-            "DEBIAN_FRONTEND=noninteractive apt-get install -y "
-            "curl procps util-linux coreutils && "
-            "rm -rf /var/lib/apt/lists/*"
-        )
+        print("Ensuring Docker tooling...")
+        docker_command = " && ".join([ensure_docker(), ensure_docker_cli_plugins()])
 
-        snapshot = snapshot.exec("mkdir -p /opt/app/rootfs")
+        print("Installing base utilities and preparing rootfs directory...")
+        snapshot = snapshot.exec(
+            f"""
+            DEBIAN_FRONTEND=noninteractive apt-get update &&
+            DEBIAN_FRONTEND=noninteractive apt-get install -y
+            curl procps util-linux coreutils &&
+            rm -rf /var/lib/apt/lists/* &&
+            mkdir -p /opt/app/rootfs &&
+            {docker_command}
+            """
+        )
 
         print("Uploading rootfs tarball...")
         snapshot = snapshot.upload(rootfs_tar, "/tmp/rootfs.tar", recursive=False)
@@ -314,8 +323,11 @@ def main() -> None:
     ap = argparse.ArgumentParser(
         description="Build Morph snapshot from Docker image (chroot approach)"
     )
-    group = ap.add_mutually_exclusive_group(required=True)
-    group.add_argument("--dockerfile", help="Path to Dockerfile to build")
+    group = ap.add_mutually_exclusive_group()
+    group.add_argument(
+        "--dockerfile",
+        help="Path to Dockerfile to build (default: Dockerfile)",
+    )
     group.add_argument("--image", help="Docker image name to use")
     ap.add_argument(
         "--platform",
@@ -333,8 +345,13 @@ def main() -> None:
     )
     args = ap.parse_args()
 
+    if args.dockerfile is None and args.image is None:
+        args.dockerfile = "Dockerfile"
+
     try:
-        snapshot = build_snapshot(args.dockerfile, args.image, args.platform, args.target)
+        snapshot = build_snapshot(
+            args.dockerfile, args.image, args.platform, args.target
+        )
         print(f"Snapshot ID: {snapshot.id}")
 
         print("Starting instance...")

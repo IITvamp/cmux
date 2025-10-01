@@ -54,57 +54,74 @@ def write_remote_file_from_path(
 
 
 def ensure_docker_cli_plugins(
-    snapshot: "Snapshot",
     *,
     compose_version: str = DOCKER_COMPOSE_VERSION,
     buildx_version: str = DOCKER_BUILDX_VERSION,
     expected_arch: str = MORPH_EXPECTED_UNAME_ARCH,
-) -> "Snapshot":
-    """Install docker CLI plugins needed for compose/buildx, validating arch."""
+) -> str:
+    """Return command string to install docker CLI plugins and validate arch."""
+    compose_download = " ".join(
+        [
+            "curl",
+            "-fsSL",
+            f"https://github.com/docker/compose/releases/download/{compose_version}/docker-compose-linux-{expected_arch}",
+            "-o",
+            "/usr/local/lib/docker/cli-plugins/docker-compose",
+        ]
+    )
+    buildx_download = " ".join(
+        [
+            "curl",
+            "-fsSL",
+            f"https://github.com/docker/buildx/releases/download/{buildx_version}/buildx-{buildx_version}.linux-amd64",
+            "-o",
+            "/usr/local/lib/docker/cli-plugins/docker-buildx",
+        ]
+    )
+
     docker_plugin_cmds = [
         "mkdir -p /usr/local/lib/docker/cli-plugins",
         "arch=$(uname -m)",
         f'[ "$arch" = "{expected_arch}" ] || (echo "Morph snapshot architecture mismatch: expected {expected_arch} but got $arch" >&2; exit 1)',
-        f"curl -fsSL https://github.com/docker/compose/releases/download/{compose_version}/docker-compose-linux-{expected_arch} "
-        f"-o /usr/local/lib/docker/cli-plugins/docker-compose",
+        compose_download,
         "chmod +x /usr/local/lib/docker/cli-plugins/docker-compose",
-        f"curl -fsSL https://github.com/docker/buildx/releases/download/{buildx_version}/buildx-{buildx_version}.linux-amd64 "
-        f"-o /usr/local/lib/docker/cli-plugins/docker-buildx",
+        buildx_download,
         "chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx",
         "docker compose version",
         "docker buildx version",
     ]
-    return _run_remote(snapshot, " && ".join(docker_plugin_cmds))
+    return " && ".join(docker_plugin_cmds)
 
 
-def ensure_docker(snapshot: "Snapshot") -> "Snapshot":
-    """Install Docker engine, enable BuildKit, and verify CLI plugins."""
-    snapshot = snapshot.setup(
-        "DEBIAN_FRONTEND=noninteractive apt-get update && "
-        "DEBIAN_FRONTEND=noninteractive apt-get install -y "
-        "docker.io docker-compose python3-docker git curl && "
-        "rm -rf /var/lib/apt/lists/*"
-    )
+def ensure_docker() -> str:
+    """Return command string to install Docker engine and enable BuildKit."""
     daemon_config = '{"features":{"buildkit":true}}'
-    command = (
-        "mkdir -p /etc/docker && "
-        f"echo {shlex.quote(daemon_config)} > /etc/docker/daemon.json && "
-        "echo 'DOCKER_BUILDKIT=1' >> /etc/environment && "
-        "systemctl restart docker && "
-        "for i in {1..30}; do "
-        "  if docker info >/dev/null 2>&1; then "
-        "    echo 'Docker ready'; break; "
-        "  else "
-        "    echo 'Waiting for Docker...'; "
-        "    [ $i -eq 30 ] && { echo 'Docker failed to start after 30 attempts'; exit 1; }; "
-        "    sleep 2; "
-        "  fi; "
-        "done && "
-        "docker --version && docker-compose --version && "
-        "(docker compose version 2>/dev/null || echo 'docker compose plugin not available') && "
-        "echo 'Docker commands verified'"
+    docker_ready_loop = "\n".join(
+        [
+            "for i in {1..30}; do",
+            "  if docker info >/dev/null 2>&1; then",
+            "    echo 'Docker ready'; break;",
+            "  else",
+            "    echo 'Waiting for Docker...';",
+            "    [ $i -eq 30 ] && { echo 'Docker failed to start after 30 attempts'; exit 1; };",
+            "    sleep 2;",
+            "  fi;",
+            "done",
+        ]
     )
-    snapshot = _run_remote(snapshot, command)
-    snapshot = ensure_docker_cli_plugins(snapshot)
-    snapshot = _run_remote(snapshot, "echo '::1       localhost' >> /etc/hosts")
-    return snapshot
+
+    commands = [
+        "DEBIAN_FRONTEND=noninteractive apt-get update",
+        "DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io docker-compose python3-docker git curl",
+        "rm -rf /var/lib/apt/lists/*",
+        "mkdir -p /etc/docker",
+        f"echo {shlex.quote(daemon_config)} > /etc/docker/daemon.json",
+        "echo 'DOCKER_BUILDKIT=1' >> /etc/environment",
+        "systemctl restart docker",
+        docker_ready_loop,
+        "docker --version && docker-compose --version",
+        "(docker compose version 2>/dev/null || echo 'docker compose plugin not available')",
+        "echo 'Docker commands verified'",
+        "echo '::1       localhost' >> /etc/hosts",
+    ]
+    return " && ".join(commands)
