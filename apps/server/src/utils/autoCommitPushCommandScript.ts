@@ -14,6 +14,13 @@ if (!branchName || !commitMessage) {
   process.exit(1);
 }
 
+const formatError = (error: unknown) => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+};
+
 async function runRepo(repoPath: string) {
   console.error(`[cmux auto-commit] repo=${repoPath} -> enter directory`);
 
@@ -26,18 +33,65 @@ async function runRepo(repoPath: string) {
       `[cmux auto-commit] repo=${repoPath} -> origin=${origin.trim()}`
     );
 
+    // Determine protected branch information before checking out
+    const remoteHeadRef = await $`git -C ${repoPath} symbolic-ref --short refs/remotes/origin/HEAD`
+      .text()
+      .then((value) => value.trim())
+      .catch(() => "");
+    const remoteDefaultBranch = remoteHeadRef.includes("/")
+      ? remoteHeadRef.split("/").pop() ?? ""
+      : remoteHeadRef;
+
+    if (remoteDefaultBranch) {
+      console.error(
+        `[cmux auto-commit] repo=${repoPath} -> origin default branch ${remoteDefaultBranch}`
+      );
+    } else {
+      console.error(
+        `[cmux auto-commit] repo=${repoPath} -> origin default branch unavailable`
+      );
+    }
+
+    if (remoteDefaultBranch && remoteDefaultBranch === branchName) {
+      const message = `[cmux auto-commit] repo=${repoPath} refusing to push protected branch ${branchName}`;
+      console.error(message);
+      throw new Error(message);
+    }
+
     // Add all changes
     console.error(`[cmux auto-commit] repo=${repoPath} -> git add -A`);
     await $`git -C ${repoPath} add -A`;
 
-    // Checkout branch
+    // Checkout branch (create or switch)
     console.error(
-      `[cmux auto-commit] repo=${repoPath} -> checkout ${branchName}`
+      `[cmux auto-commit] repo=${repoPath} -> ensure branch ${branchName}`
     );
-    try {
-      await $`git -C ${repoPath} checkout -b ${branchName}`.quiet();
-    } catch {
+
+    const branchExists = await $`git -C ${repoPath} rev-parse --verify ${branchName}`
+      .quiet()
+      .then(() => true)
+      .catch(() => false);
+
+    if (branchExists) {
+      console.error(
+        `[cmux auto-commit] repo=${repoPath} branch already exists -> checkout ${branchName}`
+      );
       await $`git -C ${repoPath} checkout ${branchName}`;
+    } else {
+      try {
+        await $`git -C ${repoPath} checkout -b ${branchName}`.quiet();
+        console.error(
+          `[cmux auto-commit] repo=${repoPath} created branch ${branchName}`
+        );
+      } catch (createError) {
+        console.error(
+          `[cmux auto-commit] repo=${repoPath} failed to create branch ${branchName}: ${formatError(createError)}`
+        );
+        console.error(
+          `[cmux auto-commit] repo=${repoPath} attempting checkout ${branchName}`
+        );
+        await $`git -C ${repoPath} checkout ${branchName}`;
+      }
     }
 
     // Commit

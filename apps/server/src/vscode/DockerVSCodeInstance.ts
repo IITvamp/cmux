@@ -514,7 +514,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       try {
         const recentLogs = await this.getLogs(300);
         dockerLogger.error(
-          `Recent container logs for ${this.containerName}:\n${recentLogs}`
+          `Recent container logs for ${this.containerName}:\n${recentLogs.trim()}`
         );
       } catch (e) {
         dockerLogger.error(
@@ -551,7 +551,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
           try {
             const recentLogs = await this.getLogs(300);
             dockerLogger.error(
-              `Recent container logs for ${this.containerName} (on exit):\n${recentLogs}`
+              `Recent container logs for ${this.containerName} (on exit):\n${recentLogs.trim()}`
             );
           } catch (e) {
             dockerLogger.error(
