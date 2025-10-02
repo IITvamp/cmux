@@ -164,6 +164,17 @@ export default async function LandingPage() {
                   </li>
                   <li>
                     <a
+                      className="font-semibold text-white hover:text-blue-400 transition"
+                      href="/blog"
+                    >
+                      Blog
+                    </a>
+                  </li>
+                  <li className="text-neutral-700 px-1" role="presentation">
+                    |
+                  </li>
+                  <li>
+                    <a
                       href="https://cal.com/team/manaflow/meeting"
                       target="_blank"
                       rel="noopener noreferrer"
