@@ -595,8 +595,7 @@ function MonacoSingleBufferRoute() {
   const { theme } = useTheme();
   const [isReady, setIsReady] = useState(false);
   const overlayRootRef = useRef<HTMLDivElement | null>(null);
-  const originalOverlayRef = useRef<HTMLDivElement | null>(null);
-  const modifiedOverlayRef = useRef<HTMLDivElement | null>(null);
+  const unifiedOverlayRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -668,8 +667,7 @@ function MonacoSingleBufferRoute() {
       boundaries: combinedDiff.fileBoundaries,
       originalEditor,
       modifiedEditor,
-      originalOverlayContainer: originalOverlayRef.current,
-      modifiedOverlayContainer: modifiedOverlayRef.current,
+      overlayContainer: unifiedOverlayRef.current,
       theme,
     });
 
@@ -700,8 +698,7 @@ function MonacoSingleBufferRoute() {
       <main className="flex flex-1 flex-col gap-4 px-4 py-4 md:px-6 lg:px-8">
         <section className="flex-1 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
           <div ref={overlayRootRef} className="relative h-[80vh]">
-            <div ref={originalOverlayRef} className="pointer-events-none absolute top-0 left-0 z-40 h-full" />
-            <div ref={modifiedOverlayRef} className="pointer-events-none absolute top-0 left-0 z-40 h-full" />
+            <div ref={unifiedOverlayRef} className="pointer-events-none absolute inset-0 z-40" />
             <DiffEditor
               key={theme}
               theme={editorTheme}
@@ -841,8 +838,7 @@ type SetupHeaderOverlayParams = {
   originalEditor: editor.ICodeEditor;
   modifiedEditor: editor.ICodeEditor;
   boundaries: CombinedFileBoundary[];
-  originalOverlayContainer: HTMLElement | null;
-  modifiedOverlayContainer: HTMLElement | null;
+  overlayContainer: HTMLElement | null;
   theme: string;
 };
 
@@ -851,79 +847,59 @@ function setupHeaderOverlay({
   originalEditor,
   modifiedEditor,
   boundaries,
-  originalOverlayContainer,
-  modifiedOverlayContainer,
+  overlayContainer,
   theme,
 }: SetupHeaderOverlayParams) {
-  if (!originalOverlayContainer || !modifiedOverlayContainer) {
+  if (!overlayContainer) {
     return () => {};
   }
 
-  const disposeOriginal = createOverlayColumn({
-    container,
-    overlayRoot: originalOverlayContainer,
-    editor: originalEditor,
-    boundaries,
-    side: "original",
-    theme,
-  });
+  const originalZones = registerBoundaryZones({ editor: originalEditor, boundaries });
+  const modifiedZones = registerBoundaryZones({ editor: modifiedEditor, boundaries });
 
-  const disposeModified = createOverlayColumn({
+  const disposeOverlay = createUnifiedOverlay({
     container,
-    overlayRoot: modifiedOverlayContainer,
-    editor: modifiedEditor,
+    overlayRoot: overlayContainer,
     boundaries,
-    side: "modified",
     theme,
+    referenceNodes: modifiedZones.zoneNodes,
+    editors: [originalEditor, modifiedEditor],
   });
 
   return () => {
-    disposeOriginal();
-    disposeModified();
-    originalOverlayContainer.replaceChildren();
-    modifiedOverlayContainer.replaceChildren();
+    disposeOverlay();
+    originalZones.dispose();
+    modifiedZones.dispose();
+    overlayContainer.replaceChildren();
   };
 }
-
-type OverlayColumnOptions = {
-  container: HTMLElement;
-  overlayRoot: HTMLElement;
-  editor: editor.ICodeEditor;
-  boundaries: CombinedFileBoundary[];
-  side: "original" | "modified";
-  theme: string;
+type BoundaryZoneRegistration = {
+  zoneIds: string[];
+  zoneNodes: HTMLElement[];
+  dispose: () => void;
 };
 
+type Disposable = {
+  dispose: () => void;
+};
 
-function createOverlayColumn({
-  container,
-  overlayRoot,
+function registerBoundaryZones({
   editor,
   boundaries,
-  side,
-  theme,
-}: OverlayColumnOptions): () => void {
+}: {
+  editor: editor.ICodeEditor;
+  boundaries: CombinedFileBoundary[];
+}): BoundaryZoneRegistration {
   if (boundaries.length === 0) {
-    overlayRoot.replaceChildren();
-    overlayRoot.style.left = "0px";
-    overlayRoot.style.width = "0px";
-    return () => {
-      overlayRoot.replaceChildren();
-      overlayRoot.style.left = "0px";
-      overlayRoot.style.width = "0px";
+    return {
+      zoneIds: [],
+      zoneNodes: [],
+      dispose: () => {},
     };
   }
 
-  overlayRoot.replaceChildren();
-  overlayRoot.style.position = "absolute";
-  overlayRoot.style.top = "0";
-  overlayRoot.style.height = "100%";
-  overlayRoot.style.pointerEvents = "none";
-  overlayRoot.style.zIndex = side === "original" ? "44" : "45";
-
   const zoneIds: string[] = [];
   const zoneNodes: HTMLElement[] = [];
-  const labelNodes: HTMLElement[] = [];
 
   editor.changeViewZones((accessor) => {
     boundaries.forEach((boundary, index) => {
@@ -944,11 +920,56 @@ function createOverlayColumn({
     });
   });
 
-  const baseStyle = getLabelStyle(theme, side);
+  return {
+    zoneIds,
+    zoneNodes,
+    dispose: () => {
+      editor.changeViewZones((accessor) => {
+        zoneIds.forEach((zoneId) => accessor.removeZone(zoneId));
+      });
+    },
+  };
+}
+
+type UnifiedOverlayOptions = {
+  container: HTMLElement;
+  overlayRoot: HTMLElement;
+  boundaries: CombinedFileBoundary[];
+  theme: string;
+  referenceNodes: HTMLElement[];
+  editors: editor.ICodeEditor[];
+};
+
+function createUnifiedOverlay({
+  container,
+  overlayRoot,
+  boundaries,
+  theme,
+  referenceNodes,
+  editors,
+}: UnifiedOverlayOptions): () => void {
+  if (boundaries.length === 0) {
+    overlayRoot.replaceChildren();
+    return () => {
+      overlayRoot.replaceChildren();
+    };
+  }
+
+  overlayRoot.replaceChildren();
+  overlayRoot.style.position = "absolute";
+  overlayRoot.style.top = "0";
+  overlayRoot.style.left = "0";
+  overlayRoot.style.width = "100%";
+  overlayRoot.style.height = "100%";
+  overlayRoot.style.pointerEvents = "none";
+  overlayRoot.style.zIndex = "46";
+
+  const labelStyle = getUnifiedLabelStyle(theme);
+  const labelNodes: HTMLElement[] = [];
 
   boundaries.forEach((boundary, index) => {
     const label = document.createElement("div");
-    applyStyles(label, baseStyle);
+    applyStyles(label, labelStyle);
     label.textContent = boundary.filePath;
     label.style.position = "absolute";
     label.style.left = "0";
@@ -961,25 +982,16 @@ function createOverlayColumn({
   let rafToken: number | null = null;
 
   const compute = () => {
-    const editorDom = editor.getDomNode();
-    if (!editorDom) {
-      return;
-    }
-
     const containerRect = container.getBoundingClientRect();
-    const editorRect = editorDom.getBoundingClientRect();
 
-    overlayRoot.style.left = `${editorRect.left - containerRect.left}px`;
-    overlayRoot.style.width = `${editorRect.width}px`;
-
-    zoneNodes.forEach((node, index) => {
-      const label = labelNodes[index];
-      if (!node || !label) {
+    labelNodes.forEach((label, index) => {
+      const node = referenceNodes[index];
+      if (!label || !node) {
         return;
       }
 
       const rect = node.getBoundingClientRect();
-      if (Number.isNaN(rect.top)) {
+      if (!Number.isFinite(rect.top)) {
         return;
       }
 
@@ -988,7 +1000,7 @@ function createOverlayColumn({
         y = 0;
       }
 
-      const nextNode = zoneNodes[index + 1];
+      const nextNode = referenceNodes[index + 1];
       if (nextNode) {
         const nextRect = nextNode.getBoundingClientRect();
         const maxY = nextRect.top - containerRect.top - FILE_LABEL_ZONE_HEIGHT;
@@ -1011,15 +1023,18 @@ function createOverlayColumn({
     });
   };
 
-  const disposables = [
-    editor.onDidScrollChange(scheduleUpdate),
-    editor.onDidLayoutChange(scheduleUpdate),
-    editor.onDidContentSizeChange(scheduleUpdate),
-  ];
+  const disposables: Disposable[] = [];
+  editors.forEach((currentEditor) => {
+    disposables.push(
+      currentEditor.onDidScrollChange(scheduleUpdate),
+      currentEditor.onDidLayoutChange(scheduleUpdate),
+      currentEditor.onDidContentSizeChange(scheduleUpdate),
+    );
+  });
 
   const resizeObserver = new ResizeObserver(scheduleUpdate);
   resizeObserver.observe(container);
-  zoneNodes.forEach((node) => {
+  referenceNodes.forEach((node) => {
     if (node) {
       resizeObserver.observe(node);
     }
@@ -1035,30 +1050,23 @@ function createOverlayColumn({
 
     resizeObserver.disconnect();
     disposables.forEach((disposable) => disposable.dispose());
-
-    editor.changeViewZones((accessor) => {
-      zoneIds.forEach((zoneId) => accessor.removeZone(zoneId));
-    });
-
     overlayRoot.replaceChildren();
-    overlayRoot.style.left = "0px";
-    overlayRoot.style.width = "0px";
   };
 }
 
-function getLabelStyle(theme: string, side: "original" | "modified"): CSSProperties {
+function getUnifiedLabelStyle(theme: string): CSSProperties {
   return {
     height: `${FILE_LABEL_ZONE_HEIGHT}px`,
     display: "flex",
     alignItems: "center",
-    justifyContent: side === "original" ? "flex-end" : "flex-start",
-    padding: side === "original" ? "0 12px 0 24px" : "0 24px 0 12px",
+    justifyContent: "flex-start",
+    padding: "0 24px",
     fontFamily: '"JetBrains Mono", "Fira Code", "SFMono-Regular", monospace',
     fontSize: "12px",
     letterSpacing: "0.02em",
     textTransform: "uppercase",
     fontWeight: 600,
-    borderRadius: side === "original" ? "0 8px 8px 0" : "8px 0 0 8px",
+    borderRadius: "8px",
     border: theme === "dark" ? "1px solid #3f3f46" : "1px solid #d4d4d8",
     background: theme === "dark" ? "rgba(32,32,36,0.92)" : "rgba(248,248,249,0.95)",
     color: theme === "dark" ? "#e5e5e5" : "#1f2937",
