@@ -157,6 +157,18 @@ export const getBranchesByRepo = authQuery({
   },
 });
 
+export const hasReposForTeam = authQuery({
+  args: { teamSlugOrId: v.string() },
+  handler: async (ctx, { teamSlugOrId }) => {
+    const teamId = await getTeamId(ctx, teamSlugOrId);
+    const existing = await ctx.db
+      .query("repos")
+      .withIndex("by_team", (q) => q.eq("teamId", teamId))
+      .take(1);
+    return existing.length > 0;
+  },
+});
+
 // Provider connections for the current team (GitHub App installations mapped to this team)
 export const listProviderConnections = authQuery({
   args: { teamSlugOrId: v.string() },
