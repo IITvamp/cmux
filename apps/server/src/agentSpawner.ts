@@ -301,6 +301,58 @@ export async function spawnAgent(
       }
     }
 
+    // Add branch creation and checkout to startup commands
+    // This ensures the branch is created before the agent starts working
+    if (options.isCloudMode) {
+      // In cloud mode, we may need to cd into the git repo first
+      // Note: ${newBranch} is interpolated here at JS time, not shell time
+      const branchSetupScript = `
+# Detect git repository location
+REPO_ROOT=""
+if git rev-parse --show-toplevel >/dev/null 2>&1; then
+  REPO_ROOT=$(git rev-parse --show-toplevel)
+  echo "[CMUX] Found git repo at: $REPO_ROOT"
+else
+  # Search in subdirectories
+  for dir in /root/workspace/*/; do
+    if [ -d "\${dir}.git" ]; then
+      cd "$dir"
+      REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+      if [ -n "$REPO_ROOT" ]; then
+        echo "[CMUX] Found git repo in subdirectory: $REPO_ROOT"
+        break
+      fi
+    fi
+  done
+fi
+
+if [ -z "$REPO_ROOT" ]; then
+  echo "[CMUX] WARNING: No git repository found, cannot create branch"
+else
+  cd "$REPO_ROOT"
+  echo "[CMUX] Creating and checking out branch: ${newBranch}"
+
+  # Check if branch already exists locally
+  if git show-ref --verify --quiet refs/heads/${newBranch}; then
+    echo "[CMUX] Branch ${newBranch} already exists locally, checking out"
+    git checkout ${newBranch} || echo "[CMUX] WARNING: Failed to checkout existing branch ${newBranch}"
+  else
+    # Create new branch
+    if git checkout -b ${newBranch}; then
+      echo "[CMUX] Successfully created and checked out branch: ${newBranch}"
+    else
+      echo "[CMUX] WARNING: Failed to create branch ${newBranch}"
+    fi
+  fi
+
+  # Verify we're on the correct branch
+  CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+  echo "[CMUX] Current branch: $CURRENT_BRANCH"
+fi`.trim();
+
+      startupCommands.push(branchSetupScript);
+    }
+
     // Replace $PROMPT placeholders in args with $CMUX_PROMPT token for shell-time expansion
     const processedArgs = agent.args.map((arg) => {
       if (arg.includes("$PROMPT")) {
