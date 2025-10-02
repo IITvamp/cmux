@@ -659,16 +659,33 @@ exit $EXIT_CODE
       });
 
       if (exitCode !== 0) {
+        const truncatedStdout = stdout?.slice(0, 2000) ?? "";
+        const truncatedStderr = stderr?.slice(0, 2000) ?? "";
         serverLogger.error(
           `[AgentSpawner] Branch switch script failed for ${newBranch} (exit ${exitCode})`,
           {
-            stdout: stdout?.slice(0, 2000),
-            stderr: stderr?.slice(0, 2000),
+            stdout: truncatedStdout,
+            stderr: truncatedStderr,
           },
         );
-        throw new Error(
-          `Branch switch script failed for ${newBranch} (exit ${exitCode})`,
-        );
+
+        const trimmedStderr = truncatedStderr.trim();
+        const trimmedStdout = truncatedStdout.trim();
+        const detailParts = [
+          trimmedStderr ? `stderr: ${trimmedStderr}` : null,
+          trimmedStdout ? `stdout: ${trimmedStdout}` : null,
+        ].filter((part): part is string => part !== null);
+
+        const detailText = detailParts.join(" | ");
+        const summarizedDetails = detailText.length > 600
+          ? `${detailText.slice(0, 600)}…`
+          : detailText;
+
+        const errorMessage = detailParts.length > 0
+          ? `Branch switch script failed for ${newBranch} (exit ${exitCode}): ${summarizedDetails}`
+          : `Branch switch script failed for ${newBranch} (exit ${exitCode}) with no output`;
+
+        throw new Error(errorMessage);
       }
 
       serverLogger.info(
