@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import hashlib
 import os
 import shlex
 import signal
@@ -646,6 +647,17 @@ def ensure_docker(snapshot: Snapshot) -> Snapshot:
     snapshot = snapshot.exec("echo '::1       localhost' >> /etc/hosts")
     return snapshot
 
+
+def _file_sha256_hex(path: str) -> str:
+    try:
+        with open(path, "rb") as f:
+            h = hashlib.sha256()
+            for chunk in iter(lambda: f.read(8192), b""):
+                h.update(chunk)
+            return h.hexdigest()
+    except FileNotFoundError:
+        return "no-file"
+    
 
 def build_snapshot(
     dockerfile_path: str,
