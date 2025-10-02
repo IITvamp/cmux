@@ -650,6 +650,46 @@ sandboxesRouter.openapi(
         networking,
       });
 
+      // Run maintenance and dev scripts in the background to start dev servers
+      // This ensures ports are actually serving content after being exposed
+      console.log(
+        `[sandboxes.publishDevcontainer] Starting maintenance and dev scripts for ${id}`
+      );
+
+      // Run maintenance script first (if it exists)
+      const maintenanceScript = "/root/workspace/scripts/maintenance.sh";
+      const maintenanceCheck = await instance.exec(
+        `test -f ${maintenanceScript} && echo exists || echo missing`
+      );
+      if (
+        maintenanceCheck.exit_code === 0 &&
+        maintenanceCheck.stdout?.trim() === "exists"
+      ) {
+        console.log(
+          `[sandboxes.publishDevcontainer] Running maintenance script...`
+        );
+        // Run in background with nohup to prevent blocking
+        await instance.exec(
+          `nohup bash -c 'cd /root/workspace && ${maintenanceScript} >> /var/log/cmux/maintenance.log 2>&1' &`
+        );
+      }
+
+      // Run dev script in the background (if it exists)
+      const devScript = "/root/workspace/scripts/dev.sh";
+      const devScriptCheck = await instance.exec(
+        `test -f ${devScript} && echo exists || echo missing`
+      );
+      if (
+        devScriptCheck.exit_code === 0 &&
+        devScriptCheck.stdout?.trim() === "exists"
+      ) {
+        console.log(`[sandboxes.publishDevcontainer] Running dev script...`);
+        // Run in background with nohup to prevent blocking
+        await instance.exec(
+          `nohup bash -c 'cd /root/workspace && ${devScript} >> /var/log/cmux/dev.log 2>&1' &`
+        );
+      }
+
       return c.json(networking);
     } catch (error) {
       console.error("Failed to publish devcontainer networking:", error);
