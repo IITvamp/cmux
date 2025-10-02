@@ -161,7 +161,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
 
     for (const agent of selectedAgents) {
       const matchIndex = remaining.findIndex(
-        (instance) => instance.agent === agent
+        (instance) => instance.agent === agent,
       );
       if (matchIndex !== -1) {
         next.push(remaining.splice(matchIndex, 1)[0]);
@@ -212,7 +212,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       const rankB = vendorOrder.get(vendorB) ?? Number.MAX_SAFE_INTEGER;
       if (rankA !== rankB) return rankA - rankB;
       const labelComparison = a.option.displayLabel.localeCompare(
-        b.option.displayLabel
+        b.option.displayLabel,
       );
       if (labelComparison !== 0) return labelComparison;
       const idA = a.instances[0]?.id ?? "";
@@ -240,7 +240,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       const hasOverflow = scrollHeight > clientHeight + 1;
       const shouldShow = hasOverflow && !atBottom;
       setShowPillboxFade((previous) =>
-        previous === shouldShow ? previous : shouldShow
+        previous === shouldShow ? previous : shouldShow,
       );
     };
 
@@ -283,7 +283,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       const next = selectedAgents.filter((_, index) => index !== instanceIndex);
       onAgentChange(next);
     },
-    [instanceIndexMap, onAgentChange, selectedAgents]
+    [instanceIndexMap, onAgentChange, selectedAgents],
   );
 
   const handleFocusAgentOption = useCallback((agent: string) => {
@@ -356,7 +356,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       </div>
     </div>
   ) : (
-    <div className="px-3 flex items-center text-[12px] text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-900/70 h-[40.5px]">
+    <div className="px-3 flex items-center text-[12px] text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-900/70 h-[40.5px] select-none">
       No agents selected yet.
     </div>
   );
@@ -364,7 +364,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   function openCenteredPopup(
     url: string,
     opts?: { name?: string; width?: number; height?: number },
-    onClose?: () => void
+    onClose?: () => void,
   ): Window | null {
     if (isElectron) {
       // In Electron, always open in the system browser and skip popup plumbing
@@ -469,14 +469,14 @@ export const DashboardInputControls = memo(function DashboardInputControls({
                       const { state } = await mintState({ teamSlugOrId });
                       const sep = baseUrl.includes("?") ? "&" : "?";
                       const url = `${baseUrl}${sep}state=${encodeURIComponent(
-                        state
+                        state,
                       )}`;
                       const win = openCenteredPopup(
                         url,
                         { name: "github-install" },
                         () => {
                           router.options.context?.queryClient?.invalidateQueries();
-                        }
+                        },
                       );
                       win?.focus?.();
                     } catch (err) {
@@ -555,7 +555,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
             "border border-neutral-200 dark:border-neutral-500/15",
             "text-neutral-600 dark:text-neutral-400",
             "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-            "transition-colors"
+            "transition-colors",
           )}
           onClick={handleImageClick}
           title="Upload image"
@@ -570,7 +570,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
             "border border-neutral-200 dark:border-neutral-500/15",
             "text-neutral-600 dark:text-neutral-400",
             "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-            "transition-colors"
+            "transition-colors",
           )}
         >
           <Mic className="w-4 h-4" />
