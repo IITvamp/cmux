@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+mkdir -p /var/log/cmux
+
+color=""
+case "${VSCODE_THEME:-}" in
+  dark)
+    color="Default Dark Modern"
+    ;;
+  light)
+    color="Default Light Modern"
+    ;;
+  system)
+    color="Default Dark Modern"
+    ;;
+esac
+
+SETTINGS=$(jq -n \
+  --arg theme "$color" \
+  '{
+    "workbench.startupEditor": "none",
+    "terminal.integrated.shellIntegration.enabled": false,
+    "terminal.integrated.macOptionClickForcesSelection": true,
+    "terminal.integrated.shell.linux": "bash",
+    "terminal.integrated.shellArgs.linux": ["-l"],
+    "git.openDiffOnClick": true,
+    "scm.defaultViewMode": "tree",
+    "git.showPushSuccessNotification": true,
+    "git.autorefresh": true,
+    "git.branchCompareWith": "main"
+  } + (if $theme != "" then {"workbench.colorTheme": $theme} else {} end)')
+
+USER_BASE="/root/.openvscode-server"
+PROFILE_DIR="$USER_BASE/data/User"
+DEFAULT_PROFILE_DIR="$USER_BASE/data/User/profiles/default-profile"
+MACHINE_DIR="$USER_BASE/data/Machine"
+
+mkdir -p "$PROFILE_DIR" "$DEFAULT_PROFILE_DIR" "$MACHINE_DIR"
+
+printf '%s' "$SETTINGS" > "$PROFILE_DIR/settings.json"
+printf '%s' "$SETTINGS" > "$DEFAULT_PROFILE_DIR/settings.json"
+printf '%s' "$SETTINGS" > "$MACHINE_DIR/settings.json"

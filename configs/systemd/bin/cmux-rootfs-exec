@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="${CMUX_ROOTFS:-/}"
+if [ "$root" = "/" ]; then
+  exec "$@"
+fi
+
+exec chroot "$root" "$@"

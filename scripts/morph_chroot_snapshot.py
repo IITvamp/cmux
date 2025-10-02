@@ -9,8 +9,8 @@ The script:
 3. Flattens the image to a tarball via `docker export`
 4. Creates a Morph snapshot and uploads the tarball
 5. Extracts it to /opt/app/rootfs
-6. Installs chroot runner scripts
-7. Creates a systemd service that runs the image's command in the chroot
+6. Writes runtime environment configuration
+7. Installs and enables the cmux systemd units that ship with the image
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ import argparse
 import atexit
 import json
 import os
+import socket
 import shlex
 import signal
 import subprocess
@@ -33,23 +34,17 @@ from urllib.error import HTTPError, URLError
 
 import dotenv
 from morphcloud.api import Instance, MorphCloudClient, Snapshot
-from morph_common import (
-    ensure_docker,
-    ensure_docker_cli_plugins,
-    write_remote_file,
-    write_remote_file_from_path,
-)
+from morph_common import ensure_docker, ensure_docker_cli_plugins, write_remote_file
 
 dotenv.load_dotenv()
 
 client = MorphCloudClient()
 
-ASSETS_DIR = Path(__file__).resolve().parent / "morph_assets"
-
 current_instance: Instance | None = None
 
 
 T = t.TypeVar("T")
+
 
 class Console:
     def __init__(self) -> None:
@@ -254,68 +249,34 @@ def export_image_to_tar(image: str, *, platform: str) -> str:
         subprocess.run(["docker", "rm", cid], capture_output=True, check=True)
 
 
-def create_chroot_runner_scripts(snapshot: Snapshot) -> Snapshot:
-    """Install the chroot runner and umount scripts from local assets."""
-    console.info("Installing chroot runner scripts...")
+def enable_cmux_units(snapshot: Snapshot) -> Snapshot:
+    """Copy and enable cmux systemd units that ship inside the rootfs."""
+    console.info("Enabling cmux systemd units...")
 
-    runner_asset = ASSETS_DIR / "app-chroot-runner.sh"
-    umount_asset = ASSETS_DIR / "app-chroot-umount.sh"
+    units = [
+        "cmux.target",
+        "cmux-openvscode.service",
+        "cmux-worker.service",
+        "cmux-dockerd.service",
+    ]
 
-    snapshot = write_remote_file_from_path(
-        snapshot,
-        remote_path="/usr/local/bin/app-chroot-runner",
-        local_path=runner_asset,
-        executable=True,
+    for unit in units:
+        source = f"/opt/app/rootfs/usr/lib/systemd/system/{unit}"
+        dest = f"/etc/systemd/system/{unit}"
+        snapshot = snapshot.exec(
+            f"if [ -f {shlex.quote(source)} ]; then cp {shlex.quote(source)} {shlex.quote(dest)}; fi"
+        )
+
+    snapshot = snapshot.exec("mkdir -p /usr/local/lib/cmux")
+    snapshot = snapshot.exec(
+        "if [ -d /opt/app/rootfs/usr/local/lib/cmux ]; then cp -a /opt/app/rootfs/usr/local/lib/cmux/. /usr/local/lib/cmux/; fi"
     )
-    snapshot = write_remote_file_from_path(
-        snapshot,
-        remote_path="/usr/local/bin/app-chroot-umount",
-        local_path=umount_asset,
-        executable=True,
-    )
-    return snapshot
-
-
-def create_systemd_service(snapshot: Snapshot, config: DockerImageConfig) -> Snapshot:
-    """Create and enable the systemd service that runs the app in chroot."""
-    console.info("Creating systemd service...")
-
-    cmd_parts = config["entrypoint"] + config["cmd"]
-    if not cmd_parts:
-        cmd_parts = ["/bin/sh"]
-
-    exec_start_args = " ".join(shlex.quote(part) for part in cmd_parts)
-    exec_start = f"/usr/local/bin/app-chroot-runner {exec_start_args}"
-
-    user_spec = ""
-    if config["user"] and config["user"] != "root":
-        user_spec = config["user"]
-
-    env_lines: list[str] = []
-    if user_spec:
-        env_lines.append(f"Environment=USERSPEC={user_spec}")
-    env_block = "\n".join(env_lines)
-
-    service_template = (ASSETS_DIR / "cmux-chroot.service").read_text(encoding="utf-8")
-    service_content = service_template.format(
-        extra_environment_lines=env_block,
-        workdir=config["workdir"],
-        exec_start=exec_start,
-    )
-
-    snapshot = write_remote_file(
-        snapshot,
-        remote_path="/etc/systemd/system/cmux.service",
-        content=service_content,
+    snapshot = snapshot.exec(
+        "chmod +x /usr/local/lib/cmux/cmux-rootfs-exec /usr/local/lib/cmux/configure-openvscode || true"
     )
 
     snapshot = snapshot.exec("mkdir -p /var/log/cmux")
-    snapshot = snapshot.exec("systemctl daemon-reload && systemctl enable cmux.service")
-
-    if user_spec and ":" not in user_spec:
-        snapshot = snapshot.exec(
-            f"sh -lc 'id -u {shlex.quote(user_spec)} >/dev/null 2>&1 || useradd -m {shlex.quote(user_spec)}'"
-        )
+    snapshot = snapshot.exec("systemctl daemon-reload && systemctl enable cmux.target")
 
     return snapshot
 
@@ -355,17 +316,17 @@ def build_snapshot(
         snapshot = timings.time(
             "build_snapshot:create_snapshot",
             lambda: client.snapshots.create(
-                vcpus=8,
-                memory=16384,
-                disk_size=32768,
+                vcpus=8, memory=16384, disk_size=32768, digest="cmux:base-docker"
             ),
         )
 
         console.info("Ensuring Docker tooling...")
-        docker_command = " && ".join([
-            ensure_docker(),
-            ensure_docker_cli_plugins(),
-        ])
+        docker_command = " && ".join(
+            [
+                ensure_docker(),
+                ensure_docker_cli_plugins(),
+            ]
+        )
 
         console.info("Installing base utilities and preparing rootfs directory...")
         snapshot = timings.time(
@@ -397,11 +358,8 @@ def build_snapshot(
 
         console.info("Writing environment file...")
         env_lines = config.get("env", [])
-        env_content = "\n".join(env_lines)
-        if env_lines:
-            env_content += "\n"
-        else:
-            env_content = "\n"
+        env_lines.append("CMUX_ROOTFS=/opt/app/rootfs")
+        env_content = "\n".join(env_lines) + "\n"
         snapshot = timings.time(
             "build_snapshot:write_env_file",
             lambda: write_remote_file(
@@ -412,12 +370,8 @@ def build_snapshot(
         )
 
         snapshot = timings.time(
-            "build_snapshot:install_chroot_runner_scripts",
-            lambda: create_chroot_runner_scripts(snapshot),
-        )
-        snapshot = timings.time(
-            "build_snapshot:create_systemd_service",
-            lambda: create_systemd_service(snapshot, config),
+            "build_snapshot:enable_cmux_units",
+            lambda: enable_cmux_units(snapshot),
         )
 
         return snapshot
@@ -501,23 +455,32 @@ def main() -> None:
         timings.time("main:wait_until_ready", instance.wait_until_ready)
         console.info(instance.networking.http_services)
 
+        # Ensure cmux target is started regardless of quiet mode
+        with timings.section("main:start_cmux_target"):
+            instance.exec(
+                "systemctl start cmux.target || systemctl start cmux.service || true"
+            )
+
         if not console.quiet:
             try:
                 with timings.section("main:instance_diagnostics"):
                     console.info("\n--- Instance diagnostics ---")
-                    start_res = instance.exec("systemctl start cmux.service || true")
+                    start_res = instance.exec(
+                        "systemctl status cmux.target --no-pager -l | tail -n 40 || true"
+                    )
                     if getattr(start_res, "stdout", None):
                         console.info(start_res.stdout)
                     if getattr(start_res, "stderr", None):
                         console.info_stderr(str(start_res.stderr))
 
                     diag_cmds = [
-                        "systemctl is-enabled cmux.service || true",
-                        "systemctl is-active cmux.service || true",
-                        "systemctl status cmux.service --no-pager -l | tail -n 80 || true",
+                        "systemctl is-enabled cmux.target || true",
+                        "systemctl is-active cmux.target || true",
+                        "systemctl status cmux.target --no-pager -l | tail -n 40 || true",
+                        "systemctl status cmux-openvscode.service --no-pager -l | tail -n 80 || true",
                         "ps aux | grep -E 'openvscode-server|node /builtins/build/index.js' | grep -v grep || true",
                         "ss -lntp | grep ':39378' || true",
-                        "tail -n 80 /var/log/cmux/cmux.service.log || true",
+                        "tail -n 80 /var/log/cmux/openvscode.log || true",
                     ]
                     for cmd in diag_cmds:
                         console.info(f"\n$ {cmd}")
@@ -546,30 +509,39 @@ def main() -> None:
                         vscode_service = svc
                         break
 
-                url = _get(vscode_service, "url") if vscode_service is not None else None
+                url = (
+                    _get(vscode_service, "url") if vscode_service is not None else None
+                )
                 if not url:
                     console.always("No exposed HTTP service found for port 39378")
                 else:
+                    health_url = f"{url.rstrip('/')}/?folder=/root/workspace"
                     ok = False
                     for _ in range(30):
+                        log = console.always if console.quiet else console.info
+
                         try:
-                            with urllib_request.urlopen(url, timeout=5) as resp:
-                                code = getattr(resp, "status", getattr(resp, "code", None))
+                            with urllib_request.urlopen(health_url, timeout=5) as resp:
+                                code = getattr(
+                                    resp, "status", getattr(resp, "code", None)
+                                )
                                 if code == 200:
-                                    console.info(f"Port 39378 check: HTTP {code}")
+                                    log(f"Port 39378 check: HTTP {code}")
                                     ok = True
                                     break
                                 else:
-                                    console.info(
+                                    log(
                                         f"Port 39378 not ready yet, HTTP {code}; retrying..."
                                     )
-                        except (HTTPError, URLError) as e:
-                            console.info(f"Port 39378 not ready yet ({e}); retrying...")
+                        except (HTTPError, URLError, socket.timeout, TimeoutError) as e:
+                            log(f"Port 39378 not ready yet ({e}); retrying...")
                         time.sleep(2)
                     if not ok:
-                        console.always("Port 39378 did not return HTTP 200 within timeout")
+                        console.always(
+                            "Port 39378 did not return HTTP 200 within timeout"
+                        )
 
-                    console.always(f"VSCode URL: {url}/?folder=/root/workspace")
+                    console.always(f"VSCode URL: {health_url}")
         except Exception as e:
             console.always(f"Error checking port 39378: {e}")
 

@@ -171,7 +171,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     net-tools \
     lsof \
     sudo \
-    supervisor \
     iptables \
     openssl \
     pigz \
@@ -180,7 +179,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     tmux \
     htop \
     ripgrep \
-    jq
+    jq \
+    systemd \
+    dbus
 
 # Install GitHub CLI
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -283,10 +284,26 @@ RUN wget --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=15 -t 5 \
 # Create workspace and lifecycle directories
 RUN mkdir -p /workspace /root/workspace /root/lifecycle
 
-# Copy startup script and prompt wrapper
-COPY startup.sh /startup.sh
 COPY prompt-wrapper.sh /usr/local/bin/prompt-wrapper
-RUN chmod +x /startup.sh /usr/local/bin/prompt-wrapper
+RUN chmod +x /usr/local/bin/prompt-wrapper
+
+# Install cmux systemd units and helpers
+RUN mkdir -p /usr/local/lib/cmux
+COPY configs/systemd/cmux.target /usr/lib/systemd/system/cmux.target
+COPY configs/systemd/cmux-openvscode.service /usr/lib/systemd/system/cmux-openvscode.service
+COPY configs/systemd/cmux-worker.service /usr/lib/systemd/system/cmux-worker.service
+COPY configs/systemd/cmux-dockerd.service /usr/lib/systemd/system/cmux-dockerd.service
+COPY configs/systemd/bin/configure-openvscode /usr/local/lib/cmux/configure-openvscode
+COPY configs/systemd/bin/cmux-rootfs-exec /usr/local/lib/cmux/cmux-rootfs-exec
+RUN chmod +x /usr/local/lib/cmux/configure-openvscode /usr/local/lib/cmux/cmux-rootfs-exec && \
+    touch /usr/local/lib/cmux/dockerd.flag && \
+    mkdir -p /var/log/cmux && \
+    mkdir -p /etc/systemd/system/multi-user.target.wants && \
+    mkdir -p /etc/systemd/system/cmux.target.wants && \
+    ln -sf /usr/lib/systemd/system/cmux.target /etc/systemd/system/multi-user.target.wants/cmux.target && \
+    ln -sf /usr/lib/systemd/system/cmux-openvscode.service /etc/systemd/system/cmux.target.wants/cmux-openvscode.service && \
+    ln -sf /usr/lib/systemd/system/cmux-worker.service /etc/systemd/system/cmux.target.wants/cmux-worker.service && \
+    ln -sf /usr/lib/systemd/system/cmux-dockerd.service /etc/systemd/system/cmux.target.wants/cmux-dockerd.service
 
 # Create VS Code user settings
 RUN mkdir -p /root/.openvscode-server/data/User && \
@@ -302,8 +319,11 @@ RUN mkdir -p /root/.openvscode-server/data/User && \
 # 39378: OpenVSCode server
 EXPOSE 39376 39377 39378
 
+ENV container=docker
+STOPSIGNAL SIGRTMIN+3
+VOLUME [ "/sys/fs/cgroup" ]
 WORKDIR /
-ENTRYPOINT ["/startup.sh"]
+ENTRYPOINT ["/usr/lib/systemd/systemd"]
 CMD []
 
 # Stage 3: Local (DinD) runtime with Docker available
@@ -327,8 +347,8 @@ RUN <<-'EOF'
     wget -O docker.tgz "https://download.docker.com/linux/static/${DOCKER_CHANNEL}/${dockerArch}/docker-${DOCKER_VERSION}.tgz"; \
     tar --extract --file docker.tgz --strip-components 1 --directory /usr/local/bin/; \
     rm docker.tgz; \
-    dockerd --version; \
-    docker --version
+    dockerd --version || echo "dockerd --version failed (ignored during build)"; \
+    docker --version || echo "docker --version failed (ignored during build)"
 EOF
 
 # Install Docker Compose and Buildx plugins
