@@ -2,7 +2,7 @@ import { exec } from "node:child_process";
 import { promises as fs, watch, type FSWatcher } from "node:fs";
 import * as path from "node:path";
 import { promisify } from "node:util";
-import { log } from "./logger";
+import { detectGitRepoPath } from "./crown/git";
 
 const execAsync = promisify(exec);
 
@@ -41,25 +41,9 @@ export class FileWatcher {
     this.gitIgnore = options.gitIgnore ?? true;
   }
 
-  private async findGitRepository(): Promise<void> {
-    this.gitRepoPath = await findGitRepoPath(this.watchPath);
-
-    if (this.gitRepoPath) {
-      log("INFO", `[FileWatcher] Found git repository at: ${this.gitRepoPath}`);
-    } else {
-      log("WARN", "[FileWatcher] No git repository found");
-    }
-  }
 
   async start(): Promise<void> {
-    log("INFO", `[FileWatcher] Starting file watcher for ${this.watchPath}`, {
-      taskRunId: this.taskRunId,
-      debounceMs: this.debounceMs,
-      gitIgnore: this.gitIgnore,
-    });
-
-    // Find the git repository
-    await this.findGitRepository();
+    this.gitRepoPath = await detectGitRepoPath();
 
     // Load gitignore patterns if enabled
     if (this.gitIgnore) {
@@ -77,15 +61,12 @@ export class FileWatcher {
       supportsRecursive ? { recursive: true } : undefined,
       this.handleFileChange.bind(this)
     );
-
-    log("INFO", `[FileWatcher] File watcher started successfully`);
   }
 
   stop(): void {
     if (this.watcher) {
       this.watcher.close();
       this.watcher = null;
-      log("INFO", `[FileWatcher] File watcher stopped`);
     }
 
     if (this.debounceTimer) {
@@ -108,11 +89,6 @@ export class FileWatcher {
 
       // Always ignore .git directory
       this.gitIgnorePatterns.push(".git");
-
-      log(
-        "INFO",
-        `[FileWatcher] Loaded ${this.gitIgnorePatterns.length} gitignore patterns from ${searchPath}`
-      );
     } catch (error) {
       // No gitignore file, just ignore .git
       this.gitIgnorePatterns = [".git"];
@@ -151,7 +127,6 @@ export class FileWatcher {
 
   private async updateGitStatus(): Promise<void> {
     if (!this.gitRepoPath) {
-      log("WARN", "[FileWatcher] Skipping git status update: no git repository found");
       return;
     }
 
@@ -170,13 +145,13 @@ export class FileWatcher {
           this.lastGitStatus.set(filePath, status);
         }
       }
-    } catch (error) {
-      log("WARN", `[FileWatcher] Failed to update git status:`, error);
+    } catch {
+      // Ignore git status errors
     }
   }
 
   private async handleFileChange(
-    eventType: string,
+    _eventType: string,
     filename: string | null
   ): Promise<void> {
     if (!filename) return;
@@ -234,14 +209,6 @@ export class FileWatcher {
     const changes = Array.from(this.pendingChanges.values());
     this.pendingChanges.clear();
 
-    log("INFO", `[FileWatcher] Detected ${changes.length} file changes`, {
-      taskRunId: this.taskRunId,
-      changes: changes.map((c) => ({
-        type: c.type,
-        path: path.relative(this.watchPath, c.path),
-      })),
-    });
-
     // Update git status after changes
     await this.updateGitStatus();
 
@@ -251,61 +218,14 @@ export class FileWatcher {
 }
 
 /**
- * Find git repository starting from a given path
- * Searches the path itself first, then subdirectories
- */
-export async function findGitRepoPath(
-  searchPath: string
-): Promise<string | null> {
-  // First try the search path itself
-  try {
-    const { stdout } = await execAsync("git rev-parse --show-toplevel", {
-      cwd: searchPath,
-    });
-    return stdout.trim();
-  } catch {
-    // Not a git repo, continue to subdirectory search
-  }
-
-  // Search in subdirectories
-  try {
-    const entries = await fs.readdir(searchPath, { withFileTypes: true });
-
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-
-      const subdir = path.join(searchPath, entry.name);
-      const gitDir = path.join(subdir, ".git");
-
-      try {
-        await fs.access(gitDir);
-        // .git exists, verify it's a valid repo
-        const { stdout } = await execAsync("git rev-parse --show-toplevel", {
-          cwd: subdir,
-        });
-        return stdout.trim();
-      } catch {
-        // Not a valid git repo, continue
-      }
-    }
-  } catch {
-    // Failed to search
-  }
-
-  return null;
-}
-
-/**
  * Compute git diff for specific files
  */
 export async function computeGitDiff(
   worktreePath: string,
   files?: string[]
 ): Promise<string> {
-  // Find the actual git repository
-  const gitRepoPath = await findGitRepoPath(worktreePath);
+  const gitRepoPath = await detectGitRepoPath();
   if (!gitRepoPath) {
-    log("WARN", `[FileWatcher] No git repository found at ${worktreePath}`);
     return "";
   }
 
@@ -324,8 +244,7 @@ export async function computeGitDiff(
     });
 
     return stdout;
-  } catch (error) {
-    log("ERROR", `[FileWatcher] Failed to compute git diff:`, error);
+  } catch {
     return "";
   }
 }
@@ -337,10 +256,8 @@ export async function getFileWithDiff(
   filePath: string,
   worktreePath: string
 ): Promise<{ oldContent: string; newContent: string; patch: string }> {
-  // Find the actual git repository
-  const gitRepoPath = await findGitRepoPath(worktreePath);
+  const gitRepoPath = await detectGitRepoPath();
   if (!gitRepoPath) {
-    log("WARN", `[FileWatcher] No git repository found at ${worktreePath}`);
     return { oldContent: "", newContent: "", patch: "" };
   }
 
@@ -379,12 +296,7 @@ export async function getFileWithDiff(
     }
 
     return { oldContent, newContent, patch };
-  } catch (error) {
-    log(
-      "ERROR",
-      `[FileWatcher] Failed to get file diff for ${filePath}:`,
-      error
-    );
+  } catch {
     return { oldContent: "", newContent: "", patch: "" };
   }
 }

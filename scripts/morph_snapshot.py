@@ -14,13 +14,12 @@ import signal
 import sys
 import time
 import typing as t
-import uuid
 from dataclasses import dataclass
 from urllib import request as urllib_request
 from urllib.error import HTTPError, URLError
 
 import dotenv
-from morphcloud.api import MorphCloudClient, Snapshot, console as morph_console
+from morphcloud.api import MorphCloudClient, Snapshot
 
 dotenv.load_dotenv()
 

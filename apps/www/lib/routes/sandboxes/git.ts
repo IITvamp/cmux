@@ -23,17 +23,10 @@ export const configureGitIdentity = async (
   instance: MorphInstance,
   identity: { name: string; email: string }
 ) => {
-  console.log(
-    `[sandboxes.start] GIT CONFIG: Configuring git identity name="${identity.name}" email="${identity.email}"`
-  );
   const gitCfgRes = await instance.exec(
     `bash -lc "git config --global user.name ${singleQuote(identity.name)} && git config --global user.email ${singleQuote(identity.email)} && git config --global init.defaultBranch main && echo NAME:$(git config --global --get user.name) && echo EMAIL:$(git config --global --get user.email) || true"`
   );
-  if (gitCfgRes.exit_code === 0) {
-    console.log(
-      `[sandboxes.start] GIT CONFIG: Git identity configured successfully (${identity.name} <${identity.email}>)`
-    );
-  } else {
+  if (gitCfgRes.exit_code !== 0) {
     console.error(
       `[sandboxes.start] GIT CONFIG: Failed to configure git identity, exit=${gitCfgRes.exit_code}`
     );
@@ -47,24 +40,16 @@ export const configureGithubAccess = async (
 ) => {
   let lastError: Error | undefined;
 
-  console.log(`[sandboxes.start] GIT AUTH: Starting GitHub authentication (max retries: ${maxRetries})`);
-
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`[sandboxes.start] GIT AUTH: Attempt ${attempt}/${maxRetries}`);
       const ghAuthRes = await instance.exec(
         `bash -lc "printf %s ${singleQuote(token)} | gh auth login --with-token && gh auth setup-git 2>&1"`
       );
 
-      // Check if authentication was successful
       if (ghAuthRes.exit_code === 0) {
-        console.log(
-          `[sandboxes.start] GIT AUTH: GitHub authentication successful on attempt ${attempt}/${maxRetries}`
-        );
         return;
       }
 
-      // Authentication failed
       const errorMessage = ghAuthRes.stderr || ghAuthRes.stdout || "Unknown error";
       lastError = new Error(`GitHub auth failed: ${maskSensitive(errorMessage).slice(0, 500)}`);
 
@@ -74,10 +59,8 @@ export const configureGithubAccess = async (
         ).slice(0, 200)}`
       );
 
-      // Wait before retrying (exponential backoff)
       if (attempt < maxRetries) {
         const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
-        console.log(`[sandboxes.start] GIT AUTH: Retrying GitHub auth in ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     } catch (error) {
@@ -89,7 +72,6 @@ export const configureGithubAccess = async (
 
       if (attempt < maxRetries) {
         const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
-        console.log(`[sandboxes.start] GIT AUTH: Retrying GitHub auth in ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }

@@ -282,13 +282,6 @@ async function main() {
         checkoutBranch(config.workspacePath, config.baseBranch, config.newBranch);
       }
 
-      // List files and git status for verification
-      log("GIT STATUS: Verifying final state");
-      const { stdout: gitStatus } = exec(`git status --short --branch`, { cwd: config.workspacePath, throwOnError: false });
-      log(`GIT STATUS: ${gitStatus.trim()}`);
-      const { stdout: currentBranch } = exec(`git branch --show-current`, { cwd: config.workspacePath, throwOnError: false });
-      log(`GIT STATUS: Current branch: ${currentBranch.trim()}`);
-
       log("Listing workspace contents:");
       const { stdout } = exec(`ls -la | head -50`, { cwd: config.workspacePath });
       console.log(stdout);
