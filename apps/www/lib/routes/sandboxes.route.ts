@@ -131,15 +131,10 @@ sandboxesRouter.openapi(
       console.log("[sandboxes.start] incoming", {
         teamSlugOrId: body.teamSlugOrId,
         hasEnvId: Boolean(body.environmentId),
-        environmentId: body.environmentId,
         hasSnapshotId: Boolean(body.snapshotId),
         repoUrl: body.repoUrl,
         branch: body.branch,
-        newBranch: body.newBranch,
       });
-      if (body.environmentId) {
-        console.log(`[sandboxes.start] ENVIRONMENT MODE: Starting morph sandbox for environmentId=${body.environmentId}`);
-      }
     } catch {
       /* noop */
     }
@@ -156,10 +151,6 @@ sandboxesRouter.openapi(
           snapshotId: body.snapshotId,
         });
 
-      if (body.environmentId) {
-        console.log(`[sandboxes.start] ENVIRONMENT MODE: Resolved snapshot=${resolvedSnapshotId}, hasVaultKey=${Boolean(environmentDataVaultKey)}`);
-      }
-
       const environmentEnvVarsPromise = environmentDataVaultKey
         ? loadEnvironmentEnvVars(environmentDataVaultKey)
         : Promise.resolve<string | null>(null);
@@ -174,11 +165,6 @@ sandboxesRouter.openapi(
       );
 
       const client = new MorphCloudClient({ apiKey: env.MORPH_API_KEY });
-
-      if (body.environmentId) {
-        console.log(`[sandboxes.start] ENVIRONMENT MODE: Starting morph instance with snapshotId=${resolvedSnapshotId}`);
-      }
-
       const instance = await client.instances.start({
         snapshotId: resolvedSnapshotId,
         ttlSeconds: body.ttlSeconds ?? 20 * 60,
@@ -190,10 +176,6 @@ sandboxesRouter.openapi(
           ...(body.metadata || {}),
         },
       });
-
-      if (body.environmentId) {
-        console.log(`[sandboxes.start] ENVIRONMENT MODE: Morph instance started, id=${instance.id}`);
-      }
 
       const exposed = instance.networking.httpServices;
       const vscodeService = exposed.find((s) => s.port === 39378);
@@ -282,10 +264,6 @@ sandboxesRouter.openapi(
         const repoFull = `${owner}/${name}`;
         console.log(`[sandboxes.start] Parsed owner/repo: ${repoFull}`);
 
-        if (body.environmentId) {
-          console.log(`[sandboxes.start] ENVIRONMENT MODE: Setting up git repo baseBranch=${body.branch || "main"}, newBranch=${body.newBranch || "(none)"}`);
-        }
-
         repoConfig = {
           owner,
           name,
@@ -299,31 +277,17 @@ sandboxesRouter.openapi(
       }
 
       try {
-        if (body.environmentId) {
-          console.log(`[sandboxes.start] ENVIRONMENT MODE: Starting workspace hydration (git clone/checkout)`);
-        }
         await hydrateWorkspace({
           instance,
           repo: repoConfig,
-          environmentId: body.environmentId,
         });
-        if (body.environmentId) {
-          console.log(`[sandboxes.start] ENVIRONMENT MODE: Workspace hydration completed successfully`);
-        }
       } catch (error) {
         console.error(`[sandboxes.start] Hydration failed:`, error);
-        if (body.environmentId) {
-          console.error(`[sandboxes.start] ENVIRONMENT MODE: Git hydration failed for environmentId=${body.environmentId}`);
-        }
         await instance.stop().catch(() => {});
         return c.text("Failed to hydrate sandbox", 500);
       }
 
       await configureGitIdentityTask;
-
-      if (body.environmentId) {
-        console.log(`[sandboxes.start] ENVIRONMENT MODE: Sandbox fully initialized and ready, instanceId=${instance.id}`);
-      }
 
       return c.json({
         instanceId: instance.id,
