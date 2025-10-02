@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignInRouteImport } from './routes/sign-in'
+import { Route as MonacoSingleBufferRouteImport } from './routes/monaco-single-buffer'
 import { Route as ElectronWebContentsRouteImport } from './routes/electron-web-contents'
 import { Route as DebugMonacoRouteImport } from './routes/debug-monaco'
 import { Route as DebugIconRouteImport } from './routes/debug-icon'
@@ -45,6 +46,11 @@ import { Route as LayoutTeamSlugOrIdTaskTaskIdRunRunIdPreviewPortRouteImport } f
 const SignInRoute = SignInRouteImport.update({
   id: '/sign-in',
   path: '/sign-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MonacoSingleBufferRoute = MonacoSingleBufferRouteImport.update({
+  id: '/monaco-single-buffer',
+  path: '/monaco-single-buffer',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ElectronWebContentsRoute = ElectronWebContentsRouteImport.update({
@@ -225,6 +231,7 @@ export interface FileRoutesByFullPath {
   '/debug-icon': typeof DebugIconRoute
   '/debug-monaco': typeof DebugMonacoRoute
   '/electron-web-contents': typeof ElectronWebContentsRoute
+  '/monaco-single-buffer': typeof MonacoSingleBufferRoute
   '/sign-in': typeof SignInRoute
   '/$teamSlugOrId': typeof LayoutTeamSlugOrIdRouteWithChildren
   '/debug': typeof LayoutDebugRoute
@@ -258,6 +265,7 @@ export interface FileRoutesByTo {
   '/debug-icon': typeof DebugIconRoute
   '/debug-monaco': typeof DebugMonacoRoute
   '/electron-web-contents': typeof ElectronWebContentsRoute
+  '/monaco-single-buffer': typeof MonacoSingleBufferRoute
   '/sign-in': typeof SignInRoute
   '/$teamSlugOrId': typeof LayoutTeamSlugOrIdRouteWithChildren
   '/debug': typeof LayoutDebugRoute
@@ -291,6 +299,7 @@ export interface FileRoutesById {
   '/debug-icon': typeof DebugIconRoute
   '/debug-monaco': typeof DebugMonacoRoute
   '/electron-web-contents': typeof ElectronWebContentsRoute
+  '/monaco-single-buffer': typeof MonacoSingleBufferRoute
   '/sign-in': typeof SignInRoute
   '/_layout/$teamSlugOrId': typeof LayoutTeamSlugOrIdRouteWithChildren
   '/_layout/debug': typeof LayoutDebugRoute
@@ -326,6 +335,7 @@ export interface FileRouteTypes {
     | '/debug-icon'
     | '/debug-monaco'
     | '/electron-web-contents'
+    | '/monaco-single-buffer'
     | '/sign-in'
     | '/$teamSlugOrId'
     | '/debug'
@@ -359,6 +369,7 @@ export interface FileRouteTypes {
     | '/debug-icon'
     | '/debug-monaco'
     | '/electron-web-contents'
+    | '/monaco-single-buffer'
     | '/sign-in'
     | '/$teamSlugOrId'
     | '/debug'
@@ -391,6 +402,7 @@ export interface FileRouteTypes {
     | '/debug-icon'
     | '/debug-monaco'
     | '/electron-web-contents'
+    | '/monaco-single-buffer'
     | '/sign-in'
     | '/_layout/$teamSlugOrId'
     | '/_layout/debug'
@@ -426,6 +438,7 @@ export interface RootRouteChildren {
   DebugIconRoute: typeof DebugIconRoute
   DebugMonacoRoute: typeof DebugMonacoRoute
   ElectronWebContentsRoute: typeof ElectronWebContentsRoute
+  MonacoSingleBufferRoute: typeof MonacoSingleBufferRoute
   SignInRoute: typeof SignInRoute
   HandlerSplatRoute: typeof HandlerSplatRoute
 }
@@ -437,6 +450,13 @@ declare module '@tanstack/react-router' {
       path: '/sign-in'
       fullPath: '/sign-in'
       preLoaderRoute: typeof SignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/monaco-single-buffer': {
+      id: '/monaco-single-buffer'
+      path: '/monaco-single-buffer'
+      fullPath: '/monaco-single-buffer'
+      preLoaderRoute: typeof MonacoSingleBufferRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/electron-web-contents': {
@@ -783,6 +803,7 @@ const rootRouteChildren: RootRouteChildren = {
   DebugIconRoute: DebugIconRoute,
   DebugMonacoRoute: DebugMonacoRoute,
   ElectronWebContentsRoute: ElectronWebContentsRoute,
+  MonacoSingleBufferRoute: MonacoSingleBufferRoute,
   SignInRoute: SignInRoute,
   HandlerSplatRoute: HandlerSplatRoute,
 }
