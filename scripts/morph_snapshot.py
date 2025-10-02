@@ -657,7 +657,7 @@ def _file_sha256_hex(path: str) -> str:
             return h.hexdigest()
     except FileNotFoundError:
         return "no-file"
-    
+
 
 def build_snapshot(
     dockerfile_path: str,
