@@ -312,9 +312,7 @@ export async function spawnAgent(
     const agentCommand = `${agent.command} ${processedArgs.join(" ")}`;
 
     // Build the tmux session command that will be sent via socket.io
-    const tmuxSessionName = sanitizeTmuxSessionName(
-      `${agent.name}-${taskRunId}`,
-    );
+    const tmuxSessionName = sanitizeTmuxSessionName("cmux");
 
     serverLogger.info(
       `[AgentSpawner] Building command for agent ${agent.name}:`,
