@@ -40,26 +40,549 @@ type CombinedDiffOutput = {
   fileBoundaries: CombinedFileBoundary[];
 };
 
-const syntheticFilePaths = [
-  "apps/server/src/routes/session.ts",
-  "apps/server/src/config/env.ts",
-  "apps/client/src/components/editor-tabs.tsx",
-  "apps/client/src/routes/_layout.$teamSlugOrId.task.$taskId.tsx",
-  "packages/ui/button.tsx",
-  "packages/utils/duration.ts",
-  "packages/utils/diff-builder.ts",
-  "scripts/dev.sh",
-  "packages/convex/src/tasks.ts",
-  "apps/www/lib/routes/agents.ts",
-] as const;
+type MonacoLanguage =
+  | "typescript"
+  | "javascript"
+  | "json"
+  | "markdown"
+  | "yaml"
+  | "plaintext";
 
-const multiFileDiffExample: FileDiff[] = syntheticFilePaths.map((filePath, fileIndex) => ({
-  filePath,
-  hunks: [
-    createSyntheticHunk(filePath, fileIndex, 0),
-    createSyntheticHunk(filePath, fileIndex, 1),
+type DiffSample = {
+  id: string;
+  filePath: string;
+  language: MonacoLanguage;
+  original: string;
+  modified: string;
+};
+
+const AUDIT_LOG_SEGMENT_COUNT = 240;
+const auditLogSegmentOverrides = new Map<number, string>([
+  [
+    18,
+    '    { id: "segment-019", throughput: 348, priority: 2, review: "daily" },',
   ],
-}));
+  [
+    124,
+    '    { id: "segment-125", throughput: 1836, priority: 4, alerts: ["cpu", "io"] },',
+  ],
+  [
+    219,
+    '    { id: "segment-220", throughput: 2640, priority: 1, retentionOverride: "72h" },',
+  ],
+]);
+
+const EXECUTION_PLAN_STAGE_COUNT = 140;
+const executionPlanUpdates = new Map<
+  number,
+  { status: string; durationMs: number; retries: number }
+>([
+  [0, { status: "queued", durationMs: 45, retries: 1 }],
+  [18, { status: "running", durationMs: 240, retries: 0 }],
+  [47, { status: "running", durationMs: 420, retries: 2 }],
+  [73, { status: "blocked", durationMs: 0, retries: 3 }],
+  [96, { status: "queued", durationMs: 195, retries: 1 }],
+  [119, { status: "completed", durationMs: 940, retries: 1 }],
+  [139, { status: "completed", durationMs: 1230, retries: 2 }],
+]);
+
+const executionPlanInsertions = new Map<number, string[]>([
+  [
+    59,
+    [
+      '  { id: "stage-060-review", status: "blocked", durationMs: 0, retries: 2 },',
+      '  { id: "stage-060-retry", status: "queued", durationMs: 42, retries: 3 },',
+    ],
+  ],
+  [
+    104,
+    [
+      '  { id: "stage-105-diagnostics", status: "running", durationMs: 720, retries: 1 },',
+    ],
+  ],
+]);
+
+function createSparseAuditLogSample(): DiffSample {
+  const padLabel = (value: number) => value.toString().padStart(3, "0");
+
+  const originalSegments: string[] = [];
+  const modifiedSegments: string[] = [];
+
+  for (let index = 0; index < AUDIT_LOG_SEGMENT_COUNT; index += 1) {
+    const label = padLabel(index + 1);
+    const baseLine = `    { id: "segment-${label}", throughput: ${(index + 1) * 12}, priority: ${
+      (index % 5) + 1
+    } },`;
+    originalSegments.push(baseLine);
+
+    const overrideLine = auditLogSegmentOverrides.get(index);
+    if (overrideLine) {
+      modifiedSegments.push(overrideLine);
+    } else {
+      modifiedSegments.push(baseLine);
+    }
+  }
+
+  const originalParts: string[] = [
+    "export const auditLogSchedule = {",
+    "  retentionDays: 7,",
+    "  compression: {",
+    '    enabled: false,',
+    '    strategy: "batch",',
+    "  },",
+    "  segments: [",
+    ...originalSegments,
+    "  ],",
+    '  watermark: "v1.0.0",',
+    "};",
+  ];
+
+  const modifiedParts: string[] = [
+    "export const auditLogSchedule = {",
+    "  retention: {",
+    "    days: 7,",
+    "    hours: 12,",
+    "  },",
+    "  compression: {",
+    '    enabled: true,',
+    '    strategy: "streaming",',
+    '    window: "5m",',
+    "  },",
+    "  segments: [",
+    ...modifiedSegments,
+    "  ],",
+    '  watermark: "v1.1.0",',
+    "  review: {",
+    '    window: "30d",',
+    "  },",
+    "};",
+  ];
+
+  return {
+    id: "audit-log-schedule",
+    filePath: "apps/server/src/config/audit-log-schedule.ts",
+    language: "typescript",
+    original: originalParts.join("\n"),
+    modified: modifiedParts.join("\n"),
+  };
+}
+
+function createLongExecutionPlanSample(): DiffSample {
+  const padLabel = (value: number) => value.toString().padStart(3, "0");
+
+  const originalParts: string[] = [
+    "type ExecutionStage = {",
+    '  id: string;',
+    '  status: "pending" | "queued" | "running" | "blocked" | "completed";',
+    "  durationMs?: number;",
+    "};",
+    "",
+    "export const executionPlan: ExecutionStage[] = [",
+  ];
+
+  const modifiedParts: string[] = [
+    "type ExecutionStage = {",
+    '  id: string;',
+    '  status: "pending" | "queued" | "running" | "blocked" | "completed";',
+    "  durationMs?: number;",
+    "  retries?: number;",
+    "};",
+    "",
+    "export const executionPlan: ExecutionStage[] = [",
+  ];
+
+  for (let index = 0; index < EXECUTION_PLAN_STAGE_COUNT; index += 1) {
+    const label = padLabel(index + 1);
+    const baseLine = `  { id: "stage-${label}", status: "pending" },`;
+
+    originalParts.push(baseLine);
+
+    const updatedStage = executionPlanUpdates.get(index);
+    if (updatedStage) {
+      modifiedParts.push(
+        `  { id: "stage-${label}", status: "${updatedStage.status}", durationMs: ${updatedStage.durationMs}, retries: ${updatedStage.retries} },`,
+      );
+    } else {
+      modifiedParts.push(baseLine);
+    }
+
+    const insertions = executionPlanInsertions.get(index);
+    if (insertions) {
+      modifiedParts.push(...insertions);
+    }
+  }
+
+  originalParts.push("];");
+  modifiedParts.push("];");
+
+  modifiedParts.push(
+    "",
+    "export function executionSummary(plan: ExecutionStage[]) {",
+    "  return plan",
+    "    .filter((stage) => (stage.retries ?? 0) > 0)",
+    "    .map((stage) => `${stage.id}:${stage.retries ?? 0}`)",
+    "    .join(\", \");",
+    "}",
+  );
+
+  return {
+    id: "execution-plan",
+    filePath: "apps/server/src/plan/execution-plan.ts",
+    language: "typescript",
+    original: originalParts.join("\n"),
+    modified: modifiedParts.join("\n"),
+  };
+}
+
+const sparseAuditLogSample = createSparseAuditLogSample();
+const longExecutionPlanSample = createLongExecutionPlanSample();
+
+const diffSamples: DiffSample[] = [
+  longExecutionPlanSample,
+  sparseAuditLogSample,
+  {
+    id: "agents-selector",
+    filePath: "packages/agents/src/selector.ts",
+    language: "typescript",
+    original: `export function rankAgents(agents: Array<{ latency: number }>) {
+  return [...agents].sort((a, b) => a.latency - b.latency);
+}
+
+export function shouldWakeAgent(lastActiveAt: number, thresholdMs: number) {
+  return Date.now() - lastActiveAt > thresholdMs;
+}
+`,
+    modified: `export function rankAgents(agents: Array<{ latency: number; priority?: number }>) {
+  return [...agents]
+    .map((agent) => ({
+      ...agent,
+      score: (agent.priority ?? 0) * 1000 - agent.latency,
+    }))
+    .sort((a, b) => b.score - a.score);
+}
+
+export function shouldWakeAgent(lastActiveAt: number, thresholdMs: number) {
+  const elapsed = Date.now() - lastActiveAt;
+  return elapsed >= thresholdMs && thresholdMs > 0;
+}
+`,
+  },
+  {
+    id: "feature-flags",
+    filePath: "apps/server/src/config/feature-flags.ts",
+    language: "typescript",
+    original: `export type FeatureFlag = {
+  name: string;
+  enabled: boolean;
+};
+
+export const defaultFlags: FeatureFlag[] = [
+  { name: "monaco-batch", enabled: false },
+  { name: "agent-recording", enabled: false },
+];
+export function isEnabled(flags: FeatureFlag[], name: string) {
+  return flags.some((flag) => flag.name === name && flag.enabled);
+}
+`,
+    modified: `export type FeatureFlag = {
+  name: string;
+  enabled: boolean;
+};
+
+export const defaultFlags: FeatureFlag[] = [
+  { name: "monaco-batch", enabled: true },
+  { name: "agent-recording", enabled: false },
+  { name: "structured-logs", enabled: true },
+];
+
+export function isEnabled(flags: FeatureFlag[], name: string) {
+  const found = flags.find((flag) => flag.name === name);
+  return found?.enabled ?? false;
+}
+`,
+  },
+  {
+    id: "format-duration",
+    filePath: "apps/client/src/utils/format-duration.ts",
+    language: "typescript",
+    original: `export function formatDuration(ms: number) {
+  const seconds = Math.floor(ms / 1000);
+  return seconds + "s";
+}
+
+export function formatLatency(latency: number) {
+  return latency.toFixed(0) + "ms";
+}
+`,
+    modified: `export function formatDuration(ms: number) {
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return minutes > 0
+    ? minutes + "m " + remainingSeconds + "s"
+    : seconds + "s";
+}
+
+export function formatLatency(latency: number) {
+  return latency < 1
+    ? (latency * 1000).toFixed(0) + "us"
+    : latency.toFixed(2) + "ms";
+}
+`,
+  },
+  {
+    id: "task-progress",
+    filePath: "apps/client/src/hooks/use-task-progress.ts",
+    language: "typescript",
+    original: `export function getTaskProgress(task: { completeSteps: number; totalSteps: number }) {
+  if (task.totalSteps === 0) {
+    return 0;
+  }
+
+  return Math.round((task.completeSteps / task.totalSteps) * 100);
+}
+
+export function isTaskStale(updatedAt: number, now: number) {
+  return now - updatedAt > 30_000;
+}
+`,
+    modified: `export function getTaskProgress(task: { completeSteps: number; totalSteps: number }) {
+  if (task.totalSteps === 0) {
+    return 0;
+  }
+
+  const value = (task.completeSteps / task.totalSteps) * 100;
+  return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+export function isTaskStale(updatedAt: number, now: number) {
+  const elapsed = now - updatedAt;
+  return elapsed > 30_000 && elapsed > 0;
+}
+`,
+  },
+  {
+    id: "session-handler",
+    filePath: "apps/server/src/routes/session-handler.ts",
+    language: "typescript",
+    original: `export async function loadSession(id: string) {
+  const response = await fetch("/api/sessions/" + id);
+  if (!response.ok) {
+    throw new Error("Failed to load session");
+  }
+
+  return response.json();
+}
+
+export async function archiveSession(id: string) {
+  const response = await fetch("/api/sessions/" + id + "/archive", { method: "POST" });
+  if (!response.ok) {
+    throw new Error("Failed to archive session");
+  }
+}
+`,
+    modified: `export async function loadSession(id: string) {
+  const response = await fetch("/api/sessions/" + id);
+  if (!response.ok) {
+    throw new Error("Failed to load session");
+  }
+
+  const payload = await response.json();
+  return {
+    ...payload,
+    loadedAt: Date.now(),
+  };
+}
+
+export async function archiveSession(id: string) {
+  const response = await fetch("/api/sessions/" + id + "/archive", { method: "POST" });
+  if (!response.ok) {
+    throw new Error("Failed to archive session");
+  }
+
+  return { archiveRequestedAt: Date.now() };
+}
+`,
+  },
+  {
+    id: "shared-logger",
+    filePath: "packages/shared/src/logger.ts",
+    language: "typescript",
+    original: `export function logInfo(message: string) {
+  console.info(message);
+}
+
+export function logError(message: string, error?: unknown) {
+  console.error(message, error);
+}
+`,
+    modified: `export function logInfo(message: string, context: Record<string, unknown> = {}) {
+  console.info("[info] " + message, context);
+}
+
+export function logError(message: string, error?: unknown) {
+  console.error("[error] " + message, error);
+  if (error instanceof Error && error.stack) {
+    console.error(error.stack);
+  }
+}
+`,
+  },
+  {
+    id: "run-timers",
+    filePath: "apps/client/src/store/run-timers.ts",
+    language: "typescript",
+    original: `export function startTimer(label: string) {
+  performance.mark(label + "-start");
+}
+
+export function endTimer(label: string) {
+  performance.mark(label + "-end");
+  performance.measure(label, label + "-start", label + "-end");
+}
+`,
+    modified: `export function startTimer(label: string) {
+  performance.mark(label + "-start");
+  console.time(label);
+}
+
+export function endTimer(label: string) {
+  performance.mark(label + "-end");
+  performance.measure(label, label + "-start", label + "-end");
+  console.timeEnd(label);
+}
+`,
+  },
+  {
+    id: "workflows-yaml",
+    filePath: "apps/server/src/config/workflows.yaml",
+    language: "yaml",
+    original: `workflows:
+  deploy:
+    steps:
+      - checkout
+      - install
+      - build
+      - smoke
+  verify:
+    steps:
+      - lint
+      - typecheck
+      - test
+      - coverage
+  nightly:
+    steps:
+      - migrate
+      - seed
+      - e2e
+      - report
+`,
+    modified: `workflows:
+  deploy:
+    steps:
+      - checkout
+      - install
+      - build
+      - package
+      - smoke
+  verify:
+    steps:
+      - lint
+      - typecheck
+      - test
+      - coverage
+      - mutation
+  nightly:
+    steps:
+      - migrate
+      - seed
+      - e2e
+      - report
+      - snapshot
+  cleanup:
+    steps:
+      - prune
+      - rotate-logs
+`,
+  },
+  {
+    id: "changelog",
+    filePath: "apps/client/src/content/changelog.md",
+    language: "markdown",
+    original: `## v0.13.0
+
+- add multi-agent support
+- improve telemetry
+
+## v0.12.5
+
+- add new worker pool
+- fix diff layout
+
+## v0.12.0
+
+- bug fixes
+- reduce bundle size
+
+## v0.11.0
+
+- initial release
+- support debug routes
+`,
+    modified: `## v0.13.0
+
+- add multi-agent support
+- improve telemetry
+- new diff viewer sandbox
+
+## v0.12.5
+
+- add new worker pool
+- fix diff layout
+- experimental timeline
+
+## v0.12.0
+
+- bug fixes
+- reduce bundle size
+- document retry semantics
+
+## v0.11.0
+
+- initial release
+- support debug routes
+- added debug tools
+`,
+  },
+  {
+    id: "runtime-schema",
+    filePath: "packages/runtime/src/schema.json",
+    language: "json",
+    original: `{
+  "version": 1,
+  "fields": [
+    { "name": "id", "type": "string" },
+    { "name": "status", "type": "string" }
+  ],
+  "indexes": []
+}
+`,
+    modified: `{
+  "version": 1,
+  "fields": [
+    { "name": "id", "type": "string" },
+    { "name": "status", "type": "string" },
+    { "name": "createdAt", "type": "number" }
+  ],
+  "indexes": [
+    { "name": "by_status", "fields": ["status"] }
+  ]
+}
+`,
+  },
+];
+
+const multiFileDiffExample = diffSamples.map(createFileDiffFromSample);
 
 const FILE_LABEL_ZONE_HEIGHT = 32;
 
@@ -208,7 +731,40 @@ function formatLineNumber(map: (number | null)[], lineNumber: number): string {
   return "";
 }
 
+function groupDiffsByFile(diffFiles: FileDiff[]): FileDiff[] {
+  const grouped = new Map<string, DiffHunk[]>();
+  const fileOrder: string[] = [];
+
+  diffFiles.forEach(({ filePath, hunks }) => {
+    if (!grouped.has(filePath)) {
+      grouped.set(filePath, []);
+      fileOrder.push(filePath);
+    }
+
+    const stored = grouped.get(filePath);
+    if (!stored) {
+      return;
+    }
+
+    stored.push(...hunks);
+  });
+
+  return fileOrder.map((filePath) => {
+    const hunks = grouped.get(filePath) ?? [];
+    const sortedHunks = [...hunks].sort((left, right) => {
+      if (left.originalStartLine !== right.originalStartLine) {
+        return left.originalStartLine - right.originalStartLine;
+      }
+
+      return left.modifiedStartLine - right.modifiedStartLine;
+    });
+
+    return { filePath, hunks: sortedHunks };
+  });
+}
+
 function buildCombinedDiff(diffFiles: FileDiff[]): CombinedDiffOutput {
+  const groupedDiffFiles = groupDiffsByFile(diffFiles);
   const originalLines: string[] = [];
   const modifiedLines: string[] = [];
   const originalNumbers: (number | null)[] = [];
@@ -217,7 +773,7 @@ function buildCombinedDiff(diffFiles: FileDiff[]): CombinedDiffOutput {
 
   let totalLines = 0;
 
-  diffFiles.forEach((fileDiff, fileIndex) => {
+  groupedDiffFiles.forEach((fileDiff, fileIndex) => {
     const startLineNumber = totalLines + 1;
     fileBoundaries.push({ filePath: fileDiff.filePath, startLineNumber });
 
@@ -260,7 +816,7 @@ function buildCombinedDiff(diffFiles: FileDiff[]): CombinedDiffOutput {
       }
     });
 
-    if (fileIndex < diffFiles.length - 1) {
+    if (fileIndex < groupedDiffFiles.length - 1) {
       originalLines.push("");
       modifiedLines.push("");
       originalNumbers.push(null);
@@ -528,66 +1084,93 @@ function applyStyles(element: HTMLElement, styles: CSSProperties) {
 }
 
 
-function createSyntheticHunk(filePath: string, fileIndex: number, hunkIndex: number): DiffHunk {
-  const offset = fileIndex * 30 + hunkIndex * 12;
-  const originalStartLine = 20 + offset;
-  const modifiedStartLine = 21 + offset;
+function createFileDiffFromSample(sample: DiffSample): FileDiff {
+  const lines = computeDiffLines(sample.original, sample.modified);
 
-  const lines: DiffLine[] = [];
-  let originalLinePointer = originalStartLine;
-  let modifiedLinePointer = modifiedStartLine;
-
-  const functionName = createFunctionIdentifier(filePath, hunkIndex);
-
-  lines.push(
-    createContextLine(
-      `function ${functionName}(agentId: string) {`,
-      originalLinePointer++,
-      modifiedLinePointer++,
-    ),
-  );
-  lines.push(
-    createContextLine(
-      `  const scopeKey = "${fileIndex}-${hunkIndex}-" + agentId;`,
-      originalLinePointer++,
-      modifiedLinePointer++,
-    ),
-  );
-  lines.push(createRemoveLine(`  const cached = cache.get(scopeKey);`, originalLinePointer++));
-  lines.push(
-    createAddLine(
-      "  const cached = cache.resolve(scopeKey, { hydrate: true });",
-      modifiedLinePointer++,
-    ),
-  );
-  lines.push(
-    createContextLine("  if (!cached) {", originalLinePointer++, modifiedLinePointer++),
-  );
-  lines.push(
-    createAddLine("    logger.info('hydrated scope', scopeKey);", modifiedLinePointer++),
-  );
-  lines.push(createContextLine("  }", originalLinePointer++, modifiedLinePointer++));
-  lines.push(createRemoveLine("  return fallbackValue;", originalLinePointer++));
-  lines.push(
-    createAddLine(
-      `  return computeNext(scopeKey, cached, ${fileIndex + hunkIndex});`,
-      modifiedLinePointer++,
-    ),
-  );
-  lines.push(createContextLine("}", originalLinePointer++, modifiedLinePointer++));
+  const firstOriginalLine = lines.find((line) => typeof line.originalLineNumber === "number")
+    ?.originalLineNumber;
+  const firstModifiedLine = lines.find((line) => typeof line.modifiedLineNumber === "number")
+    ?.modifiedLineNumber;
 
   return {
-    originalStartLine,
-    modifiedStartLine,
-    lines,
+    filePath: sample.filePath,
+    hunks: [
+      {
+        originalStartLine: firstOriginalLine ?? 1,
+        modifiedStartLine: firstModifiedLine ?? 1,
+        lines,
+      },
+    ],
   };
 }
 
-function createFunctionIdentifier(filePath: string, hunkIndex: number): string {
-  const fileName = filePath.split("/").pop() ?? "File";
-  const sanitized = fileName.replace(/[^a-zA-Z0-9]/g, "");
-  const fallback = sanitized.length > 0 ? sanitized : "File";
-  return `resolve${fallback}${hunkIndex}`;
+function computeDiffLines(originalContent: string, modifiedContent: string): DiffLine[] {
+  const originalLines = splitLines(originalContent);
+  const modifiedLines = splitLines(modifiedContent);
+
+  const originalCount = originalLines.length;
+  const modifiedCount = modifiedLines.length;
+
+  const table = Array.from({ length: originalCount + 1 }, () =>
+    new Array<number>(modifiedCount + 1).fill(0),
+  );
+
+  for (let originalIndex = originalCount - 1; originalIndex >= 0; originalIndex -= 1) {
+    for (let modifiedIndex = modifiedCount - 1; modifiedIndex >= 0; modifiedIndex -= 1) {
+      if (originalLines[originalIndex] === modifiedLines[modifiedIndex]) {
+        table[originalIndex][modifiedIndex] = table[originalIndex + 1][modifiedIndex + 1] + 1;
+      } else {
+        table[originalIndex][modifiedIndex] = Math.max(
+          table[originalIndex + 1][modifiedIndex],
+          table[originalIndex][modifiedIndex + 1],
+        );
+      }
+    }
+  }
+
+  const lines: DiffLine[] = [];
+  let originalIndex = 0;
+  let modifiedIndex = 0;
+
+  while (originalIndex < originalCount && modifiedIndex < modifiedCount) {
+    if (originalLines[originalIndex] === modifiedLines[modifiedIndex]) {
+      lines.push(
+        createContextLine(
+          originalLines[originalIndex],
+          originalIndex + 1,
+          modifiedIndex + 1,
+        ),
+      );
+      originalIndex += 1;
+      modifiedIndex += 1;
+      continue;
+    }
+
+    if (table[originalIndex + 1][modifiedIndex] >= table[originalIndex][modifiedIndex + 1]) {
+      lines.push(createRemoveLine(originalLines[originalIndex], originalIndex + 1));
+      originalIndex += 1;
+    } else {
+      lines.push(createAddLine(modifiedLines[modifiedIndex], modifiedIndex + 1));
+      modifiedIndex += 1;
+    }
+  }
+
+  while (originalIndex < originalCount) {
+    lines.push(createRemoveLine(originalLines[originalIndex], originalIndex + 1));
+    originalIndex += 1;
+  }
+
+  while (modifiedIndex < modifiedCount) {
+    lines.push(createAddLine(modifiedLines[modifiedIndex], modifiedIndex + 1));
+    modifiedIndex += 1;
+  }
+
+  return lines;
+}
+
+function splitLines(content: string): string[] {
+  const normalized = content.replace(/\r\n/g, "\n");
+  return normalized.split("\n");
 }
 
 function createContextLine(content: string, originalLineNumber: number, modifiedLineNumber: number): DiffLine {
