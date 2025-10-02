@@ -18,6 +18,7 @@ import {
 import type { HydrateRepoConfig } from "./sandboxes/hydration";
 import { hydrateWorkspace } from "./sandboxes/hydration";
 import { resolveTeamAndSnapshot } from "./sandboxes/snapshot";
+import { runMaintenanceScript, startDevScript } from "./sandboxes/scripts";
 import {
   encodeEnvContentForEnvctl,
   envctlLoadCommand,
@@ -142,7 +143,12 @@ sandboxesRouter.openapi(
     try {
       const convex = getConvex({ accessToken });
 
-      const { team, resolvedSnapshotId, environmentDataVaultKey } =
+      const {
+        team,
+        resolvedSnapshotId,
+        environmentDataVaultKey,
+        environment,
+      } =
         await resolveTeamAndSnapshot({
           req: c.req.raw,
           convex,
@@ -154,6 +160,10 @@ sandboxesRouter.openapi(
       const environmentEnvVarsPromise = environmentDataVaultKey
         ? loadEnvironmentEnvVars(environmentDataVaultKey)
         : Promise.resolve<string | null>(null);
+
+      const environmentMaintenanceScript =
+        environment?.maintenanceScript ?? null;
+      const environmentDevScript = environment?.devScript ?? null;
 
       const gitIdentityPromise = githubAccessTokenPromise.then(
         ({ githubAccessToken }) => {
@@ -285,6 +295,26 @@ sandboxesRouter.openapi(
         console.error(`[sandboxes.start] Hydration failed:`, error);
         await instance.stop().catch(() => {});
         return c.text("Failed to hydrate sandbox", 500);
+      }
+
+      if (environmentMaintenanceScript) {
+        try {
+          await runMaintenanceScript(instance, environmentMaintenanceScript);
+        } catch (error) {
+          console.error(`[sandboxes.start] Maintenance script failed:`, error);
+          await instance.stop().catch(() => {});
+          return c.text("Maintenance script failed", 500);
+        }
+      }
+
+      if (environmentDevScript) {
+        try {
+          await startDevScript(instance, environmentDevScript);
+        } catch (error) {
+          console.error(`[sandboxes.start] Dev script failed:`, error);
+          await instance.stop().catch(() => {});
+          return c.text("Failed to start dev script", 500);
+        }
       }
 
       await configureGitIdentityTask;

@@ -12,6 +12,11 @@ export interface SnapshotResolution {
   team: Awaited<ReturnType<typeof verifyTeamAccess>>;
   resolvedSnapshotId: string;
   environmentDataVaultKey?: string;
+  environment?: {
+    maintenanceScript?: string;
+    devScript?: string;
+    exposedPorts?: number[];
+  };
 }
 
 export const resolveTeamAndSnapshot = async ({
@@ -46,6 +51,11 @@ export const resolveTeamAndSnapshot = async ({
       resolvedSnapshotId:
         environmentDoc.morphSnapshotId || DEFAULT_MORPH_SNAPSHOT_ID,
       environmentDataVaultKey: environmentDoc.dataVaultKey ?? undefined,
+      environment: {
+        maintenanceScript: environmentDoc.maintenanceScript ?? undefined,
+        devScript: environmentDoc.devScript ?? undefined,
+        exposedPorts: environmentDoc.exposedPorts ?? undefined,
+      },
     };
   }
 
