@@ -3,6 +3,7 @@ import { execFileSync, execSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 function run(cmd: string, cwd: string): string {
   return execSync(cmd, { cwd, stdio: ["ignore", "pipe", "pipe"] }).toString();
@@ -36,18 +37,21 @@ describe("collect-crown-diff.sh workspace discovery", () => {
     writeFileSync(join(betaRepo, "README.md"), "beta base\n");
     run("git add README.md", betaRepo);
     run("git commit -m base", betaRepo);
+
+    writeFileSync(join(betaRepo, "README.md"), "beta change\n");
   });
 
   afterEach(() => {
     rmSync(workspaceDir, { recursive: true, force: true });
   });
 
-  it("collects diff from the first nested repository", () => {
-    const scriptPath = join(process.cwd(), "scripts/collect-crown-diff.sh");
+  it("collects diff from all nested repositories", () => {
+    const scriptPath = fileURLToPath(new URL("./collect-crown-diff.sh", import.meta.url));
     const diff = execFileSync("bash", [scriptPath], { cwd: workspaceDir }).toString();
 
     expect(diff).toContain("app.ts");
     expect(diff).toContain("alpha change");
-    expect(diff).not.toContain("beta base");
+    expect(diff).toContain("README.md");
+    expect(diff).toContain("beta change");
   });
 });

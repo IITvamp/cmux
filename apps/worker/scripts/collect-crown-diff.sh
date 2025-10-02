@@ -18,20 +18,36 @@ repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
 
 if [[ -z "${repo_root}" ]]; then
   workspace_root="${PWD}"
-  for dir in "${workspace_root}"/*/; do
-    if [[ -d "${dir}.git" ]]; then
-      cd "${dir}"
-      repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
-      if [[ -n "${repo_root}" ]]; then
-        break
+  script_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)/$(basename "${BASH_SOURCE[0]}")"
+
+  repo_dirs=()
+  while IFS= read -r git_dir; do
+    repo_dir="${git_dir%/.git}"
+    repo_dirs+=("${repo_dir}")
+  done < <(find "${workspace_root}" -type d -name ".git" -prune -print | sort)
+
+  if [[ ${#repo_dirs[@]} -eq 0 ]]; then
+    echo "[collect-crown-diff] ERROR: Not a git repository" >&2
+    exit 1
+  fi
+
+  had_output=false
+  for repo in "${repo_dirs[@]}"; do
+    diff_output=$(cd "${repo}" && bash "${script_path}" "$@")
+    repo_status=$?
+    if [[ ${repo_status} -ne 0 ]]; then
+      exit "${repo_status}"
+    fi
+    if [[ -n "${diff_output}" ]]; then
+      if [[ "${had_output}" == true ]]; then
+        printf '\n'
       fi
+      printf '%s' "${diff_output}"
+      had_output=true
     fi
   done
-fi
 
-if [[ -z "${repo_root}" ]]; then
-  echo "[collect-crown-diff] ERROR: Not a git repository" >&2
-  exit 1
+  exit 0
 fi
 
 cd "${repo_root}"
