@@ -638,7 +638,7 @@ function DebugMonacoPage() {
     };
   }, []);
 
-  const editorTheme = theme === "dark" ? "vs-dark" : "vs";
+  const editorTheme = theme === "dark" ? "cmux-dark" : "cmux-light";
 
   const diffOptions = useMemo<editor.IDiffEditorConstructionOptions>(
     () => ({

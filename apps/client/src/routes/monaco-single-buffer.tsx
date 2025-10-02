@@ -40,24 +40,6 @@ type CombinedDiffOutput = {
   fileBoundaries: CombinedFileBoundary[];
 };
 
-type HeaderOverlayItem = {
-  id: string;
-  filePath: string;
-  y: number;
-};
-
-type HeaderOverlayColumnState = {
-  left: number;
-  width: number;
-  items: HeaderOverlayItem[];
-};
-
-type HeaderColumnOverlayProps = {
-  state: HeaderOverlayColumnState;
-  theme: string;
-  side: "original" | "modified";
-};
-
 const syntheticFilePaths = [
   "apps/server/src/routes/session.ts",
   "apps/server/src/config/env.ts",
@@ -89,8 +71,8 @@ function MonacoSingleBufferRoute() {
   const { theme } = useTheme();
   const [isReady, setIsReady] = useState(false);
   const overlayRootRef = useRef<HTMLDivElement | null>(null);
-  const [originalOverlay, setOriginalOverlay] = useState<HeaderOverlayColumnState | null>(null);
-  const [modifiedOverlay, setModifiedOverlay] = useState<HeaderOverlayColumnState | null>(null);
+  const originalOverlayRef = useRef<HTMLDivElement | null>(null);
+  const modifiedOverlayRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -161,8 +143,9 @@ function MonacoSingleBufferRoute() {
       boundaries: combinedDiff.fileBoundaries,
       originalEditor,
       modifiedEditor,
-      onOriginalUpdate: setOriginalOverlay,
-      onModifiedUpdate: setModifiedOverlay,
+      originalOverlayContainer: originalOverlayRef.current,
+      modifiedOverlayContainer: modifiedOverlayRef.current,
+      theme,
     });
 
     editorInstance.onDidDispose(() => {
@@ -192,12 +175,8 @@ function MonacoSingleBufferRoute() {
       <main className="flex flex-1 flex-col gap-4 px-4 py-4 md:px-6 lg:px-8">
         <section className="flex-1 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
           <div ref={overlayRootRef} className="relative h-[80vh]">
-            {originalOverlay ? (
-              <HeaderColumnOverlay state={originalOverlay} theme={theme} side="original" />
-            ) : null}
-            {modifiedOverlay ? (
-              <HeaderColumnOverlay state={modifiedOverlay} theme={theme} side="modified" />
-            ) : null}
+            <div ref={originalOverlayRef} className="pointer-events-none absolute top-0 left-0 z-40 h-full" />
+            <div ref={modifiedOverlayRef} className="pointer-events-none absolute top-0 left-0 z-40 h-full" />
             <DiffEditor
               key={theme}
               theme={editorTheme}
@@ -304,8 +283,9 @@ type SetupHeaderOverlayParams = {
   originalEditor: editor.ICodeEditor;
   modifiedEditor: editor.ICodeEditor;
   boundaries: CombinedFileBoundary[];
-  onOriginalUpdate: (state: HeaderOverlayColumnState | null) => void;
-  onModifiedUpdate: (state: HeaderOverlayColumnState | null) => void;
+  originalOverlayContainer: HTMLElement | null;
+  modifiedOverlayContainer: HTMLElement | null;
+  theme: string;
 };
 
 function setupHeaderOverlay({
@@ -313,54 +293,79 @@ function setupHeaderOverlay({
   originalEditor,
   modifiedEditor,
   boundaries,
-  onOriginalUpdate,
-  onModifiedUpdate,
+  originalOverlayContainer,
+  modifiedOverlayContainer,
+  theme,
 }: SetupHeaderOverlayParams) {
-  if (boundaries.length === 0) {
-    onOriginalUpdate(null);
-    onModifiedUpdate(null);
+  if (!originalOverlayContainer || !modifiedOverlayContainer) {
     return () => {};
   }
 
   const disposeOriginal = createOverlayColumn({
     container,
+    overlayRoot: originalOverlayContainer,
     editor: originalEditor,
     boundaries,
     side: "original",
-    onUpdate: onOriginalUpdate,
+    theme,
   });
 
   const disposeModified = createOverlayColumn({
     container,
+    overlayRoot: modifiedOverlayContainer,
     editor: modifiedEditor,
     boundaries,
     side: "modified",
-    onUpdate: onModifiedUpdate,
+    theme,
   });
 
   return () => {
     disposeOriginal();
     disposeModified();
+    originalOverlayContainer.replaceChildren();
+    modifiedOverlayContainer.replaceChildren();
   };
 }
 
 type OverlayColumnOptions = {
   container: HTMLElement;
+  overlayRoot: HTMLElement;
   editor: editor.ICodeEditor;
   boundaries: CombinedFileBoundary[];
   side: "original" | "modified";
-  onUpdate: (state: HeaderOverlayColumnState | null) => void;
+  theme: string;
 };
+
 
 function createOverlayColumn({
   container,
+  overlayRoot,
   editor,
   boundaries,
   side,
-  onUpdate,
+  theme,
 }: OverlayColumnOptions): () => void {
+  if (boundaries.length === 0) {
+    overlayRoot.replaceChildren();
+    overlayRoot.style.left = "0px";
+    overlayRoot.style.width = "0px";
+    return () => {
+      overlayRoot.replaceChildren();
+      overlayRoot.style.left = "0px";
+      overlayRoot.style.width = "0px";
+    };
+  }
+
+  overlayRoot.replaceChildren();
+  overlayRoot.style.position = "absolute";
+  overlayRoot.style.top = "0";
+  overlayRoot.style.height = "100%";
+  overlayRoot.style.pointerEvents = "none";
+  overlayRoot.style.zIndex = side === "original" ? "44" : "45";
+
   const zoneIds: string[] = [];
   const zoneNodes: HTMLElement[] = [];
+  const labelNodes: HTMLElement[] = [];
 
   editor.changeViewZones((accessor) => {
     boundaries.forEach((boundary, index) => {
@@ -381,32 +386,37 @@ function createOverlayColumn({
     });
   });
 
-  let rafToken: number | null = null;
+  const baseStyle = getLabelStyle(theme, side);
 
-  const scheduleUpdate = () => {
-    if (rafToken !== null) {
-      cancelAnimationFrame(rafToken);
-    }
-    rafToken = requestAnimationFrame(() => {
-      rafToken = null;
-      compute();
-    });
-  };
+  boundaries.forEach((boundary, index) => {
+    const label = document.createElement("div");
+    applyStyles(label, baseStyle);
+    label.textContent = boundary.filePath;
+    label.style.position = "absolute";
+    label.style.left = "0";
+    label.style.right = "0";
+    label.style.zIndex = `${100 + index}`;
+    overlayRoot.appendChild(label);
+    labelNodes[index] = label;
+  });
+
+  let rafToken: number | null = null;
 
   const compute = () => {
     const editorDom = editor.getDomNode();
     if (!editorDom) {
-      onUpdate(null);
       return;
     }
 
     const containerRect = container.getBoundingClientRect();
     const editorRect = editorDom.getBoundingClientRect();
 
-    const items: HeaderOverlayItem[] = [];
+    overlayRoot.style.left = `${editorRect.left - containerRect.left}px`;
+    overlayRoot.style.width = `${editorRect.width}px`;
 
     zoneNodes.forEach((node, index) => {
-      if (!node) {
+      const label = labelNodes[index];
+      if (!node || !label) {
         return;
       }
 
@@ -429,17 +439,17 @@ function createOverlayColumn({
         }
       }
 
-      items.push({
-        id: `${side}-${index}`,
-        filePath: boundaries[index].filePath,
-        y,
-      });
+      label.style.transform = `translateY(${y}px)`;
     });
+  };
 
-    onUpdate({
-      left: editorRect.left - containerRect.left,
-      width: editorRect.width,
-      items,
+  const scheduleUpdate = () => {
+    if (rafToken !== null) {
+      cancelAnimationFrame(rafToken);
+    }
+    rafToken = requestAnimationFrame(() => {
+      rafToken = null;
+      compute();
     });
   };
 
@@ -472,7 +482,9 @@ function createOverlayColumn({
       zoneIds.forEach((zoneId) => accessor.removeZone(zoneId));
     });
 
-    onUpdate(null);
+    overlayRoot.replaceChildren();
+    overlayRoot.style.left = "0px";
+    overlayRoot.style.width = "0px";
   };
 }
 
@@ -493,10 +505,7 @@ function getLabelStyle(theme: string, side: "original" | "modified"): CSSPropert
     background: theme === "dark" ? "rgba(32,32,36,0.92)" : "rgba(248,248,249,0.95)",
     color: theme === "dark" ? "#e5e5e5" : "#1f2937",
     boxSizing: "border-box",
-    boxShadow:
-      theme === "dark"
-        ? "0 1px 3px rgba(0,0,0,0.4)"
-        : "0 1px 3px rgba(15,23,42,0.12)",
+    boxShadow: "none",
     pointerEvents: "none",
     whiteSpace: "nowrap",
     overflow: "hidden",
@@ -505,28 +514,19 @@ function getLabelStyle(theme: string, side: "original" | "modified"): CSSPropert
   };
 }
 
-function HeaderColumnOverlay({ state, theme, side }: HeaderColumnOverlayProps) {
-  const baseStyle = getLabelStyle(theme, side);
-  return (
-    <div
-      className="pointer-events-none absolute top-0"
-      style={{ left: state.left, width: state.width, height: "100%", zIndex: 40 }}
-    >
-      {state.items.map((item) => (
-        <div
-          key={item.id}
-          style={{
-            ...baseStyle,
-            position: "absolute",
-            transform: `translateY(${item.y}px)`,
-          }}
-        >
-          {item.filePath}
-        </div>
-      ))}
-    </div>
-  );
+
+function applyStyles(element: HTMLElement, styles: CSSProperties) {
+  Object.entries(styles).forEach(([property, value]) => {
+    if (value === undefined || value === null) {
+      return;
+    }
+
+    const typedValue = typeof value === "number" ? `${value}` : value;
+    const style = element.style as unknown as Record<string, string>;
+    style[property] = typedValue;
+  });
 }
+
 
 function createSyntheticHunk(filePath: string, fileIndex: number, hunkIndex: number): DiffHunk {
   const offset = fileIndex * 30 + hunkIndex * 12;
