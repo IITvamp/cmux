@@ -51,3 +51,7 @@ cmux is part of the cmux project. See the main repository for development instru
 ## License
 
 MIT
+
+Cmux spawns the agents,
+Claude, Codex, Gemini fly,
+Tasks in harmony.

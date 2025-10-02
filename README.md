@@ -44,3 +44,7 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+Cmux spawns the agents,
+Claude, Codex, Gemini fly,
+Tasks in harmony.
