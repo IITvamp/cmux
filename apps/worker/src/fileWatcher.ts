@@ -128,7 +128,7 @@ export class FileWatcher {
 
   private async updateGitStatus(): Promise<void> {
     if (!this.gitRepoPath) {
-      return;
+      throw new Error("gitRepoPath cannot be found");
     }
 
     try {
@@ -227,7 +227,7 @@ export async function computeGitDiff(
 ): Promise<string> {
   const gitRepoPath = await detectGitRepoPath();
   if (!gitRepoPath) {
-    return "";
+    throw new Error("gitRepoPath cannot not be found");
   }
 
   try {
@@ -260,7 +260,7 @@ export async function getFileWithDiff(
 ): Promise<{ oldContent: string; newContent: string; patch: string }> {
   const gitRepoPath = await detectGitRepoPath();
   if (!gitRepoPath) {
-    return { oldContent: "", newContent: "", patch: "" };
+    throw new Error("gitRepoPath cannot be found");
   }
 
   try {
