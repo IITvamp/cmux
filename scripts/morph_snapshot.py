@@ -8,13 +8,13 @@ from __future__ import annotations
 
 import argparse
 import atexit
-import hashlib
 import os
 import shlex
 import signal
 import sys
 import time
 import typing as t
+import uuid
 from dataclasses import dataclass
 from urllib import request as urllib_request
 from urllib.error import HTTPError, URLError
@@ -649,17 +649,6 @@ def ensure_docker(snapshot: Snapshot) -> Snapshot:
     return snapshot
 
 
-def _file_sha256_hex(path: str) -> str:
-    try:
-        with open(path, "rb") as f:
-            h = hashlib.sha256()
-            for chunk in iter(lambda: f.read(8192), b""):
-                h.update(chunk)
-            return h.hexdigest()
-    except FileNotFoundError:
-        return "no-file"
-
-
 def build_snapshot(
     dockerfile_path: str,
 ) -> Snapshot:
@@ -667,10 +656,13 @@ def build_snapshot(
     vcpus = 8
     memory = 16384
     disk_size = 32768
+    digest = f"cmux_{uuid.uuid4().hex}"
+    print(f"Using unique snapshot digest {digest}")
     snapshot = client.snapshots.create(
         vcpus=vcpus,
         memory=memory,
         disk_size=disk_size,
+        digest=digest,
     )
     snapshot = ensure_docker(snapshot)
     with open(dockerfile_path, "r", encoding="utf-8") as f:

@@ -23,6 +23,7 @@ interface FileWatcherOptions {
 export class FileWatcher {
   private watcher: FSWatcher | null = null;
   private watchPath: string;
+  private gitRepoPath: string | null = null;
   private taskRunId?: string;
   private onFileChange: (changes: FileChange[]) => void;
   private debounceMs: number;
@@ -40,12 +41,25 @@ export class FileWatcher {
     this.gitIgnore = options.gitIgnore ?? true;
   }
 
+  private async findGitRepository(): Promise<void> {
+    this.gitRepoPath = await findGitRepoPath(this.watchPath);
+
+    if (this.gitRepoPath) {
+      log("INFO", `[FileWatcher] Found git repository at: ${this.gitRepoPath}`);
+    } else {
+      log("WARN", "[FileWatcher] No git repository found");
+    }
+  }
+
   async start(): Promise<void> {
     log("INFO", `[FileWatcher] Starting file watcher for ${this.watchPath}`, {
       taskRunId: this.taskRunId,
       debounceMs: this.debounceMs,
       gitIgnore: this.gitIgnore,
     });
+
+    // Find the git repository
+    await this.findGitRepository();
 
     // Load gitignore patterns if enabled
     if (this.gitIgnore) {
@@ -81,8 +95,10 @@ export class FileWatcher {
   }
 
   private async loadGitIgnorePatterns(): Promise<void> {
+    const searchPath = this.gitRepoPath || this.watchPath;
+
     try {
-      const gitIgnorePath = path.join(this.watchPath, ".gitignore");
+      const gitIgnorePath = path.join(searchPath, ".gitignore");
       const gitIgnoreContent = await fs.readFile(gitIgnorePath, "utf-8");
 
       this.gitIgnorePatterns = gitIgnoreContent
@@ -95,7 +111,7 @@ export class FileWatcher {
 
       log(
         "INFO",
-        `[FileWatcher] Loaded ${this.gitIgnorePatterns.length} gitignore patterns`
+        `[FileWatcher] Loaded ${this.gitIgnorePatterns.length} gitignore patterns from ${searchPath}`
       );
     } catch (error) {
       // No gitignore file, just ignore .git
@@ -134,9 +150,14 @@ export class FileWatcher {
   }
 
   private async updateGitStatus(): Promise<void> {
+    if (!this.gitRepoPath) {
+      log("WARN", "[FileWatcher] Skipping git status update: no git repository found");
+      return;
+    }
+
     try {
       const { stdout } = await execAsync("git status --porcelain", {
-        cwd: this.watchPath,
+        cwd: this.gitRepoPath,
       });
 
       this.lastGitStatus.clear();
@@ -174,8 +195,9 @@ export class FileWatcher {
       const stats = await fs.stat(fullPath);
       if (!stats.isFile()) return; // Ignore directories
 
-      // Check if file is new
-      const relativePath = path.relative(this.watchPath, fullPath);
+      // Check if file is new (relative to git repo if available, else watchPath)
+      const basePath = this.gitRepoPath || this.watchPath;
+      const relativePath = path.relative(basePath, fullPath);
       const gitStatus = this.lastGitStatus.get(relativePath);
 
       if (gitStatus === "??" || gitStatus?.startsWith("A")) {
@@ -229,23 +251,75 @@ export class FileWatcher {
 }
 
 /**
+ * Find git repository starting from a given path
+ * Searches the path itself first, then subdirectories
+ */
+export async function findGitRepoPath(
+  searchPath: string
+): Promise<string | null> {
+  // First try the search path itself
+  try {
+    const { stdout } = await execAsync("git rev-parse --show-toplevel", {
+      cwd: searchPath,
+    });
+    return stdout.trim();
+  } catch {
+    // Not a git repo, continue to subdirectory search
+  }
+
+  // Search in subdirectories
+  try {
+    const entries = await fs.readdir(searchPath, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+
+      const subdir = path.join(searchPath, entry.name);
+      const gitDir = path.join(subdir, ".git");
+
+      try {
+        await fs.access(gitDir);
+        // .git exists, verify it's a valid repo
+        const { stdout } = await execAsync("git rev-parse --show-toplevel", {
+          cwd: subdir,
+        });
+        return stdout.trim();
+      } catch {
+        // Not a valid git repo, continue
+      }
+    }
+  } catch {
+    // Failed to search
+  }
+
+  return null;
+}
+
+/**
  * Compute git diff for specific files
  */
 export async function computeGitDiff(
   worktreePath: string,
   files?: string[]
 ): Promise<string> {
+  // Find the actual git repository
+  const gitRepoPath = await findGitRepoPath(worktreePath);
+  if (!gitRepoPath) {
+    log("WARN", `[FileWatcher] No git repository found at ${worktreePath}`);
+    return "";
+  }
+
   try {
     let command = "git diff HEAD";
 
     // Add specific files if provided
     if (files && files.length > 0) {
-      const relativePaths = files.map((f) => path.relative(worktreePath, f));
+      const relativePaths = files.map((f) => path.relative(gitRepoPath, f));
       command += ` -- ${relativePaths.join(" ")}`;
     }
 
     const { stdout } = await execAsync(command, {
-      cwd: worktreePath,
+      cwd: gitRepoPath,
       maxBuffer: 10 * 1024 * 1024, // 10MB buffer
     });
 
@@ -263,8 +337,15 @@ export async function getFileWithDiff(
   filePath: string,
   worktreePath: string
 ): Promise<{ oldContent: string; newContent: string; patch: string }> {
+  // Find the actual git repository
+  const gitRepoPath = await findGitRepoPath(worktreePath);
+  if (!gitRepoPath) {
+    log("WARN", `[FileWatcher] No git repository found at ${worktreePath}`);
+    return { oldContent: "", newContent: "", patch: "" };
+  }
+
   try {
-    const relativePath = path.relative(worktreePath, filePath);
+    const relativePath = path.relative(gitRepoPath, filePath);
 
     // Get current content
     let newContent = "";
@@ -278,7 +359,7 @@ export async function getFileWithDiff(
     let oldContent = "";
     try {
       const { stdout } = await execAsync(`git show HEAD:"${relativePath}"`, {
-        cwd: worktreePath,
+        cwd: gitRepoPath,
       });
       oldContent = stdout;
     } catch {
@@ -289,7 +370,7 @@ export async function getFileWithDiff(
     let patch = "";
     try {
       const { stdout } = await execAsync(`git diff HEAD -- "${relativePath}"`, {
-        cwd: worktreePath,
+        cwd: gitRepoPath,
         maxBuffer: 5 * 1024 * 1024,
       });
       patch = stdout;
