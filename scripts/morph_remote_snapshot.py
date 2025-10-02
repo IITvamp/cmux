@@ -245,26 +245,38 @@ def enable_cmux_units(snapshot: Snapshot) -> Snapshot:
         "cmux-worker.service",
         "cmux-dockerd.service",
     ]
+    quoted_units = " ".join(shlex.quote(unit) for unit in units)
 
-    for unit in units:
-        source = f"/opt/app/rootfs/usr/lib/systemd/system/{unit}"
-        dest = f"/etc/systemd/system/{unit}"
-        snapshot = snapshot.exec(
-            f"if [ -f {shlex.quote(source)} ]; then cp {shlex.quote(source)} {shlex.quote(dest)}; fi"
-        )
+    script = textwrap.dedent(
+        f"""
+        set -euo pipefail
+        for unit in {quoted_units}; do
+            src="/opt/app/rootfs/usr/lib/systemd/system/$unit"
+            dest="/etc/systemd/system/$unit"
+            if [ -f "$src" ]; then
+                cp "$src" "$dest"
+            fi
+        done
 
-    snapshot = snapshot.exec("mkdir -p /usr/local/lib/cmux")
-    snapshot = snapshot.exec(
-        "if [ -d /opt/app/rootfs/usr/local/lib/cmux ]; then cp -a /opt/app/rootfs/usr/local/lib/cmux/. /usr/local/lib/cmux/; fi"
-    )
-    snapshot = snapshot.exec(
-        "chmod +x /usr/local/lib/cmux/cmux-rootfs-exec /usr/local/lib/cmux/configure-openvscode || true"
-    )
+        mkdir -p /usr/local/lib/cmux
+        if [ -d /opt/app/rootfs/usr/local/lib/cmux ]; then
+            cp -a /opt/app/rootfs/usr/local/lib/cmux/. /usr/local/lib/cmux/
+        fi
 
-    snapshot = snapshot.exec("mkdir -p /var/log/cmux")
-    snapshot = snapshot.exec("systemctl daemon-reload && systemctl enable cmux.target")
+        for tool in cmux-rootfs-exec configure-openvscode; do
+            path="/usr/local/lib/cmux/$tool"
+            if [ -f "$path" ]; then
+                chmod +x "$path"
+            fi
+        done
 
-    return snapshot
+        mkdir -p /var/log/cmux
+        systemctl daemon-reload
+        systemctl enable cmux.target
+        """
+    ).strip()
+
+    return run_snapshot_bash(snapshot, script)
 
 
 def build_snapshot(
