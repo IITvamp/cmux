@@ -51,3 +51,7 @@ cmux is part of the cmux project. See the main repository for development instru
 ## License
 
 MIT
+
+Agents code in sync
+Containers isolate their worlds
+Bugs vanish like mist
