@@ -21,6 +21,28 @@ describe("collect-crown-diff.sh workspace discovery", () => {
     rmSync(workspaceDir, { recursive: true, force: true });
   });
 
+  it("collects diff when a repository lives at workspace/root", () => {
+    const rootRepo = join(workspaceDir, "root");
+    mkdirSync(rootRepo, { recursive: true });
+
+    run("git init", rootRepo);
+    run("git config user.email test@example.com", rootRepo);
+    run("git config user.name Test User", rootRepo);
+
+    const rootFile = join(rootRepo, "root-app.ts");
+    writeFileSync(rootFile, "console.log('root base');\n");
+    run("git add root-app.ts", rootRepo);
+    run("git commit -m base", rootRepo);
+
+    writeFileSync(rootFile, "console.log('root change');\n");
+
+    const scriptPath = fileURLToPath(new URL("./collect-crown-diff.sh", import.meta.url));
+    const diff = execFileSync("bash", [scriptPath], { cwd: workspaceDir }).toString();
+
+    expect(diff).toContain("root-app.ts");
+    expect(diff).toContain("root change");
+  });
+
   it("collects diff from single nested repository", () => {
     const repoDir = join(workspaceDir, "solo-repo");
     mkdirSync(repoDir, { recursive: true });
