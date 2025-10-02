@@ -5,7 +5,10 @@ const WORKSPACE_ROOT = "/root/workspace" as const;
 const CMUX_RUNTIME_DIR = `${WORKSPACE_ROOT}/.cmux` as const;
 const LOG_DIR = "/var/log/cmux" as const;
 
-const sanitizeScript = (script: string): string | null => {
+const sanitizeScript = (script: string | null | undefined): string | null => {
+  if (!script) {
+    return null;
+  }
   const trimmed = script.trim();
   return trimmed.length === 0 ? null : trimmed;
 };
@@ -73,7 +76,7 @@ const handleExecFailure = ({
 
 export const runMaintenanceScript = async (
   instance: MorphInstance,
-  script: string
+  script: string | null | undefined
 ): Promise<void> => {
   const sanitized = sanitizeScript(script);
   if (!sanitized) {
@@ -88,9 +91,7 @@ cd ${WORKSPACE_ROOT}
 bash -eu -o pipefail ${maintenanceScriptPath}
 `;
 
-  const result = await instance.exec(
-    `bash -lc ${singleQuote(command)}`
-  );
+  const result = await instance.exec(`bash -lc ${singleQuote(command)}`);
 
   if (result.exit_code !== 0) {
     handleExecFailure({
@@ -104,7 +105,7 @@ bash -eu -o pipefail ${maintenanceScriptPath}
 
 export const startDevScript = async (
   instance: MorphInstance,
-  script: string
+  script: string | null | undefined
 ): Promise<void> => {
   const sanitized = sanitizeScript(script);
   if (!sanitized) {
@@ -125,9 +126,7 @@ nohup bash -eu -o pipefail ${devScriptPath} > ${logFile} 2>&1 &
 echo $! > ${pidFile}
 `;
 
-  const result = await instance.exec(
-    `bash -lc ${singleQuote(command)}`
-  );
+  const result = await instance.exec(`bash -lc ${singleQuote(command)}`);
 
   if (result.exit_code !== 0) {
     handleExecFailure({

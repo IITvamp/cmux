@@ -175,6 +175,7 @@ sandboxesRouter.openapi(
       );
 
       const client = new MorphCloudClient({ apiKey: env.MORPH_API_KEY });
+
       const instance = await client.instances.start({
         snapshotId: resolvedSnapshotId,
         ttlSeconds: body.ttlSeconds ?? 20 * 60,
