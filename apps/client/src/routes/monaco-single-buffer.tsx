@@ -631,6 +631,7 @@ function MonacoSingleBufferRoute() {
       enableSplitViewResizing: true,
       minimap: { enabled: false },
       renderOverviewRuler: false,
+      smoothScrolling: true,
       scrollbar: {
         useShadows: false,
         vertical: "auto",

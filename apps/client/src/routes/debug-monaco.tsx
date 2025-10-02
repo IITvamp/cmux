@@ -874,13 +874,15 @@ export function endTimer(label: string) {
 
 const diffSamplesWithLayout = diffSamples.map(withLayout);
 
-const diffSampleVisibleLineMap = diffSamplesWithLayout.reduce<
+const diffSampleLayoutEstimates = diffSamplesWithLayout.reduce<
   Record<
     string,
     {
       visibleLineCount: number;
       limitedVisibleLineCount: number;
       collapsedRegionCount: number;
+      estimatedEditorMinHeight: number;
+      estimatedArticleMinHeight: number;
     }
   >
 >((accumulator, sample) => {
@@ -888,12 +890,14 @@ const diffSampleVisibleLineMap = diffSamplesWithLayout.reduce<
     visibleLineCount: sample.visibleLineCount,
     limitedVisibleLineCount: sample.limitedVisibleLineCount,
     collapsedRegionCount: sample.collapsedRegionCount,
+    estimatedEditorMinHeight: sample.editorMinHeight,
+    estimatedArticleMinHeight: sample.articleMinHeight,
   };
 
   return accumulator;
 }, {});
 
-console.log("Diff sample visible line counts", diffSampleVisibleLineMap);
+console.log("Diff sample layout estimates", diffSampleLayoutEstimates);
 
 export const Route = createFileRoute("/debug-monaco")({
   component: DebugMonacoPage,
@@ -1002,142 +1006,183 @@ function DebugMonacoPage() {
     [],
   );
 
-  const onEditorMount: DiffOnMount = useCallback(
-    (diffEditor, monacoInstance) => {
-      const originalEditor = diffEditor.getOriginalEditor();
-      const modifiedEditor = diffEditor.getModifiedEditor();
-      const container = diffEditor.getContainerDomNode() as HTMLElement | null;
+  const createOnEditorMount = useCallback(
+    (sample: DiffSampleWithLayout): DiffOnMount =>
+      (diffEditor, monacoInstance) => {
+        const originalEditor = diffEditor.getOriginalEditor();
+        const modifiedEditor = diffEditor.getModifiedEditor();
+        const container = diffEditor.getContainerDomNode() as HTMLElement | null;
 
-      if (!container) {
-        return;
-      }
-
-      const disposables: Array<{ dispose: () => void }> = [];
-
-      const computeHeight = (targetEditor: editor.IStandaloneCodeEditor) => {
-        const contentHeight = targetEditor.getContentHeight();
-        if (contentHeight > 0) {
-          return contentHeight;
+        if (!container) {
+          return;
         }
 
-        const lineHeight = targetEditor.getOption(
-          monacoInstance.editor.EditorOption.lineHeight,
-        );
-        const model = targetEditor.getModel();
-        const lineCount = model ? Math.max(1, model.getLineCount()) : 1;
-
-        return lineCount * lineHeight;
-      };
-
-      const applyLayout = () => {
-        const height = Math.max(
-          computeHeight(originalEditor),
-          computeHeight(modifiedEditor),
-        );
-
-        const modifiedInfo = modifiedEditor.getLayoutInfo();
-        const originalInfo = originalEditor.getLayoutInfo();
-        const containerWidth =
-          container.clientWidth ||
-          container.getBoundingClientRect().width ||
-          modifiedInfo.width ||
-          originalInfo.width;
-
-        if (containerWidth > 0 && height > 0) {
-          diffEditor.layout({ width: containerWidth, height });
-        }
-      };
-
-      const observer =
-        typeof ResizeObserver === "undefined"
-          ? null
-          : new ResizeObserver(() => {
-              applyLayout();
-            });
-
-      if (observer) {
-        observer.observe(container);
-        disposables.push({ dispose: () => observer.disconnect() });
-      }
-
-      const onOriginalContentChange = originalEditor.onDidChangeModelContent(
-        () => {
-          applyLayout();
-        },
-      );
-
-      const onModifiedContentChange = modifiedEditor.onDidChangeModelContent(
-        () => {
-          applyLayout();
-        },
-      );
-
-      const onOriginalConfigChange = originalEditor.onDidChangeConfiguration(
-        (event) => {
-          if (event.hasChanged(monacoInstance.editor.EditorOption.lineHeight)) {
-            applyLayout();
-          }
-        },
-      );
-
-      const onModifiedConfigChange = modifiedEditor.onDidChangeConfiguration(
-        (event) => {
-          if (event.hasChanged(monacoInstance.editor.EditorOption.lineHeight)) {
-            applyLayout();
-          }
-        },
-      );
-
-      const onOriginalSizeChange = originalEditor.onDidContentSizeChange(() => {
-        applyLayout();
-      });
-
-      const onModifiedSizeChange = modifiedEditor.onDidContentSizeChange(() => {
-        applyLayout();
-      });
-
-      const onOriginalHiddenAreasChange = originalEditor.onDidChangeHiddenAreas(
-        () => {
-          applyLayout();
-        },
-      );
-
-      const onModifiedHiddenAreasChange = modifiedEditor.onDidChangeHiddenAreas(
-        () => {
-          applyLayout();
-        },
-      );
-
-      const onDidUpdateDiff = diffEditor.onDidUpdateDiff(() => {
-        applyLayout();
-      });
-
-      disposables.push(
-        onOriginalContentChange,
-        onModifiedContentChange,
-        onOriginalConfigChange,
-        onModifiedConfigChange,
-        onOriginalSizeChange,
-        onModifiedSizeChange,
-        onOriginalHiddenAreasChange,
-        onModifiedHiddenAreasChange,
-        onDidUpdateDiff,
-      );
-
-      const disposeListener = diffEditor.onDidDispose(() => {
-        disposables.forEach((disposable) => {
-          try {
-            disposable.dispose();
-          } catch (error) {
-            console.error("Failed to dispose Monaco listener", error);
-          }
+        console.log(`Diff sample ${sample.filePath} estimated heights`, {
+          estimatedEditorMinHeight: sample.editorMinHeight,
+          estimatedArticleMinHeight: sample.articleMinHeight,
         });
-      });
 
-      disposables.push(disposeListener);
+        const disposables: Array<{ dispose: () => void }> = [];
 
-      applyLayout();
-    },
+        const computeHeight = (targetEditor: editor.IStandaloneCodeEditor) => {
+          const contentHeight = targetEditor.getContentHeight();
+          if (contentHeight > 0) {
+            return contentHeight;
+          }
+
+          const lineHeight = targetEditor.getOption(
+            monacoInstance.editor.EditorOption.lineHeight,
+          );
+          const model = targetEditor.getModel();
+          const lineCount = model ? Math.max(1, model.getLineCount()) : 1;
+
+          return lineCount * lineHeight;
+        };
+
+        const logGroundTruthHeights = () => {
+          const containerRect = container.getBoundingClientRect();
+          const originalContentHeight = originalEditor.getContentHeight();
+          const modifiedContentHeight = modifiedEditor.getContentHeight();
+
+          console.log(`Diff sample ${sample.filePath} ground truth heights`, {
+            containerHeight: containerRect.height,
+            originalContentHeight,
+            modifiedContentHeight,
+          });
+        };
+
+        let groundTruthTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+        const scheduleGroundTruthLog = () => {
+          if (groundTruthTimeoutId !== null) {
+            clearTimeout(groundTruthTimeoutId);
+          }
+
+          groundTruthTimeoutId = setTimeout(() => {
+            groundTruthTimeoutId = null;
+            logGroundTruthHeights();
+          }, 2000);
+        };
+
+        disposables.push({
+          dispose: () => {
+            if (groundTruthTimeoutId !== null) {
+              clearTimeout(groundTruthTimeoutId);
+              groundTruthTimeoutId = null;
+            }
+          },
+        });
+
+        const applyLayout = () => {
+          const height = Math.max(
+            computeHeight(originalEditor),
+            computeHeight(modifiedEditor),
+          );
+
+          const modifiedInfo = modifiedEditor.getLayoutInfo();
+          const originalInfo = originalEditor.getLayoutInfo();
+          const containerWidth =
+            container.clientWidth ||
+            container.getBoundingClientRect().width ||
+            modifiedInfo.width ||
+            originalInfo.width;
+
+          if (containerWidth > 0 && height > 0) {
+            diffEditor.layout({ width: containerWidth, height });
+            scheduleGroundTruthLog();
+          }
+        };
+
+        const observer =
+          typeof ResizeObserver === "undefined"
+            ? null
+            : new ResizeObserver(() => {
+                applyLayout();
+              });
+
+        if (observer) {
+          observer.observe(container);
+          disposables.push({ dispose: () => observer.disconnect() });
+        }
+
+        const onOriginalContentChange = originalEditor.onDidChangeModelContent(
+          () => {
+            applyLayout();
+          },
+        );
+
+        const onModifiedContentChange = modifiedEditor.onDidChangeModelContent(
+          () => {
+            applyLayout();
+          },
+        );
+
+        const onOriginalConfigChange = originalEditor.onDidChangeConfiguration(
+          (event) => {
+            if (event.hasChanged(monacoInstance.editor.EditorOption.lineHeight)) {
+              applyLayout();
+            }
+          },
+        );
+
+        const onModifiedConfigChange = modifiedEditor.onDidChangeConfiguration(
+          (event) => {
+            if (event.hasChanged(monacoInstance.editor.EditorOption.lineHeight)) {
+              applyLayout();
+            }
+          },
+        );
+
+        const onOriginalSizeChange = originalEditor.onDidContentSizeChange(() => {
+          applyLayout();
+        });
+
+        const onModifiedSizeChange = modifiedEditor.onDidContentSizeChange(() => {
+          applyLayout();
+        });
+
+        const onOriginalHiddenAreasChange = originalEditor.onDidChangeHiddenAreas(
+          () => {
+            applyLayout();
+          },
+        );
+
+        const onModifiedHiddenAreasChange = modifiedEditor.onDidChangeHiddenAreas(
+          () => {
+            applyLayout();
+          },
+        );
+
+        const onDidUpdateDiff = diffEditor.onDidUpdateDiff(() => {
+          applyLayout();
+        });
+
+        disposables.push(
+          onOriginalContentChange,
+          onModifiedContentChange,
+          onOriginalConfigChange,
+          onModifiedConfigChange,
+          onOriginalSizeChange,
+          onModifiedSizeChange,
+          onOriginalHiddenAreasChange,
+          onModifiedHiddenAreasChange,
+          onDidUpdateDiff,
+        );
+
+        const disposeListener = diffEditor.onDidDispose(() => {
+          disposables.forEach((disposable) => {
+            try {
+              disposable.dispose();
+            } catch (error) {
+              console.error("Failed to dispose Monaco listener", error);
+            }
+          });
+        });
+
+        disposables.push(disposeListener);
+
+        applyLayout();
+      },
     [],
   );
 
@@ -1152,7 +1197,7 @@ function DebugMonacoPage() {
               diffOptions={diffOptions}
               editorTheme={editorTheme}
               isEditorReady={isEditorReady}
-              onEditorMount={onEditorMount}
+              onEditorMount={createOnEditorMount(sample)}
             />
           ))}
         </div>
