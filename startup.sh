@@ -84,27 +84,27 @@ start_devcontainer() {
             }
             
             echo "[Startup] Devcontainer started successfully" >> /var/log/cmux/startup.log
-            
-            # If devcontainer started successfully and dev.sh exists, run it
-            if [ -f "/root/workspace/scripts/dev.sh" ]; then
-                echo "[Startup] Running ./scripts/dev.sh in devcontainer..." >> /var/log/cmux/startup.log
-                
+
+            # Run maintenance.sh and dev.sh in sequence
+            if [ -f "/root/workspace/scripts/maintenance.sh" ] || [ -f "/root/workspace/scripts/dev.sh" ]; then
+                echo "[Startup] Running maintenance and dev scripts in devcontainer..." >> /var/log/cmux/startup.log
+
                 # Get the container name/id from the devcontainer CLI output
                 CONTAINER_ID=$(bunx @devcontainers/cli read-configuration --workspace-folder . 2>/dev/null | grep -o '"containerId":"[^"]*"' | cut -d'"' -f4)
-                
+
                 if [ -n "$CONTAINER_ID" ]; then
-                    # Execute dev.sh inside the devcontainer
-                    docker exec -d "$CONTAINER_ID" bash -c "cd /root/workspace && ./scripts/dev.sh" >> /var/log/cmux/devcontainer-dev.log 2>&1 || {
-                        echo "[Startup] Failed to run dev.sh in devcontainer (non-fatal)" >> /var/log/cmux/startup.log
+                    # Execute maintenance.sh first, then dev.sh inside the devcontainer
+                    docker exec -d "$CONTAINER_ID" bash -c "cd /root/workspace && [ -f scripts/maintenance.sh ] && ./scripts/maintenance.sh >> /var/log/cmux/devcontainer-maintenance.log 2>&1 || true; [ -f scripts/dev.sh ] && ./scripts/dev.sh >> /var/log/cmux/devcontainer-dev.log 2>&1 || true" || {
+                        echo "[Startup] Failed to run scripts in devcontainer (non-fatal)" >> /var/log/cmux/startup.log
                     }
-                    echo "[Startup] Started dev.sh in devcontainer (logs at /var/log/cmux/devcontainer-dev.log)" >> /var/log/cmux/startup.log
+                    echo "[Startup] Started maintenance and dev scripts in devcontainer (logs at /var/log/cmux/devcontainer-*.log)" >> /var/log/cmux/startup.log
                 else
                     # Fallback: try to run it directly if we can't get container ID
-                    bunx @devcontainers/cli exec --workspace-folder . bash -c "./scripts/dev.sh" >> /var/log/cmux/devcontainer-dev.log 2>&1 &
-                    echo "[Startup] Attempted to run dev.sh via devcontainer CLI (logs at /var/log/cmux/devcontainer-dev.log)" >> /var/log/cmux/startup.log
+                    bunx @devcontainers/cli exec --workspace-folder . bash -c "[ -f scripts/maintenance.sh ] && ./scripts/maintenance.sh || true; [ -f scripts/dev.sh ] && ./scripts/dev.sh || true" >> /var/log/cmux/devcontainer-scripts.log 2>&1 &
+                    echo "[Startup] Attempted to run scripts via devcontainer CLI (logs at /var/log/cmux/devcontainer-scripts.log)" >> /var/log/cmux/startup.log
                 fi
             else
-                echo "[Startup] No scripts/dev.sh found in workspace, skipping dev script" >> /var/log/cmux/startup.log
+                echo "[Startup] No scripts/maintenance.sh or scripts/dev.sh found in workspace, skipping scripts" >> /var/log/cmux/startup.log
             fi
         ) &
         
@@ -200,7 +200,7 @@ export WORKER_PORT=39377
 export IS_SANDBOX=true
 
 # Start Docker readiness check and devcontainer in background
-# start_devcontainer &
+start_devcontainer &
 
 # Start default empty tmux session for cmux that the agent will be spawned in
 # (cd /root/workspace && tmux new-session -d -s cmux)
