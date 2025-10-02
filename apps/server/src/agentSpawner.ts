@@ -915,7 +915,11 @@ export async function spawnAllAgents(
 
   // Generate unique branch names for all agents at once to ensure no collisions
   const branchNames = options.prTitle
-    ? generateUniqueBranchNamesFromTitle(options.prTitle!, agentsToSpawn.length)
+    ? await generateUniqueBranchNamesFromTitle(
+        options.prTitle!,
+        agentsToSpawn.length,
+        teamSlugOrId,
+      )
     : await generateUniqueBranchNames(
         options.taskDescription,
         agentsToSpawn.length,
