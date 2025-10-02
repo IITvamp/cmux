@@ -303,7 +303,9 @@ RUN chmod +x /usr/local/lib/cmux/configure-openvscode /usr/local/lib/cmux/cmux-r
     ln -sf /usr/lib/systemd/system/cmux.target /etc/systemd/system/multi-user.target.wants/cmux.target && \
     ln -sf /usr/lib/systemd/system/cmux-openvscode.service /etc/systemd/system/cmux.target.wants/cmux-openvscode.service && \
     ln -sf /usr/lib/systemd/system/cmux-worker.service /etc/systemd/system/cmux.target.wants/cmux-worker.service && \
-    ln -sf /usr/lib/systemd/system/cmux-dockerd.service /etc/systemd/system/cmux.target.wants/cmux-dockerd.service
+    ln -sf /usr/lib/systemd/system/cmux-dockerd.service /etc/systemd/system/cmux.target.wants/cmux-dockerd.service && \
+    mkdir -p /opt/app/overlay/upper /opt/app/overlay/work && \
+    printf 'CMUX_ROOTFS=/\nCMUX_RUNTIME_ROOT=/\nCMUX_OVERLAY_UPPER=/opt/app/overlay/upper\nCMUX_OVERLAY_WORK=/opt/app/overlay/work\n' > /opt/app/app.env
 
 # Create VS Code user settings
 RUN mkdir -p /root/.openvscode-server/data/User && \

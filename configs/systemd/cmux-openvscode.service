@@ -6,21 +6,10 @@ Wants=network-online.target
 [Service]
 Type=simple
 EnvironmentFile=-/opt/app/app.env
-Environment=CMUX_ROOTFS=/
-Environment=PATH=/usr/local/bin:/usr/bin:/bin
 LogsDirectory=cmux
-ExecStartPre=/usr/local/lib/cmux/cmux-rootfs-exec /bin/mkdir -p /var/log/cmux
-ExecStartPre=/usr/local/lib/cmux/cmux-rootfs-exec /usr/local/lib/cmux/configure-openvscode
-ExecStart=/usr/local/lib/cmux/cmux-rootfs-exec /app/openvscode-server/bin/openvscode-server \
-  --host 0.0.0.0 \
-  --port 39378 \
-  --without-connection-token \
-  --disable-workspace-trust \
-  --disable-telemetry \
-  --disable-updates \
-  --profile default-profile \
-  --verbose \
-  /root/workspace
+ExecStartPre=/bin/mkdir -p /var/log/cmux
+ExecStartPre=/usr/local/lib/cmux/cmux-rootfs-exec /bin/bash -lc 'exec "${CMUX_RUNTIME_ROOT}/usr/local/lib/cmux/configure-openvscode"'
+ExecStart=/usr/local/lib/cmux/cmux-rootfs-exec /bin/bash -lc 'exec "${CMUX_RUNTIME_ROOT}/app/openvscode-server/bin/openvscode-server" --host 0.0.0.0 --port 39378 --without-connection-token --disable-workspace-trust --disable-telemetry --disable-updates --profile default-profile --verbose "${CMUX_RUNTIME_ROOT}/root/workspace"'
 Restart=on-failure
 RestartSec=2
 StandardOutput=append:/var/log/cmux/openvscode.log

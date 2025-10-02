@@ -1,51 +1,91 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-root="${CMUX_ROOTFS:-/}"
+# Ensures runtime overlay is mounted (if configured) and executes the given command
+# with environment variables pointing at the merged filesystem. This replaces the
+# previous chroot-based implementation so that host binaries remain accessible.
 
-ensure_mounts() {
-  local mount_root="$1"
+rootfs="${CMUX_ROOTFS:-/}"
+runtime_root="${CMUX_RUNTIME_ROOT:-${CMUX_ROOTFS:-/}}"
+overlay_upper="${CMUX_OVERLAY_UPPER:-/opt/app/overlay/upper}"
+overlay_work="${CMUX_OVERLAY_WORK:-/opt/app/overlay/work}"
 
-  mkdir -p "${mount_root}/dev" "${mount_root}/proc" "${mount_root}/sys"
-
-  # Bind host /dev into chroot and make it a slave so unmounts propagate correctly.
-  if ! mountpoint -q "${mount_root}/dev"; then
-    mount --rbind /dev "${mount_root}/dev"
-    mount --make-rslave "${mount_root}/dev"
+ensure_overlay() {
+  if [[ "${runtime_root}" == "/" || "${rootfs}" == "/" ]]; then
+    runtime_root="/"
+    return
   fi
 
-  mkdir -p "${mount_root}/dev/pts"
+  if mountpoint -q "${runtime_root}"; then
+    return
+  fi
 
-  # Ensure devpts is mounted for terminal support.
-  if ! mountpoint -q "${mount_root}/dev/pts"; then
-    local tty_gid
-    if tty_gid=$(getent group tty | awk -F: '{print $3}'); then
-      mount -t devpts devpts "${mount_root}/dev/pts" -o gid="${tty_gid}",mode=620,ptmxmode=666
+  if [[ ! -d "${rootfs}" ]]; then
+    echo "cmux-rootfs-exec: CMUX_ROOTFS ${rootfs} does not exist" >&2
+    exit 1
+  fi
+
+  mkdir -p "${runtime_root}" "${overlay_upper}" "${overlay_work}"
+
+  # Attempt to mount overlay; if already mounted by another unit, tolerate the EBUSY case.
+  if ! mount -t overlay overlay \
+    -o "lowerdir=${rootfs},upperdir=${overlay_upper},workdir=${overlay_work}" \
+    "${runtime_root}" 2>/tmp/cmux-overlay-mount.err; then
+    err=$(< /tmp/cmux-overlay-mount.err)
+    rm -f /tmp/cmux-overlay-mount.err
+    if grep -q "busy" <<<"${err}"; then
+      # Someone else mounted concurrently; verify mountpoint now exists.
+      if ! mountpoint -q "${runtime_root}"; then
+        echo "cmux-rootfs-exec: failed to mount overlay: ${err}" >&2
+        exit 1
+      fi
     else
-      mount -t devpts devpts "${mount_root}/dev/pts" -o mode=620,ptmxmode=666
+      echo "cmux-rootfs-exec: failed to mount overlay: ${err}" >&2
+      exit 1
     fi
-  fi
-
-  # Ensure /dev/ptmx points at the devpts instance.
-  if [ ! -e "${mount_root}/dev/ptmx" ]; then
-    ln -sf pts/ptmx "${mount_root}/dev/ptmx"
-  fi
-
-  if ! mountpoint -q "${mount_root}/proc"; then
-    mount --rbind /proc "${mount_root}/proc"
-    mount --make-rslave "${mount_root}/proc"
-  fi
-
-  if ! mountpoint -q "${mount_root}/sys"; then
-    mount --rbind /sys "${mount_root}/sys"
-    mount --make-rslave "${mount_root}/sys"
+  else
+    rm -f /tmp/cmux-overlay-mount.err
   fi
 }
 
-if [ "$root" = "/" ]; then
-  exec "$@"
+ensure_overlay
+
+export CMUX_ROOTFS="${rootfs}"
+export CMUX_RUNTIME_ROOT="${runtime_root}"
+
+runtime_path_prefix="${runtime_root}/usr/local/sbin:${runtime_root}/usr/local/bin:${runtime_root}/usr/sbin:${runtime_root}/usr/bin:${runtime_root}/sbin:${runtime_root}/bin"
+if [[ "${runtime_root}" != "/" ]]; then
+  if [[ -n "${PATH:-}" ]]; then
+    export PATH="${runtime_path_prefix}:${PATH}"
+  else
+    export PATH="${runtime_path_prefix}"
+  fi
+
+  lib_candidates=(
+    "${runtime_root}/lib/x86_64-linux-gnu"
+    "${runtime_root}/usr/lib/x86_64-linux-gnu"
+    "${runtime_root}/lib/aarch64-linux-gnu"
+    "${runtime_root}/usr/lib/aarch64-linux-gnu"
+    "${runtime_root}/lib"
+    "${runtime_root}/usr/lib"
+  )
+  runtime_ld=""
+  for candidate in "${lib_candidates[@]}"; do
+    if [[ -d "${candidate}" ]]; then
+      if [[ -z "${runtime_ld}" ]]; then
+        runtime_ld="${candidate}"
+      else
+        runtime_ld="${runtime_ld}:${candidate}"
+      fi
+    fi
+  done
+  if [[ -n "${runtime_ld}" ]]; then
+    if [[ -n "${LD_LIBRARY_PATH:-}" ]]; then
+      export LD_LIBRARY_PATH="${runtime_ld}:${LD_LIBRARY_PATH}"
+    else
+      export LD_LIBRARY_PATH="${runtime_ld}"
+    fi
+  fi
 fi
 
-ensure_mounts "$root"
-
-exec chroot "$root" "$@"
+exec "$@"

@@ -9,8 +9,9 @@ The script:
 3. Installs Docker tooling inside the snapshot
 4. Extracts the archive and builds the Docker image remotely
 5. Flattens the image into /opt/app/rootfs
-6. Writes runtime environment configuration
-7. Installs and enables the cmux systemd units that ship with the image
+6. Prepares overlay workspace directories for runtime mounting
+7. Writes runtime environment configuration
+8. Installs and enables the cmux systemd units that ship with the image
 """
 
 from __future__ import annotations
@@ -498,9 +499,24 @@ def build_snapshot(
             f"docker image rm {shlex.quote(built_image)} >/dev/null 2>&1 || true"
         )
 
+        console.info("Preparing overlay directories...")
+        snapshot = timings.time(
+            "build_snapshot:prepare_overlay",
+            lambda: snapshot.exec(
+                "mkdir -p /opt/app/runtime /opt/app/overlay/upper /opt/app/overlay/work"
+            ),
+        )
+
         console.info("Writing environment file...")
         env_lines = list(config.get("env", []))
-        env_lines.append("CMUX_ROOTFS=/opt/app/rootfs")
+        env_lines.extend(
+            [
+                "CMUX_ROOTFS=/opt/app/rootfs",
+                "CMUX_RUNTIME_ROOT=/opt/app/runtime",
+                "CMUX_OVERLAY_UPPER=/opt/app/overlay/upper",
+                "CMUX_OVERLAY_WORK=/opt/app/overlay/work",
+            ]
+        )
         env_content = "\n".join(env_lines) + "\n"
         snapshot = timings.time(
             "build_snapshot:write_env_file",

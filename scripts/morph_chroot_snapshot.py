@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Build a Morph snapshot by flattening a Docker image and running it in a chroot.
+Build a Morph snapshot by flattening a Docker image and wiring it into the host via overlayfs.
 This approach avoids installing Docker in the VM entirely.
 
 The script:
@@ -9,8 +9,9 @@ The script:
 3. Flattens the image to a tarball via `docker export`
 4. Creates a Morph snapshot and uploads the tarball
 5. Extracts it to /opt/app/rootfs
-6. Writes runtime environment configuration
-7. Installs and enables the cmux systemd units that ship with the image
+6. Prepares overlay workspace directories for runtime mounting
+7. Writes runtime environment configuration
+8. Installs and enables the cmux systemd units that ship with the image
 """
 
 from __future__ import annotations
@@ -288,7 +289,7 @@ def build_snapshot(
     target: str | None,
     timings: TimingsCollector,
 ) -> Snapshot:
-    """Build a Morph snapshot from a Docker image using chroot approach."""
+    """Build a Morph snapshot from a Docker image using an overlay-based approach."""
     image = timings.time(
         "build_snapshot:build_or_pull_image",
         lambda: build_or_pull_image(
@@ -360,9 +361,24 @@ def build_snapshot(
             ),
         )
 
+        console.info("Preparing overlay directories...")
+        snapshot = timings.time(
+            "build_snapshot:prepare_overlay",
+            lambda: snapshot.exec(
+                "mkdir -p /opt/app/runtime /opt/app/overlay/upper /opt/app/overlay/work"
+            ),
+        )
+
         console.info("Writing environment file...")
-        env_lines = config.get("env", [])
-        env_lines.append("CMUX_ROOTFS=/opt/app/rootfs")
+        env_lines = list(config.get("env", []))
+        env_lines.extend(
+            [
+                "CMUX_ROOTFS=/opt/app/rootfs",
+                "CMUX_RUNTIME_ROOT=/opt/app/runtime",
+                "CMUX_OVERLAY_UPPER=/opt/app/overlay/upper",
+                "CMUX_OVERLAY_WORK=/opt/app/overlay/work",
+            ]
+        )
         env_content = "\n".join(env_lines) + "\n"
         snapshot = timings.time(
             "build_snapshot:write_env_file",
@@ -386,7 +402,7 @@ def build_snapshot(
 
 def main() -> None:
     ap = argparse.ArgumentParser(
-        description="Build Morph snapshot from Docker image (chroot approach)"
+        description="Build Morph snapshot from Docker image (overlay approach)"
     )
     group = ap.add_mutually_exclusive_group()
     group.add_argument(
@@ -401,6 +417,7 @@ def main() -> None:
     )
     ap.add_argument(
         "--target",
+        default="morph",
         help="Docker build stage to target when using --dockerfile",
     )
     ap.add_argument(

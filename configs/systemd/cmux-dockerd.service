@@ -7,11 +7,10 @@ ConditionPathExists=/usr/local/lib/cmux/dockerd.flag
 [Service]
 Type=simple
 EnvironmentFile=-/opt/app/app.env
-Environment=CMUX_ROOTFS=/
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 LogsDirectory=cmux
-ExecStartPre=/usr/local/lib/cmux/cmux-rootfs-exec /bin/mkdir -p /var/log/cmux
-ExecStart=/usr/local/lib/cmux/cmux-rootfs-exec /usr/local/bin/dockerd
+ExecStartPre=/bin/mkdir -p /var/log/cmux
+ExecStart=/usr/local/lib/cmux/cmux-rootfs-exec /bin/bash -lc 'exec "${CMUX_RUNTIME_ROOT}/usr/local/bin/dockerd"'
 Restart=always
 RestartSec=2
 StandardOutput=append:/var/log/cmux/dockerd.log
