@@ -637,7 +637,7 @@ export async function spawnAgent(
     const switchBranch = async () => {
       const scriptPath = `/tmp/cmux-switch-branch-${Date.now()}.ts`;
       const command = `
-set -euo pipefail
+set -eu
 cat <<'CMUX_SWITCH_BRANCH_EOF' > ${scriptPath}
 ${SWITCH_BRANCH_BUN_SCRIPT}
 CMUX_SWITCH_BRANCH_EOF
