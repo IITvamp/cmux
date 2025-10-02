@@ -190,7 +190,8 @@ export const githubSetup = httpAction(async (ctx, req) => {
                 }
               );
             }
-          })()
+          })(),
+        { awaitAll: true }
       );
 
       if (insertedTotal > 0 || updatedTotal > 0) {

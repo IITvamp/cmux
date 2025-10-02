@@ -343,13 +343,14 @@ export type InstallationRepoPageHandler = (
 export async function streamInstallationRepositories(
   installationId: number,
   onPage: InstallationRepoPageHandler,
-  options?: { perPage?: number },
+  options?: { perPage?: number; awaitAll?: boolean },
 ): Promise<void> {
+  const { perPage, awaitAll } = options ?? {};
   const backgroundTasks: Promise<void>[] = [];
   let pageIndex = 0;
   for await (const repos of iterateInstallationRepositories(
     installationId,
-    options,
+    { perPage },
   )) {
     if (repos.length === 0) {
       pageIndex += 1;
@@ -357,21 +358,22 @@ export async function streamInstallationRepositories(
     }
 
     try {
-      const promise = onPage(repos, pageIndex);
-      if (promise) {
-        backgroundTasks.push(
-          Promise.resolve(promise).catch((error) => {
-            console.error(
-              "[github_app] Failed to process installation repository page",
-              {
-                installationId,
-                pageIndex,
-                repoCount: repos.length,
-                error,
-              },
-            );
-          }),
+      const task = Promise.resolve(onPage(repos, pageIndex)).catch((error) => {
+        console.error(
+          "[github_app] Failed to process installation repository page",
+          {
+            installationId,
+            pageIndex,
+            repoCount: repos.length,
+            error,
+          },
         );
+      });
+
+      if (awaitAll) {
+        backgroundTasks.push(task);
+      } else {
+        void task;
       }
     } catch (error) {
       console.error(
@@ -388,7 +390,7 @@ export async function streamInstallationRepositories(
     pageIndex += 1;
   }
 
-  if (backgroundTasks.length > 0) {
+  if (awaitAll && backgroundTasks.length > 0) {
     await Promise.allSettled(backgroundTasks);
   }
 }
