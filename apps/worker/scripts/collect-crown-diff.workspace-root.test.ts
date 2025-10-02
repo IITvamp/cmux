@@ -11,13 +11,40 @@ function run(cmd: string, cwd: string): string {
 
 describe("collect-crown-diff.sh workspace discovery", () => {
   let workspaceDir: string;
-  let alphaRepo: string;
-  let betaRepo: string;
+  const scriptPath = fileURLToPath(new URL("./collect-crown-diff.sh", import.meta.url));
 
   beforeEach(() => {
     workspaceDir = mkdtempSync(join(tmpdir(), "cmux-crown-workspace-"));
-    alphaRepo = join(workspaceDir, "alpha-repo");
-    betaRepo = join(workspaceDir, "beta-repo");
+  });
+
+  afterEach(() => {
+    rmSync(workspaceDir, { recursive: true, force: true });
+  });
+
+  it("collects diff from single nested repository", () => {
+    const repoDir = join(workspaceDir, "solo-repo");
+    mkdirSync(repoDir, { recursive: true });
+
+    run("git init", repoDir);
+    run("git config user.email test@example.com", repoDir);
+    run("git config user.name Test User", repoDir);
+
+    const filePath = join(repoDir, "solo.ts");
+    writeFileSync(filePath, "console.log('base');\n");
+    run("git add solo.ts", repoDir);
+    run("git commit -m base", repoDir);
+
+    writeFileSync(filePath, "console.log('updated');\n");
+
+    const diff = execFileSync("bash", [scriptPath], { cwd: workspaceDir }).toString();
+
+    expect(diff).toContain("solo.ts");
+    expect(diff).toContain("updated");
+  });
+
+  it("collects diff from all nested repositories", () => {
+    const alphaRepo = join(workspaceDir, "alpha-repo");
+    const betaRepo = join(workspaceDir, "beta-repo");
 
     mkdirSync(alphaRepo, { recursive: true });
     mkdirSync(betaRepo, { recursive: true });
@@ -39,14 +66,7 @@ describe("collect-crown-diff.sh workspace discovery", () => {
     run("git commit -m base", betaRepo);
 
     writeFileSync(join(betaRepo, "README.md"), "beta change\n");
-  });
 
-  afterEach(() => {
-    rmSync(workspaceDir, { recursive: true, force: true });
-  });
-
-  it("collects diff from all nested repositories", () => {
-    const scriptPath = fileURLToPath(new URL("./collect-crown-diff.sh", import.meta.url));
     const diff = execFileSync("bash", [scriptPath], { cwd: workspaceDir }).toString();
 
     expect(diff).toContain("app.ts");
