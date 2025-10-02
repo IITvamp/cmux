@@ -114,6 +114,57 @@ start_devcontainer() {
     fi
 }
 
+start_dev_scripts() {
+    local workspace="/root/workspace"
+    local log_dir="/var/log/cmux"
+    local maintenance_script="$workspace/scripts/maintenance.sh"
+    local dev_script="$workspace/scripts/dev.sh"
+
+    # Always ensure log directory exists
+    mkdir -p "$log_dir"
+
+    if [ ! -d "$workspace" ]; then
+        echo "[Startup] Workspace directory $workspace not found; skipping maintenance/dev scripts" >> /var/log/cmux/startup.log
+        return 0
+    fi
+
+    if [ ! -f "$maintenance_script" ] && [ ! -f "$dev_script" ]; then
+        echo "[Startup] No maintenance/dev scripts found; skipping" >> /var/log/cmux/startup.log
+        return 0
+    fi
+
+    echo "[Startup] Initiating maintenance/dev bootstrap" >> /var/log/cmux/startup.log
+
+    (
+        set +e
+        cd "$workspace" || exit 0
+
+        if [ -f "$maintenance_script" ]; then
+            echo "[Startup] Running maintenance script: $maintenance_script" >> /var/log/cmux/startup.log
+            if bash "$maintenance_script" >> "$log_dir/maintenance.log" 2>&1; then
+                echo "[Startup] maintenance.sh completed successfully" >> /var/log/cmux/startup.log
+            else
+                maintenance_status=$?
+                echo "[Startup] maintenance.sh exited with status $maintenance_status" >> /var/log/cmux/startup.log
+            fi
+        else
+            echo "[Startup] maintenance.sh not found; skipping" >> /var/log/cmux/startup.log
+        fi
+
+        if [ -f "$dev_script" ]; then
+            echo "[Startup] Starting dev script: $dev_script" >> /var/log/cmux/startup.log
+            bash "$dev_script" >> "$log_dir/dev.log" 2>&1
+            dev_status=$?
+            echo "[Startup] dev.sh exited with status $dev_status" >> /var/log/cmux/startup.log
+        else
+            echo "[Startup] dev.sh not found; skipping" >> /var/log/cmux/startup.log
+        fi
+    ) &
+
+    echo "[Startup] maintenance/dev scripts running in background (maintenance.log, dev.log in $log_dir)" >> /var/log/cmux/startup.log
+    return 0
+}
+
 # Create log and lifecycle directories
 mkdir -p /var/log/cmux /root/lifecycle
 
@@ -201,6 +252,9 @@ export IS_SANDBOX=true
 
 # Start Docker readiness check and devcontainer in background
 # start_devcontainer &
+
+# Always kick off maintenance + dev scripts when the task starts
+start_dev_scripts
 
 # Start default empty tmux session for cmux that the agent will be spawned in
 # (cd /root/workspace && tmux new-session -d -s cmux)
