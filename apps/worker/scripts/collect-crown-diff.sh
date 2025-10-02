@@ -15,9 +15,39 @@ export PAGER=cat
 MAX_SIZE=${CMUX_DIFF_MAX_SIZE_BYTES:-200000}
 
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
+
 if [[ -z "${repo_root}" ]]; then
-  echo "Not a git repository" >&2
-  exit 1
+  workspace_root="${PWD}"
+  script_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)/$(basename "${BASH_SOURCE[0]}")"
+
+  repo_dirs=()
+  while IFS= read -r git_dir; do
+    repo_dir="${git_dir%/.git}"
+    repo_dirs+=("${repo_dir}")
+  done < <(find "${workspace_root}" -type d -name ".git" -prune -print | sort)
+
+  if [[ ${#repo_dirs[@]} -eq 0 ]]; then
+    echo "[collect-crown-diff] ERROR: Not a git repository" >&2
+    exit 1
+  fi
+
+  had_output=false
+  for repo in "${repo_dirs[@]}"; do
+    diff_output=$(cd "${repo}" && bash "${script_path}" "$@")
+    repo_status=$?
+    if [[ ${repo_status} -ne 0 ]]; then
+      exit "${repo_status}"
+    fi
+    if [[ -n "${diff_output}" ]]; then
+      if [[ "${had_output}" == true ]]; then
+        printf '\n'
+      fi
+      printf '%s' "${diff_output}"
+      had_output=true
+    fi
+  done
+
+  exit 0
 fi
 
 cd "${repo_root}"
@@ -37,7 +67,6 @@ is_ignored_path() {
   return 1
 }
 
-# Determine the base ref on origin
 determine_base_ref() {
   if [[ -n "${CMUX_DIFF_BASE:-}" ]]; then
     echo "${CMUX_DIFF_BASE}"
@@ -63,15 +92,15 @@ head_ref=${CMUX_DIFF_HEAD_REF:-HEAD}
 
 if [[ -n "$base_ref" ]]; then
   if [[ "$base_ref" == origin/* ]]; then
-    git fetch --quiet origin "${base_ref#origin/}" >/dev/null 2>&1 || true
+    git fetch --quiet origin "${base_ref#origin/}" 2>&1 || true
   fi
   if [[ "$head_ref" == origin/* ]]; then
-    git fetch --quiet origin "${head_ref#origin/}" >/dev/null 2>&1 || true
+    git fetch --quiet origin "${head_ref#origin/}" 2>&1 || true
   fi
 
-  merge_base=$(git merge-base "$base_ref" "$head_ref" 2>/dev/null || echo "")
+  merge_base=$(git merge-base "$base_ref" "$head_ref" 2>&1 || echo "")
   if [[ -z "$merge_base" ]]; then
-    echo "Could not determine merge-base" >&2
+    echo "[collect-crown-diff] ERROR: Could not determine merge-base between ${base_ref} and ${head_ref}" >&2
     exit 1
   fi
 
@@ -129,10 +158,12 @@ if [[ -n "$base_ref" ]]; then
           git add -- "$f" 2>/dev/null || true
         fi
       done
-      if ! git --no-pager diff --staged -M --no-color "$merge_base"; then
-        echo "git diff failed for staged changes against $merge_base" >&2
+      diff_output=$(git --no-pager diff --staged -M --no-color "$merge_base")
+      if [[ $? -ne 0 ]]; then
+        echo "[collect-crown-diff] ERROR: git diff failed" >&2
         exit 1
       fi
+      echo "$diff_output"
       unset GIT_INDEX_FILE
     else
       changed_files=$(git --no-pager diff --name-only "$merge_base" HEAD || true)
@@ -159,10 +190,12 @@ if [[ -n "$base_ref" ]]; then
         exit 0
       fi
 
-      if ! git --no-pager diff -M --no-color "$merge_base" HEAD -- "${filtered_files[@]}"; then
-        echo "git diff failed for HEAD against $merge_base" >&2
+      diff_output=$(git --no-pager diff -M --no-color "$merge_base" HEAD -- "${filtered_files[@]}")
+      if [[ $? -ne 0 ]]; then
+        echo "[collect-crown-diff] ERROR: git diff failed" >&2
         exit 1
       fi
+      echo "$diff_output"
     fi
   else
     changed_files=$(git --no-pager diff --name-only "$merge_base" "$head_ref" || true)
@@ -189,10 +222,12 @@ if [[ -n "$base_ref" ]]; then
       exit 0
     fi
 
-    if ! git --no-pager diff -M --no-color "$merge_base" "$head_ref" -- "${filtered_files[@]}"; then
-      echo "git diff failed for $head_ref against $merge_base" >&2
+    diff_output=$(git --no-pager diff -M --no-color "$merge_base" "$head_ref" -- "${filtered_files[@]}")
+    if [[ $? -ne 0 ]]; then
+      echo "[collect-crown-diff] ERROR: git diff failed" >&2
       exit 1
     fi
+    echo "$diff_output"
   fi
 
   exit 0
@@ -231,7 +266,9 @@ echo "$deleted_list" | while IFS= read -r f; do
   git update-index --remove -- "$f" 2>/dev/null || true
 done
 
-if ! git --no-pager diff --staged --no-color; then
-  echo "git diff --staged failed" >&2
+diff_output=$(git --no-pager diff --staged --no-color)
+if [[ $? -ne 0 ]]; then
+  echo "[collect-crown-diff] ERROR: git diff failed" >&2
   exit 1
 fi
+echo "$diff_output"

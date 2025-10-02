@@ -26,7 +26,6 @@ dotenv.load_dotenv()
 
 client = MorphCloudClient()
 
-
 # Morph snapshots run on x86_64 hardware; Docker plugins must match this arch
 MORPH_EXPECTED_UNAME_ARCH = "x86_64"
 DOCKER_COMPOSE_VERSION = "v2.32.2"
@@ -671,6 +670,7 @@ def build_snapshot(
         vcpus=vcpus,
         memory=memory,
         disk_size=disk_size,
+        digest=None,
     )
     snapshot = ensure_docker(snapshot)
     with open(dockerfile_path, "r", encoding="utf-8") as f:
