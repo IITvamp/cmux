@@ -2,6 +2,7 @@ import { exec } from "node:child_process";
 import { promises as fs, watch, type FSWatcher } from "node:fs";
 import * as path from "node:path";
 import { promisify } from "node:util";
+import { log } from "./logger";
 import { detectGitRepoPath } from "./crown/git";
 
 const execAsync = promisify(exec);
@@ -145,8 +146,8 @@ export class FileWatcher {
           this.lastGitStatus.set(filePath, status);
         }
       }
-    } catch {
-      // Ignore git status errors
+    } catch (error) {
+      log("WARN", `[FileWatcher] Failed to update git status:`, error);
     }
   }
 
@@ -244,7 +245,8 @@ export async function computeGitDiff(
     });
 
     return stdout;
-  } catch {
+  } catch (error) {
+    log("ERROR,", `[FileWatcher] Failed to compute git diff:`, error);
     return "";
   }
 }
@@ -296,7 +298,12 @@ export async function getFileWithDiff(
     }
 
     return { oldContent, newContent, patch };
-  } catch {
+  } catch (error) {
+    log(
+      "ERROR",
+      `[FileWatcher] Failed to get file diff for ${filePath}:`,
+      error
+    );
     return { oldContent: "", newContent: "", patch: "" };
   }
 }
