@@ -2,8 +2,50 @@
 set -euo pipefail
 
 root="${CMUX_ROOTFS:-/}"
+
+ensure_mounts() {
+  local mount_root="$1"
+
+  mkdir -p "${mount_root}/dev" "${mount_root}/proc" "${mount_root}/sys"
+
+  # Bind host /dev into chroot and make it a slave so unmounts propagate correctly.
+  if ! mountpoint -q "${mount_root}/dev"; then
+    mount --rbind /dev "${mount_root}/dev"
+    mount --make-rslave "${mount_root}/dev"
+  fi
+
+  mkdir -p "${mount_root}/dev/pts"
+
+  # Ensure devpts is mounted for terminal support.
+  if ! mountpoint -q "${mount_root}/dev/pts"; then
+    local tty_gid
+    if tty_gid=$(getent group tty | awk -F: '{print $3}'); then
+      mount -t devpts devpts "${mount_root}/dev/pts" -o gid="${tty_gid}",mode=620,ptmxmode=666
+    else
+      mount -t devpts devpts "${mount_root}/dev/pts" -o mode=620,ptmxmode=666
+    fi
+  fi
+
+  # Ensure /dev/ptmx points at the devpts instance.
+  if [ ! -e "${mount_root}/dev/ptmx" ]; then
+    ln -sf pts/ptmx "${mount_root}/dev/ptmx"
+  fi
+
+  if ! mountpoint -q "${mount_root}/proc"; then
+    mount --rbind /proc "${mount_root}/proc"
+    mount --make-rslave "${mount_root}/proc"
+  fi
+
+  if ! mountpoint -q "${mount_root}/sys"; then
+    mount --rbind /sys "${mount_root}/sys"
+    mount --make-rslave "${mount_root}/sys"
+  fi
+}
+
 if [ "$root" = "/" ]; then
   exec "$@"
 fi
+
+ensure_mounts "$root"
 
 exec chroot "$root" "$@"
