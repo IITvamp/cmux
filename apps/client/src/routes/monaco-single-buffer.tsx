@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { DiffEditor, type DiffOnMount } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 
 import { useTheme } from "@/components/theme/use-theme";
 import { loaderInitPromise } from "@/lib/monaco-environment";
@@ -39,6 +40,24 @@ type CombinedDiffOutput = {
   fileBoundaries: CombinedFileBoundary[];
 };
 
+type HeaderOverlayItem = {
+  id: string;
+  filePath: string;
+  y: number;
+};
+
+type HeaderOverlayColumnState = {
+  left: number;
+  width: number;
+  items: HeaderOverlayItem[];
+};
+
+type HeaderColumnOverlayProps = {
+  state: HeaderOverlayColumnState;
+  theme: string;
+  side: "original" | "modified";
+};
+
 const syntheticFilePaths = [
   "apps/server/src/routes/session.ts",
   "apps/server/src/config/env.ts",
@@ -69,6 +88,9 @@ export const Route = createFileRoute("/monaco-single-buffer")({
 function MonacoSingleBufferRoute() {
   const { theme } = useTheme();
   const [isReady, setIsReady] = useState(false);
+  const overlayRootRef = useRef<HTMLDivElement | null>(null);
+  const [originalOverlay, setOriginalOverlay] = useState<HeaderOverlayColumnState | null>(null);
+  const [modifiedOverlay, setModifiedOverlay] = useState<HeaderOverlayColumnState | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -129,15 +151,22 @@ function MonacoSingleBufferRoute() {
         formatLineNumber(combinedDiff.modifiedLineNumbers, lineNumber),
     });
 
-    const disposeFileBoundaries = applyFileBoundaries({
+    const container = overlayRootRef.current;
+    if (!container) {
+      return;
+    }
+
+    const disposeHeaderOverlay = setupHeaderOverlay({
+      container,
+      boundaries: combinedDiff.fileBoundaries,
       originalEditor,
       modifiedEditor,
-      boundaries: combinedDiff.fileBoundaries,
-      theme,
+      onOriginalUpdate: setOriginalOverlay,
+      onModifiedUpdate: setModifiedOverlay,
     });
 
     editorInstance.onDidDispose(() => {
-      disposeFileBoundaries();
+      disposeHeaderOverlay();
     });
   };
 
@@ -162,17 +191,25 @@ function MonacoSingleBufferRoute() {
       </header>
       <main className="flex flex-1 flex-col gap-4 px-4 py-4 md:px-6 lg:px-8">
         <section className="flex-1 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          <DiffEditor
-            key={theme}
-            theme={editorTheme}
-            options={diffOptions}
-            height="80vh"
-            original={combinedDiff.originalText}
-            modified={combinedDiff.modifiedText}
-            originalLanguage="plaintext"
-            modifiedLanguage="plaintext"
-            onMount={handleMount}
-          />
+          <div ref={overlayRootRef} className="relative h-[80vh]">
+            {originalOverlay ? (
+              <HeaderColumnOverlay state={originalOverlay} theme={theme} side="original" />
+            ) : null}
+            {modifiedOverlay ? (
+              <HeaderColumnOverlay state={modifiedOverlay} theme={theme} side="modified" />
+            ) : null}
+            <DiffEditor
+              key={theme}
+              theme={editorTheme}
+              options={diffOptions}
+              height="100%"
+              original={combinedDiff.originalText}
+              modified={combinedDiff.modifiedText}
+              originalLanguage="plaintext"
+              modifiedLanguage="plaintext"
+              onMount={handleMount}
+            />
+          </div>
         </section>
         <section className="rounded-lg border border-dashed border-neutral-300 bg-white/70 p-4 text-xs text-neutral-600 dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-neutral-400">
           Line numbers reuse the original hunks through a mapping array so the Monaco gutter matches
@@ -262,220 +299,235 @@ function buildCombinedDiff(diffFiles: FileDiff[]): CombinedDiffOutput {
   };
 }
 
-type ApplyFileBoundariesParams = {
+type SetupHeaderOverlayParams = {
+  container: HTMLElement;
   originalEditor: editor.ICodeEditor;
   modifiedEditor: editor.ICodeEditor;
   boundaries: CombinedFileBoundary[];
-  theme: string;
+  onOriginalUpdate: (state: HeaderOverlayColumnState | null) => void;
+  onModifiedUpdate: (state: HeaderOverlayColumnState | null) => void;
 };
 
-function applyFileBoundaries({
+function setupHeaderOverlay({
+  container,
   originalEditor,
   modifiedEditor,
   boundaries,
-  theme,
-}: ApplyFileBoundariesParams) {
-  const originalZoneIds: string[] = [];
-  const modifiedZoneIds: string[] = [];
-  const disposers: Array<() => void> = [];
+  onOriginalUpdate,
+  onModifiedUpdate,
+}: SetupHeaderOverlayParams) {
+  if (boundaries.length === 0) {
+    onOriginalUpdate(null);
+    onModifiedUpdate(null);
+    return () => {};
+  }
 
-  const originalZoneNodes: HTMLElement[] = [];
-  const modifiedZoneNodes: HTMLElement[] = [];
-  const originalMarginNodes: HTMLElement[] = [];
-  const modifiedMarginNodes: HTMLElement[] = [];
+  const disposeOriginal = createOverlayColumn({
+    container,
+    editor: originalEditor,
+    boundaries,
+    side: "original",
+    onUpdate: onOriginalUpdate,
+  });
 
-  const buildLabel = (label: HTMLElement, side: "original" | "modified") => {
-    label.textContent = "";
-    label.style.display = "flex";
-    label.style.alignItems = "center";
-    label.style.justifyContent = side === "original" ? "flex-end" : "flex-start";
-    label.style.fontFamily = '"JetBrains Mono", "Fira Code", "SFMono-Regular", monospace';
-    label.style.fontSize = "12px";
-    label.style.letterSpacing = "0.02em";
-    label.style.textTransform = "uppercase";
-    label.style.fontWeight = "600";
-    label.style.borderRadius = "8px";
-    label.style.border = theme === "dark" ? "1px solid #3f3f46" : "1px solid #d4d4d8";
-    label.style.background = theme === "dark" ? "rgba(32,32,36,0.92)" : "rgba(248,248,249,0.95)";
-    label.style.color = theme === "dark" ? "#e5e5e5" : "#1f2937";
-    label.style.boxSizing = "border-box";
-    label.style.boxShadow = theme === "dark"
-      ? "0 1px 3px rgba(0,0,0,0.4)"
-      : "0 1px 3px rgba(15,23,42,0.12)";
-    label.style.pointerEvents = "none";
-    label.style.padding = side === "original" ? "0 12px 0 24px" : "0 24px 0 12px";
-    label.style.position = "relative";
-    label.style.zIndex = "24";
-    label.style.willChange = "transform";
-    label.style.whiteSpace = "nowrap";
-    label.style.overflow = "hidden";
-    label.style.textOverflow = "ellipsis";
+  const disposeModified = createOverlayColumn({
+    container,
+    editor: modifiedEditor,
+    boundaries,
+    side: "modified",
+    onUpdate: onModifiedUpdate,
+  });
+
+  return () => {
+    disposeOriginal();
+    disposeModified();
   };
+}
 
-  const addZones = (
-    targetEditor: editor.ICodeEditor,
-    zoneNodes: HTMLElement[],
-    marginNodes: HTMLElement[],
-    zoneIds: string[],
-  ) => {
-    targetEditor.changeViewZones((accessor) => {
-      boundaries.forEach((boundary, index) => {
-        const zoneNode = document.createElement("div");
-        zoneNode.style.height = `${FILE_LABEL_ZONE_HEIGHT}px`;
-        zoneNode.style.background = "transparent";
-        zoneNode.style.position = "relative";
-        zoneNode.style.overflow = "visible";
-        zoneNode.style.pointerEvents = "none";
-        zoneNode.style.zIndex = "18";
+type OverlayColumnOptions = {
+  container: HTMLElement;
+  editor: editor.ICodeEditor;
+  boundaries: CombinedFileBoundary[];
+  side: "original" | "modified";
+  onUpdate: (state: HeaderOverlayColumnState | null) => void;
+};
 
-        const marginNode = document.createElement("div");
-        marginNode.style.height = `${FILE_LABEL_ZONE_HEIGHT}px`;
-        marginNode.style.background = "transparent";
-        marginNode.style.position = "relative";
-        marginNode.style.overflow = "visible";
-        marginNode.style.pointerEvents = "none";
-        marginNode.style.zIndex = "30";
+function createOverlayColumn({
+  container,
+  editor,
+  boundaries,
+  side,
+  onUpdate,
+}: OverlayColumnOptions): () => void {
+  const zoneIds: string[] = [];
+  const zoneNodes: HTMLElement[] = [];
 
-        const zoneId = accessor.addZone({
-          afterLineNumber: Math.max(boundary.startLineNumber - 1, 0),
-          domNode: zoneNode,
-          marginDomNode: marginNode,
-          heightInPx: FILE_LABEL_ZONE_HEIGHT,
-        });
+  editor.changeViewZones((accessor) => {
+    boundaries.forEach((boundary, index) => {
+      const domNode = document.createElement("div");
+      domNode.style.height = `${FILE_LABEL_ZONE_HEIGHT}px`;
+      domNode.style.width = "100%";
+      domNode.style.pointerEvents = "none";
+      domNode.style.background = "transparent";
 
-        zoneIds.push(zoneId);
-        zoneNodes[index] = zoneNode;
-        marginNodes[index] = marginNode;
+      const zoneId = accessor.addZone({
+        afterLineNumber: Math.max(boundary.startLineNumber - 1, 0),
+        domNode,
+        heightInPx: FILE_LABEL_ZONE_HEIGHT,
       });
+
+      zoneIds.push(zoneId);
+      zoneNodes[index] = domNode;
+    });
+  });
+
+  let rafToken: number | null = null;
+
+  const scheduleUpdate = () => {
+    if (rafToken !== null) {
+      cancelAnimationFrame(rafToken);
+    }
+    rafToken = requestAnimationFrame(() => {
+      rafToken = null;
+      compute();
     });
   };
 
-  const attachLabels = (
-    targetEditor: editor.ICodeEditor,
-    zoneNodes: HTMLElement[],
-    marginNodes: HTMLElement[],
-    side: "original" | "modified",
-  ) => {
-    boundaries.forEach((boundary, index) => {
-      const zoneNode = zoneNodes[index];
-      if (!zoneNode) {
+  const compute = () => {
+    const editorDom = editor.getDomNode();
+    if (!editorDom) {
+      onUpdate(null);
+      return;
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    const editorRect = editorDom.getBoundingClientRect();
+
+    const items: HeaderOverlayItem[] = [];
+
+    zoneNodes.forEach((node, index) => {
+      if (!node) {
         return;
       }
 
-      zoneNode.textContent = "";
-      const wrapper = document.createElement("div");
-      wrapper.style.position = "relative";
-      wrapper.style.height = "100%";
-      wrapper.style.overflow = "visible";
-      wrapper.style.pointerEvents = "none";
-      wrapper.style.zIndex = "28";
-      zoneNode.append(wrapper);
-
-      const labelNode = document.createElement("div");
-      buildLabel(labelNode, side);
-      labelNode.textContent = boundary.filePath;
-      wrapper.append(labelNode);
-
-      const marginNode = marginNodes[index] ?? null;
-      let marginLabel: HTMLElement | null = null;
-      if (marginNode) {
-        marginNode.textContent = "";
-        marginLabel = document.createElement("div");
-        buildLabel(marginLabel, side);
-        marginLabel.textContent = boundary.filePath;
-        marginLabel.style.borderRight = "none";
-        marginLabel.style.borderRadius = "8px 0 0 8px";
-        marginLabel.style.padding = "0 8px 0 6px";
-        marginLabel.style.justifyContent = "flex-end";
-        marginNode.append(marginLabel);
+      const rect = node.getBoundingClientRect();
+      if (Number.isNaN(rect.top)) {
+        return;
       }
 
-      const updateDimensions = () => {
-        const layout = targetEditor.getLayoutInfo();
-        wrapper.style.width = `${layout.width}px`;
-        wrapper.style.paddingLeft = `${layout.contentLeft}px`;
-        labelNode.style.width = `${layout.contentWidth}px`;
-        labelNode.style.borderLeft = "none";
-        labelNode.style.borderRadius = "0 8px 8px 0";
-        labelNode.style.marginLeft = "0";
-        if (marginLabel) {
-          marginLabel.style.width = `${layout.contentLeft}px`;
-        }
-      };
+      let y = rect.top - containerRect.top;
+      if (y < 0) {
+        y = 0;
+      }
 
-      const updateSticky = () => {
-        const scrollTop = targetEditor.getScrollTop();
-        const boundaryTop = targetEditor.getTopForLineNumber(boundary.startLineNumber);
-        const nextBoundary = boundaries[index + 1];
-        const nextTop = nextBoundary
-          ? targetEditor.getTopForLineNumber(nextBoundary.startLineNumber)
-          : Number.POSITIVE_INFINITY;
-        const relativeTop = boundaryTop - scrollTop;
-        let translate = 0;
-        if (relativeTop < 0) {
-          translate = -relativeTop;
+      const nextNode = zoneNodes[index + 1];
+      if (nextNode) {
+        const nextRect = nextNode.getBoundingClientRect();
+        const maxY = nextRect.top - containerRect.top - FILE_LABEL_ZONE_HEIGHT;
+        if (Number.isFinite(maxY)) {
+          y = Math.min(y, Math.max(maxY, 0));
         }
-        const distanceToNext = nextTop - scrollTop - FILE_LABEL_ZONE_HEIGHT;
-        if (Number.isFinite(distanceToNext)) {
-          translate = Math.min(translate, Math.max(distanceToNext, 0));
-        }
-        wrapper.style.transform = `translateY(${translate}px)`;
-        if (marginLabel) {
-          marginLabel.style.transform = `translateY(${translate}px)`;
-        }
-      };
+      }
 
-      updateDimensions();
-      updateSticky();
-
-      const disposables = [
-        targetEditor.onDidLayoutChange(() => {
-          updateDimensions();
-          updateSticky();
-        }),
-        targetEditor.onDidContentSizeChange(() => {
-          updateDimensions();
-          updateSticky();
-        }),
-        targetEditor.onDidScrollChange(() => {
-          updateSticky();
-        }),
-      ];
-
-      disposers.push(() => {
-        disposables.forEach((disposable) => disposable.dispose());
-        wrapper.remove();
-        if (marginLabel) {
-          marginLabel.remove();
-        }
+      items.push({
+        id: `${side}-${index}`,
+        filePath: boundaries[index].filePath,
+        y,
       });
     });
+
+    onUpdate({
+      left: editorRect.left - containerRect.left,
+      width: editorRect.width,
+      items,
+    });
   };
 
-  addZones(originalEditor, originalZoneNodes, originalMarginNodes, originalZoneIds);
-  addZones(modifiedEditor, modifiedZoneNodes, modifiedMarginNodes, modifiedZoneIds);
+  const disposables = [
+    editor.onDidScrollChange(scheduleUpdate),
+    editor.onDidLayoutChange(scheduleUpdate),
+    editor.onDidContentSizeChange(scheduleUpdate),
+  ];
 
-  attachLabels(originalEditor, originalZoneNodes, originalMarginNodes, "original");
-  attachLabels(modifiedEditor, modifiedZoneNodes, modifiedMarginNodes, "modified");
+  const resizeObserver = new ResizeObserver(scheduleUpdate);
+  resizeObserver.observe(container);
+  zoneNodes.forEach((node) => {
+    if (node) {
+      resizeObserver.observe(node);
+    }
+  });
+
+  scheduleUpdate();
 
   return () => {
-    originalEditor.changeViewZones((accessor) => {
-      originalZoneIds.forEach((zoneId) => accessor.removeZone(zoneId));
+    if (rafToken !== null) {
+      cancelAnimationFrame(rafToken);
+      rafToken = null;
+    }
+
+    resizeObserver.disconnect();
+    disposables.forEach((disposable) => disposable.dispose());
+
+    editor.changeViewZones((accessor) => {
+      zoneIds.forEach((zoneId) => accessor.removeZone(zoneId));
     });
 
-    modifiedEditor.changeViewZones((accessor) => {
-      modifiedZoneIds.forEach((zoneId) => accessor.removeZone(zoneId));
-    });
-
-    disposers.forEach((dispose) => {
-      try {
-        dispose();
-      } catch (error) {
-        console.error("Failed to dispose Monaco boundary decoration", error);
-      }
-    });
+    onUpdate(null);
   };
 }
+
+function getLabelStyle(theme: string, side: "original" | "modified"): CSSProperties {
+  return {
+    height: `${FILE_LABEL_ZONE_HEIGHT}px`,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: side === "original" ? "flex-end" : "flex-start",
+    padding: side === "original" ? "0 12px 0 24px" : "0 24px 0 12px",
+    fontFamily: '"JetBrains Mono", "Fira Code", "SFMono-Regular", monospace',
+    fontSize: "12px",
+    letterSpacing: "0.02em",
+    textTransform: "uppercase",
+    fontWeight: 600,
+    borderRadius: side === "original" ? "0 8px 8px 0" : "8px 0 0 8px",
+    border: theme === "dark" ? "1px solid #3f3f46" : "1px solid #d4d4d8",
+    background: theme === "dark" ? "rgba(32,32,36,0.92)" : "rgba(248,248,249,0.95)",
+    color: theme === "dark" ? "#e5e5e5" : "#1f2937",
+    boxSizing: "border-box",
+    boxShadow:
+      theme === "dark"
+        ? "0 1px 3px rgba(0,0,0,0.4)"
+        : "0 1px 3px rgba(15,23,42,0.12)",
+    pointerEvents: "none",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    width: "100%",
+  };
+}
+
+function HeaderColumnOverlay({ state, theme, side }: HeaderColumnOverlayProps) {
+  const baseStyle = getLabelStyle(theme, side);
+  return (
+    <div
+      className="pointer-events-none absolute top-0"
+      style={{ left: state.left, width: state.width, height: "100%", zIndex: 40 }}
+    >
+      {state.items.map((item) => (
+        <div
+          key={item.id}
+          style={{
+            ...baseStyle,
+            position: "absolute",
+            transform: `translateY(${item.y}px)`,
+          }}
+        >
+          {item.filePath}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function createSyntheticHunk(filePath: string, fileIndex: number, hunkIndex: number): DiffHunk {
   const offset = fileIndex * 30 + hunkIndex * 12;
   const originalStartLine = 20 + offset;

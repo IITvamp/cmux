@@ -51,7 +51,9 @@ function computeEditorMinHeight(sample: DiffSample) {
     countLines(sample.modified),
   );
 
-  return maxLines * DEFAULT_MONACO_LINE_HEIGHT + MONACO_VERTICAL_PADDING;
+  const placeholderLines = Math.min(maxLines, 120);
+
+  return placeholderLines * DEFAULT_MONACO_LINE_HEIGHT + MONACO_VERTICAL_PADDING;
 }
 
 function withLayout(sample: DiffSample): DiffSampleWithLayout {
@@ -64,7 +66,155 @@ function withLayout(sample: DiffSample): DiffSampleWithLayout {
   };
 }
 
+const EXECUTION_PLAN_STAGE_COUNT = 140;
+
+const executionPlanUpdates = new Map<
+  number,
+  { status: string; durationMs: number; retries: number }
+>([
+  [0, { status: "queued", durationMs: 45, retries: 1 }],
+  [18, { status: "running", durationMs: 240, retries: 0 }],
+  [47, { status: "running", durationMs: 420, retries: 2 }],
+  [73, { status: "blocked", durationMs: 0, retries: 3 }],
+  [96, { status: "queued", durationMs: 195, retries: 1 }],
+  [119, { status: "completed", durationMs: 940, retries: 1 }],
+  [139, { status: "completed", durationMs: 1230, retries: 2 }],
+]);
+
+const executionPlanInsertions = new Map<number, string[]>([
+  [
+    59,
+    [
+      '  { id: "stage-060-review", status: "blocked", durationMs: 0, retries: 2 },',
+      '  { id: "stage-060-retry", status: "queued", durationMs: 42, retries: 3 },',
+    ],
+  ],
+  [
+    104,
+    [
+      '  { id: "stage-105-diagnostics", status: "running", durationMs: 720, retries: 1 },',
+    ],
+  ],
+]);
+
+function createLongExecutionPlanSample(): DiffSample {
+  const padLabel = (value: number) => value.toString().padStart(3, "0");
+
+  const originalParts: string[] = [
+    "type ExecutionStage = {",
+    '  id: string;',
+    '  status: "pending" | "queued" | "running" | "blocked" | "completed";',
+    "  durationMs?: number;",
+    "};",
+    "",
+    "export const executionPlan: ExecutionStage[] = [",
+  ];
+
+  const modifiedParts: string[] = [
+    "type ExecutionStage = {",
+    '  id: string;',
+    '  status: "pending" | "queued" | "running" | "blocked" | "completed";',
+    "  durationMs?: number;",
+    "  retries?: number;",
+    "};",
+    "",
+    "export const executionPlan: ExecutionStage[] = [",
+  ];
+
+  for (let index = 0; index < EXECUTION_PLAN_STAGE_COUNT; index += 1) {
+    const label = padLabel(index + 1);
+    const baseDuration = ((index % 9) + 1) * 25;
+    const baseLine = `  { id: "stage-${label}", status: "pending", durationMs: ${baseDuration} },`;
+    originalParts.push(baseLine);
+
+    const update = executionPlanUpdates.get(index);
+    if (update) {
+      modifiedParts.push(
+        `  { id: "stage-${label}", status: "${update.status}", durationMs: ${update.durationMs}, retries: ${update.retries} },`,
+      );
+    } else {
+      modifiedParts.push(baseLine);
+    }
+
+    const insertions = executionPlanInsertions.get(index);
+    if (insertions) {
+      modifiedParts.push(...insertions);
+    }
+  }
+
+  modifiedParts.push(
+    '  { id: "stage-141", status: "review", durationMs: 210, retries: 1 },',
+  );
+
+  originalParts.push("];");
+  modifiedParts.push("];");
+
+  originalParts.push(
+    "",
+    'export function countStages(status: ExecutionStage["status"]) {',
+    "  return executionPlan.filter((stage) => stage.status === status).length;",
+    "}",
+    "",
+    "export function describePlan() {",
+    '  return executionPlan.map((stage) => stage.id).join(", ");',
+    "}",
+    "",
+    "export function hasBlockingStage() {",
+    '  return executionPlan.some((stage) => stage.status === "blocked");',
+    "}",
+  );
+
+  modifiedParts.push(
+    "",
+    'export function countStages(status: ExecutionStage["status"]) {',
+    "  return executionPlan.reduce((total, stage) =>",
+    "    stage.status === status ? total + 1 : total,",
+    "  0);",
+    "}",
+    "",
+    "export function describePlan(options: { includeDurations?: boolean } = {}) {",
+    "  return executionPlan",
+    "    .map((stage) => {",
+    "      if (!options.includeDurations) {",
+    "        return stage.id;",
+    "      }",
+    "      const duration = stage.durationMs ?? 0;",
+    "      const retries = stage.retries ?? 0;",
+    "      return `${stage.id} (${duration}ms, retries=${retries})`;",
+    "    })",
+    "    .join(", ");",
+    "}",
+    "",
+    "export function hasBlockingStage() {",
+    "  return executionPlan.some((stage) => {",
+    "    if (stage.status === \"blocked\") {",
+    "      return true;",
+    "    }",
+    "    return (stage.retries ?? 0) > 2;",
+    "  });",
+    "}",
+    "",
+    "export function getRetrySummary() {",
+    "  return executionPlan",
+    "    .filter((stage) => (stage.retries ?? 0) > 0)",
+    "    .map((stage) => `${stage.id}:${stage.retries ?? 0}`)",
+    "    .join(", ");",
+    "}",
+  );
+
+  return {
+    id: "execution-plan",
+    filePath: "apps/server/src/plan/execution-plan.ts",
+    language: "typescript",
+    original: originalParts.join("\n"),
+    modified: modifiedParts.join("\n"),
+  };
+}
+
+const longExecutionPlanSample = createLongExecutionPlanSample();
+
 const diffSamples: DiffSample[] = [
+  longExecutionPlanSample,
   {
     id: "agents-selector",
     filePath: "packages/agents/src/selector.ts",
@@ -286,23 +436,48 @@ export function endTimer(label: string) {
   deploy:
     steps:
       - checkout
+      - install
       - build
+      - smoke
   verify:
     steps:
       - lint
+      - typecheck
       - test
+      - coverage
+  nightly:
+    steps:
+      - migrate
+      - seed
+      - e2e
+      - report
 `,
     modified: `workflows:
   deploy:
     steps:
       - checkout
+      - install
       - build
-      - docker-publish
+      - package
+      - smoke
   verify:
     steps:
       - lint
+      - typecheck
       - test
-      - smoke
+      - coverage
+      - mutation
+  nightly:
+    steps:
+      - migrate
+      - seed
+      - e2e
+      - report
+      - snapshot
+  cleanup:
+    steps:
+      - prune
+      - rotate-logs
 `,
   },
   {
@@ -314,9 +489,20 @@ export function endTimer(label: string) {
 - add multi-agent support
 - improve telemetry
 
+## v0.12.5
+
+- add new worker pool
+- fix diff layout
+
 ## v0.12.0
 
 - bug fixes
+- reduce bundle size
+
+## v0.11.0
+
+- initial release
+- support debug routes
 `,
     modified: `## v0.13.0
 
@@ -324,10 +510,23 @@ export function endTimer(label: string) {
 - improve telemetry
 - new diff viewer sandbox
 
+## v0.12.5
+
+- add new worker pool
+- fix diff layout
+- experimental timeline
+
 ## v0.12.0
 
 - bug fixes
+- reduce bundle size
 - document retry semantics
+
+## v0.11.0
+
+- initial release
+- support debug routes
+- added debug tools
 `,
   },
   {
@@ -379,10 +578,13 @@ function DiffSampleCard({
   isEditorReady,
   onEditorMount,
 }: DiffSampleCardProps) {
+  const articleMinHeight = isEditorReady ? undefined : sample.articleMinHeight;
+  const editorMinHeight = isEditorReady ? undefined : sample.editorMinHeight;
+
   return (
     <article
       className="relative rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
-      style={{ minHeight: sample.articleMinHeight }}
+      style={{ minHeight: articleMinHeight }}
     >
       <header className="sticky top-0 z-10 border-b border-neutral-200 bg-neutral-50 px-4 py-2 dark:border-neutral-800 dark:bg-neutral-950/40">
         <span className="font-mono text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
@@ -391,7 +593,7 @@ function DiffSampleCard({
       </header>
       <div
         className="flex-1 overflow-hidden rounded-b-lg"
-        style={{ minHeight: sample.editorMinHeight }}
+        style={{ minHeight: editorMinHeight }}
       >
         {isEditorReady ? (
           <DiffEditor
@@ -455,6 +657,12 @@ function DebugMonacoPage() {
         horizontal: "hidden",
         handleMouseWheel: false,
         alwaysConsumeMouseWheel: false,
+      },
+      hideUnchangedRegions: {
+        enabled: true,
+        revealLineCount: 2,
+        minimumLineCount: 6,
+        contextLineCount: 3,
       },
     }),
     [],
@@ -542,6 +750,18 @@ function DebugMonacoPage() {
       applyLayout();
     });
 
+    const onOriginalHiddenAreasChange = originalEditor.onDidChangeHiddenAreas(() => {
+      applyLayout();
+    });
+
+    const onModifiedHiddenAreasChange = modifiedEditor.onDidChangeHiddenAreas(() => {
+      applyLayout();
+    });
+
+    const onDidUpdateDiff = diffEditor.onDidUpdateDiff(() => {
+      applyLayout();
+    });
+
     disposables.push(
       onOriginalContentChange,
       onModifiedContentChange,
@@ -549,6 +769,9 @@ function DebugMonacoPage() {
       onModifiedConfigChange,
       onOriginalSizeChange,
       onModifiedSizeChange,
+      onOriginalHiddenAreasChange,
+      onModifiedHiddenAreasChange,
+      onDidUpdateDiff,
     );
 
     const disposeListener = diffEditor.onDidDispose(() => {
