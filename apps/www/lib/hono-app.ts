@@ -10,6 +10,7 @@ import { githubPrsRouter } from "@/lib/routes/github.prs.route";
 import { githubReposRouter } from "@/lib/routes/github.repos.route";
 import {
   booksRouter,
+  branchRouter,
   devServerRouter,
   environmentsRouter,
   healthRouter,
@@ -110,6 +111,7 @@ app.route("/", morphRouter);
 app.route("/", environmentsRouter);
 app.route("/", sandboxesRouter);
 app.route("/", teamsRouter);
+app.route("/", branchRouter);
 
 // OpenAPI documentation
 app.doc("/doc", {
