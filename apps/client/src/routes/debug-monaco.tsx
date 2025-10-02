@@ -481,14 +481,14 @@ function DebugMonacoPage() {
           {diffSamples.map((sample) => (
             <article
               key={sample.id}
-              className="overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
+              className="relative rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
             >
-              <header className="border-b border-neutral-200 bg-neutral-50 px-4 py-2 dark:border-neutral-800 dark:bg-neutral-950/40">
+              <header className="sticky top-0 z-10 border-b border-neutral-200 bg-neutral-50 px-4 py-2 dark:border-neutral-800 dark:bg-neutral-950/40">
                 <span className="font-mono text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
                   {sample.filePath}
                 </span>
               </header>
-              <div className="flex-1">
+              <div className="flex-1 overflow-hidden rounded-b-lg">
                 {isEditorReady ? (
                   <DiffEditor
                     language={sample.language}
