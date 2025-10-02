@@ -51,3 +51,9 @@ cmux is part of the cmux project. See the main repository for development instru
 ## License
 
 MIT
+
+## Haiku
+
+Code in quiet flow,  
+Agents parallel their paths,  
+Cmux the conductor.
