@@ -189,47 +189,8 @@ while [ $retry_count -lt $MAX_RETRIES ]; do
     sleep $RETRY_DELAY
 done
 
-# Ensure maintenance/dev scripts run so exposed ports stay active in cloud mode
-WORKSPACE_DIR="/root/workspace"
-MAINTENANCE_SCRIPT="$WORKSPACE_DIR/scripts/maintenance.sh"
-DEV_SCRIPT="$WORKSPACE_DIR/scripts/dev.sh"
-MAINTENANCE_LOG="/var/log/cmux/maintenance.log"
-DEV_LOG="/var/log/cmux/dev.log"
-DEV_PID_FILE="/var/log/cmux/dev-script.pid"
-
 if [ $retry_count -eq $MAX_RETRIES ]; then
     echo "[Startup] Warning: Failed to connect to OpenVSCode server after $MAX_RETRIES attempts" >> /var/log/cmux/startup.log
-fi
-
-if [ -d "$WORKSPACE_DIR" ]; then
-    if [ -f "$MAINTENANCE_SCRIPT" ]; then
-        echo "[Startup] Running scripts/maintenance.sh to prep workspace..." >> /var/log/cmux/startup.log
-        if (cd "$WORKSPACE_DIR" && "$MAINTENANCE_SCRIPT" >> "$MAINTENANCE_LOG" 2>&1); then
-            echo "[Startup] maintenance.sh completed (logs at $MAINTENANCE_LOG)" >> /var/log/cmux/startup.log
-        else
-            echo "[Startup] maintenance.sh failed; check $MAINTENANCE_LOG for details" >> /var/log/cmux/startup.log
-        fi
-    else
-        echo "[Startup] No maintenance script found at $MAINTENANCE_SCRIPT" >> /var/log/cmux/startup.log
-    fi
-
-    if [ -f "$DEV_SCRIPT" ]; then
-        echo "[Startup] Starting scripts/dev.sh to launch dev servers..." >> /var/log/cmux/startup.log
-        (
-            cd "$WORKSPACE_DIR"
-            "$DEV_SCRIPT" >> "$DEV_LOG" 2>&1 &
-            echo $! > "$DEV_PID_FILE"
-        )
-        if DEV_SH_PID=$(cat "$DEV_PID_FILE" 2>/dev/null); then
-            echo "[Startup] dev.sh running in background (PID: $DEV_SH_PID), logs at $DEV_LOG" >> /var/log/cmux/startup.log
-        else
-            echo "[Startup] Unable to determine dev.sh PID; verify $DEV_LOG" >> /var/log/cmux/startup.log
-        fi
-    else
-        echo "[Startup] No dev script found at $DEV_SCRIPT" >> /var/log/cmux/startup.log
-    fi
-else
-    echo "[Startup] Workspace directory $WORKSPACE_DIR missing; skipping maintenance/dev scripts" >> /var/log/cmux/startup.log
 fi
 
 # Start the worker
