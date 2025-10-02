@@ -22,6 +22,48 @@ type DiffSample = {
   modified: string;
 };
 
+// Reserve space for Monaco before it initializes so layout does not jump.
+const DEFAULT_MONACO_LINE_HEIGHT = 20;
+const MONACO_VERTICAL_PADDING = 0;
+const CARD_HEADER_MIN_HEIGHT = 40;
+const MIN_EDITOR_LINE_FALLBACK = 4;
+
+type DiffSampleWithLayout = DiffSample & {
+  editorMinHeight: number;
+  articleMinHeight: number;
+};
+
+const newlinePattern = /\r?\n/;
+
+function countLines(content: string) {
+  if (!content) {
+    return 1;
+  }
+
+  const segments = content.split(newlinePattern);
+  return segments.length > 0 ? segments.length : 1;
+}
+
+function computeEditorMinHeight(sample: DiffSample) {
+  const maxLines = Math.max(
+    MIN_EDITOR_LINE_FALLBACK,
+    countLines(sample.original),
+    countLines(sample.modified),
+  );
+
+  return maxLines * DEFAULT_MONACO_LINE_HEIGHT + MONACO_VERTICAL_PADDING;
+}
+
+function withLayout(sample: DiffSample): DiffSampleWithLayout {
+  const editorMinHeight = computeEditorMinHeight(sample);
+
+  return {
+    ...sample,
+    editorMinHeight,
+    articleMinHeight: editorMinHeight + CARD_HEADER_MIN_HEIGHT,
+  };
+}
+
 const diffSamples: DiffSample[] = [
   {
     id: "agents-selector",
@@ -63,7 +105,6 @@ export const defaultFlags: FeatureFlag[] = [
   { name: "monaco-batch", enabled: false },
   { name: "agent-recording", enabled: false },
 ];
-
 export function isEnabled(flags: FeatureFlag[], name: string) {
   return flags.some((flag) => flag.name === name && flag.enabled);
 }
@@ -317,9 +358,59 @@ export function endTimer(label: string) {
   },
 ];
 
+const diffSamplesWithLayout = diffSamples.map(withLayout);
+
 export const Route = createFileRoute("/debug-monaco")({
   component: DebugMonacoPage,
 });
+
+type DiffSampleCardProps = {
+  sample: DiffSampleWithLayout;
+  diffOptions: editor.IDiffEditorConstructionOptions;
+  editorTheme: string;
+  isEditorReady: boolean;
+  onEditorMount: DiffOnMount;
+};
+
+function DiffSampleCard({
+  sample,
+  diffOptions,
+  editorTheme,
+  isEditorReady,
+  onEditorMount,
+}: DiffSampleCardProps) {
+  return (
+    <article
+      className="relative rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
+      style={{ minHeight: sample.articleMinHeight }}
+    >
+      <header className="sticky top-0 z-10 border-b border-neutral-200 bg-neutral-50 px-4 py-2 dark:border-neutral-800 dark:bg-neutral-950/40">
+        <span className="font-mono text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+          {sample.filePath}
+        </span>
+      </header>
+      <div
+        className="flex-1 overflow-hidden rounded-b-lg"
+        style={{ minHeight: sample.editorMinHeight }}
+      >
+        {isEditorReady ? (
+          <DiffEditor
+            language={sample.language}
+            original={sample.original}
+            modified={sample.modified}
+            theme={editorTheme}
+            options={diffOptions}
+            onMount={onEditorMount}
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center p-8 text-sm text-neutral-500 dark:text-neutral-400">
+            Loading Monaco diff editor…
+          </div>
+        )}
+      </div>
+    </article>
+  );
+}
 
 function DebugMonacoPage() {
   const { theme } = useTheme();
@@ -354,6 +445,7 @@ function DebugMonacoPage() {
       automaticLayout: false,
       readOnly: true,
       originalEditable: false,
+      lineHeight: DEFAULT_MONACO_LINE_HEIGHT,
       minimap: { enabled: false },
       renderOverviewRuler: false,
       wordWrap: "on",
@@ -478,33 +570,15 @@ function DebugMonacoPage() {
     <div className="min-h-dvh bg-neutral-100 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
       <div className="m-1 h-[calc(100dvh-8px)] overflow-auto rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
         <div className="space-y-4 p-4 sm:p-6">
-          {diffSamples.map((sample) => (
-            <article
+          {diffSamplesWithLayout.map((sample) => (
+            <DiffSampleCard
               key={sample.id}
-              className="relative rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
-            >
-              <header className="sticky top-0 z-10 border-b border-neutral-200 bg-neutral-50 px-4 py-2 dark:border-neutral-800 dark:bg-neutral-950/40">
-                <span className="font-mono text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-                  {sample.filePath}
-                </span>
-              </header>
-              <div className="flex-1 overflow-hidden rounded-b-lg">
-                {isEditorReady ? (
-                  <DiffEditor
-                    language={sample.language}
-                    original={sample.original}
-                    modified={sample.modified}
-                    theme={editorTheme}
-                    options={diffOptions}
-                    onMount={onEditorMount}
-                  />
-                ) : (
-                  <div className="flex items-center justify-center p-8 text-sm text-neutral-500 dark:text-neutral-400">
-                    Loading Monaco diff editor…
-                  </div>
-                )}
-              </div>
-            </article>
+              sample={sample}
+              diffOptions={diffOptions}
+              editorTheme={editorTheme}
+              isEditorReady={isEditorReady}
+              onEditorMount={onEditorMount}
+            />
           ))}
         </div>
       </div>

@@ -115,7 +115,7 @@ function MonacoSingleBufferRoute() {
     [],
   );
 
-  const handleMount: DiffOnMount = (editorInstance, monacoInstance) => {
+  const handleMount: DiffOnMount = (editorInstance, _monacoInstance) => {
     const originalEditor = editorInstance.getOriginalEditor();
     const modifiedEditor = editorInstance.getModifiedEditor();
 
@@ -132,7 +132,6 @@ function MonacoSingleBufferRoute() {
     const disposeFileBoundaries = applyFileBoundaries({
       originalEditor,
       modifiedEditor,
-      monacoInstance,
       boundaries: combinedDiff.fileBoundaries,
       theme,
     });
@@ -266,7 +265,6 @@ function buildCombinedDiff(diffFiles: FileDiff[]): CombinedDiffOutput {
 type ApplyFileBoundariesParams = {
   originalEditor: editor.ICodeEditor;
   modifiedEditor: editor.ICodeEditor;
-  monacoInstance: typeof import("monaco-editor");
   boundaries: CombinedFileBoundary[];
   theme: string;
 };
@@ -274,18 +272,15 @@ type ApplyFileBoundariesParams = {
 function applyFileBoundaries({
   originalEditor,
   modifiedEditor,
-  monacoInstance,
   boundaries,
   theme,
 }: ApplyFileBoundariesParams) {
   const originalZoneIds: string[] = [];
   const modifiedZoneIds: string[] = [];
-  const widgets: Array<{
-    editor: editor.ICodeEditor;
-    widget: editor.IContentWidget;
-    dispose: () => void;
-  }> = [];
+  const disposers: Array<() => void> = [];
 
+  const originalZoneNodes: HTMLElement[] = [];
+  const modifiedZoneNodes: HTMLElement[] = [];
   const originalMarginNodes: HTMLElement[] = [];
   const modifiedMarginNodes: HTMLElement[] = [];
 
@@ -310,14 +305,18 @@ function applyFileBoundaries({
     label.style.pointerEvents = "none";
     label.style.padding = side === "original" ? "0 12px 0 24px" : "0 24px 0 12px";
     label.style.position = "relative";
-    label.style.zIndex = "20";
+    label.style.zIndex = "24";
     label.style.willChange = "transform";
+    label.style.whiteSpace = "nowrap";
+    label.style.overflow = "hidden";
+    label.style.textOverflow = "ellipsis";
   };
 
   const addZones = (
     targetEditor: editor.ICodeEditor,
-    store: string[],
-    marginStore: HTMLElement[],
+    zoneNodes: HTMLElement[],
+    marginNodes: HTMLElement[],
+    zoneIds: string[],
   ) => {
     targetEditor.changeViewZones((accessor) => {
       boundaries.forEach((boundary, index) => {
@@ -325,12 +324,17 @@ function applyFileBoundaries({
         zoneNode.style.height = `${FILE_LABEL_ZONE_HEIGHT}px`;
         zoneNode.style.background = "transparent";
         zoneNode.style.position = "relative";
+        zoneNode.style.overflow = "visible";
+        zoneNode.style.pointerEvents = "none";
+        zoneNode.style.zIndex = "18";
 
         const marginNode = document.createElement("div");
         marginNode.style.height = `${FILE_LABEL_ZONE_HEIGHT}px`;
         marginNode.style.background = "transparent";
         marginNode.style.position = "relative";
         marginNode.style.overflow = "visible";
+        marginNode.style.pointerEvents = "none";
+        marginNode.style.zIndex = "30";
 
         const zoneId = accessor.addZone({
           afterLineNumber: Math.max(boundary.startLineNumber - 1, 0),
@@ -339,121 +343,120 @@ function applyFileBoundaries({
           heightInPx: FILE_LABEL_ZONE_HEIGHT,
         });
 
-        store.push(zoneId);
-        marginStore[index] = marginNode;
+        zoneIds.push(zoneId);
+        zoneNodes[index] = zoneNode;
+        marginNodes[index] = marginNode;
       });
     });
   };
 
-  const createWidget = (
+  const attachLabels = (
     targetEditor: editor.ICodeEditor,
+    zoneNodes: HTMLElement[],
     marginNodes: HTMLElement[],
-    boundary: CombinedFileBoundary,
-    boundaryIndex: number,
     side: "original" | "modified",
   ) => {
-    const wrapper = document.createElement("div");
-    wrapper.style.position = "relative";
-    wrapper.style.height = `${FILE_LABEL_ZONE_HEIGHT}px`;
-    wrapper.style.overflow = "visible";
-    wrapper.style.pointerEvents = "none";
-
-    const labelNode = document.createElement("div");
-    buildLabel(labelNode, side);
-    labelNode.textContent = boundary.filePath;
-    wrapper.append(labelNode);
-
-    const marginNode = marginNodes[boundaryIndex] ?? null;
-    const marginLabel = marginNode ? document.createElement("div") : null;
-    if (marginNode && marginLabel) {
-      marginNode.textContent = "";
-      buildLabel(marginLabel, side);
-      marginLabel.textContent = boundary.filePath;
-      marginLabel.style.borderRight = "none";
-      marginLabel.style.borderRadius = "8px 0 0 8px";
-      marginLabel.style.padding = side === "original" ? "0 16px 0 20px" : "0 16px 0 20px";
-      marginNode.append(marginLabel);
-    }
-
-    const updateDimensions = () => {
-      const layout = targetEditor.getLayoutInfo();
-      wrapper.style.width = `${layout.contentWidth}px`;
-      labelNode.style.width = `${layout.contentWidth}px`;
-      labelNode.style.borderLeft = "none";
-      labelNode.style.borderRadius = "0 8px 8px 0";
-      if (marginLabel) {
-        marginLabel.style.width = `${layout.contentLeft}px`;
+    boundaries.forEach((boundary, index) => {
+      const zoneNode = zoneNodes[index];
+      if (!zoneNode) {
+        return;
       }
-    };
 
-    const updateSticky = () => {
-      const scrollTop = targetEditor.getScrollTop();
-      const boundaryTop = targetEditor.getTopForLineNumber(boundary.startLineNumber);
-      const nextBoundary = boundaries[boundaryIndex + 1];
-      const nextTop = nextBoundary
-        ? targetEditor.getTopForLineNumber(nextBoundary.startLineNumber)
-        : Number.POSITIVE_INFINITY;
-      const relativeTop = boundaryTop - scrollTop;
-      let translate = Math.max(-relativeTop, 0);
-      const distanceToNext = nextTop - scrollTop - FILE_LABEL_ZONE_HEIGHT;
-      if (Number.isFinite(distanceToNext)) {
-        translate = Math.min(translate, Math.max(distanceToNext, 0));
+      zoneNode.textContent = "";
+      const wrapper = document.createElement("div");
+      wrapper.style.position = "relative";
+      wrapper.style.height = "100%";
+      wrapper.style.overflow = "visible";
+      wrapper.style.pointerEvents = "none";
+      wrapper.style.zIndex = "28";
+      zoneNode.append(wrapper);
+
+      const labelNode = document.createElement("div");
+      buildLabel(labelNode, side);
+      labelNode.textContent = boundary.filePath;
+      wrapper.append(labelNode);
+
+      const marginNode = marginNodes[index] ?? null;
+      let marginLabel: HTMLElement | null = null;
+      if (marginNode) {
+        marginNode.textContent = "";
+        marginLabel = document.createElement("div");
+        buildLabel(marginLabel, side);
+        marginLabel.textContent = boundary.filePath;
+        marginLabel.style.borderRight = "none";
+        marginLabel.style.borderRadius = "8px 0 0 8px";
+        marginLabel.style.padding = "0 8px 0 6px";
+        marginLabel.style.justifyContent = "flex-end";
+        marginNode.append(marginLabel);
       }
-      labelNode.style.transform = `translateY(${translate}px)`;
-      if (marginLabel) {
-        marginLabel.style.transform = `translateY(${translate}px)`;
-      }
-    };
 
-    updateDimensions();
-    updateSticky();
+      const updateDimensions = () => {
+        const layout = targetEditor.getLayoutInfo();
+        wrapper.style.width = `${layout.width}px`;
+        wrapper.style.paddingLeft = `${layout.contentLeft}px`;
+        labelNode.style.width = `${layout.contentWidth}px`;
+        labelNode.style.borderLeft = "none";
+        labelNode.style.borderRadius = "0 8px 8px 0";
+        labelNode.style.marginLeft = "0";
+        if (marginLabel) {
+          marginLabel.style.width = `${layout.contentLeft}px`;
+        }
+      };
 
-    const disposables = [
-      targetEditor.onDidLayoutChange(() => {
-        updateDimensions();
-        updateSticky();
-      }),
-      targetEditor.onDidContentSizeChange(() => {
-        updateDimensions();
-        updateSticky();
-      }),
-      targetEditor.onDidScrollChange(() => {
-        updateSticky();
-      }),
-    ];
+      const updateSticky = () => {
+        const scrollTop = targetEditor.getScrollTop();
+        const boundaryTop = targetEditor.getTopForLineNumber(boundary.startLineNumber);
+        const nextBoundary = boundaries[index + 1];
+        const nextTop = nextBoundary
+          ? targetEditor.getTopForLineNumber(nextBoundary.startLineNumber)
+          : Number.POSITIVE_INFINITY;
+        const relativeTop = boundaryTop - scrollTop;
+        let translate = 0;
+        if (relativeTop < 0) {
+          translate = -relativeTop;
+        }
+        const distanceToNext = nextTop - scrollTop - FILE_LABEL_ZONE_HEIGHT;
+        if (Number.isFinite(distanceToNext)) {
+          translate = Math.min(translate, Math.max(distanceToNext, 0));
+        }
+        wrapper.style.transform = `translateY(${translate}px)`;
+        if (marginLabel) {
+          marginLabel.style.transform = `translateY(${translate}px)`;
+        }
+      };
 
-    const contentWidget: editor.IContentWidget = {
-      getId: () => `file-label-${side}-${boundaryIndex}`,
-      getDomNode: () => wrapper,
-      getPosition: () => ({
-        position: {
-          lineNumber: Math.max(boundary.startLineNumber, 1),
-          column: 1,
-        },
-        preference: [monacoInstance.editor.ContentWidgetPositionPreference.EXACT],
-      }),
-    };
+      updateDimensions();
+      updateSticky();
 
-    targetEditor.addContentWidget(contentWidget);
-    widgets.push({
-      editor: targetEditor,
-      widget: contentWidget,
-      dispose: () => {
+      const disposables = [
+        targetEditor.onDidLayoutChange(() => {
+          updateDimensions();
+          updateSticky();
+        }),
+        targetEditor.onDidContentSizeChange(() => {
+          updateDimensions();
+          updateSticky();
+        }),
+        targetEditor.onDidScrollChange(() => {
+          updateSticky();
+        }),
+      ];
+
+      disposers.push(() => {
         disposables.forEach((disposable) => disposable.dispose());
+        wrapper.remove();
         if (marginLabel) {
           marginLabel.remove();
         }
-      },
+      });
     });
   };
 
-  addZones(originalEditor, originalZoneIds, originalMarginNodes);
-  addZones(modifiedEditor, modifiedZoneIds, modifiedMarginNodes);
+  addZones(originalEditor, originalZoneNodes, originalMarginNodes, originalZoneIds);
+  addZones(modifiedEditor, modifiedZoneNodes, modifiedMarginNodes, modifiedZoneIds);
 
-  boundaries.forEach((boundary, boundaryIndex) => {
-    createWidget(originalEditor, originalMarginNodes, boundary, boundaryIndex, "original");
-    createWidget(modifiedEditor, modifiedMarginNodes, boundary, boundaryIndex, "modified");
-  });
+  attachLabels(originalEditor, originalZoneNodes, originalMarginNodes, "original");
+  attachLabels(modifiedEditor, modifiedZoneNodes, modifiedMarginNodes, "modified");
 
   return () => {
     originalEditor.changeViewZones((accessor) => {
@@ -464,9 +467,12 @@ function applyFileBoundaries({
       modifiedZoneIds.forEach((zoneId) => accessor.removeZone(zoneId));
     });
 
-    widgets.forEach(({ editor: targetEditor, widget, dispose }) => {
-      targetEditor.removeContentWidget(widget);
-      dispose();
+    disposers.forEach((dispose) => {
+      try {
+        dispose();
+      } catch (error) {
+        console.error("Failed to dispose Monaco boundary decoration", error);
+      }
     });
   };
 }
