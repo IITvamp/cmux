@@ -15,13 +15,6 @@ export PAGER=cat
 MAX_SIZE=${CMUX_DIFF_MAX_SIZE_BYTES:-200000}
 
 # Detect git repository location
-# First try current directory
-echo "[collect-crown-diff] Starting in directory: ${PWD}" >&2
-echo "[collect-crown-diff] Environment variables:" >&2
-echo "[collect-crown-diff]   CMUX_DIFF_BASE=${CMUX_DIFF_BASE:-<not set>}" >&2
-echo "[collect-crown-diff]   CMUX_DIFF_HEAD_REF=${CMUX_DIFF_HEAD_REF:-<not set>}" >&2
-echo "[collect-crown-diff]   CMUX_DIFF_MAX_SIZE_BYTES=${CMUX_DIFF_MAX_SIZE_BYTES:-<not set>}" >&2
-
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
 
 # If not found, search in subdirectories (for environment mode where repo is in /root/workspace/cmux)

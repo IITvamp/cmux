@@ -24,51 +24,7 @@ from morphcloud.api import MorphCloudClient, Snapshot, console as morph_console
 
 dotenv.load_dotenv()
 
-
-# Disable Morph snapshot caching so every effect runs against a fresh instance.
-def _no_cache_effect(
-    self: Snapshot, fn: t.Callable[..., None], *args: t.Any, **kwargs: t.Any
-) -> Snapshot:
-    morph_console.print(
-        "\n[bold black on white]Effect function (no-cache):[/bold black on white] "
-        f"[cyan]{fn.__name__}[/cyan]\n"
-        f"[bold white]args:[/bold white] [yellow]{args}[/yellow]   "
-        f"[bold white]kwargs:[/bold white] [yellow]{kwargs}[/yellow]\n"
-    )
-
-    parent_chain_hash = self.digest or self.id
-    unique_suffix = uuid.uuid4().hex
-    new_digest = f"{parent_chain_hash}-{unique_suffix}"
-
-    morph_console.print(
-        "[bold magenta]🚀 Building new snapshot (no cache)[/bold magenta] "
-        f"with digest [white]{new_digest}[/white]."
-    )
-
-    instance = self._api._client.instances.start(self.id)
-    try:
-        instance.wait_until_ready(timeout=300)
-        fn(instance, *args, **kwargs)
-        new_snapshot = instance.snapshot(digest=new_digest)
-    finally:
-        try:
-            instance.stop()
-        except Exception as exc:  # Best effort shutdown; log for visibility
-            morph_console.print(
-                f"[bold red]⚠️ Failed to stop instance after effect:[/bold red] {exc}"
-            )
-
-    morph_console.print(
-        "[bold blue]🎉 New uncached snapshot created[/bold blue] "
-        f"with digest [white]{new_digest}[/white].\n"
-    )
-    return new_snapshot
-
-
-Snapshot._cache_effect = _no_cache_effect  # type: ignore[attr-defined]
-
 client = MorphCloudClient()
-
 
 # Morph snapshots run on x86_64 hardware; Docker plugins must match this arch
 MORPH_EXPECTED_UNAME_ARCH = "x86_64"
@@ -699,13 +655,11 @@ def build_snapshot(
     vcpus = 8
     memory = 16384
     disk_size = 32768
-    digest = f"cmux_{uuid.uuid4().hex}"
-    print(f"Using unique snapshot digest {digest}")
     snapshot = client.snapshots.create(
         vcpus=vcpus,
         memory=memory,
         disk_size=disk_size,
-        digest=digest,
+        digest=None,
     )
     snapshot = ensure_docker(snapshot)
     with open(dockerfile_path, "r", encoding="utf-8") as f:

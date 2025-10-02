@@ -448,6 +448,11 @@ do_safe export PATH=/usr/local/bin:$PATH
 # COPY --from=builder /cmux/apps/worker/scripts/collect-relevant-diff.sh /usr/local/bin/cmux-collect-relevant-diff.sh
 # COPY --from=builder /cmux/apps/worker/scripts/collect-crown-diff.sh /usr/local/bin/cmux-collect-crown-diff.sh
 # Skipping stage copy on host (requires image layer)
+do_safe mkdir -p "$DESTDIR/usr/local/bin"
+do_safe cp "$BUILD_CONTEXT/apps/worker/scripts/collect-relevant-diff.sh" \
+  "$DESTDIR/usr/local/bin/cmux-collect-relevant-diff.sh"
+do_safe cp "$BUILD_CONTEXT/apps/worker/scripts/collect-crown-diff.sh" \
+  "$DESTDIR/usr/local/bin/cmux-collect-crown-diff.sh"
 if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   bash -euo pipefail <<'__CMUX_RUN__'
 cd "${DESTDIR}${CURRENT_WORKDIR}"
