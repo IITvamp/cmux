@@ -219,9 +219,10 @@ export async function collectDiffForRun(
   const branchRef = branch.startsWith("origin/") ? branch : `origin/${branch}`;
 
   let result;
+  const repoPath = await detectGitRepoPath();
   try {
     result = await execAsync("/usr/local/bin/cmux-collect-crown-diff.sh", {
-      cwd: WORKSPACE_ROOT,
+      cwd: repoPath,
       maxBuffer: 5 * 1024 * 1024,
       env: {
         ...process.env,
