@@ -341,76 +341,85 @@ export const syncReposForInstallation = internalMutation({
     );
 
     const now = Date.now();
-    let inserted = 0;
-    let updated = 0;
 
-    for (const repo of repos) {
-      const current = existingByFullName.get(repo.fullName);
-      if (!current) {
-        await ctx.db.insert("repos", {
-          fullName: repo.fullName,
-          org: repo.org,
-          name: repo.name,
-          gitRemote: repo.gitRemote,
-          provider: "github",
-          userId,
-          teamId,
-          providerRepoId: repo.providerRepoId,
-          ownerLogin: repo.ownerLogin,
-          ownerType: repo.ownerType,
-          visibility: repo.visibility,
-          defaultBranch: repo.defaultBranch,
-          lastPushedAt: repo.lastPushedAt,
-          lastSyncedAt: now,
-          connectionId,
-        });
-        inserted += 1;
-        continue;
-      }
+    const { inserted, updated } = await Promise.all(
+      repos.map(async (repo) => {
+        const current = existingByFullName.get(repo.fullName);
+        if (!current) {
+          await ctx.db.insert("repos", {
+            fullName: repo.fullName,
+            org: repo.org,
+            name: repo.name,
+            gitRemote: repo.gitRemote,
+            provider: "github",
+            userId,
+            teamId,
+            providerRepoId: repo.providerRepoId,
+            ownerLogin: repo.ownerLogin,
+            ownerType: repo.ownerType,
+            visibility: repo.visibility,
+            defaultBranch: repo.defaultBranch,
+            lastPushedAt: repo.lastPushedAt,
+            lastSyncedAt: now,
+            connectionId,
+          });
+          return { inserted: 1, updated: 0 };
+        }
 
-      const patch: Partial<Doc<"repos">> = {};
+        const patch: Partial<Doc<"repos">> = {};
 
-      if (!current.connectionId || current.connectionId !== connectionId) {
-        patch.connectionId = connectionId;
-      }
-      if (current.provider !== "github") {
-        patch.provider = "github";
-      }
-      if (
-        repo.providerRepoId !== undefined &&
-        current.providerRepoId !== repo.providerRepoId
-      ) {
-        patch.providerRepoId = repo.providerRepoId;
-      }
-      if (repo.ownerLogin && current.ownerLogin !== repo.ownerLogin) {
-        patch.ownerLogin = repo.ownerLogin;
-      }
-      if (repo.ownerType && current.ownerType !== repo.ownerType) {
-        patch.ownerType = repo.ownerType;
-      }
-      if (repo.visibility && current.visibility !== repo.visibility) {
-        patch.visibility = repo.visibility;
-      }
-      if (repo.defaultBranch && current.defaultBranch !== repo.defaultBranch) {
-        patch.defaultBranch = repo.defaultBranch;
-      }
-      if (
-        repo.lastPushedAt !== undefined &&
-        (current.lastPushedAt === undefined || repo.lastPushedAt > current.lastPushedAt)
-      ) {
-        patch.lastPushedAt = repo.lastPushedAt;
-      }
-      if ((current.lastSyncedAt ?? 0) < now) {
-        patch.lastSyncedAt = now;
-      }
+        if (!current.connectionId || current.connectionId !== connectionId) {
+          patch.connectionId = connectionId;
+        }
+        if (current.provider !== "github") {
+          patch.provider = "github";
+        }
+        if (
+          repo.providerRepoId !== undefined &&
+          current.providerRepoId !== repo.providerRepoId
+        ) {
+          patch.providerRepoId = repo.providerRepoId;
+        }
+        if (repo.ownerLogin && current.ownerLogin !== repo.ownerLogin) {
+          patch.ownerLogin = repo.ownerLogin;
+        }
+        if (repo.ownerType && current.ownerType !== repo.ownerType) {
+          patch.ownerType = repo.ownerType;
+        }
+        if (repo.visibility && current.visibility !== repo.visibility) {
+          patch.visibility = repo.visibility;
+        }
+        if (repo.defaultBranch && current.defaultBranch !== repo.defaultBranch) {
+          patch.defaultBranch = repo.defaultBranch;
+        }
+        if (
+          repo.lastPushedAt !== undefined &&
+          (current.lastPushedAt === undefined || repo.lastPushedAt > current.lastPushedAt)
+        ) {
+          patch.lastPushedAt = repo.lastPushedAt;
+        }
+        if ((current.lastSyncedAt ?? 0) < now) {
+          patch.lastSyncedAt = now;
+        }
 
-      if (Object.keys(patch).length > 0) {
-        await ctx.db.patch(current._id, patch);
-        updated += 1;
-      }
-    }
+        if (Object.keys(patch).length > 0) {
+          await ctx.db.patch(current._id, patch);
+          return { inserted: 0, updated: 1 };
+        }
 
-    return { inserted, updated } as const;
+        return { inserted: 0, updated: 0 };
+      })
+    ).then((results) =>
+      results.reduce(
+        (acc, result) => ({
+          inserted: acc.inserted + result.inserted,
+          updated: acc.updated + result.updated,
+        }),
+        { inserted: 0, updated: 0 }
+      )
+    );
+
+    return { inserted, updated };
   },
 });
 

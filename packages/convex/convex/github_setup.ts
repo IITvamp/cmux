@@ -166,31 +166,30 @@ export const githubSetup = httpAction(async (ctx, req) => {
 
       await streamInstallationRepositories(
         installationId,
-        (repos, pageIndex) =>
-          (async () => {
-            try {
-              const result = await ctx.runMutation(
-                internal.github.syncReposForInstallation,
-                {
-                  teamId: payload.teamId,
-                  userId: payload.userId,
-                  connectionId,
-                  repos,
-                }
-              );
-              insertedTotal += result.inserted;
-              updatedTotal += result.updated;
-            } catch (error) {
-              console.error(
-                `[github_setup] Failed to sync installation repositories during setup for installation ${installationId}`,
-                {
-                  pageIndex,
-                  repoCount: repos.length,
-                  error,
-                }
-              );
-            }
-          })(),
+        async (repos, pageIndex) => {
+          try {
+            const result = await ctx.runMutation(
+              internal.github.syncReposForInstallation,
+              {
+                teamId: payload.teamId,
+                userId: payload.userId,
+                connectionId,
+                repos,
+              }
+            );
+            insertedTotal += result.inserted;
+            updatedTotal += result.updated;
+          } catch (error) {
+            console.error(
+              `[github_setup] Failed to sync installation repositories during setup for installation ${installationId}`,
+              {
+                pageIndex,
+                repoCount: repos.length,
+                error,
+              }
+            );
+          }
+        },
         { awaitAll: true }
       );
 
