@@ -31,6 +31,10 @@ import { CmuxVSCodeInstance } from "./vscode/CmuxVSCodeInstance";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance";
 import { VSCodeInstance } from "./vscode/VSCodeInstance";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace";
+import { workerExec } from "./utils/workerExec";
+import rawSwitchBranchScript from "../scripts/switch-branch.ts?raw";
+
+const SWITCH_BRANCH_BUN_SCRIPT = rawSwitchBranchScript;
 
 const { getApiEnvironmentsByIdVars } = await getWwwOpenApiModule();
 
@@ -312,9 +316,7 @@ export async function spawnAgent(
     const agentCommand = `${agent.command} ${processedArgs.join(" ")}`;
 
     // Build the tmux session command that will be sent via socket.io
-    const tmuxSessionName = sanitizeTmuxSessionName(
-      `${agent.name}-${taskRunId}`,
-    );
+    const tmuxSessionName = sanitizeTmuxSessionName("cmux");
 
     serverLogger.info(
       `[AgentSpawner] Building command for agent ${agent.name}:`,
@@ -630,6 +632,82 @@ export async function spawnAgent(
       cwd: "/root/workspace",
     };
 
+    const switchBranch = async () => {
+      const scriptPath = `/tmp/cmux-switch-branch-${Date.now()}.ts`;
+      const command = `
+set -eu
+cat <<'CMUX_SWITCH_BRANCH_EOF' > ${scriptPath}
+${SWITCH_BRANCH_BUN_SCRIPT}
+CMUX_SWITCH_BRANCH_EOF
+bun run ${scriptPath}
+EXIT_CODE=$?
+rm -f ${scriptPath}
+exit $EXIT_CODE
+`;
+
+      const { exitCode, stdout, stderr } = await workerExec({
+        workerSocket,
+        command: "bash",
+        args: ["-lc", command],
+        cwd: "/root/workspace",
+        env: {
+          CMUX_BRANCH_NAME: newBranch,
+        },
+        timeout: 60000,
+      });
+
+      if (exitCode !== 0) {
+        const truncatedStdout = stdout?.slice(0, 2000) ?? "";
+        const truncatedStderr = stderr?.slice(0, 2000) ?? "";
+        serverLogger.error(
+          `[AgentSpawner] Branch switch script failed for ${newBranch} (exit ${exitCode})`,
+          {
+            stdout: truncatedStdout,
+            stderr: truncatedStderr,
+          },
+        );
+
+        const trimmedStderr = truncatedStderr.trim();
+        const trimmedStdout = truncatedStdout.trim();
+        const detailParts = [
+          trimmedStderr ? `stderr: ${trimmedStderr}` : null,
+          trimmedStdout ? `stdout: ${trimmedStdout}` : null,
+        ].filter((part): part is string => part !== null);
+
+        const detailText = detailParts.join(" | ");
+        const summarizedDetails = detailText.length > 600
+          ? `${detailText.slice(0, 600)}…`
+          : detailText;
+
+        const errorMessage = detailParts.length > 0
+          ? `Branch switch script failed for ${newBranch} (exit ${exitCode}): ${summarizedDetails}`
+          : `Branch switch script failed for ${newBranch} (exit ${exitCode}) with no output`;
+
+        throw new Error(errorMessage);
+      }
+
+      serverLogger.info(
+        `[AgentSpawner] Branch switch script completed for ${newBranch}`,
+      );
+    };
+
+    try {
+      await switchBranch();
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      serverLogger.error(
+        `[AgentSpawner] Branch switch command errored for ${newBranch}`,
+        err,
+      );
+      await vscodeInstance.stop().catch((stopError) => {
+        serverLogger.error(
+          `[AgentSpawner] Failed to stop VSCode instance after branch switch failure`,
+          stopError,
+        );
+      });
+      throw err;
+    }
+
     serverLogger.info(
       `[AgentSpawner] Sending terminal creation command at ${new Date().toISOString()}:`,
     );
@@ -778,10 +856,9 @@ export async function spawnAgent(
           if (result.error) {
             reject(result.error);
             return;
-          } else {
-            serverLogger.info("Terminal created successfully", result);
-            resolve(result.data);
           }
+          serverLogger.info("Terminal created successfully", result);
+          resolve(result.data);
         },
       );
       serverLogger.info(
