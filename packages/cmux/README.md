@@ -25,9 +25,9 @@ cmux
 
 This will:
 
-1. Start a local Convex backend on port 9777
-2. Start the web server on port 9776
-3. Open your browser to http://localhost:9776
+1.  Start a local Convex backend on port 9777
+2.  Start the web server on port 9776
+3.  Open your browser to http://localhost:9776
 
 ### Options
 
@@ -51,3 +51,7 @@ cmux is part of the cmux project. See the main repository for development instru
 ## License
 
 MIT
+
+Agents weave code threads
+In isolated Docker realms
+Innovation ignites
