@@ -24,8 +24,6 @@ from morphcloud.api import MorphCloudClient, Snapshot, console as morph_console
 
 dotenv.load_dotenv()
 
-client = MorphCloudClient()
-
 
 # Disable Morph snapshot caching so every effect runs against a fresh instance.
 def _no_cache_effect(
@@ -39,7 +37,6 @@ def _no_cache_effect(
     )
 
     parent_chain_hash = self.digest or self.id
-    effect_identifier = f"{fn.__name__}{args}{kwargs}"
     unique_suffix = uuid.uuid4().hex
     new_digest = f"{parent_chain_hash}-{unique_suffix}"
 
@@ -69,6 +66,8 @@ def _no_cache_effect(
 
 
 Snapshot._cache_effect = _no_cache_effect  # type: ignore[attr-defined]
+
+client = MorphCloudClient()
 
 
 # Morph snapshots run on x86_64 hardware; Docker plugins must match this arch
