@@ -51,3 +51,7 @@ cmux is part of the cmux project. See the main repository for development instru
 ## License
 
 MIT
+
+Silent lines of code,
+Bugs emerge from the mist,
+Patience brings the fix.
