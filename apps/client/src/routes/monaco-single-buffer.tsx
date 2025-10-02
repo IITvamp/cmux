@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { DiffEditor, type DiffOnMount } from "@monaco-editor/react";
+import { diffArrays } from "diff";
 import type { editor } from "monaco-editor";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
@@ -1107,63 +1108,37 @@ function createFileDiffFromSample(sample: DiffSample): FileDiff {
 function computeDiffLines(originalContent: string, modifiedContent: string): DiffLine[] {
   const originalLines = splitLines(originalContent);
   const modifiedLines = splitLines(modifiedContent);
-
-  const originalCount = originalLines.length;
-  const modifiedCount = modifiedLines.length;
-
-  const table = Array.from({ length: originalCount + 1 }, () =>
-    new Array<number>(modifiedCount + 1).fill(0),
-  );
-
-  for (let originalIndex = originalCount - 1; originalIndex >= 0; originalIndex -= 1) {
-    for (let modifiedIndex = modifiedCount - 1; modifiedIndex >= 0; modifiedIndex -= 1) {
-      if (originalLines[originalIndex] === modifiedLines[modifiedIndex]) {
-        table[originalIndex][modifiedIndex] = table[originalIndex + 1][modifiedIndex + 1] + 1;
-      } else {
-        table[originalIndex][modifiedIndex] = Math.max(
-          table[originalIndex + 1][modifiedIndex],
-          table[originalIndex][modifiedIndex + 1],
-        );
-      }
-    }
-  }
+  const changes = diffArrays(originalLines, modifiedLines);
 
   const lines: DiffLine[] = [];
-  let originalIndex = 0;
-  let modifiedIndex = 0;
+  let originalLineNumber = 1;
+  let modifiedLineNumber = 1;
 
-  while (originalIndex < originalCount && modifiedIndex < modifiedCount) {
-    if (originalLines[originalIndex] === modifiedLines[modifiedIndex]) {
-      lines.push(
-        createContextLine(
-          originalLines[originalIndex],
-          originalIndex + 1,
-          modifiedIndex + 1,
-        ),
-      );
-      originalIndex += 1;
-      modifiedIndex += 1;
-      continue;
+  changes.forEach((change) => {
+    const changeLines = change.value;
+
+    if (change.added) {
+      changeLines.forEach((content) => {
+        lines.push(createAddLine(content, modifiedLineNumber));
+        modifiedLineNumber += 1;
+      });
+      return;
     }
 
-    if (table[originalIndex + 1][modifiedIndex] >= table[originalIndex][modifiedIndex + 1]) {
-      lines.push(createRemoveLine(originalLines[originalIndex], originalIndex + 1));
-      originalIndex += 1;
-    } else {
-      lines.push(createAddLine(modifiedLines[modifiedIndex], modifiedIndex + 1));
-      modifiedIndex += 1;
+    if (change.removed) {
+      changeLines.forEach((content) => {
+        lines.push(createRemoveLine(content, originalLineNumber));
+        originalLineNumber += 1;
+      });
+      return;
     }
-  }
 
-  while (originalIndex < originalCount) {
-    lines.push(createRemoveLine(originalLines[originalIndex], originalIndex + 1));
-    originalIndex += 1;
-  }
-
-  while (modifiedIndex < modifiedCount) {
-    lines.push(createAddLine(modifiedLines[modifiedIndex], modifiedIndex + 1));
-    modifiedIndex += 1;
-  }
+    changeLines.forEach((content) => {
+      lines.push(createContextLine(content, originalLineNumber, modifiedLineNumber));
+      originalLineNumber += 1;
+      modifiedLineNumber += 1;
+    });
+  });
 
   return lines;
 }

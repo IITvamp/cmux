@@ -8,8 +8,8 @@ import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker"
 
 import { loader } from "@monaco-editor/react";
 
-self.MonacoEnvironment = {
-  getWorker(_, label) {
+const monacoEnvironment = {
+  getWorker(_: string, label: string): Worker {
     if (label === "json") {
       return new jsonWorker();
     }
@@ -25,6 +25,8 @@ self.MonacoEnvironment = {
     return new editorWorker();
   },
 };
+
+Object.assign(self, { MonacoEnvironment: monacoEnvironment });
 
 loader.config({
   monaco,

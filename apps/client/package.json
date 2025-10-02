@@ -98,6 +98,7 @@
     "convex": "1.27.1",
     "date-fns": "^4.1.0",
     "debug": "^4.4.1",
+    "diff": "^8.0.2",
     "dockerode": "^4.0.2",
     "electron-updater": "^6.6.2",
     "engine.io-client": "^6.6.3",
