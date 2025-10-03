@@ -303,53 +303,57 @@ sandboxesRouter.openapi(
         return c.text("Failed to hydrate sandbox", 500);
       }
 
-      let maintenanceError: string | undefined;
-      let devError: string | undefined;
-
-      if (maintenanceScript) {
-        try {
-          const result = await runMaintenanceScript(instance, maintenanceScript);
-          if (result.error) {
-            console.error(`[sandboxes.start] Maintenance script failed:`, result.error);
-            maintenanceError = result.error;
-          }
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          console.error(`[sandboxes.start] Maintenance script threw error:`, errorMessage);
-          maintenanceError = `Maintenance script execution failed: ${errorMessage}`;
-        }
-      }
-
-      if (devScript) {
-        try {
-          const result = await startDevScript(instance, devScript);
-          if (result.error) {
-            console.error(`[sandboxes.start] Dev script failed:`, result.error);
-            devError = result.error;
-          }
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          console.error(`[sandboxes.start] Dev script threw error:`, errorMessage);
-          devError = `Dev script execution failed: ${errorMessage}`;
-        }
-      }
-
-      if (taskRunConvexId && (maintenanceError || devError)) {
+      if (maintenanceScript || devScript) {
         (async () => {
-          try {
-            await convex.mutation(api.taskRuns.updateEnvironmentError, {
-              teamSlugOrId: body.teamSlugOrId,
-              id: taskRunConvexId,
-              maintenanceError: maintenanceError || undefined,
-              devError: devError || undefined,
-            });
-          } catch (mutationError) {
-            console.error(
-              "[sandboxes.start] Failed to record environment error to taskRun",
-              mutationError
-            );
+          let maintenanceError: string | undefined;
+          let devError: string | undefined;
+
+          if (maintenanceScript) {
+            try {
+              const result = await runMaintenanceScript(instance, maintenanceScript);
+              if (result.error) {
+                console.error(`[sandboxes.start] Maintenance script failed:`, result.error);
+                maintenanceError = result.error;
+              }
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              console.error(`[sandboxes.start] Maintenance script threw error:`, errorMessage);
+              maintenanceError = `Maintenance script execution failed: ${errorMessage}`;
+            }
           }
-        })();
+
+          if (devScript) {
+            try {
+              const result = await startDevScript(instance, devScript);
+              if (result.error) {
+                console.error(`[sandboxes.start] Dev script failed:`, result.error);
+                devError = result.error;
+              }
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              console.error(`[sandboxes.start] Dev script threw error:`, errorMessage);
+              devError = `Dev script execution failed: ${errorMessage}`;
+            }
+          }
+
+          if (taskRunConvexId && (maintenanceError || devError)) {
+            try {
+              await convex.mutation(api.taskRuns.updateEnvironmentError, {
+                teamSlugOrId: body.teamSlugOrId,
+                id: taskRunConvexId,
+                maintenanceError: maintenanceError || undefined,
+                devError: devError || undefined,
+              });
+            } catch (mutationError) {
+              console.error(
+                "[sandboxes.start] Failed to record environment error to taskRun",
+                mutationError
+              );
+            }
+          }
+        })().catch((error) => {
+          console.error("[sandboxes.start] Background script execution failed:", error);
+        });
       }
 
       await configureGitIdentityTask;
