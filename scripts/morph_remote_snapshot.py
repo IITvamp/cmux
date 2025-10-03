@@ -21,6 +21,7 @@ import atexit
 import json
 import os
 import shlex
+import shutil
 import signal
 import socket
 import subprocess
@@ -116,6 +117,21 @@ def print_timing_summary(timings: TimingsCollector) -> None:
     console.info("\n--- Timing Summary ---")
     for line in lines:
         console.info(line)
+
+
+def send_macos_notification(title: str, message: str) -> None:
+    """Send a user notification on macOS without failing the build."""
+    if sys.platform != "darwin":
+        return
+
+    if shutil.which("osascript") is None:
+        return
+
+    script = f"display notification {json.dumps(message)} with title {json.dumps(title)}"
+    try:
+        subprocess.run(["osascript", "-e", script], check=False)
+    except Exception as exc:  # noqa: BLE001
+        console.info(f"Failed to send macOS notification: {exc}")
 
 
 def _cleanup_instance() -> None:
@@ -567,7 +583,8 @@ def main() -> None:
     )
     ap.add_argument(
         "--target",
-        help="Docker build stage to target when using --dockerfile",
+        default="morph",
+        help="Docker build stage when using --dockerfile (default: morph)",
     )
     ap.add_argument(
         "--resnapshot",
@@ -729,6 +746,10 @@ def main() -> None:
                 raise RuntimeError(f"--exec script exited with code {exit_code}")
 
         if args.resnapshot:
+            send_macos_notification(
+                "cmux snapshot ready",
+                f"Instance {instance.id} is ready to resnapshot.",
+            )
             input("Press Enter to snapshot again...")
             console.info("Snapshotting...")
             final_snapshot = instance.snapshot()

@@ -10,7 +10,7 @@ EnvironmentFile=-/opt/app/app.env
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 LogsDirectory=cmux
 ExecStartPre=/bin/mkdir -p /var/log/cmux
-ExecStart=/usr/local/lib/cmux/cmux-rootfs-exec /bin/bash -lc 'exec "${CMUX_RUNTIME_ROOT}/usr/local/bin/dockerd"'
+ExecStart=/usr/local/lib/cmux/cmux-rootfs-exec /bin/bash -lc 'exec /usr/local/bin/dockerd'
 Restart=always
 RestartSec=2
 StandardOutput=append:/var/log/cmux/dockerd.log

@@ -3,8 +3,6 @@ set -euo pipefail
 
 mkdir -p /var/log/cmux
 
-runtime_root="${CMUX_RUNTIME_ROOT:-/}"
-
 color=""
 case "${VSCODE_THEME:-}" in
   dark)
@@ -33,7 +31,7 @@ SETTINGS=$(jq -n \
     "git.branchCompareWith": "main"
   } + (if $theme != "" then {"workbench.colorTheme": $theme} else {} end)')
 
-user_base="${runtime_root}/root/.openvscode-server"
+user_base="/root/.openvscode-server"
 user_dir="${user_base}/data/User"
 default_profile_dir="${user_base}/data/User/profiles/default-profile"
 machine_dir="${user_base}/data/Machine"
