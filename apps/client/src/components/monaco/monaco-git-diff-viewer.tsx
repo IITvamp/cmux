@@ -1,6 +1,6 @@
 import { DiffEditor, type DiffOnMount } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, use, useEffect, useMemo, useRef, useState } from "react";
 
 import { useTheme } from "@/components/theme/use-theme";
 import { loaderInitPromise } from "@/lib/monaco-environment";
@@ -12,6 +12,8 @@ import { FileDiffHeader } from "../file-diff-header";
 import { kitties } from "../kitties";
 import type { GitDiffViewerProps } from "../codemirror-git-diff-viewer";
 export type { GitDiffViewerProps } from "../codemirror-git-diff-viewer";
+
+void loaderInitPromise;
 
 type FileDiffRowClassNames = GitDiffViewerProps["classNames"] extends {
   fileDiffRow?: infer T;
@@ -604,12 +606,9 @@ function createDiffEditorMount({
       }
     };
 
-    const observer =
-      typeof ResizeObserver === "undefined"
-        ? null
-        : new ResizeObserver(() => {
-            applyLayout();
-          });
+    const observer = new ResizeObserver(() => {
+      applyLayout();
+    });
 
     if (observer) {
       observer.observe(container);
@@ -667,52 +666,47 @@ function createDiffEditorMount({
       });
     };
 
-    const intersectionObserver =
-      typeof IntersectionObserver === "undefined"
-        ? null
-        : new IntersectionObserver(
-            (entries) => {
-              const viewportHeight =
-                typeof window === "undefined"
-                  ? 0
-                  : window.innerHeight ||
-                    document.documentElement.clientHeight ||
-                    0;
+    const intersectionObserver = new IntersectionObserver(
+      (entries) => {
+        const viewportHeight =
+          typeof window === "undefined"
+            ? 0
+            : window.innerHeight || document.documentElement.clientHeight || 0;
 
-              for (const entry of entries) {
-                if (entry.target !== intersectionTarget) {
-                  continue;
-                }
+        for (const entry of entries) {
+          if (entry.target !== intersectionTarget) {
+            continue;
+          }
 
-                const { top, bottom } = entry.boundingClientRect;
-                const isAboveViewport = bottom <= 0;
-                const isBelowViewport = top >= viewportHeight;
-                const beyondMargin =
-                  bottom < -INTERSECTION_VISIBILITY_MARGIN_PX ||
-                  top > viewportHeight + INTERSECTION_VISIBILITY_MARGIN_PX;
-                const shouldHide =
-                  viewportHeight > 0 &&
-                  (isAboveViewport || isBelowViewport) &&
-                  beyondMargin;
+          const { top, bottom } = entry.boundingClientRect;
+          const isAboveViewport = bottom <= 0;
+          const isBelowViewport = top >= viewportHeight;
+          const beyondMargin =
+            bottom < -INTERSECTION_VISIBILITY_MARGIN_PX ||
+            top > viewportHeight + INTERSECTION_VISIBILITY_MARGIN_PX;
+          const shouldHide =
+            viewportHeight > 0 &&
+            (isAboveViewport || isBelowViewport) &&
+            beyondMargin;
 
-                if (shouldHide) {
-                  hideContainer();
-                } else {
-                  showContainer();
+          if (shouldHide) {
+            hideContainer();
+          } else {
+            showContainer();
 
-                  if (entry.isIntersecting || entry.intersectionRatio > 0) {
-                    applyLayout();
-                  }
-                }
+            if (entry.isIntersecting || entry.intersectionRatio > 0) {
+              applyLayout();
+            }
+          }
 
-                scheduleVisibilityEvaluation();
-              }
-            },
-            {
-              threshold: 0,
-              rootMargin: `${INTERSECTION_VISIBILITY_MARGIN_PX}px 0px ${INTERSECTION_VISIBILITY_MARGIN_PX}px 0px`,
-            },
-          );
+          scheduleVisibilityEvaluation();
+        }
+      },
+      {
+        threshold: 0,
+        rootMargin: `${INTERSECTION_VISIBILITY_MARGIN_PX}px 0px ${INTERSECTION_VISIBILITY_MARGIN_PX}px 0px`,
+      },
+    );
 
     if (intersectionObserver) {
       intersectionObserver.observe(intersectionTarget);
@@ -722,29 +716,27 @@ function createDiffEditorMount({
       disposables.push({ dispose: () => intersectionObserver.disconnect() });
     }
 
-    if (typeof window !== "undefined") {
-      const onScroll = () => {
-        scheduleVisibilityEvaluation();
-      };
-      const onResize = () => {
-        scheduleVisibilityEvaluation();
-      };
+    const onScroll = () => {
+      scheduleVisibilityEvaluation();
+    };
+    const onResize = () => {
+      scheduleVisibilityEvaluation();
+    };
 
-      window.addEventListener("scroll", onScroll, { passive: true });
-      window.addEventListener("resize", onResize);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onResize);
 
-      disposables.push({
-        dispose: () => {
-          window.removeEventListener("scroll", onScroll);
-          window.removeEventListener("resize", onResize);
+    disposables.push({
+      dispose: () => {
+        window.removeEventListener("scroll", onScroll);
+        window.removeEventListener("resize", onResize);
 
-          if (visibilityRafHandle !== null) {
-            window.cancelAnimationFrame(visibilityRafHandle);
-            visibilityRafHandle = null;
-          }
-        },
-      });
-    }
+        if (visibilityRafHandle !== null) {
+          window.cancelAnimationFrame(visibilityRafHandle);
+          visibilityRafHandle = null;
+        }
+      },
+    });
 
     showContainer();
     scheduleVisibilityEvaluation();
@@ -852,7 +844,6 @@ interface MonacoFileDiffRowProps {
   onToggle: () => void;
   editorTheme: string;
   diffOptions: editor.IDiffEditorConstructionOptions;
-  isEditorReady: boolean;
   classNames?: FileDiffRowClassNames;
 }
 
@@ -862,7 +853,6 @@ function MonacoFileDiffRow({
   onToggle,
   editorTheme,
   diffOptions,
-  isEditorReady,
   classNames,
 }: MonacoFileDiffRowProps) {
   const canRenderEditor =
@@ -951,20 +941,16 @@ function MonacoFileDiffRow({
           </div>
         ) : canRenderEditor ? (
           <div className="relative" style={{ minHeight: editorMinHeight }}>
-            {isEditorReady ? (
-              <DiffEditor
-                language={file.language}
-                original={file.oldContent}
-                modified={file.newContent}
-                theme={editorTheme}
-                options={diffOptions}
-                onMount={onEditorMount}
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center p-8 text-sm text-neutral-500 dark:text-neutral-400">
-                Loading Monaco diff editor…
-              </div>
-            )}
+            <DiffEditor
+              language={file.language}
+              original={file.oldContent}
+              modified={file.newContent}
+              theme={editorTheme}
+              options={diffOptions}
+              onMount={onEditorMount}
+              keepCurrentModifiedModel={true}
+              keepCurrentOriginalModel={true}
+            />
           </div>
         ) : null}
       </div>
@@ -978,7 +964,6 @@ const MemoMonacoFileDiffRow = memo(MonacoFileDiffRow, (prev, next) => {
   return (
     prev.isExpanded === next.isExpanded &&
     prev.editorTheme === next.editorTheme &&
-    prev.isEditorReady === next.isEditorReady &&
     a.filePath === b.filePath &&
     a.oldPath === b.oldPath &&
     a.status === b.status &&
@@ -999,27 +984,6 @@ export function MonacoGitDiffViewer({
   onFileToggle,
 }: GitDiffViewerProps) {
   const { theme } = useTheme();
-
-  const [isEditorReady, setEditorReady] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    loaderInitPromise
-      .then(() => {
-        if (!cancelled) {
-          setEditorReady(true);
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          console.error("Failed to initialize Monaco", error);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const kitty = useMemo(() => {
     return kitties[Math.floor(Math.random() * kitties.length)];
@@ -1150,6 +1114,8 @@ export function MonacoGitDiffViewer({
     [],
   );
 
+  use(loaderInitPromise);
+
   return (
     <div className="grow bg-white dark:bg-neutral-900">
       <div className="flex flex-col -space-y-[2px]">
@@ -1161,7 +1127,6 @@ export function MonacoGitDiffViewer({
             onToggle={() => toggleFile(file.filePath)}
             editorTheme={editorTheme}
             diffOptions={diffOptions}
-            isEditorReady={isEditorReady}
             classNames={classNames?.fileDiffRow}
           />
         ))}
