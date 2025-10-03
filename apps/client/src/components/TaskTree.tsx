@@ -528,7 +528,6 @@ function TaskRunTreeInner({
   const hasEnvironmentError = Boolean(
     run.environmentError?.maintenanceError || run.environmentError?.devError
   );
-  const hasDevError = Boolean(run.environmentError?.devError);
 
   const leadingContent = crownIcon ? (
     <div className="flex items-center gap-1">
@@ -570,7 +569,7 @@ function TaskRunTreeInner({
     (run.pullRequestUrl && run.pullRequestUrl !== "pending") ||
     run.pullRequests?.some((pr) => pr.url)
   );
-  const shouldRenderPreviewLink = !hasDevError && previewServices.length > 0;
+  const shouldRenderPreviewLink = previewServices.length > 0;
   const hasOpenWithActions = !hasEnvironmentError && openWithActions.length > 0;
   const hasPortActions = portActions.length > 0;
   const canCopyBranch = Boolean(copyRunBranch);
@@ -688,7 +687,7 @@ function TaskRunTreeInner({
         hasActiveVSCode={hasActiveVSCode}
         hasChildren={hasChildren}
         shouldRenderPullRequestLink={shouldRenderPullRequestLink}
-        previewServices={!hasDevError ? previewServices : []}
+        previewServices={previewServices}
         environmentError={run.environmentError}
       />
     </Fragment>
