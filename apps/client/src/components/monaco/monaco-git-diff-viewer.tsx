@@ -1085,10 +1085,6 @@ export function MonacoGitDiffViewer({
       } else {
         next.add(filePath);
       }
-      debugGitDiffViewerLog("toggled file", {
-        filePath,
-        expanded: !wasExpanded,
-      });
       try {
         onFileToggle?.(filePath, !wasExpanded);
       } catch {
@@ -1156,7 +1152,7 @@ export function MonacoGitDiffViewer({
 
   return (
     <div className="grow bg-white dark:bg-neutral-900">
-      <div className="flex flex-col -space-y-px">
+      <div className="flex flex-col -space-y-[2px]">
         {fileGroups.map((file) => (
           <MemoMonacoFileDiffRow
             key={`monaco:${file.filePath}`}
