@@ -28,13 +28,15 @@ import {
   Suspense,
   useCallback,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
   type KeyboardEvent,
 } from "react";
-import TextareaAutosize from "react-textarea-autosize";
 import { toast } from "sonner";
 import z from "zod";
+import type { EditorApi } from "@/components/dashboard/DashboardInput";
+import LexicalEditor from "@/components/lexical/LexicalEditor";
 
 const paramsSchema = z.object({
   taskId: typedZid("tasks"),
@@ -210,6 +212,7 @@ function RunDiffPage() {
   const [followUpText, setFollowUpText] = useState("");
   const [isRestartingTask, setIsRestartingTask] = useState(false);
   const [overridePrompt, setOverridePrompt] = useState(false);
+  const editorApiRef = useRef<EditorApi | null>(null);
   const task = useQuery(api.tasks.getById, {
     teamSlugOrId,
     id: taskId,
@@ -311,7 +314,9 @@ function RunDiffPage() {
       return;
     }
 
-    const followUp = followUpText.trim();
+    const editorContent = editorApiRef.current?.getContent();
+    const followUp = (editorContent?.text ?? followUpText).trim();
+
     if (!followUp && overridePrompt) {
       toast.error("Add new instructions when overriding the prompt.");
       return;
@@ -349,14 +354,21 @@ function RunDiffPage() {
     setIsRestartingTask(true);
 
     try {
-      const imagesPayload =
-        task.images && task.images.length > 0
-          ? task.images.map((image) => ({
-              storageId: image.storageId,
-              fileName: image.fileName,
-              altText: image.altText,
-            }))
-          : undefined;
+      const existingImages = task.images && task.images.length > 0
+        ? task.images.map((image) => ({
+            storageId: image.storageId,
+            fileName: image.fileName,
+            altText: image.altText,
+          }))
+        : [];
+
+      const newImages = editorContent?.images && editorContent.images.length > 0
+        ? editorContent.images
+        : [];
+
+      const imagesPayload = [...existingImages, ...newImages].length > 0
+        ? [...existingImages, ...newImages]
+        : undefined;
 
       const newTaskId = await createTask({
         teamSlugOrId,
@@ -394,6 +406,7 @@ function RunDiffPage() {
             if ("error" in response) {
               toast.error(`Task restart error: ${response.error}`);
             } else {
+              editorApiRef.current?.clear();
               setFollowUpText("");
               toast.success("Started follow-up task");
             }
@@ -455,18 +468,6 @@ function RunDiffPage() {
     }
     return undefined;
   }, [isRestartingTask, overridePrompt, socket, task, trimmedFollowUp]);
-
-  const handleFollowUpKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-        event.preventDefault();
-        if (!isRestartDisabled) {
-          void handleRestartTask();
-        }
-      }
-    },
-    [handleRestartTask, isRestartDisabled],
-  );
 
   // 404 if selected run is missing
   if (!selectedRun) {
@@ -539,18 +540,32 @@ function RunDiffPage() {
                 className="mx-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-neutral-500/15 bg-white dark:border-neutral-500/15 dark:bg-neutral-950"
               >
                 <div className="px-3.5 pt-3.5">
-                  <TextareaAutosize
-                    value={followUpText}
-                    onChange={(event) => setFollowUpText(event.target.value)}
-                    onKeyDown={handleFollowUpKeyDown}
-                    minRows={1}
-                    maxRows={2}
+                  <LexicalEditor
                     placeholder={
                       overridePrompt
                         ? "Edit original task instructions..."
                         : "Add updated instructions or context..."
                     }
-                    className="w-full max-h-24 resize-none overflow-y-auto border-none bg-transparent p-0 text-[15px] leading-relaxed text-neutral-900 outline-none placeholder:text-neutral-400 focus:outline-none dark:text-neutral-100 dark:placeholder:text-neutral-500"
+                    onChange={setFollowUpText}
+                    onSubmit={() => void handleRestartTask()}
+                    repoUrl={
+                      task?.projectFullName
+                        ? `https://github.com/${task.projectFullName}.git`
+                        : undefined
+                    }
+                    branch={task?.baseBranch ?? undefined}
+                    environmentId={task?.environmentId ?? undefined}
+                    persistenceKey={`restart-task-${taskId}-${runId}`}
+                    maxHeight="96px"
+                    onEditorReady={(api) => {
+                      editorApiRef.current = api;
+                    }}
+                    contentEditableClassName="text-[15px] text-neutral-900 dark:text-neutral-100 focus:outline-none"
+                    padding={{
+                      paddingLeft: "0px",
+                      paddingRight: "0px",
+                      paddingTop: "0px",
+                    }}
                   />
                 </div>
                 <div className="flex items-center justify-between gap-2 px-3.5 pb-3 pt-2">
@@ -564,17 +579,15 @@ function RunDiffPage() {
                             return;
                           }
                           const promptText = task.text;
-                          setFollowUpText((current) => {
-                            if (!current) {
-                              return promptText;
-                            }
-                            if (current.includes(promptText)) {
-                              return current;
-                            }
-                            return `${current}${promptText}`;
-                          });
+                          const currentContent = editorApiRef.current?.getContent();
+                          const currentText = currentContent?.text ?? "";
+                          if (!currentText) {
+                            editorApiRef.current?.insertText?.(promptText);
+                          } else if (!currentText.includes(promptText)) {
+                            editorApiRef.current?.insertText?.(promptText);
+                          }
                         } else {
-                          setFollowUpText("");
+                          editorApiRef.current?.clear();
                         }
                       }}
                       size="sm"
