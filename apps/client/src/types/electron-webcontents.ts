@@ -11,6 +11,23 @@ export interface ElectronWebContentsState {
   isDevToolsOpened: boolean;
 }
 
+export interface ElectronWebContentsSnapshot {
+  id: number;
+  ownerWindowId: number;
+  ownerWebContentsId: number;
+  persistKey?: string;
+  suspended: boolean;
+  ownerWebContentsDestroyed: boolean;
+  bounds: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null;
+  visible: boolean | null;
+  state: ElectronWebContentsState | null;
+}
+
 export interface ElectronWebContentsStateEvent {
   type: "state";
   state: ElectronWebContentsState;

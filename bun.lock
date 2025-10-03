@@ -266,6 +266,8 @@
       "version": "0.1.0",
       "dependencies": {
         "@ai-sdk/anthropic": "^2.0.6",
+        "@ai-sdk/google": "^2.0.6",
+        "@ai-sdk/openai": "^2.0.6",
         "@asteasolutions/zod-to-openapi": "^8.1.0",
         "@cmux/convex": "workspace:*",
         "@cmux/shared": "workspace:*",

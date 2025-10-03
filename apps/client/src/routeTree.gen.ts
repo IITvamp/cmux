@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as MonacoSingleBufferRouteImport } from './routes/monaco-single-buffer'
 import { Route as ElectronWebContentsRouteImport } from './routes/electron-web-contents'
+import { Route as DebugWebcontentsRouteImport } from './routes/debug-webcontents'
 import { Route as DebugMonacoRouteImport } from './routes/debug-monaco'
 import { Route as DebugIconRouteImport } from './routes/debug-icon'
 import { Route as LayoutRouteImport } from './routes/_layout'
@@ -56,6 +57,11 @@ const MonacoSingleBufferRoute = MonacoSingleBufferRouteImport.update({
 const ElectronWebContentsRoute = ElectronWebContentsRouteImport.update({
   id: '/electron-web-contents',
   path: '/electron-web-contents',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DebugWebcontentsRoute = DebugWebcontentsRouteImport.update({
+  id: '/debug-webcontents',
+  path: '/debug-webcontents',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DebugMonacoRoute = DebugMonacoRouteImport.update({
@@ -230,6 +236,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/debug-icon': typeof DebugIconRoute
   '/debug-monaco': typeof DebugMonacoRoute
+  '/debug-webcontents': typeof DebugWebcontentsRoute
   '/electron-web-contents': typeof ElectronWebContentsRoute
   '/monaco-single-buffer': typeof MonacoSingleBufferRoute
   '/sign-in': typeof SignInRoute
@@ -264,6 +271,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/debug-icon': typeof DebugIconRoute
   '/debug-monaco': typeof DebugMonacoRoute
+  '/debug-webcontents': typeof DebugWebcontentsRoute
   '/electron-web-contents': typeof ElectronWebContentsRoute
   '/monaco-single-buffer': typeof MonacoSingleBufferRoute
   '/sign-in': typeof SignInRoute
@@ -298,6 +306,7 @@ export interface FileRoutesById {
   '/_layout': typeof LayoutRouteWithChildren
   '/debug-icon': typeof DebugIconRoute
   '/debug-monaco': typeof DebugMonacoRoute
+  '/debug-webcontents': typeof DebugWebcontentsRoute
   '/electron-web-contents': typeof ElectronWebContentsRoute
   '/monaco-single-buffer': typeof MonacoSingleBufferRoute
   '/sign-in': typeof SignInRoute
@@ -334,6 +343,7 @@ export interface FileRouteTypes {
     | '/'
     | '/debug-icon'
     | '/debug-monaco'
+    | '/debug-webcontents'
     | '/electron-web-contents'
     | '/monaco-single-buffer'
     | '/sign-in'
@@ -368,6 +378,7 @@ export interface FileRouteTypes {
     | '/'
     | '/debug-icon'
     | '/debug-monaco'
+    | '/debug-webcontents'
     | '/electron-web-contents'
     | '/monaco-single-buffer'
     | '/sign-in'
@@ -401,6 +412,7 @@ export interface FileRouteTypes {
     | '/_layout'
     | '/debug-icon'
     | '/debug-monaco'
+    | '/debug-webcontents'
     | '/electron-web-contents'
     | '/monaco-single-buffer'
     | '/sign-in'
@@ -437,6 +449,7 @@ export interface RootRouteChildren {
   LayoutRoute: typeof LayoutRouteWithChildren
   DebugIconRoute: typeof DebugIconRoute
   DebugMonacoRoute: typeof DebugMonacoRoute
+  DebugWebcontentsRoute: typeof DebugWebcontentsRoute
   ElectronWebContentsRoute: typeof ElectronWebContentsRoute
   MonacoSingleBufferRoute: typeof MonacoSingleBufferRoute
   SignInRoute: typeof SignInRoute
@@ -464,6 +477,13 @@ declare module '@tanstack/react-router' {
       path: '/electron-web-contents'
       fullPath: '/electron-web-contents'
       preLoaderRoute: typeof ElectronWebContentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/debug-webcontents': {
+      id: '/debug-webcontents'
+      path: '/debug-webcontents'
+      fullPath: '/debug-webcontents'
+      preLoaderRoute: typeof DebugWebcontentsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/debug-monaco': {
@@ -802,6 +822,7 @@ const rootRouteChildren: RootRouteChildren = {
   LayoutRoute: LayoutRouteWithChildren,
   DebugIconRoute: DebugIconRoute,
   DebugMonacoRoute: DebugMonacoRoute,
+  DebugWebcontentsRoute: DebugWebcontentsRoute,
   ElectronWebContentsRoute: ElectronWebContentsRoute,
   MonacoSingleBufferRoute: MonacoSingleBufferRoute,
   SignInRoute: SignInRoute,
