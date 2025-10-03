@@ -1,21 +1,13 @@
 import type { MorphInstance } from "./git";
 import { maskSensitive, singleQuote } from "./shell";
 
-const WORKSPACE_ROOT = "/root/workspace" as const;
-const CMUX_RUNTIME_DIR = `${WORKSPACE_ROOT}/.cmux` as const;
-const LOG_DIR = "/var/log/cmux" as const;
-
-const sanitizeScript = (script: string | null | undefined): string | null => {
-  if (!script) {
-    return null;
-  }
-  const trimmed = script.trim();
-  return trimmed.length === 0 ? null : trimmed;
-};
+const WORKSPACE_ROOT = "/root/workspace";
+const CMUX_RUNTIME_DIR = `${WORKSPACE_ROOT}/.cmux`;
+const LOG_DIR = "/var/log/cmux";
 
 const previewOutput = (
   value: string | undefined,
-  maxLength = 2000,
+  maxLength = 2500,
 ): string | null => {
   if (!value) {
     return null;
