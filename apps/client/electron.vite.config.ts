@@ -85,7 +85,7 @@ export default defineConfig({
         input: {
           index: resolve("index.html"),
         },
-        treeshake: "smallest",
+        treeshake: "recommended",
       },
     },
     resolve: {
