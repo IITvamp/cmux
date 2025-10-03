@@ -334,7 +334,7 @@ sandboxesRouter.openapi(
         }
       }
 
-      if (taskRunConvexId) {
+      if (taskRunConvexId && (maintenanceError || devError)) {
         try {
           await convex.mutation(api.taskRuns.updateEnvironmentError, {
             teamSlugOrId: body.teamSlugOrId,
