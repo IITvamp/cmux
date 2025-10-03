@@ -525,10 +525,6 @@ function TaskRunTreeInner({
     </Tooltip>
   ) : null;
 
-  const hasEnvironmentError = Boolean(
-    run.environmentError?.maintenanceError || run.environmentError?.devError
-  );
-
   const leadingContent = crownIcon ? (
     <div className="flex items-center gap-1">
       {crownIcon}
