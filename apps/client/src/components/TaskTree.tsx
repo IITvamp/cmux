@@ -525,15 +525,9 @@ function TaskRunTreeInner({
     </Tooltip>
   ) : null;
 
-  const environmentErrorMessages = useMemo(() => {
-    if (!run.environmentError) return [];
-    return [
-      run.environmentError.maintenanceError,
-      run.environmentError.devError,
-    ].filter((msg): msg is string => Boolean(msg));
-  }, [run.environmentError]);
-
-  const hasEnvironmentError = environmentErrorMessages.length > 0;
+  const hasEnvironmentError = Boolean(
+    run.environmentError?.maintenanceError || run.environmentError?.devError
+  );
   const hasDevError = Boolean(run.environmentError?.devError);
 
   const leadingContent = crownIcon ? (
@@ -695,7 +689,7 @@ function TaskRunTreeInner({
         hasChildren={hasChildren}
         shouldRenderPullRequestLink={shouldRenderPullRequestLink}
         previewServices={!hasDevError ? previewServices : []}
-        environmentErrorMessages={environmentErrorMessages}
+        environmentError={run.environmentError}
       />
     </Fragment>
   );
@@ -757,7 +751,10 @@ interface TaskRunDetailsProps {
   hasChildren: boolean;
   shouldRenderPullRequestLink: boolean;
   previewServices: PreviewService[];
-  environmentErrorMessages: string[];
+  environmentError?: {
+    maintenanceError?: string;
+    devError?: string;
+  };
 }
 
 function TaskRunDetails({
@@ -770,14 +767,16 @@ function TaskRunDetails({
   hasChildren,
   shouldRenderPullRequestLink,
   previewServices,
-  environmentErrorMessages,
+  environmentError,
 }: TaskRunDetailsProps) {
   if (!isExpanded) {
     return null;
   }
 
   const indentLevel = level + 1;
-  const hasEnvironmentError = environmentErrorMessages.length > 0;
+  const hasEnvironmentError = Boolean(
+    environmentError?.maintenanceError || environmentError?.devError
+  );
 
   const environmentErrorIndicator = hasEnvironmentError ? (
     <Tooltip delayDuration={0}>
@@ -791,14 +790,14 @@ function TaskRunDetails({
       >
         <div className="space-y-1.5">
           <p className="font-medium text-sm text-white">Environment issue</p>
-          {run.environmentError?.maintenanceError && (
+          {environmentError?.maintenanceError && (
             <p className="text-xs text-muted-foreground">
-              Maintenance script: {run.environmentError.maintenanceError}
+              Maintenance script: {environmentError.maintenanceError}
             </p>
           )}
-          {run.environmentError?.devError && (
+          {environmentError?.devError && (
             <p className="text-xs text-muted-foreground">
-              Dev script: {run.environmentError.devError}
+              Dev script: {environmentError.devError}
             </p>
           )}
         </div>
