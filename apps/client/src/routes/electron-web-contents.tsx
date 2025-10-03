@@ -1,5 +1,5 @@
 import type { FormEvent } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { PersistentWebView } from "@/components/persistent-webview";
 import { isElectron } from "@/lib/electron";
@@ -10,12 +10,94 @@ export const Route = createFileRoute("/electron-web-contents")({
   component: ElectronWebContentsPage,
 });
 
-function ElectronWebContentsPage() {
+interface ElectronWebContentsPageProps {
+  forceWebContentsView?: boolean;
+}
+
+export function ElectronWebContentsPage({
+  forceWebContentsView,
+}: ElectronWebContentsPageProps = {}) {
+  const [layoutInstanceKey, setLayoutInstanceKey] = useState(0);
+
+  const handleRemount = useCallback(() => {
+    setLayoutInstanceKey((prev) => prev + 1);
+  }, []);
+
+  const handleDumpStates = useCallback(() => {
+    if (!isElectron) {
+      console.info(
+        "WebContentsView snapshot unavailable outside Electron runtime",
+      );
+      return;
+    }
+    if (typeof window === "undefined") return;
+
+    const bridge = window.cmux?.webContentsView;
+    if (!bridge || typeof bridge.getAllStates !== "function") {
+      console.warn("WebContentsView bridge does not expose getAllStates()");
+      return;
+    }
+
+    void bridge
+      .getAllStates()
+      .then((result) => {
+        if (!result.ok || !result.states) {
+          console.warn("Failed to capture WebContentsView snapshot", result);
+          return;
+        }
+
+        const snapshot = {
+          generatedAt: new Date().toISOString(),
+          states: result.states,
+        };
+
+        const label = `[webcontents-debug] WebContentsView snapshot (${snapshot.states.length})`;
+        if (snapshot.states.length === 0) {
+          console.info(label, snapshot);
+        } else {
+          console.groupCollapsed(label);
+          console.log(snapshot);
+          console.log(JSON.stringify(snapshot, null, 2));
+          console.groupEnd();
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to fetch WebContentsView snapshot", error);
+      });
+  }, []);
+
   return (
     <div className="h-dvh overflow-y-auto">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-10 px-6 py-8">
-        <LayoutPlayground />
-        <MiniBrowser />
+        <div className="flex items-center justify-between gap-4">
+          <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-50">
+            Electron WebContents Playground
+          </h1>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleDumpStates}
+              disabled={!isElectron}
+              className={cn(
+                "inline-flex items-center rounded-md border border-neutral-300 bg-neutral-50 px-3 py-1.5 text-sm font-medium text-neutral-700 shadow-sm transition focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-neutral-500 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:focus-visible:outline-neutral-400",
+                isElectron
+                  ? "hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                  : "cursor-not-allowed opacity-60",
+              )}
+            >
+              Dump WebContents State
+            </button>
+            <button
+              type="button"
+              onClick={handleRemount}
+              className="inline-flex items-center rounded-md border border-neutral-300 bg-neutral-50 px-3 py-1.5 text-sm font-medium text-neutral-700 shadow-sm transition hover:bg-neutral-100 focus-visible:outline  focus-visible:outline-offset-2 focus-visible:outline-neutral-500 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800 dark:focus-visible:outline-neutral-400"
+            >
+              Remount WebContents View
+            </button>
+          </div>
+        </div>
+        <LayoutPlayground key={layoutInstanceKey} />
+        <MiniBrowser forceWebContentsView={forceWebContentsView} />
       </div>
     </div>
   );
@@ -28,6 +110,7 @@ function LayoutPlayground() {
   const [offsetTop, setOffsetTop] = useState(32);
   const [offsetLeft, setOffsetLeft] = useState(48);
   const [borderRadius, setBorderRadius] = useState(16);
+  const webviewContainerRef = useRef<HTMLDivElement | null>(null);
 
   const isElectronRuntime = isElectron;
 
@@ -119,6 +202,7 @@ function LayoutPlayground() {
             style={{ paddingTop: offsetTop, paddingLeft: offsetLeft }}
           >
             <div
+              ref={webviewContainerRef}
               className="relative overflow-hidden border border-neutral-300 shadow-sm dark:border-neutral-700"
               style={{ width, height, borderRadius }}
             >
@@ -129,6 +213,7 @@ function LayoutPlayground() {
                 backgroundColor="#ffffff"
                 borderRadius={borderRadius}
                 retainOnUnmount
+                forceWebContentsViewIfElectron
               />
             </div>
           </div>
@@ -225,7 +310,11 @@ function createTab(url: string): BrowserTab {
   };
 }
 
-function MiniBrowser() {
+interface MiniBrowserProps {
+  forceWebContentsView?: boolean;
+}
+
+function MiniBrowser({ forceWebContentsView }: MiniBrowserProps) {
   const initialTabs = useMemo(() => {
     const base = DEFAULT_TAB_URLS.map((url) => createTab(url));
     return base.length > 0 ? base : [createTab("https://example.com/")];
@@ -233,11 +322,11 @@ function MiniBrowser() {
 
   const [tabs, setTabs] = useState<BrowserTab[]>(initialTabs);
   const [activeId, setActiveId] = useState<string>(
-    initialTabs[0]?.id ?? createTab("https://example.com/").id
+    initialTabs[0]?.id ?? createTab("https://example.com/").id,
   );
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeId) ?? tabs[0] ?? null,
-    [tabs, activeId]
+    [tabs, activeId],
   );
   const [addressBarValue, setAddressBarValue] = useState(activeTab?.url ?? "");
 
@@ -271,11 +360,11 @@ function MiniBrowser() {
                 url: nextUrl,
                 title: deriveTabTitle(nextUrl),
               }
-            : tab
-        )
+            : tab,
+        ),
       );
     },
-    [activeTab, addressBarValue]
+    [activeTab, addressBarValue],
   );
 
   const handleAddTab = useCallback(() => {
@@ -300,7 +389,7 @@ function MiniBrowser() {
         return next;
       });
     },
-    [activeId]
+    [activeId],
   );
 
   if (!isElectron) {
@@ -342,7 +431,7 @@ function MiniBrowser() {
                     "group flex items-center gap-2 rounded-md px-3 py-1.5 text-sm transition",
                     isActive
                       ? "bg-neutral-900 text-neutral-100 dark:bg-neutral-200 dark:text-neutral-900"
-                      : "bg-neutral-200/70 text-neutral-700 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
+                      : "bg-neutral-200/70 text-neutral-700 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700",
                   )}
                 >
                   <span className="max-w-[160px] truncate">{tab.title}</span>
@@ -404,11 +493,12 @@ function MiniBrowser() {
                 retainOnUnmount
                 className={cn(
                   "absolute inset-0 h-full w-full transition-opacity duration-200",
-                  isActive ? "opacity-100" : "opacity-0"
+                  isActive ? "opacity-100" : "opacity-0",
                 )}
                 style={{ pointerEvents: isActive ? "auto" : "none" }}
                 backgroundColor="#ffffff"
                 borderRadius={12}
+                forceWebContentsViewIfElectron={forceWebContentsView}
               />
             );
           })}

@@ -11,6 +11,7 @@ import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Command, useCommandState } from "cmdk";
 import { useQuery } from "convex/react";
 import {
+  Bug,
   GitPullRequest,
   LogOut,
   Home,
@@ -58,6 +59,8 @@ const compactStrings = (values: ReadonlyArray<unknown>): string[] => {
 };
 
 const EMPTY_TEAM_LIST: Team[] = [];
+
+const isDevEnvironment = import.meta.env.DEV;
 
 type TeamCommandItem = {
   id: string;
@@ -318,6 +321,14 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
         } catch {
           // ignore preload errors
         }
+      } else if (value === "dev:webcontents") {
+        try {
+          await router.preloadRoute({
+            to: "/debug-webcontents",
+          });
+        } catch {
+          // ignore preload errors
+        }
       } else if (value?.startsWith("team:")) {
         const [teamIdPart, slugPart] = value.slice(5).split(":");
         const targetTeamSlugOrId = slugPart || teamIdPart;
@@ -476,6 +487,8 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
           to: "/$teamSlugOrId/settings",
           params: { teamSlugOrId },
         });
+      } else if (value === "dev:webcontents") {
+        navigate({ to: "/debug-webcontents" });
       } else if (value.startsWith("team:")) {
         const [teamId, slugPart] = value.slice(5).split(":");
         const targetTeamSlugOrId = slugPart || teamId;
@@ -648,6 +661,26 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
                     <span className="text-sm">Pull Requests</span>
                   </Command.Item>
                 </Command.Group>
+
+                {isDevEnvironment ? (
+                  <Command.Group>
+                    <div className="px-2 py-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+                      Developer
+                    </div>
+                    <Command.Item
+                      value="dev:webcontents"
+                      keywords={["debug", "electron", "webcontents"]}
+                      onSelect={() => handleSelect("dev:webcontents")}
+                      className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer
+                hover:bg-neutral-100 dark:hover:bg-neutral-800
+                data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
+                data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
+                    >
+                      <Bug className="h-4 w-4 text-neutral-500" />
+                      <span className="text-sm">Debug WebContents</span>
+                    </Command.Item>
+                  </Command.Group>
+                ) : null}
 
                 <Command.Group>
                   <div className="px-2 py-1.5 text-xs text-neutral-500 dark:text-neutral-400">

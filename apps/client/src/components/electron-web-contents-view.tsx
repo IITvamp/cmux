@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import type { CSSProperties, ReactNode } from "react";
 
 import { isElectron } from "@/lib/electron";
@@ -22,18 +28,6 @@ interface ElectronWebContentsViewProps {
   onNativeViewDestroyed?: () => void;
 }
 
-interface BoundsPayload {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-interface SyncState {
-  bounds: BoundsPayload;
-  visible: boolean;
-}
-
 function getWebContentsBridge() {
   if (typeof window === "undefined") return null;
   return window.cmux?.webContentsView ?? null;
@@ -47,13 +41,99 @@ function debugLog(message: string, payload?: Record<string, unknown>) {
   }
 }
 
-function rectToBounds(rect: DOMRect): BoundsPayload {
+interface BoundsPayload {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface SyncState {
+  bounds: BoundsPayload;
+  visible: boolean;
+}
+
+const CONTINUOUS_IDLE_FRAME_LIMIT = 6;
+
+function roundToDevicePixels(value: number, scale: number): number {
+  if (!Number.isFinite(scale) || scale <= 0) return Math.round(value);
+  return Math.round(value * scale) / scale;
+}
+
+function rectToBounds(rect: DOMRect, scale: number): BoundsPayload {
   return {
-    x: Math.round(rect.left),
-    y: Math.round(rect.top),
-    width: Math.max(0, Math.round(rect.width)),
-    height: Math.max(0, Math.round(rect.height)),
+    x: roundToDevicePixels(rect.left, scale),
+    y: roundToDevicePixels(rect.top, scale),
+    width: Math.max(0, roundToDevicePixels(rect.width, scale)),
+    height: Math.max(0, roundToDevicePixels(rect.height, scale)),
   };
+}
+
+function isEffectivelyHidden(element: HTMLElement): boolean {
+  const style = window.getComputedStyle(element);
+  if (style.display === "none" || style.visibility === "hidden") {
+    return true;
+  }
+  if (style.opacity === "0") {
+    return true;
+  }
+  return false;
+}
+
+function hasActiveTransform(element: HTMLElement): boolean {
+  let current: HTMLElement | null = element;
+  while (current) {
+    const style = window.getComputedStyle(current);
+    if (style.transform && style.transform !== "none") {
+      return true;
+    }
+    if (style.perspective && style.perspective !== "none") {
+      return true;
+    }
+    current = current.parentElement;
+  }
+  return false;
+}
+
+type ScrollTarget = HTMLElement | Document | Window;
+
+function isScrollable(
+  element: HTMLElement,
+  style: CSSStyleDeclaration,
+): boolean {
+  const overflowY = style.overflowY;
+  const overflowX = style.overflowX;
+  const canScrollY =
+    (overflowY === "auto" ||
+      overflowY === "scroll" ||
+      overflowY === "overlay") &&
+    element.scrollHeight > element.clientHeight;
+  const canScrollX =
+    (overflowX === "auto" ||
+      overflowX === "scroll" ||
+      overflowX === "overlay") &&
+    element.scrollWidth > element.clientWidth;
+  return canScrollX || canScrollY;
+}
+
+function getScrollableAncestors(element: HTMLElement): ScrollTarget[] {
+  const targets: ScrollTarget[] = [];
+  let current: HTMLElement | null = element.parentElement;
+  while (current) {
+    const style = window.getComputedStyle(current);
+    if (isScrollable(current, style)) {
+      targets.push(current);
+    }
+    current = current.parentElement;
+  }
+  const scrollingElement = document.scrollingElement;
+  if (scrollingElement instanceof HTMLElement) {
+    targets.push(scrollingElement);
+  } else if (document.documentElement instanceof HTMLElement) {
+    targets.push(document.documentElement);
+  }
+  targets.push(window);
+  return targets;
 }
 
 const pendingReleases = new Map<string, Promise<void>>();
@@ -75,14 +155,24 @@ export function ElectronWebContentsView({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewIdRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
+  const continuousSyncRef = useRef<number | null>(null);
+  const continuousActiveRef = useRef(false);
+  const continuousStableFramesRef = useRef(0);
   const lastSyncRef = useRef<SyncState | null>(null);
+  const syncBoundsRef = useRef<() => void>(() => {});
   const latestSrcRef = useRef(src);
   const lastLoadedSrcRef = useRef<string | null>(null);
-  const latestStyleRef = useRef<{ backgroundColor?: string; borderRadius?: number }>({
+  const latestStyleRef = useRef<{
+    backgroundColor?: string;
+    borderRadius?: number;
+  }>({
     backgroundColor,
     borderRadius,
   });
   const hasStableAttachmentRef = useRef(false);
+  const isIntersectingRef = useRef(true);
+  const scrollCleanupsRef = useRef<Array<() => void>>([]);
+  const lastTransformStateRef = useRef(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -100,6 +190,32 @@ export function ElectronWebContentsView({
     }
   }, []);
 
+  const stopContinuousSync = useCallback(() => {
+    if (continuousSyncRef.current !== null) {
+      cancelAnimationFrame(continuousSyncRef.current);
+      continuousSyncRef.current = null;
+    }
+    continuousActiveRef.current = false;
+    continuousStableFramesRef.current = 0;
+  }, []);
+
+  const startContinuousSync = useCallback(() => {
+    if (!isElectron) return;
+    if (continuousSyncRef.current !== null) return;
+    if (viewIdRef.current === null) return;
+    if (continuousActiveRef.current) return;
+
+    const tick = () => {
+      continuousSyncRef.current = window.requestAnimationFrame(tick);
+      syncBoundsRef.current();
+    };
+
+    continuousSyncRef.current = window.requestAnimationFrame(tick);
+    continuousActiveRef.current = true;
+    continuousStableFramesRef.current = 0;
+    syncBoundsRef.current();
+  }, []);
+
   const syncBounds = useCallback(() => {
     if (!isElectron) return;
     const bridge = getWebContentsBridge();
@@ -107,26 +223,66 @@ export function ElectronWebContentsView({
     const container = containerRef.current;
     if (!bridge || id === null || !container) return;
 
+    const scale = window.devicePixelRatio ?? 1;
     const rect = container.getBoundingClientRect();
-    const bounds = rectToBounds(rect);
-    const visible = !suspended && bounds.width > 0 && bounds.height > 0;
+    const bounds = rectToBounds(rect, scale);
+    const sizeMissing = bounds.width <= 0 || bounds.height <= 0;
+    const hiddenByStyle = isEffectivelyHidden(container);
+    const isVisible =
+      !suspended && !sizeMissing && !hiddenByStyle && isIntersectingRef.current;
+
+    const hasAnimations =
+      typeof container.getAnimations === "function" &&
+      container.getAnimations().length > 0;
+    const shouldTrackTransforms =
+      !suspended && (hasActiveTransform(container) || hasAnimations);
+    if (shouldTrackTransforms !== lastTransformStateRef.current) {
+      lastTransformStateRef.current = shouldTrackTransforms;
+      if (shouldTrackTransforms) {
+        startContinuousSync();
+      } else {
+        stopContinuousSync();
+      }
+    }
+
+    const visible = isVisible;
     const prev = lastSyncRef.current;
-    if (
-      prev &&
+    const unchanged =
+      prev !== null &&
       prev.visible === visible &&
       prev.bounds.x === bounds.x &&
       prev.bounds.y === bounds.y &&
       prev.bounds.width === bounds.width &&
-      prev.bounds.height === bounds.height
-    ) {
+      prev.bounds.height === bounds.height;
+
+    if (continuousActiveRef.current) {
+      if (unchanged) {
+        continuousStableFramesRef.current += 1;
+        if (continuousStableFramesRef.current >= CONTINUOUS_IDLE_FRAME_LIMIT) {
+          stopContinuousSync();
+        }
+      } else {
+        continuousStableFramesRef.current = 0;
+      }
+    }
+
+    if (unchanged) {
       return;
     }
 
     void bridge
       .setBounds({ id, bounds, visible })
-      .catch((err) => console.warn("Failed to sync WebContentsView bounds", err));
+      .catch((err) =>
+        console.warn("Failed to sync WebContentsView bounds", err),
+      );
     lastSyncRef.current = { bounds, visible };
-  }, [suspended]);
+  }, [suspended, startContinuousSync, stopContinuousSync]);
+
+  syncBoundsRef.current = syncBounds;
+
+  useEffect(() => {
+    syncBoundsRef.current = syncBounds;
+  }, [syncBounds]);
 
   const scheduleBoundsSync = useCallback(() => {
     if (!isElectron) return;
@@ -141,61 +297,72 @@ export function ElectronWebContentsView({
 
   persistKeyRef.current = persistKey;
 
-  const releaseNativeView = useCallback((id: number, key: string | undefined) => {
-    const bridge = getWebContentsBridge();
-    if (!bridge) return;
+  const releaseNativeView = useCallback(
+    (id: number, key: string | undefined) => {
+      const bridge = getWebContentsBridge();
+      if (!bridge) return;
 
-    const persistKey = typeof key === "string" && key.length > 0 ? key : undefined;
+      const persistKey =
+        typeof key === "string" && key.length > 0 ? key : undefined;
 
-    debugLog("release-native-view", {
-      id,
-      persistKey,
-    });
-
-    const releaseTask = (async () => {
-      if (typeof bridge.release === "function") {
-        try {
-          debugLog("requesting-release", { id, persistKey });
-          await bridge.release({ id, persist: true });
-          debugLog("release-requested", { id, persistKey });
-          return;
-        } catch (err) {
-          console.warn("Failed to release WebContentsView", err);
-        }
-      }
-
-      try {
-        debugLog("destroying-native-view", { id, persistKey });
-        await bridge.destroy(id);
-      } catch (err) {
-        console.warn("Failed to destroy WebContentsView", err);
-      }
-    })();
-
-    if (persistKey) {
-      const tracked = releaseTask.finally(() => {
-        if (pendingReleases.get(persistKey) === tracked) {
-          pendingReleases.delete(persistKey);
-        }
+      debugLog("release-native-view", {
+        id,
+        persistKey,
       });
-      pendingReleases.set(persistKey, tracked);
-      void tracked.catch(() => undefined);
-    } else {
-      void releaseTask.catch(() => undefined);
-    }
-  }, []);
+
+      const releaseTask = (async () => {
+        if (typeof bridge.release === "function") {
+          try {
+            debugLog("requesting-release", { id, persistKey });
+            await bridge.release({ id, persist: true });
+            debugLog("release-requested", { id, persistKey });
+            return;
+          } catch (err) {
+            console.warn("Failed to release WebContentsView", err);
+          }
+        }
+
+        try {
+          debugLog("destroying-native-view", { id, persistKey });
+          await bridge.destroy(id);
+        } catch (err) {
+          console.warn("Failed to destroy WebContentsView", err);
+        }
+      })();
+
+      if (persistKey) {
+        const tracked = releaseTask.finally(() => {
+          if (pendingReleases.get(persistKey) === tracked) {
+            pendingReleases.delete(persistKey);
+          }
+        });
+        pendingReleases.set(persistKey, tracked);
+        void tracked.catch(() => undefined);
+      } else {
+        void releaseTask.catch(() => undefined);
+      }
+    },
+    [],
+  );
 
   const releaseView = useCallback(() => {
     cancelScheduledSync();
+    stopContinuousSync();
     const id = viewIdRef.current;
     if (id === null) return;
     viewIdRef.current = null;
     lastSyncRef.current = null;
     lastLoadedSrcRef.current = null;
     hasStableAttachmentRef.current = false;
+    lastTransformStateRef.current = false;
     releaseNativeView(id, persistKeyRef.current);
     onNativeViewDestroyed?.();
-  }, [cancelScheduledSync, onNativeViewDestroyed, releaseNativeView]);
+  }, [
+    cancelScheduledSync,
+    onNativeViewDestroyed,
+    releaseNativeView,
+    stopContinuousSync,
+  ]);
 
   useEffect(() => {
     if (!isElectron) return undefined;
@@ -207,8 +374,13 @@ export function ElectronWebContentsView({
     let disposed = false;
     setErrorMessage(null);
 
-    const initialBounds = rectToBounds(container.getBoundingClientRect());
-    const { backgroundColor: initialBackground, borderRadius: initialRadius } = latestStyleRef.current;
+    const initialScale = window.devicePixelRatio ?? 1;
+    const initialBounds = rectToBounds(
+      container.getBoundingClientRect(),
+      initialScale,
+    );
+    const { backgroundColor: initialBackground, borderRadius: initialRadius } =
+      latestStyleRef.current;
 
     const key = persistKeyRef.current;
     const pendingRelease = key ? pendingReleases.get(key) : undefined;
@@ -249,7 +421,10 @@ export function ElectronWebContentsView({
           });
 
           if (disposed) {
-            debugLog("create-result-after-dispose", { id: result.id, persistKey: key });
+            debugLog("create-result-after-dispose", {
+              id: result.id,
+              persistKey: key,
+            });
             releaseNativeView(result.id, persistKeyRef.current);
             return;
           }
@@ -273,7 +448,9 @@ export function ElectronWebContentsView({
                 });
                 lastLoadedSrcRef.current = targetUrl;
               })
-              .catch((err) => console.warn("Failed to load URL after create", err));
+              .catch((err) =>
+                console.warn("Failed to load URL after create", err),
+              );
           } else {
             debugLog("restored-native-view", {
               id: result.id,
@@ -323,7 +500,11 @@ export function ElectronWebContentsView({
     const id = viewIdRef.current;
     if (!bridge || id === null) return;
     if (lastLoadedSrcRef.current === src) return;
-    debugLog("load-url-request", { id, url: src, persistKey: persistKeyRef.current });
+    debugLog("load-url-request", {
+      id,
+      url: src,
+      persistKey: persistKeyRef.current,
+    });
     void bridge
       .loadURL(id, src)
       .then(() => {
@@ -334,7 +515,9 @@ export function ElectronWebContentsView({
         });
         lastLoadedSrcRef.current = src;
       })
-      .catch((err) => console.warn("Failed to load URL in WebContentsView", err));
+      .catch((err) =>
+        console.warn("Failed to load URL in WebContentsView", err),
+      );
   }, [src]);
 
   useEffect(() => {
@@ -345,7 +528,9 @@ export function ElectronWebContentsView({
     if (backgroundColor === undefined && borderRadius === undefined) return;
     void bridge
       .updateStyle({ id, backgroundColor, borderRadius })
-      .catch((err) => console.warn("Failed to update WebContentsView style", err));
+      .catch((err) =>
+        console.warn("Failed to update WebContentsView style", err),
+      );
   }, [backgroundColor, borderRadius]);
 
   useEffect(() => {
@@ -355,45 +540,145 @@ export function ElectronWebContentsView({
 
     scheduleBoundsSync();
 
-    let resizeObserver: ResizeObserver | null = null;
+    const cleanupFns: Array<() => void> = [];
+
+    const handleDimensionChange = () => {
+      scheduleBoundsSync();
+    };
+
     if (typeof ResizeObserver !== "undefined") {
-      resizeObserver = new ResizeObserver(() => {
-        scheduleBoundsSync();
-      });
-      resizeObserver.observe(container);
+      const ownResizeObserver = new ResizeObserver(handleDimensionChange);
+      ownResizeObserver.observe(container);
+      cleanupFns.push(() => ownResizeObserver.disconnect());
+
+      const ancestorObservers: ResizeObserver[] = [];
+      let node: HTMLElement | null = container.parentElement;
+      while (node) {
+        const observer = new ResizeObserver(handleDimensionChange);
+        observer.observe(node);
+        ancestorObservers.push(observer);
+        node = node.parentElement;
+      }
+      if (ancestorObservers.length > 0) {
+        cleanupFns.push(() => {
+          for (const observer of ancestorObservers) {
+            observer.disconnect();
+          }
+        });
+      }
     }
 
     const handleScroll = () => {
       scheduleBoundsSync();
     };
 
-    window.addEventListener("scroll", handleScroll, true);
-    window.addEventListener("resize", handleScroll);
+    const refreshScrollTargets = () => {
+      scrollCleanupsRef.current.forEach((cleanup) => cleanup());
+      scrollCleanupsRef.current = [];
+      const scrollTargets = getScrollableAncestors(container);
+      for (const target of scrollTargets) {
+        const eventTarget: EventTarget =
+          target === window ? window : (target as EventTarget);
+        eventTarget.addEventListener("scroll", handleScroll, { passive: true });
+        const cleanup = () => {
+          eventTarget.removeEventListener("scroll", handleScroll);
+        };
+        cleanupFns.push(cleanup);
+        scrollCleanupsRef.current.push(cleanup);
+      }
+    };
+
+    refreshScrollTargets();
+
+    const handleViewport = () => {
+      scheduleBoundsSync();
+    };
+
+    window.addEventListener("resize", handleViewport);
+    cleanupFns.push(() => window.removeEventListener("resize", handleViewport));
+
+    const viewport = window.visualViewport;
+    if (viewport) {
+      viewport.addEventListener("resize", handleViewport);
+      viewport.addEventListener("scroll", handleViewport, { passive: true });
+      cleanupFns.push(() =>
+        viewport.removeEventListener("resize", handleViewport),
+      );
+      cleanupFns.push(() =>
+        viewport.removeEventListener("scroll", handleViewport),
+      );
+    }
+
+    let intersectionObserver: IntersectionObserver | null = null;
+    if (typeof IntersectionObserver !== "undefined") {
+      intersectionObserver = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (entry.target === container) {
+              const intersects =
+                entry.isIntersecting || entry.intersectionRatio > 0;
+              if (isIntersectingRef.current !== intersects) {
+                isIntersectingRef.current = intersects;
+                scheduleBoundsSync();
+              }
+            }
+          }
+        },
+        { threshold: [0, 0.01, 1] },
+      );
+      intersectionObserver.observe(container);
+      cleanupFns.push(() => intersectionObserver?.disconnect());
+    } else {
+      isIntersectingRef.current = true;
+    }
 
     let mutationObserver: MutationObserver | null = null;
     if (typeof MutationObserver !== "undefined") {
       mutationObserver = new MutationObserver(() => {
+        startContinuousSync();
+        refreshScrollTargets();
         scheduleBoundsSync();
       });
-      const observed: HTMLElement[] = [];
       let node: HTMLElement | null = container;
       while (node) {
         mutationObserver.observe(node, {
           attributes: true,
           attributeFilter: ["style", "class"],
         });
-        observed.push(node);
         node = node.parentElement;
       }
+      cleanupFns.push(() => mutationObserver?.disconnect());
+    }
+
+    const handleAnimationStart: EventListener = () => {
+      startContinuousSync();
+      scheduleBoundsSync();
+    };
+    const handleAnimationStop: EventListener = () => {
+      scheduleBoundsSync();
+    };
+
+    const animationEvents: Array<[keyof HTMLElementEventMap, EventListener]> = [
+      ["animationstart", handleAnimationStart],
+      ["animationiteration", handleAnimationStart],
+      ["transitionrun", handleAnimationStart],
+      ["transitionstart", handleAnimationStart],
+      ["animationend", handleAnimationStop],
+      ["animationcancel", handleAnimationStop],
+      ["transitionend", handleAnimationStop],
+      ["transitioncancel", handleAnimationStop],
+    ];
+
+    for (const [event, listener] of animationEvents) {
+      container.addEventListener(event, listener);
+      cleanupFns.push(() => container.removeEventListener(event, listener));
     }
 
     return () => {
-      resizeObserver?.disconnect();
-      window.removeEventListener("scroll", handleScroll, true);
-      window.removeEventListener("resize", handleScroll);
-      mutationObserver?.disconnect();
+      cleanupFns.forEach((cleanup) => cleanup());
+      scrollCleanupsRef.current = [];
     };
-  }, [scheduleBoundsSync]);
+  }, [scheduleBoundsSync, startContinuousSync]);
 
   useLayoutEffect(() => {
     if (!isElectron) return;
@@ -417,7 +702,9 @@ export function ElectronWebContentsView({
     >
       {shouldShowFallback ? (
         <div className="flex h-full w-full items-center justify-center rounded-md border border-dashed border-neutral-300 bg-white/80 text-sm text-neutral-600 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-neutral-300">
-          {errorMessage ?? fallback ?? "Open this view in the Electron app to see the embedded page."}
+          {errorMessage ??
+            fallback ??
+            "Open this view in the Electron app to see the embedded page."}
         </div>
       ) : null}
     </div>

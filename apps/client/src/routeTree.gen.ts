@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as ElectronWebContentsRouteImport } from './routes/electron-web-contents'
+import { Route as DebugWebcontentsRouteImport } from './routes/debug-webcontents'
 import { Route as DebugIconRouteImport } from './routes/debug-icon'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as IndexRouteImport } from './routes/index'
@@ -49,6 +50,11 @@ const SignInRoute = SignInRouteImport.update({
 const ElectronWebContentsRoute = ElectronWebContentsRouteImport.update({
   id: '/electron-web-contents',
   path: '/electron-web-contents',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DebugWebcontentsRoute = DebugWebcontentsRouteImport.update({
+  id: '/debug-webcontents',
+  path: '/debug-webcontents',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DebugIconRoute = DebugIconRouteImport.update({
@@ -217,6 +223,7 @@ const LayoutTeamSlugOrIdTaskTaskIdRunRunIdPreviewPortRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/debug-icon': typeof DebugIconRoute
+  '/debug-webcontents': typeof DebugWebcontentsRoute
   '/electron-web-contents': typeof ElectronWebContentsRoute
   '/sign-in': typeof SignInRoute
   '/$teamSlugOrId': typeof LayoutTeamSlugOrIdRouteWithChildren
@@ -249,6 +256,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/debug-icon': typeof DebugIconRoute
+  '/debug-webcontents': typeof DebugWebcontentsRoute
   '/electron-web-contents': typeof ElectronWebContentsRoute
   '/sign-in': typeof SignInRoute
   '/$teamSlugOrId': typeof LayoutTeamSlugOrIdRouteWithChildren
@@ -281,6 +289,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_layout': typeof LayoutRouteWithChildren
   '/debug-icon': typeof DebugIconRoute
+  '/debug-webcontents': typeof DebugWebcontentsRoute
   '/electron-web-contents': typeof ElectronWebContentsRoute
   '/sign-in': typeof SignInRoute
   '/_layout/$teamSlugOrId': typeof LayoutTeamSlugOrIdRouteWithChildren
@@ -315,6 +324,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/debug-icon'
+    | '/debug-webcontents'
     | '/electron-web-contents'
     | '/sign-in'
     | '/$teamSlugOrId'
@@ -347,6 +357,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/debug-icon'
+    | '/debug-webcontents'
     | '/electron-web-contents'
     | '/sign-in'
     | '/$teamSlugOrId'
@@ -378,6 +389,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_layout'
     | '/debug-icon'
+    | '/debug-webcontents'
     | '/electron-web-contents'
     | '/sign-in'
     | '/_layout/$teamSlugOrId'
@@ -412,6 +424,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LayoutRoute: typeof LayoutRouteWithChildren
   DebugIconRoute: typeof DebugIconRoute
+  DebugWebcontentsRoute: typeof DebugWebcontentsRoute
   ElectronWebContentsRoute: typeof ElectronWebContentsRoute
   SignInRoute: typeof SignInRoute
   HandlerSplatRoute: typeof HandlerSplatRoute
@@ -431,6 +444,13 @@ declare module '@tanstack/react-router' {
       path: '/electron-web-contents'
       fullPath: '/electron-web-contents'
       preLoaderRoute: typeof ElectronWebContentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/debug-webcontents': {
+      id: '/debug-webcontents'
+      path: '/debug-webcontents'
+      fullPath: '/debug-webcontents'
+      preLoaderRoute: typeof DebugWebcontentsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/debug-icon': {
@@ -761,6 +781,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LayoutRoute: LayoutRouteWithChildren,
   DebugIconRoute: DebugIconRoute,
+  DebugWebcontentsRoute: DebugWebcontentsRoute,
   ElectronWebContentsRoute: ElectronWebContentsRoute,
   SignInRoute: SignInRoute,
   HandlerSplatRoute: HandlerSplatRoute,
