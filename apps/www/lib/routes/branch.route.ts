@@ -19,7 +19,7 @@ const GenerateBranchesBody = z
     teamSlugOrId: z.string(),
     taskDescription: z.string().optional(),
     prTitle: z.string().optional(),
-    count: z.number().int().min(1).max(20).default(1),
+    count: z.number().int().min(1).max(2000).default(1),
     uniqueId: z
       .string()
       .regex(/^[a-z0-9]{5}$/)
@@ -27,7 +27,7 @@ const GenerateBranchesBody = z
   })
   .refine(
     (value) => Boolean(value.taskDescription || value.prTitle),
-    "Provide either taskDescription or prTitle"
+    "Provide either taskDescription or prTitle",
   )
   .openapi("GenerateBranchesBody");
 
@@ -98,7 +98,7 @@ branchRouter.openapi(
         const branchNames = generateBranchNamesFromBase(
           baseBranchName,
           count,
-          body.uniqueId
+          body.uniqueId,
         );
 
         return c.json({
@@ -120,7 +120,7 @@ branchRouter.openapi(
         } = await generateNewBranchName(
           body.taskDescription!,
           apiKeys,
-          body.uniqueId
+          body.uniqueId,
         );
         return c.json({
           branchNames: [branchName],
@@ -141,7 +141,7 @@ branchRouter.openapi(
         body.taskDescription!,
         count,
         apiKeys,
-        body.uniqueId
+        body.uniqueId,
       );
 
       return c.json({
@@ -157,5 +157,5 @@ branchRouter.openapi(
         message: "Failed to generate branch names",
       });
     }
-  }
+  },
 );
