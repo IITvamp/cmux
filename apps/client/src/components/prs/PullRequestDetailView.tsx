@@ -1,12 +1,15 @@
 import { RunDiffSection } from "@/components/RunDiffSection";
 import { Dropdown } from "@/components/ui/dropdown";
+import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
+import { PrChecks } from "@/components/prs/PrChecks";
 import { normalizeGitRef } from "@/lib/refWithOrigin";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
 import { useQuery as useRQ } from "@tanstack/react-query";
 import { useQuery as useConvexQuery } from "convex/react";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, GitMerge } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 type PullRequestDetailViewProps = {
   teamSlugOrId: string;
@@ -94,6 +97,14 @@ export function PullRequestDetailView({
 
   const [diffControls, setDiffControls] = useState<DiffControls | null>(null);
 
+  const handleMerge = (_method: MergeMethod) => {
+    // For standalone PRs, we don't have a taskRunId, so we can't use the existing merge endpoint
+    // We'll need to implement a direct merge endpoint or show an error
+    toast.error("Merge not available", {
+      description: "Direct PR merging is not yet supported for standalone PRs",
+    });
+  };
+
   if (!currentPR) {
     return (
       <div className="h-full w-full flex items-center justify-center text-neutral-500 dark:text-neutral-400">
@@ -101,6 +112,9 @@ export function PullRequestDetailView({
       </div>
     );
   }
+
+  const prIsOpen = currentPR.state === "open" && !currentPR.merged;
+  const prIsMerged = currentPR.merged === true;
 
   const gitDiffViewerClassNames = {
     fileDiffRow: { button: "top-[56px]" },
@@ -151,6 +165,22 @@ export function PullRequestDetailView({
                     Open
                   </span>
                 )}
+                {prIsMerged ? (
+                  <div
+                    className="flex items-center gap-1.5 px-3 py-1 bg-[#8250df] text-white rounded font-medium text-xs select-none whitespace-nowrap border border-[#6e40cc] dark:bg-[#8250df] dark:border-[#6e40cc] cursor-not-allowed"
+                    title="Pull request has been merged"
+                  >
+                    <GitMerge className="w-3.5 h-3.5" />
+                    Merged
+                  </div>
+                ) : prIsOpen ? (
+                  <MergeButton
+                    onMerge={handleMerge}
+                    isOpen={prIsOpen}
+                    disabled={currentPR.draft === true}
+                    prCount={1}
+                  />
+                ) : null}
                 {currentPR.htmlUrl ? (
                   <a
                     className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none whitespace-nowrap"
@@ -203,6 +233,23 @@ export function PullRequestDetailView({
               </div>
             </div>
           </div>
+          {currentPR.headRef && prIsOpen && (
+            <div className="px-3.5 py-3 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800">
+              <Suspense
+                fallback={
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800 rounded text-xs text-neutral-600 dark:text-neutral-400">
+                    Loading checks...
+                  </div>
+                }
+              >
+                <PrChecks
+                  owner={owner}
+                  repo={repo}
+                  ref={currentPR.headRef}
+                />
+              </Suspense>
+            </div>
+          )}
           <div className="bg-white dark:bg-neutral-950">
             <Suspense
               fallback={
