@@ -517,8 +517,8 @@ function TaskRunTreeInner({
           className="max-w-sm p-3 z-[var(--z-overlay)]"
         >
           <div className="space-y-1.5">
-            <p className="font-medium text-sm">Evaluation Reason</p>
-            <p className="text-xs text-muted-foreground">{run.crownReason}</p>
+            <p className="font-medium text-sm text-neutral-200">Evaluation Reason</p>
+            <p className="text-xs text-neutral-400">{run.crownReason}</p>
           </div>
         </TooltipContent>
       ) : null}
@@ -789,14 +789,14 @@ function TaskRunDetails({
         className="max-w-sm p-3 z-[var(--z-overlay)]"
       >
         <div className="space-y-1.5">
-          <p className="font-medium text-sm text-white">Environment issue</p>
+          <p className="font-medium text-sm text-neutral-200">Environment Issue</p>
           {environmentError?.maintenanceError && (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-neutral-400">
               Maintenance script: {environmentError.maintenanceError}
             </p>
           )}
           {environmentError?.devError && (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-neutral-400">
               Dev script: {environmentError.devError}
             </p>
           )}
