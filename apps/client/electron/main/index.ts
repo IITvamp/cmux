@@ -42,7 +42,6 @@ const { autoUpdater } = electronUpdater;
 
 import util from "node:util";
 import { initCmdK, keyDebug } from "./cmdk";
-import { initWebContentsLayoutLogger } from "./webcontents-layout-logger";
 import { env } from "./electron-main-env";
 
 // Use a cookieable HTTPS origin intercepted locally instead of a custom scheme.
@@ -621,10 +620,6 @@ app.whenReady().then(async () => {
       log: mainLog,
       warn: mainWarn,
     },
-  });
-  initWebContentsLayoutLogger({
-    log: mainLog,
-    warn: mainWarn,
   });
   registerWebContentsViewHandlers({
     logger: {
