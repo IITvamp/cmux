@@ -8,6 +8,7 @@ export type AgentLogoProps = {
 
 function inferVendor(agentName: string): string {
   const lower = agentName.toLowerCase();
+  if (lower.startsWith("opencode/")) return "opencode";
   if (lower.startsWith("codex/")) return "openai";
   if (lower.startsWith("claude/")) return "claude";
   if (lower.startsWith("gemini/")) return "gemini";
@@ -17,7 +18,6 @@ function inferVendor(agentName: string): string {
   if (lower.includes("glm")) return "glm";
   if (lower.startsWith("cursor/")) return "cursor";
   if (lower.startsWith("amp")) return "amp";
-  if (lower.startsWith("opencode/")) return "opencode";
   return "other";
 }
 
