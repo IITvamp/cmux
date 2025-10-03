@@ -946,24 +946,115 @@ export function setupSocketHandlers(
         };
 
         if (environmentId) {
-          const environment = await getConvex().query(api.environments.get, {
-            teamSlugOrId: safeTeam,
-            id: environmentId,
-          });
+          const normalizeRepoIdentifier = (
+            raw: string,
+          ):
+            | {
+                repoFullName: string;
+                targetRepoUrl: string;
+              }
+            | null => {
+            const trimmed = raw.trim();
+            if (!trimmed) {
+              return null;
+            }
 
-          if (!environment) {
+            const sshMatch = trimmed.match(/^git@([^:]+):(.+?)(?:\.git)?$/);
+            if (sshMatch) {
+              const host = sshMatch[1];
+              const path = sshMatch[2].replace(/\.git$/, "");
+              if (!path) {
+                return null;
+              }
+              return {
+                repoFullName: path,
+                targetRepoUrl: `https://${host}/${path}.git`,
+              };
+            }
+
+            try {
+              const parsed = new URL(trimmed);
+              const pathname = parsed.pathname
+                .replace(/^\/+/, "")
+                .replace(/\.git$/, "");
+              if (!pathname) {
+                return null;
+              }
+              const protocol =
+                parsed.protocol && parsed.protocol !== ":"
+                  ? parsed.protocol
+                  : "https:";
+              const base = `${protocol}//${parsed.host}`;
+              return {
+                repoFullName: pathname,
+                targetRepoUrl: `${base}/${pathname}.git`,
+              };
+            } catch {
+              // Not a URL, fall through to heuristic parsing
+            }
+
+            const withoutGit = trimmed.replace(/\.git$/, "");
+            const parts = withoutGit.split(/[\\/]+/).filter(Boolean);
+            if (parts.length >= 3 && parts[0].includes(".")) {
+              const host = parts[0];
+              const repoPath = parts.slice(1).join("/");
+              if (!repoPath) {
+                return null;
+              }
+              return {
+                repoFullName: repoPath,
+                targetRepoUrl: `https://${host}/${repoPath}.git`,
+              };
+            }
+
+            if (!withoutGit.includes("/")) {
+              return null;
+            }
+
+            return {
+              repoFullName: withoutGit,
+              targetRepoUrl: `https://github.com/${withoutGit}.git`,
+            };
+          };
+
+          let associatedRepos: string[] = [];
+          try {
+            associatedRepos = await getConvex().query(
+              api.environments.getAssociatedRepos,
+              {
+                teamSlugOrId: safeTeam,
+                id: environmentId,
+              },
+            );
+          } catch (error) {
+            serverLogger.error(
+              "Failed to gather repositories for environment",
+              error,
+            );
             socket.emit("list-files-response", {
               files: [],
-              error: "Environment not found",
+              error:
+                error instanceof Error &&
+                error.message === "Environment not found"
+                  ? "Environment not found"
+                  : "Failed to load environment repositories",
             });
             return;
           }
 
-          const repoFullNames = (environment.selectedRepos || [])
-            .map((repo) => repo?.trim())
-            .filter((repo): repo is string => Boolean(repo));
+          const normalizedRepos = new Map<
+            string,
+            { repoFullName: string; targetRepoUrl: string }
+          >();
 
-          if (repoFullNames.length === 0) {
+          for (const repo of associatedRepos) {
+            const normalized = normalizeRepoIdentifier(repo);
+            if (normalized && !normalizedRepos.has(normalized.repoFullName)) {
+              normalizedRepos.set(normalized.repoFullName, normalized);
+            }
+          }
+
+          if (normalizedRepos.size === 0) {
             socket.emit("list-files-response", {
               files: [],
               error: "This environment has no repositories configured",
@@ -973,10 +1064,10 @@ export function setupSocketHandlers(
 
           const aggregatedFiles: FileInfo[] = [];
 
-          for (const repoFullName of repoFullNames) {
+          for (const { repoFullName, targetRepoUrl } of normalizedRepos.values()) {
             try {
               const files = await listFilesForRepo({
-                targetRepoUrl: `https://github.com/${repoFullName}.git`,
+                targetRepoUrl,
                 repoFullName,
               });
               aggregatedFiles.push(...files);

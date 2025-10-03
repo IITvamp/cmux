@@ -131,7 +131,8 @@ const convexSchema = defineSchema({
   })
     .index("by_created", ["createdAt"])
     .index("by_user", ["userId", "createdAt"])
-    .index("by_team_user", ["teamId", "userId"]),
+    .index("by_team_user", ["teamId", "userId"])
+    .index("by_team_environment", ["teamId", "environmentId"]),
 
   taskRuns: defineTable({
     taskId: v.id("tasks"),
@@ -245,6 +246,7 @@ const convexSchema = defineSchema({
     .index("by_status", ["status"])
     .index("by_vscode_status", ["vscode.status"])
     .index("by_vscode_container_name", ["vscode.containerName"])
+    .index("by_team_environment", ["teamId", "environmentId"])
     .index("by_user", ["userId", "createdAt"])
     .index("by_team_user", ["teamId", "userId"]),
   taskVersions: defineTable({

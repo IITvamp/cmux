@@ -53,6 +53,70 @@ export const get = authQuery({
   },
 });
 
+export const getAssociatedRepos = authQuery({
+  args: {
+    teamSlugOrId: v.string(),
+    id: v.id("environments"),
+  },
+  handler: async (ctx, args) => {
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+    const environment = await ctx.db.get(args.id);
+
+    if (!environment || environment.teamId !== teamId) {
+      throw new Error("Environment not found");
+    }
+
+    const repoNames = new Set<string>();
+
+    for (const repo of environment.selectedRepos ?? []) {
+      const trimmed = typeof repo === "string" ? repo.trim() : "";
+      if (trimmed) {
+        repoNames.add(trimmed);
+      }
+    }
+
+    const [tasks, runs] = await Promise.all([
+      ctx.db
+        .query("tasks")
+        .withIndex("by_team_environment", (q) =>
+          q.eq("teamId", teamId).eq("environmentId", args.id),
+        )
+        .collect(),
+      ctx.db
+        .query("taskRuns")
+        .withIndex("by_team_environment", (q) =>
+          q.eq("teamId", teamId).eq("environmentId", args.id),
+        )
+        .collect(),
+    ]);
+
+    for (const task of tasks) {
+      const project =
+        typeof task.projectFullName === "string"
+          ? task.projectFullName.trim()
+          : "";
+      if (project) {
+        repoNames.add(project);
+      }
+    }
+
+    for (const run of runs) {
+      if (!run.pullRequests) continue;
+      for (const pr of run.pullRequests) {
+        const repo =
+          typeof pr.repoFullName === "string"
+            ? pr.repoFullName.trim()
+            : "";
+        if (repo) {
+          repoNames.add(repo);
+        }
+      }
+    }
+
+    return Array.from(repoNames);
+  },
+});
+
 export const create = authMutation({
   args: {
     teamSlugOrId: v.string(),
