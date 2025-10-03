@@ -27,7 +27,8 @@ const DEFAULT_MONACO_LINE_HEIGHT = 20;
 const MONACO_VERTICAL_PADDING = 0;
 const CARD_HEADER_MAX_HEIGHT = 30;
 const MIN_EDITOR_LINE_FALLBACK = 4;
-const HIDDEN_REGION_PLACEHOLDER_HEIGHT = 24;
+const HIDDEN_REGION_BASE_PLACEHOLDER_HEIGHT = 20;
+const HIDDEN_REGION_PER_LINE_HEIGHT = 0.6;
 
 const HIDE_UNCHANGED_REGIONS_SETTINGS = {
   revealLineCount: 2,
@@ -41,6 +42,7 @@ type DiffSampleWithLayout = DiffSample & {
   visibleLineCount: number;
   limitedVisibleLineCount: number;
   collapsedRegionCount: number;
+  hiddenLineCount: number;
 };
 
 const newlinePattern = /\r?\n/;
@@ -62,6 +64,7 @@ type DiffBlock =
 type CollapsedLayoutEstimate = {
   visibleLineCount: number;
   collapsedRegionCount: number;
+  hiddenLineCount: number;
 };
 
 type EditorLayoutMetrics = {
@@ -69,25 +72,8 @@ type EditorLayoutMetrics = {
   limitedVisibleLineCount: number;
   collapsedRegionCount: number;
   editorMinHeight: number;
+  hiddenLineCount: number;
 };
-
-type EditorWhitespace = {
-  height: number;
-};
-
-function readEditorWhitespaces(
-  targetEditor: editor.IStandaloneCodeEditor,
-): EditorWhitespace[] {
-  const candidate = targetEditor as unknown as {
-    getWhitespaces?: () => EditorWhitespace[];
-  };
-
-  if (typeof candidate.getWhitespaces === "function") {
-    return candidate.getWhitespaces();
-  }
-
-  return [];
-}
 
 type DiffSegmentType = "equal" | "insert" | "delete";
 
@@ -277,6 +263,7 @@ function estimateCollapsedLayout(
     return {
       visibleLineCount: Math.max(config.minimumLineCount, MIN_EDITOR_LINE_FALLBACK),
       collapsedRegionCount: 0,
+      hiddenLineCount: 0,
     };
   }
 
@@ -296,11 +283,13 @@ function estimateCollapsedLayout(
     return {
       visibleLineCount,
       collapsedRegionCount: 0,
+      hiddenLineCount: 0,
     };
   }
 
   let visibleLineCount = 0;
   let collapsedRegionCount = 0;
+  let hiddenLineCount = 0;
 
   for (let index = 0; index < blocks.length; index += 1) {
     const block = blocks[index];
@@ -344,16 +333,21 @@ function estimateCollapsedLayout(
 
     if (displayedLines < blockLength) {
       collapsedRegionCount += 1;
+      hiddenLineCount += blockLength - displayedLines;
     }
   }
 
   visibleLineCount = Math.max(visibleLineCount, MIN_EDITOR_LINE_FALLBACK);
 
-  return { visibleLineCount, collapsedRegionCount };
+  return { visibleLineCount, collapsedRegionCount, hiddenLineCount };
 }
 
 function computeEditorLayoutMetrics(sample: DiffSample): EditorLayoutMetrics {
-  const { visibleLineCount, collapsedRegionCount } = estimateCollapsedLayout(
+  const {
+    visibleLineCount,
+    collapsedRegionCount,
+    hiddenLineCount,
+  } = estimateCollapsedLayout(
     sample.original,
     sample.modified,
     HIDE_UNCHANGED_REGIONS_SETTINGS,
@@ -368,13 +362,15 @@ function computeEditorLayoutMetrics(sample: DiffSample): EditorLayoutMetrics {
     limitedVisibleLineCount * DEFAULT_MONACO_LINE_HEIGHT + MONACO_VERTICAL_PADDING;
 
   const placeholderPortion =
-    collapsedRegionCount * HIDDEN_REGION_PLACEHOLDER_HEIGHT;
+    collapsedRegionCount * HIDDEN_REGION_BASE_PLACEHOLDER_HEIGHT +
+    hiddenLineCount * HIDDEN_REGION_PER_LINE_HEIGHT;
 
   return {
     visibleLineCount,
     limitedVisibleLineCount,
     collapsedRegionCount,
     editorMinHeight: lineHeightPortion + placeholderPortion,
+    hiddenLineCount,
   };
 }
 
@@ -384,6 +380,7 @@ function withLayout(sample: DiffSample): DiffSampleWithLayout {
     visibleLineCount,
     limitedVisibleLineCount,
     collapsedRegionCount,
+    hiddenLineCount,
   } = computeEditorLayoutMetrics(sample);
 
   return {
@@ -393,6 +390,7 @@ function withLayout(sample: DiffSample): DiffSampleWithLayout {
     visibleLineCount,
     limitedVisibleLineCount,
     collapsedRegionCount,
+    hiddenLineCount,
   };
 }
 
@@ -891,31 +889,6 @@ export function endTimer(label: string) {
 
 const diffSamplesWithLayout = diffSamples.map(withLayout);
 
-const diffSampleLayoutEstimates = diffSamplesWithLayout.reduce<
-  Record<
-    string,
-    {
-      visibleLineCount: number;
-      limitedVisibleLineCount: number;
-      collapsedRegionCount: number;
-      estimatedEditorMinHeight: number;
-      estimatedArticleMinHeight: number;
-    }
-  >
->((accumulator, sample) => {
-  accumulator[sample.filePath] = {
-    visibleLineCount: sample.visibleLineCount,
-    limitedVisibleLineCount: sample.limitedVisibleLineCount,
-    collapsedRegionCount: sample.collapsedRegionCount,
-    estimatedEditorMinHeight: sample.editorMinHeight,
-    estimatedArticleMinHeight: sample.articleMinHeight,
-  };
-
-  return accumulator;
-}, {});
-
-console.log("Diff sample layout estimates", diffSampleLayoutEstimates);
-
 export const Route = createFileRoute("/debug-monaco")({
   component: DebugMonacoPage,
 });
@@ -935,13 +908,10 @@ function DiffSampleCard({
   isEditorReady,
   onEditorMount,
 }: DiffSampleCardProps) {
-  const articleMinHeight = isEditorReady ? undefined : sample.articleMinHeight;
-  const editorMinHeight = isEditorReady ? undefined : sample.editorMinHeight;
-
   return (
     <article
       className="relative rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
-      style={{ minHeight: articleMinHeight }}
+      style={{ minHeight: sample.articleMinHeight }}
     >
       <header
         className="sticky top-0 z-10 flex items-center border-b border-neutral-200 bg-neutral-50 px-4 dark:border-neutral-800 dark:bg-neutral-950/40"
@@ -957,7 +927,7 @@ function DiffSampleCard({
       </header>
       <div
         className="flex-1 overflow-hidden rounded-b-lg"
-        style={{ minHeight: editorMinHeight }}
+        style={{ minHeight: sample.editorMinHeight }}
       >
         {isEditorReady ? (
           <DiffEditor
@@ -1041,16 +1011,6 @@ function DebugMonacoPage() {
           return;
         }
 
-        console.log(`Diff sample ${sample.filePath} estimated layout`, {
-          estimatedEditorMinHeight: sample.editorMinHeight,
-          estimatedArticleMinHeight: sample.articleMinHeight,
-          visibleLineCount: sample.visibleLineCount,
-          limitedVisibleLineCount: sample.limitedVisibleLineCount,
-          collapsedRegionCount: sample.collapsedRegionCount,
-          estimatedWhitespaceHeight:
-            sample.collapsedRegionCount * HIDDEN_REGION_PLACEHOLDER_HEIGHT,
-        });
-
         const disposables: Array<{ dispose: () => void }> = [];
 
         const computeHeight = (targetEditor: editor.IStandaloneCodeEditor) => {
@@ -1068,54 +1028,7 @@ function DebugMonacoPage() {
           return lineCount * lineHeight;
         };
 
-        const logGroundTruthHeights = () => {
-          const containerRect = container.getBoundingClientRect();
-          const originalContentHeight = originalEditor.getContentHeight();
-          const modifiedContentHeight = modifiedEditor.getContentHeight();
-
-          const originalWhitespaces = readEditorWhitespaces(originalEditor);
-          const modifiedWhitespaces = readEditorWhitespaces(modifiedEditor);
-          const originalWhitespaceTotalHeight = originalWhitespaces.reduce(
-            (total, zone) => total + zone.height,
-            0,
-          );
-          const modifiedWhitespaceTotalHeight = modifiedWhitespaces.reduce(
-            (total, zone) => total + zone.height,
-            0,
-          );
-
-          console.log(`Diff sample ${sample.filePath} ground truth heights`, {
-            containerHeight: containerRect.height,
-            originalContentHeight,
-            modifiedContentHeight,
-            originalWhitespaceHeights: originalWhitespaces.map((zone) => zone.height),
-            modifiedWhitespaceHeights: modifiedWhitespaces.map((zone) => zone.height),
-            originalWhitespaceTotalHeight,
-            modifiedWhitespaceTotalHeight,
-          });
-        };
-
-        let groundTruthTimeoutId: ReturnType<typeof setTimeout> | null = null;
-
-        const scheduleGroundTruthLog = () => {
-          if (groundTruthTimeoutId !== null) {
-            clearTimeout(groundTruthTimeoutId);
-          }
-
-          groundTruthTimeoutId = setTimeout(() => {
-            groundTruthTimeoutId = null;
-            logGroundTruthHeights();
-          }, 2000);
-        };
-
-        disposables.push({
-          dispose: () => {
-            if (groundTruthTimeoutId !== null) {
-              clearTimeout(groundTruthTimeoutId);
-              groundTruthTimeoutId = null;
-            }
-          },
-        });
+        container.style.minHeight = `${sample.editorMinHeight}px`;
 
         const applyLayout = () => {
           const height = Math.max(
@@ -1131,9 +1044,10 @@ function DebugMonacoPage() {
             modifiedInfo.width ||
             originalInfo.width;
 
-          if (containerWidth > 0 && height > 0) {
-            diffEditor.layout({ width: containerWidth, height });
-            scheduleGroundTruthLog();
+          const enforcedHeight = Math.max(sample.editorMinHeight, height);
+
+          if (containerWidth > 0 && enforcedHeight > 0) {
+            diffEditor.layout({ width: containerWidth, height: enforcedHeight });
           }
         };
 
