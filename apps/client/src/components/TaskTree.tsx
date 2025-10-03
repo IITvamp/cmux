@@ -572,7 +572,7 @@ function TaskRunTreeInner({
   );
   const shouldRenderPreviewLink = !hasDevError && previewServices.length > 0;
   const hasOpenWithActions = !hasEnvironmentError && openWithActions.length > 0;
-  const hasPortActions = !hasDevError && portActions.length > 0;
+  const hasPortActions = portActions.length > 0;
   const canCopyBranch = Boolean(copyRunBranch);
   const shouldShowCopyDivider =
     canCopyBranch && (hasOpenWithActions || hasPortActions);
