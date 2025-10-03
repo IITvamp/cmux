@@ -268,17 +268,14 @@ export const AgentLogo = memo(function AgentLogo({
   }
   if (vendor === "opencode") {
     return (
-      <svg viewBox="0 0 70 70" className={className} aria-hidden>
+      <svg viewBox="0 0 24 24" className={className} aria-hidden>
         <path
+          d="M2 5h9v14H2V5Zm6 4H5v6h3V9Z"
+          fill="currentColor"
           fillRule="evenodd"
           clipRule="evenodd"
-          d="M0 13H35V58H0V13ZM26.25 22.1957H8.75V48.701H26.25V22.1957Z"
-          fill="currentColor"
         />
-        <path
-          d="M43.75 13H70V22.1957H52.5V48.701H70V57.8967H43.75V13Z"
-          fill="currentColor"
-        />
+        <path d="M13 5h8v3h-5v8h5v3h-8V5Z" fill="currentColor" />
       </svg>
     );
   }

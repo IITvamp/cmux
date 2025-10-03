@@ -93,6 +93,8 @@ const EXACT_MATCHES = new Set([
   "pnpm-lock.yaml",
   "yarn.lock",
   "package-lock.json",
+  "bun.lock",
+  "bun.lockb",
   "Pipfile.lock",
   "poetry.lock",
   "Gemfile.lock",

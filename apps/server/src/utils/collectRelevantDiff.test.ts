@@ -35,6 +35,8 @@ describe("collectRelevantDiff", () => {
     writeFileSync(path.join(srcDir, "util.ts"), "export const x = 1;\n");
 
     writeFileSync(path.join(repoDir, "pnpm-lock.yaml"), "lock\n");
+    writeFileSync(path.join(repoDir, "bun.lock"), "lock\n");
+    writeFileSync(path.join(repoDir, "bun.lockb"), Buffer.alloc(10));
     mkdirSync(path.join(repoDir, "node_modules/pkg"), { recursive: true });
     writeFileSync(
       path.join(repoDir, "node_modules/pkg/index.js"),
@@ -49,6 +51,8 @@ describe("collectRelevantDiff", () => {
     expect(diff).toContain("src/app.ts");
     expect(diff).toContain("src/util.ts");
     expect(diff).not.toContain("pnpm-lock.yaml");
+    expect(diff).not.toContain("bun.lock");
+    expect(diff).not.toContain("bun.lockb");
     expect(diff).not.toContain("node_modules");
     expect(diff).not.toContain("dist/bundle.js");
     expect(diff).not.toContain("image.png");
