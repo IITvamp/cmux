@@ -96,6 +96,48 @@ function debugGitDiffViewerLog(
   }
 }
 
+function describeElement(element: Element | null):
+  | {
+      element: Element;
+      tag: string;
+      id?: string;
+      classList: string[];
+      dataset?: Record<string, string>;
+    }
+  | null {
+  if (!element) {
+    return null;
+  }
+
+  const base: {
+    element: Element;
+    tag: string;
+    id?: string;
+    classList: string[];
+    dataset?: Record<string, string>;
+  } = {
+    element,
+    tag: element.tagName.toLowerCase(),
+    classList: Array.from(element.classList),
+  };
+
+  if ("id" in element && element.id) {
+    base.id = element.id;
+  }
+
+  if (element instanceof HTMLElement) {
+    const datasetEntries = Object.entries(element.dataset).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    );
+
+    if (datasetEntries.length > 0) {
+      base.dataset = Object.fromEntries(datasetEntries);
+    }
+  }
+
+  return base;
+}
+
 function splitContentIntoLines(content: string): string[] {
   if (!content) {
     return [""];
@@ -454,9 +496,13 @@ function guessMonacoLanguage(filePath: string): string {
 
 function createDiffEditorMount({
   editorMinHeight,
+  filePath,
+  getVisibilityTarget,
   onReady,
 }: {
   editorMinHeight: number;
+  filePath: string;
+  getVisibilityTarget?: () => Element | null;
   onReady?: (args: {
     diffEditor: editor.IStandaloneDiffEditor;
     container: HTMLElement;
@@ -530,20 +576,25 @@ function createDiffEditorMount({
 
       const modifiedInfo = modifiedEditor.getLayoutInfo();
       const originalInfo = originalEditor.getLayoutInfo();
-      const containerWidth =
-        container.clientWidth ||
-        container.getBoundingClientRect().width ||
-        modifiedInfo.width ||
-        originalInfo.width;
+    const containerWidth =
+      container.clientWidth ||
+      container.getBoundingClientRect().width ||
+      modifiedInfo.width ||
+      originalInfo.width;
 
-      const enforcedHeight = Math.max(targetMinHeight, height);
+    const enforcedHeight = Math.max(targetMinHeight, height);
 
-      if (containerWidth > 0 && enforcedHeight > 0) {
-        diffEditor.layout({ width: containerWidth, height: enforcedHeight });
-      }
-    };
+    if (containerWidth > 0 && enforcedHeight > 0) {
+      diffEditor.layout({ width: containerWidth, height: enforcedHeight });
+    }
 
-    const showContainer = () => {
+    scheduleVisibilityEvaluation("layout");
+  };
+
+    const showContainer = (
+      reason?: string,
+      context?: Record<string, unknown>,
+    ) => {
       if (isContainerVisible) {
         return;
       }
@@ -551,9 +602,18 @@ function createDiffEditorMount({
       isContainerVisible = true;
       container.style.visibility = originalVisibility || "visible";
       container.style.transform = originalTransform || "";
+
+      debugGitDiffViewerLog("Monaco diff row visible", {
+        filePath,
+        reason: reason ?? "unspecified",
+        ...(context ?? {}),
+      });
     };
 
-    const hideContainer = () => {
+    const hideContainer = (
+      reason?: string,
+      context?: Record<string, unknown>,
+    ) => {
       if (!isContainerVisible) {
         return;
       }
@@ -561,6 +621,12 @@ function createDiffEditorMount({
       isContainerVisible = false;
       container.style.visibility = "hidden";
       container.style.transform = "translateX(100000px)";
+
+      debugGitDiffViewerLog("Monaco diff row hidden", {
+        filePath,
+        reason: reason ?? "unspecified",
+        ...(context ?? {}),
+      });
     };
 
     const applyTargetMinHeight = () => {
@@ -605,8 +671,82 @@ function createDiffEditorMount({
     }
 
     const intersectionAnchor = layoutAnchor ?? container;
+    const resolvedVisibilityTarget = getVisibilityTarget?.() ?? null;
     const intersectionTarget =
-      intersectionAnchor.closest("article") ?? intersectionAnchor;
+      resolvedVisibilityTarget ??
+      intersectionAnchor.closest("article") ??
+      intersectionAnchor;
+
+    debugGitDiffViewerLog("Configuring visibility observer", {
+      filePath,
+      anchor: describeElement(intersectionAnchor),
+      target: describeElement(intersectionTarget),
+      providedTarget: describeElement(resolvedVisibilityTarget),
+    });
+
+    let visibilityRafHandle: number | null = null;
+    let pendingVisibilityReason: string | null = null;
+
+    const evaluateVisibility = (reason: string) => {
+      if (!intersectionTarget) {
+        return;
+      }
+
+      const viewportHeight =
+        typeof window === "undefined"
+          ? 0
+          : window.innerHeight || document.documentElement.clientHeight || 0;
+
+      if (viewportHeight === 0) {
+        return;
+      }
+
+      const { top, bottom } = intersectionTarget.getBoundingClientRect();
+      const shouldHideEvaluated =
+        bottom < -INTERSECTION_VISIBILITY_MARGIN_PX ||
+        top > viewportHeight + INTERSECTION_VISIBILITY_MARGIN_PX;
+
+      const visibilityContext = {
+        top,
+        bottom,
+        viewportHeight,
+        reason,
+        source: "evaluate",
+        shouldHide: shouldHideEvaluated,
+      } satisfies Record<string, unknown>;
+
+      debugGitDiffViewerLog("Visibility evaluation", {
+        filePath,
+        isContainerVisible,
+        ...visibilityContext,
+      });
+
+      if (shouldHideEvaluated) {
+        hideContainer(`evaluate:${reason}`, visibilityContext);
+      } else {
+        showContainer(`evaluate:${reason}`, visibilityContext);
+      }
+    };
+
+    const scheduleVisibilityEvaluation = (reason: string) => {
+      if (typeof window === "undefined") {
+        evaluateVisibility(reason);
+        return;
+      }
+
+      pendingVisibilityReason = reason;
+
+      if (visibilityRafHandle !== null) {
+        return;
+      }
+
+      visibilityRafHandle = window.requestAnimationFrame(() => {
+        visibilityRafHandle = null;
+        const currentReason = pendingVisibilityReason ?? "raf";
+        pendingVisibilityReason = null;
+        evaluateVisibility(currentReason);
+      });
+    };
 
     const intersectionObserver =
       typeof IntersectionObserver === "undefined"
@@ -636,15 +776,42 @@ function createDiffEditorMount({
                   (isAboveViewport || isBelowViewport) &&
                   beyondMargin;
 
+                const visibilityContext = {
+                  top,
+                  bottom,
+                  viewportHeight,
+                  intersectionRatio: entry.intersectionRatio,
+                  isIntersecting: entry.isIntersecting,
+                  shouldHide,
+                } satisfies Record<string, unknown>;
+
+                debugGitDiffViewerLog("Intersection visibility update", {
+                  filePath,
+                  visibility: shouldHide ? "hidden" : "visible",
+                  isContainerVisible,
+                  ...visibilityContext,
+                });
+
                 if (shouldHide) {
-                  hideContainer();
+                  hideContainer("intersection-observer", visibilityContext);
                 } else {
-                  showContainer();
+                  showContainer(
+                    entry.isIntersecting
+                      ? "intersection-visible"
+                      : "intersection-margin",
+                    visibilityContext,
+                  );
 
                   if (entry.isIntersecting || entry.intersectionRatio > 0) {
                     applyLayout();
                   }
                 }
+
+                scheduleVisibilityEvaluation(
+                  shouldHide
+                    ? "intersection-hidden"
+                    : "intersection-visible",
+                );
               }
             },
             {
@@ -661,7 +828,34 @@ function createDiffEditorMount({
       disposables.push({ dispose: () => intersectionObserver.disconnect() });
     }
 
-    showContainer();
+    if (typeof window !== "undefined") {
+      const onScroll = () => {
+        scheduleVisibilityEvaluation("scroll");
+      };
+      const onResize = () => {
+        scheduleVisibilityEvaluation("resize");
+      };
+
+      window.addEventListener("scroll", onScroll, { passive: true });
+      window.addEventListener("resize", onResize);
+
+      disposables.push({
+        dispose: () => {
+          window.removeEventListener("scroll", onScroll);
+          window.removeEventListener("resize", onResize);
+
+          if (visibilityRafHandle !== null) {
+            window.cancelAnimationFrame(visibilityRafHandle);
+            visibilityRafHandle = null;
+          }
+
+          pendingVisibilityReason = null;
+        },
+      });
+    }
+
+    showContainer("initial-render");
+    scheduleVisibilityEvaluation("initial");
     disposables.push({
       dispose: () => {
         isContainerVisible = true;
@@ -780,6 +974,7 @@ function MonacoFileDiffRow({
 
   const diffControlsRef = useRef<DiffEditorControls | null>(null);
   const isExpandedRef = useRef(isExpanded);
+  const rowContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     isExpandedRef.current = isExpanded;
@@ -794,17 +989,22 @@ function MonacoFileDiffRow({
     () =>
       createDiffEditorMount({
         editorMinHeight,
+        filePath: file.filePath,
+        getVisibilityTarget: () => rowContainerRef.current,
         onReady: ({ controls }) => {
           diffControlsRef.current = controls;
           controls.updateTargetMinHeight(editorMinHeight);
           controls.updateCollapsedState(!isExpandedRef.current);
         },
       }),
-    [editorMinHeight],
+    [editorMinHeight, file.filePath],
   );
 
   return (
-    <div className={cn("bg-white dark:bg-neutral-900", classNames?.container)}>
+    <div
+      ref={rowContainerRef}
+      className={cn("bg-white dark:bg-neutral-900", classNames?.container)}
+    >
       <FileDiffHeader
         filePath={file.filePath}
         oldPath={file.oldPath}
