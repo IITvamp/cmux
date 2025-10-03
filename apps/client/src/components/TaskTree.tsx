@@ -190,7 +190,7 @@ function TaskTreeInner({
 
   const handleCopyDescription = useCallback(() => {
     if (navigator?.clipboard?.writeText) {
-      navigator.clipboard.writeText(task.text).catch(() => {});
+      navigator.clipboard.writeText(task.text).catch(() => { });
     }
   }, [task.text]);
 
@@ -526,20 +526,11 @@ function TaskRunTreeInner({
   ) : null;
 
   const environmentErrorMessages = useMemo(() => {
-    const environmentErrorDetails = run.environmentError;
-    if (!environmentErrorDetails) {
-      return [] as string[];
-    }
-    const messages: string[] = [];
-    const maintenanceMessage = environmentErrorDetails.maintenanceError?.trim();
-    if (maintenanceMessage) {
-      messages.push(`Maintenance script: ${maintenanceMessage}`);
-    }
-    const devMessage = environmentErrorDetails.devError?.trim();
-    if (devMessage) {
-      messages.push(`Dev script: ${devMessage}`);
-    }
-    return messages;
+    if (!run.environmentError) return [];
+    return [
+      run.environmentError.maintenanceError,
+      run.environmentError.devError,
+    ].filter((msg): msg is string => Boolean(msg));
   }, [run.environmentError]);
 
   const hasEnvironmentError = environmentErrorMessages.length > 0;
@@ -582,7 +573,7 @@ function TaskRunTreeInner({
   const shouldRenderDiffLink = true;
   const shouldRenderPullRequestLink = Boolean(
     (run.pullRequestUrl && run.pullRequestUrl !== "pending") ||
-      run.pullRequests?.some((pr) => pr.url)
+    run.pullRequests?.some((pr) => pr.url)
   );
   const shouldRenderPreviewLink = !hasEnvironmentError && previewServices.length > 0;
   const hasOpenWithActions = !hasEnvironmentError && openWithActions.length > 0;
@@ -790,7 +781,7 @@ function TaskRunDetails({
   const environmentErrorIndicator = hasEnvironmentError ? (
     <Tooltip delayDuration={0}>
       <TooltipTrigger asChild>
-        <AlertTriangle className="w-3 h-3 text-red-500" />
+        <AlertTriangle className="w-3 h-3 text-neutral-700" />
       </TooltipTrigger>
       <TooltipContent
         side="right"
@@ -798,12 +789,17 @@ function TaskRunDetails({
         className="max-w-sm p-3 z-[var(--z-overlay)]"
       >
         <div className="space-y-1.5">
-          <p className="font-medium text-sm text-red-500">Environment issue</p>
-          {environmentErrorMessages.map((message, index) => (
-            <p key={index} className="text-xs text-muted-foreground">
-              {message}
+          <p className="font-medium text-sm text-white">Environment issue</p>
+          {run.environmentError?.maintenanceError && (
+            <p className="text-xs text-muted-foreground">
+              Maintenance script: {run.environmentError.maintenanceError}
             </p>
-          ))}
+          )}
+          {run.environmentError?.devError && (
+            <p className="text-xs text-muted-foreground">
+              Dev script: {run.environmentError.devError}
+            </p>
+          )}
         </div>
       </TooltipContent>
     </Tooltip>

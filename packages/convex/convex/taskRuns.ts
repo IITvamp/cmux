@@ -1110,8 +1110,18 @@ export const updateEnvironmentError = authMutation({
       throw new Error("Task run not found or unauthorized");
     }
 
-    const maintenanceError = args.maintenanceError?.trim() || undefined;
-    const devError = args.devError?.trim() || undefined;
+    const MAX_ERROR_MESSAGE_CHARS = 2500;
+    const truncate = (msg: string | undefined) => {
+      if (!msg) return undefined;
+      const trimmed = msg.trim();
+      if (!trimmed) return undefined;
+      return trimmed.length > MAX_ERROR_MESSAGE_CHARS
+        ? `${trimmed.slice(0, MAX_ERROR_MESSAGE_CHARS)}…`
+        : trimmed;
+    };
+
+    const maintenanceError = truncate(args.maintenanceError);
+    const devError = truncate(args.devError);
 
     if (!maintenanceError && !devError) {
       await ctx.db.patch(args.id, {
