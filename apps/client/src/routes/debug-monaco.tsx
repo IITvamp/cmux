@@ -1054,27 +1054,24 @@ function DebugMonacoPage() {
           }
         };
 
-        const logVisibilityChange = (nextVisible: boolean) => {
-          if (isContainerVisible === nextVisible) {
+        const showContainer = () => {
+          if (isContainerVisible) {
             return;
           }
 
-          isContainerVisible = nextVisible;
-          console.log(
-            `[debug-monaco] ${sample.id} ${nextVisible ? "visible" : "hidden"}`,
-          );
-        };
-
-        const showContainer = () => {
+          isContainerVisible = true;
           container.style.visibility = originalVisibility || "visible";
           container.style.transform = originalTransform || "";
-          logVisibilityChange(true);
         };
 
         const hideContainer = () => {
+          if (!isContainerVisible) {
+            return;
+          }
+
+          isContainerVisible = false;
           container.style.visibility = "hidden";
           container.style.transform = "translateX(100000px)";
-          logVisibilityChange(false);
         };
 
         const observer =
