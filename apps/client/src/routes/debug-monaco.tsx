@@ -25,7 +25,7 @@ type DiffSample = {
 // Reserve space for Monaco before it initializes so layout does not jump.
 const DEFAULT_MONACO_LINE_HEIGHT = 20;
 const MONACO_VERTICAL_PADDING = 0;
-const CARD_HEADER_MIN_HEIGHT = 40;
+const CARD_HEADER_MAX_HEIGHT = 30;
 const MIN_EDITOR_LINE_FALLBACK = 4;
 const HIDDEN_REGION_PLACEHOLDER_HEIGHT = 24;
 
@@ -70,6 +70,24 @@ type EditorLayoutMetrics = {
   collapsedRegionCount: number;
   editorMinHeight: number;
 };
+
+type EditorWhitespace = {
+  height: number;
+};
+
+function readEditorWhitespaces(
+  targetEditor: editor.IStandaloneCodeEditor,
+): EditorWhitespace[] {
+  const candidate = targetEditor as unknown as {
+    getWhitespaces?: () => EditorWhitespace[];
+  };
+
+  if (typeof candidate.getWhitespaces === "function") {
+    return candidate.getWhitespaces();
+  }
+
+  return [];
+}
 
 type DiffSegmentType = "equal" | "insert" | "delete";
 
@@ -303,14 +321,13 @@ function estimateCollapsedLayout(
       index < blocks.length - 1 && blocks[index + 1]?.kind === "changed";
 
     let visibleBudget = 0;
-    const perSideAllowance = config.contextLineCount + config.revealLineCount;
 
     if (hasPreviousChange) {
-      visibleBudget += perSideAllowance;
+      visibleBudget += config.contextLineCount;
     }
 
     if (hasNextChange) {
-      visibleBudget += perSideAllowance;
+      visibleBudget += config.contextLineCount;
     }
 
     if (!hasPreviousChange && !hasNextChange) {
@@ -372,7 +389,7 @@ function withLayout(sample: DiffSample): DiffSampleWithLayout {
   return {
     ...sample,
     editorMinHeight,
-    articleMinHeight: editorMinHeight + CARD_HEADER_MIN_HEIGHT,
+    articleMinHeight: editorMinHeight + CARD_HEADER_MAX_HEIGHT,
     visibleLineCount,
     limitedVisibleLineCount,
     collapsedRegionCount,
@@ -926,7 +943,14 @@ function DiffSampleCard({
       className="relative rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
       style={{ minHeight: articleMinHeight }}
     >
-      <header className="sticky top-0 z-10 border-b border-neutral-200 bg-neutral-50 px-4 py-2 dark:border-neutral-800 dark:bg-neutral-950/40">
+      <header
+        className="sticky top-0 z-10 flex items-center border-b border-neutral-200 bg-neutral-50 px-4 dark:border-neutral-800 dark:bg-neutral-950/40"
+        style={{
+          height: CARD_HEADER_MAX_HEIGHT,
+          minHeight: CARD_HEADER_MAX_HEIGHT,
+          maxHeight: CARD_HEADER_MAX_HEIGHT,
+        }}
+      >
         <span className="font-mono text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
           {sample.filePath}
         </span>
@@ -1017,9 +1041,14 @@ function DebugMonacoPage() {
           return;
         }
 
-        console.log(`Diff sample ${sample.filePath} estimated heights`, {
+        console.log(`Diff sample ${sample.filePath} estimated layout`, {
           estimatedEditorMinHeight: sample.editorMinHeight,
           estimatedArticleMinHeight: sample.articleMinHeight,
+          visibleLineCount: sample.visibleLineCount,
+          limitedVisibleLineCount: sample.limitedVisibleLineCount,
+          collapsedRegionCount: sample.collapsedRegionCount,
+          estimatedWhitespaceHeight:
+            sample.collapsedRegionCount * HIDDEN_REGION_PLACEHOLDER_HEIGHT,
         });
 
         const disposables: Array<{ dispose: () => void }> = [];
@@ -1044,10 +1073,25 @@ function DebugMonacoPage() {
           const originalContentHeight = originalEditor.getContentHeight();
           const modifiedContentHeight = modifiedEditor.getContentHeight();
 
+          const originalWhitespaces = readEditorWhitespaces(originalEditor);
+          const modifiedWhitespaces = readEditorWhitespaces(modifiedEditor);
+          const originalWhitespaceTotalHeight = originalWhitespaces.reduce(
+            (total, zone) => total + zone.height,
+            0,
+          );
+          const modifiedWhitespaceTotalHeight = modifiedWhitespaces.reduce(
+            (total, zone) => total + zone.height,
+            0,
+          );
+
           console.log(`Diff sample ${sample.filePath} ground truth heights`, {
             containerHeight: containerRect.height,
             originalContentHeight,
             modifiedContentHeight,
+            originalWhitespaceHeights: originalWhitespaces.map((zone) => zone.height),
+            modifiedWhitespaceHeights: modifiedWhitespaces.map((zone) => zone.height),
+            originalWhitespaceTotalHeight,
+            modifiedWhitespaceTotalHeight,
           });
         };
 

@@ -631,6 +631,12 @@ function MonacoSingleBufferRoute() {
       minimap: { enabled: false },
       renderOverviewRuler: false,
       smoothScrolling: true,
+      hideUnchangedRegions: {
+        enabled: true,
+        revealLineCount: 2,
+        minimumLineCount: 6,
+        contextLineCount: 3,
+      },
       scrollbar: {
         useShadows: false,
         vertical: "auto",
