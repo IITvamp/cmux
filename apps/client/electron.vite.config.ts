@@ -8,14 +8,20 @@ import { fileURLToPath } from "node:url";
 import tsconfigPaths from "vite-tsconfig-paths";
 import { resolveWorkspacePackages } from "./electron-vite-plugin-resolve-workspace";
 
-function createExternalizeDepsPlugin(options?: Parameters<typeof externalizeDepsPlugin>[0]): PluginOption {
+function createExternalizeDepsPlugin(
+  options?: Parameters<typeof externalizeDepsPlugin>[0]
+): PluginOption {
   const plugin = externalizeDepsPlugin(options);
   if (typeof plugin === "object" && plugin !== null && !Array.isArray(plugin)) {
     const typedPlugin = plugin as Plugin & { exclude?: string[] };
     typedPlugin.name = "externalize-deps";
     const excludeOption = options?.exclude ?? [];
-    const normalizedExclude = Array.isArray(excludeOption) ? excludeOption : [excludeOption];
-    typedPlugin.exclude = normalizedExclude.filter((entry): entry is string => typeof entry === "string");
+    const normalizedExclude = Array.isArray(excludeOption)
+      ? excludeOption
+      : [excludeOption];
+    typedPlugin.exclude = normalizedExclude.filter(
+      (entry): entry is string => typeof entry === "string"
+    );
   }
   return plugin;
 }
@@ -86,6 +92,12 @@ export default defineConfig({
       alias: {
         "@": resolve("src"),
       },
+      // Dedupe so Monaco services (e.g. hoverService) are registered once
+      dedupe: ["monaco-editor"],
+    },
+    optimizeDeps: {
+      // Skip pre-bundling to avoid shipping a second Monaco runtime copy
+      exclude: ["monaco-editor"],
     },
     plugins: [
       tsconfigPaths(),

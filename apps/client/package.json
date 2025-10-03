@@ -24,7 +24,7 @@
     "publish:mac:workaround": "./publish-mac-run-workaround.sh",
     "dist": "node ./scripts/generate-icons.mjs && electron-builder",
     "lint": "eslint .",
-    "preview": "vite preview",
+    "preview": "vite preview --port 5173",
     "preview:electron": "electron-vite preview -c electron.vite.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "generate-routes": "tsr generate",
