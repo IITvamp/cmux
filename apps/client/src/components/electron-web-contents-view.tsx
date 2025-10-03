@@ -314,9 +314,17 @@ export function ElectronWebContentsView({
         if (typeof bridge.release === "function") {
           try {
             debugLog("requesting-release", { id, persistKey });
-            await bridge.release({ id, persist: true });
-            debugLog("release-requested", { id, persistKey });
-            return;
+            const result = await bridge.release({ id, persist: true });
+            const succeeded = result?.ok === true && result?.suspended === true;
+            if (succeeded) {
+              debugLog("release-requested", { id, persistKey });
+              return;
+            }
+            debugLog("release-declined", {
+              id,
+              persistKey,
+              result,
+            });
           } catch (err) {
             console.warn("Failed to release WebContentsView", err);
           }

@@ -387,6 +387,30 @@ function destroyView(id: number): boolean {
   return true;
 }
 
+function destroyConflictingEntries(
+  persistKey: string,
+  windowId: number,
+  logger: Logger,
+): void {
+  for (const entry of Array.from(viewEntries.values())) {
+    if (entry.persistKey !== persistKey) {
+      continue;
+    }
+    if (entry.ownerWindowId !== windowId) {
+      continue;
+    }
+
+    logger.warn("Destroying stale WebContentsView with duplicate persistKey", {
+      id: entry.id,
+      persistKey,
+      ownerWindowId: entry.ownerWindowId,
+      ownerWebContentsId: entry.ownerWebContentsId,
+      suspended: entry.suspended,
+    });
+    destroyView(entry.id);
+  }
+}
+
 function toBounds(bounds: Rectangle | undefined): Rectangle {
   if (!bounds) return { x: 0, y: 0, width: 0, height: 0 };
   return {
@@ -544,6 +568,18 @@ export function registerWebContentsViewHandlers({
               restored: true,
             };
           }
+
+          if (candidate && sameWindow && !(sameSender || canAdopt)) {
+            logger.warn("Unable to reattach WebContentsView despite matching persistKey", {
+              persistKey,
+              candidateId: candidate.id,
+              candidateOwnerWebContentsId: candidate.ownerWebContentsId,
+              requestWebContentsId: sender.id,
+              ownerDestroyed: candidate.ownerWebContentsDestroyed,
+            });
+          }
+
+          destroyConflictingEntries(persistKey, win.id, logger);
         }
 
         const view = new WebContentsView();
