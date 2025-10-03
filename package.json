@@ -46,7 +46,8 @@
   "overrides": {
     "node-abi": "^4.14.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "monaco-editor": "^0.53.0"
   },
   "workspaces": [
     "apps/*",
