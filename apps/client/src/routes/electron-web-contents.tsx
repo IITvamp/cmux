@@ -266,6 +266,7 @@ function SliderRow({
 
 interface BrowserTab {
   id: string;
+  persistKey: string;
   url: string;
   title: string;
 }
@@ -297,14 +298,22 @@ function deriveTabTitle(url: string): string {
   return url;
 }
 
-function createTab(url: string): BrowserTab {
+interface CreateTabOptions {
+  id?: string;
+  persistKey?: string;
+}
+
+function createTab(url: string, options?: CreateTabOptions): BrowserTab {
   const normalized = normalizeAddressInput(url);
-  const id =
+  const generatedId =
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random()}`;
+  const id = options?.id ?? generatedId;
+  const persistKey = options?.persistKey ?? id;
   return {
     id,
+    persistKey,
     url: normalized,
     title: deriveTabTitle(normalized),
   };
@@ -316,7 +325,12 @@ interface MiniBrowserProps {
 
 function MiniBrowser({ forceWebContentsView }: MiniBrowserProps) {
   const initialTabs = useMemo(() => {
-    const base = DEFAULT_TAB_URLS.map((url) => createTab(url));
+    const base = DEFAULT_TAB_URLS.map((url, index) =>
+      createTab(url, {
+        id: `electron-mini-browser-default-${index}`,
+        persistKey: `electron-mini-browser-default-${index}`,
+      }),
+    );
     return base.length > 0 ? base : [createTab("https://example.com/")];
   }, []);
 
@@ -487,7 +501,7 @@ function MiniBrowser({ forceWebContentsView }: MiniBrowserProps) {
             return (
               <PersistentWebView
                 key={tab.id}
-                persistKey={tab.id}
+                persistKey={tab.persistKey}
                 src={tab.url}
                 suspended={!isActive}
                 retainOnUnmount
