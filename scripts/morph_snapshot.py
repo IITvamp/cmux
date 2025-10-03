@@ -26,7 +26,6 @@ dotenv.load_dotenv()
 
 client = MorphCloudClient()
 
-
 # Morph snapshots run on x86_64 hardware; Docker plugins must match this arch
 MORPH_EXPECTED_UNAME_ARCH = "x86_64"
 DOCKER_COMPOSE_VERSION = "v2.32.2"
@@ -598,75 +597,55 @@ WantedBy=multi-user.target
         )
 
 
-def ensure_docker_cli_plugins() -> str:
-    """Return command string to install docker compose/buildx CLI plugins."""
-
-    compose_download = " ".join(
-        [
-            "curl",
-            "-fsSL",
-            f"https://github.com/docker/compose/releases/download/{DOCKER_COMPOSE_VERSION}/docker-compose-linux-{MORPH_EXPECTED_UNAME_ARCH}",
-            "-o",
-            "/usr/local/lib/docker/cli-plugins/docker-compose",
-        ]
-    )
-
-    buildx_download = " ".join(
-        [
-            "curl",
-            "-fsSL",
-            f"https://github.com/docker/buildx/releases/download/{DOCKER_BUILDX_VERSION}/buildx-{DOCKER_BUILDX_VERSION}.linux-amd64",
-            "-o",
-            "/usr/local/lib/docker/cli-plugins/docker-buildx",
-        ]
-    )
+def ensure_docker_cli_plugins(snapshot: Snapshot) -> Snapshot:
+    """Install docker compose/buildx CLI plugins and verify versions."""
 
     docker_plugin_cmds = [
         "mkdir -p /usr/local/lib/docker/cli-plugins",
         "arch=$(uname -m)",
         f'[ "$arch" = "{MORPH_EXPECTED_UNAME_ARCH}" ] || (echo "Morph snapshot architecture mismatch: expected {MORPH_EXPECTED_UNAME_ARCH} but got $arch" >&2; exit 1)',
-        compose_download,
+        f"curl -fsSL https://github.com/docker/compose/releases/download/{DOCKER_COMPOSE_VERSION}/docker-compose-linux-{MORPH_EXPECTED_UNAME_ARCH} "
+        f"-o /usr/local/lib/docker/cli-plugins/docker-compose",
         "chmod +x /usr/local/lib/docker/cli-plugins/docker-compose",
-        buildx_download,
+        f"curl -fsSL https://github.com/docker/buildx/releases/download/{DOCKER_BUILDX_VERSION}/buildx-{DOCKER_BUILDX_VERSION}.linux-amd64 "
+        f"-o /usr/local/lib/docker/cli-plugins/docker-buildx",
         "chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx",
         "docker compose version",
         "docker buildx version",
     ]
-    return " && ".join(docker_plugin_cmds)
+    return snapshot.exec(" && ".join(docker_plugin_cmds))
 
 
-def ensure_docker() -> str:
-    """Return command string to install Docker, docker compose, and enable BuildKit."""
-    daemon_config = '{"features":{"buildkit":true}}'
-    docker_ready_loop = "\n".join(
-        [
-            "for i in {1..30}; do",
-            "  if docker info >/dev/null 2>&1; then",
-            "    echo 'Docker ready'; break;",
-            "  else",
-            "    echo 'Waiting for Docker...';",
-            "    [ $i -eq 30 ] && { echo 'Docker failed to start after 30 attempts'; exit 1; };",
-            "    sleep 2;",
-            "  fi;",
-            "done",
-        ]
+def ensure_docker(snapshot: Snapshot) -> Snapshot:
+    """Install Docker, docker compose, and enable BuildKit."""
+    snapshot = snapshot.setup(
+        "DEBIAN_FRONTEND=noninteractive apt-get update && "
+        "DEBIAN_FRONTEND=noninteractive apt-get install -y "
+        "docker.io docker-compose python3-docker git curl && "
+        "rm -rf /var/lib/apt/lists/*"
     )
-
-    commands = [
-        "DEBIAN_FRONTEND=noninteractive apt-get update",
-        "DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io docker-compose python3-docker git curl",
-        "rm -rf /var/lib/apt/lists/*",
-        "mkdir -p /etc/docker",
-        f"echo {shlex.quote(daemon_config)} > /etc/docker/daemon.json",
-        "echo 'DOCKER_BUILDKIT=1' >> /etc/environment",
-        "systemctl restart docker",
-        docker_ready_loop,
-        "docker --version && docker-compose --version",
-        "(docker compose version 2>/dev/null || echo 'docker compose plugin not available')",
-        "echo 'Docker commands verified'",
-        "echo '::1       localhost' >> /etc/hosts",
-    ]
-    return " && ".join(commands)
+    snapshot = snapshot.exec(
+        "mkdir -p /etc/docker && "
+        'echo \'{"features":{"buildkit":true}}\' > /etc/docker/daemon.json && '
+        "echo 'DOCKER_BUILDKIT=1' >> /etc/environment && "
+        "systemctl restart docker && "
+        "for i in {1..30}; do "
+        "  if docker info >/dev/null 2>&1; then "
+        "    echo 'Docker ready'; break; "
+        "  else "
+        "    echo 'Waiting for Docker...'; "
+        "    [ $i -eq 30 ] && { echo 'Docker failed to start after 30 attempts'; exit 1; }; "
+        "    sleep 2; "
+        "  fi; "
+        "done && "
+        "docker --version && docker-compose --version && "
+        "(docker compose version 2>/dev/null || echo 'docker compose plugin not available') && "
+        "echo 'Docker commands verified'"
+    )
+    snapshot = ensure_docker_cli_plugins(snapshot)
+    # Ensure IPv6 localhost resolution
+    snapshot = snapshot.exec("echo '::1       localhost' >> /etc/hosts")
+    return snapshot
 
 
 def _file_sha256_hex(path: str) -> str:
@@ -687,24 +666,19 @@ def build_snapshot(
     vcpus = 8
     memory = 16384
     disk_size = 32768
-    digest_prefix = "cmux"
-    # Include lockfile hash to invalidate cache when dependencies change
-    lock_hash = _file_sha256_hex("bun.lock")[:16]
-    digest = f"{digest_prefix}_{vcpus}_{memory}_{disk_size}_{lock_hash}"
     snapshot = client.snapshots.create(
         vcpus=vcpus,
         memory=memory,
         disk_size=disk_size,
-        digest=digest,
+        digest=None,
     )
-    docker_commands = [ensure_docker(), ensure_docker_cli_plugins()]
-    snapshot = snapshot.exec(" && ".join(docker_commands))
+    snapshot = ensure_docker(snapshot)
     with open(dockerfile_path, "r", encoding="utf-8") as f:
         parser = DockerfileParser(f.read())
     executor = MorphDockerfileExecutor(snapshot)
     final_snapshot = executor.execute(parser.parse())
     # Ensure Morph-provisioned Docker CLI plugins are in place after Dockerfile commands.
-    final_snapshot = final_snapshot.exec(ensure_docker_cli_plugins())
+    final_snapshot = ensure_docker_cli_plugins(final_snapshot)
     return final_snapshot
 
 

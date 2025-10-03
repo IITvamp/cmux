@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import type {
   ElectronDevToolsMode,
   ElectronWebContentsEvent,
+  ElectronWebContentsSnapshot,
   ElectronWebContentsState,
 } from "../../src/types/electron-webcontents";
 import type {
@@ -209,6 +210,11 @@ const cmuxAPI = {
       ipcRenderer.invoke("cmux:webcontents:get-state", id) as Promise<{
         ok: boolean;
         state?: ElectronWebContentsState;
+      }>,
+    getAllStates: () =>
+      ipcRenderer.invoke("cmux:webcontents:get-all-states") as Promise<{
+        ok: boolean;
+        states?: ElectronWebContentsSnapshot[];
       }>,
     openDevTools: (id: number, options?: { mode?: ElectronDevToolsMode }) =>
       ipcRenderer.invoke("cmux:webcontents:open-devtools", {

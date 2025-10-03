@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { getTeamId } from "../_shared/team";
 import type { Doc } from "./_generated/dataModel";
-import { internalMutation } from "./_generated/server";
+import { internalMutation, internalQuery } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
 
 export const getReposByOrg = authQuery({
@@ -157,6 +157,18 @@ export const getBranchesByRepo = authQuery({
   },
 });
 
+export const hasReposForTeam = authQuery({
+  args: { teamSlugOrId: v.string() },
+  handler: async (ctx, { teamSlugOrId }) => {
+    const teamId = await getTeamId(ctx, teamSlugOrId);
+    const existing = await ctx.db
+      .query("repos")
+      .withIndex("by_team", (q) => q.eq("teamId", teamId))
+      .take(1);
+    return existing.length > 0;
+  },
+});
+
 // Provider connections for the current team (GitHub App installations mapped to this team)
 export const listProviderConnections = authQuery({
   args: { teamSlugOrId: v.string() },
@@ -276,6 +288,138 @@ export const updateRepoActivityFromWebhook = internalMutation({
 
     await ctx.db.patch(repo._id, patch);
     return { updated: true as const };
+  },
+});
+
+export const hasReposForTeamUser = internalQuery({
+  args: { teamId: v.string(), userId: v.string() },
+  handler: async (ctx, { teamId, userId }) => {
+    const existing = await ctx.db
+      .query("repos")
+      .withIndex("by_team_user", (q) => q.eq("teamId", teamId).eq("userId", userId))
+      .take(1);
+    return existing.length > 0;
+  },
+});
+
+export const syncReposForInstallation = internalMutation({
+  args: {
+    teamId: v.string(),
+    userId: v.string(),
+    connectionId: v.id("providerConnections"),
+    repos: v.array(
+      v.object({
+        fullName: v.string(),
+        org: v.string(),
+        name: v.string(),
+        gitRemote: v.string(),
+        providerRepoId: v.optional(v.number()),
+        ownerLogin: v.optional(v.string()),
+        ownerType: v.optional(
+          v.union(v.literal("User"), v.literal("Organization"))
+        ),
+        visibility: v.optional(
+          v.union(v.literal("public"), v.literal("private"))
+        ),
+        defaultBranch: v.optional(v.string()),
+        lastPushedAt: v.optional(v.number()),
+      })
+    ),
+  },
+  handler: async (ctx, { teamId, userId, connectionId, repos }) => {
+    if (repos.length === 0) {
+      return { inserted: 0, updated: 0 } as const;
+    }
+
+    const existing = await ctx.db
+      .query("repos")
+      .withIndex("by_team_user", (q) => q.eq("teamId", teamId).eq("userId", userId))
+      .collect();
+
+    const existingByFullName = new Map<string, Doc<"repos">>(
+      existing.map((repo) => [repo.fullName, repo])
+    );
+
+    const now = Date.now();
+
+    const { inserted, updated } = await Promise.all(
+      repos.map(async (repo) => {
+        const current = existingByFullName.get(repo.fullName);
+        if (!current) {
+          await ctx.db.insert("repos", {
+            fullName: repo.fullName,
+            org: repo.org,
+            name: repo.name,
+            gitRemote: repo.gitRemote,
+            provider: "github",
+            userId,
+            teamId,
+            providerRepoId: repo.providerRepoId,
+            ownerLogin: repo.ownerLogin,
+            ownerType: repo.ownerType,
+            visibility: repo.visibility,
+            defaultBranch: repo.defaultBranch,
+            lastPushedAt: repo.lastPushedAt,
+            lastSyncedAt: now,
+            connectionId,
+          });
+          return { inserted: 1, updated: 0 };
+        }
+
+        const patch: Partial<Doc<"repos">> = {};
+
+        if (!current.connectionId || current.connectionId !== connectionId) {
+          patch.connectionId = connectionId;
+        }
+        if (current.provider !== "github") {
+          patch.provider = "github";
+        }
+        if (
+          repo.providerRepoId !== undefined &&
+          current.providerRepoId !== repo.providerRepoId
+        ) {
+          patch.providerRepoId = repo.providerRepoId;
+        }
+        if (repo.ownerLogin && current.ownerLogin !== repo.ownerLogin) {
+          patch.ownerLogin = repo.ownerLogin;
+        }
+        if (repo.ownerType && current.ownerType !== repo.ownerType) {
+          patch.ownerType = repo.ownerType;
+        }
+        if (repo.visibility && current.visibility !== repo.visibility) {
+          patch.visibility = repo.visibility;
+        }
+        if (repo.defaultBranch && current.defaultBranch !== repo.defaultBranch) {
+          patch.defaultBranch = repo.defaultBranch;
+        }
+        if (
+          repo.lastPushedAt !== undefined &&
+          (current.lastPushedAt === undefined || repo.lastPushedAt > current.lastPushedAt)
+        ) {
+          patch.lastPushedAt = repo.lastPushedAt;
+        }
+        if ((current.lastSyncedAt ?? 0) < now) {
+          patch.lastSyncedAt = now;
+        }
+
+        if (Object.keys(patch).length > 0) {
+          await ctx.db.patch(current._id, patch);
+          return { inserted: 0, updated: 1 };
+        }
+
+        return { inserted: 0, updated: 0 };
+      })
+    ).then((results) =>
+      results.reduce(
+        (acc, result) => ({
+          inserted: acc.inserted + result.inserted,
+          updated: acc.updated + result.updated,
+        }),
+        { inserted: 0, updated: 0 }
+      )
+    );
+
+    return { inserted, updated };
   },
 });
 

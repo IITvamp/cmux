@@ -5,6 +5,7 @@ import type {
 import type {
   ElectronDevToolsMode,
   ElectronWebContentsEvent,
+  ElectronWebContentsSnapshot,
   ElectronWebContentsState,
 } from "./electron-webcontents";
 
@@ -72,6 +73,8 @@ interface CmuxWebContentsViewAPI {
   getState: (
     id: number
   ) => Promise<{ ok: boolean; state?: ElectronWebContentsState }>;
+  getAllStates: () =>
+    Promise<{ ok: boolean; states?: ElectronWebContentsSnapshot[] }>;
   openDevTools: (
     id: number,
     options?: { mode?: ElectronDevToolsMode }

@@ -133,29 +133,42 @@ export async function handleWorkerTaskCompletion(
       agentName: agentModel ?? runContext.agentModel ?? "cmux-agent",
     });
 
+    // Branch should already be created by startup commands
     let branchForCommit = info?.taskRun?.newBranch;
     if (!branchForCommit) {
+      // Fallback to current branch if newBranch not available
       branchForCommit = await getCurrentBranch();
-      if (!branchForCommit) {
-        const headCheck = await runGitCommand("git symbolic-ref -q HEAD", true);
-        if (!headCheck || headCheck.stdout.includes("fatal")) {
-          log("WARN", "Git HEAD is detached or not properly initialized", {
+      log("INFO", "[AUTOCOMMIT] Using current branch as newBranch not set", {
+        taskRunId,
+        currentBranch: branchForCommit,
+      });
+    } else {
+      // Verify we're on the expected branch
+      const currentBranch = await getCurrentBranch();
+      if (currentBranch !== branchForCommit) {
+        log("WARN", "[AUTOCOMMIT] Current branch differs from expected branch", {
+          taskRunId,
+          expectedBranch: branchForCommit,
+          currentBranch,
+        });
+        // Try to checkout to the expected branch
+        const checkoutResult = await runGitCommand(
+          `git checkout ${branchForCommit}`,
+          true,
+        );
+        if (checkoutResult && checkoutResult.exitCode === 0) {
+          log("INFO", "[AUTOCOMMIT] Checked out to expected branch", {
             taskRunId,
-            headStatus: headCheck?.stderr || "unknown",
+            branch: branchForCommit,
           });
-          if (info?.taskRun?.newBranch) {
-            const createBranch = await runGitCommand(
-              `git checkout -b ${info.taskRun.newBranch}`,
-              true,
-            );
-            if (createBranch && createBranch.stdout) {
-              branchForCommit = info.taskRun.newBranch;
-              log("INFO", "Created branch from task run info", {
-                branch: branchForCommit,
-                taskRunId,
-              });
-            }
-          }
+        } else {
+          log("WARN", "[AUTOCOMMIT] Failed to checkout to expected branch, will use current branch", {
+            taskRunId,
+            expectedBranch: branchForCommit,
+            currentBranch,
+            error: checkoutResult?.stderr,
+          });
+          branchForCommit = currentBranch;
         }
       }
     }
