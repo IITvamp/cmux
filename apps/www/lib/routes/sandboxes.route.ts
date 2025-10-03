@@ -144,59 +144,9 @@ sandboxesRouter.openapi(
     try {
       const convex = getConvex({ accessToken });
 
-      const environmentConvexId = body.environmentId
-        ? typedZid("environments").parse(body.environmentId)
+      const taskRunConvexId = body.taskRunId
+        ? typedZid("taskRuns").parse(body.taskRunId)
         : null;
-
-      const truncate = (value: string, maxLength = 1000): string => {
-        const trimmed = value.trim();
-        const normalized = trimmed.length > 0 ? trimmed : value;
-        return normalized.length > maxLength
-          ? `${normalized.slice(0, maxLength)}…`
-          : normalized;
-      };
-
-      const extractErrorMessage = (error: unknown): string => {
-        if (error instanceof Error && typeof error.message === "string") {
-          return truncate(error.message);
-        }
-        return truncate(String(error));
-      };
-
-      const recordEnvironmentError = async (params: {
-        maintenanceError?: string;
-        devError?: string;
-      }) => {
-        if (!environmentConvexId) {
-          return;
-        }
-        try {
-          await convex.mutation(api.environments.updateEnvironmentError, {
-            teamSlugOrId: body.teamSlugOrId,
-            id: environmentConvexId,
-            ...params,
-          });
-        } catch (mutationError) {
-          console.error(
-            "[sandboxes.start] Failed to record environment error",
-            mutationError
-          );
-        }
-      };
-
-      if (environmentConvexId) {
-        try {
-          await convex.mutation(api.environments.updateEnvironmentError, {
-            teamSlugOrId: body.teamSlugOrId,
-            id: environmentConvexId,
-          });
-        } catch (error) {
-          console.error(
-            "[sandboxes.start] Failed to reset environment error",
-            error
-          );
-        }
-      }
 
       const {
         team,
@@ -247,7 +197,7 @@ sandboxesRouter.openapi(
       const vscodeService = exposed.find((s) => s.port === 39378);
       const workerService = exposed.find((s) => s.port === 39377);
       if (!vscodeService || !workerService) {
-        await instance.stop().catch(() => {});
+        await instance.stop().catch(() => { });
         return c.text("VSCode or worker service not found", 500);
       }
 
@@ -264,7 +214,7 @@ sandboxesRouter.openapi(
       if (body.taskRunJwt) {
         envVarsToApply += `\nCMUX_TASK_RUN_JWT="${body.taskRunJwt}"`;
       }
-      
+
       // Apply all environment variables if any
       if (envVarsToApply.trim().length > 0) {
         try {
@@ -349,34 +299,55 @@ sandboxesRouter.openapi(
         });
       } catch (error) {
         console.error(`[sandboxes.start] Hydration failed:`, error);
-        await instance.stop().catch(() => {});
+        await instance.stop().catch(() => { });
         return c.text("Failed to hydrate sandbox", 500);
       }
 
+      let maintenanceError: string | undefined;
+      let devError: string | undefined;
+
       if (maintenanceScript) {
-        void (async () => {
-          try {
-            await runMaintenanceScript(instance, maintenanceScript);
-          } catch (error) {
-            console.error(`[sandboxes.start] Maintenance script failed:`, error);
-            await recordEnvironmentError({
-              maintenanceError: extractErrorMessage(error),
-            });
+        try {
+          const result = await runMaintenanceScript(instance, maintenanceScript);
+          if (result.error) {
+            console.error(`[sandboxes.start] Maintenance script failed:`, result.error);
+            maintenanceError = result.error;
           }
-        })();
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.error(`[sandboxes.start] Maintenance script threw error:`, errorMessage);
+          maintenanceError = `Maintenance script execution failed: ${errorMessage}`;
+        }
       }
 
       if (devScript) {
-        void (async () => {
-          try {
-            await startDevScript(instance, devScript);
-          } catch (error) {
-            console.error(`[sandboxes.start] Dev script failed:`, error);
-            await recordEnvironmentError({
-              devError: extractErrorMessage(error),
-            });
+        try {
+          const result = await startDevScript(instance, devScript);
+          if (result.error) {
+            console.error(`[sandboxes.start] Dev script failed:`, result.error);
+            devError = result.error;
           }
-        })();
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.error(`[sandboxes.start] Dev script threw error:`, errorMessage);
+          devError = `Dev script execution failed: ${errorMessage}`;
+        }
+      }
+
+      if (taskRunConvexId) {
+        try {
+          await convex.mutation(api.taskRuns.updateEnvironmentError, {
+            teamSlugOrId: body.teamSlugOrId,
+            id: taskRunConvexId,
+            maintenanceError: maintenanceError || undefined,
+            devError: devError || undefined,
+          });
+        } catch (mutationError) {
+          console.error(
+            "[sandboxes.start] Failed to record environment error to taskRun",
+            mutationError
+          );
+        }
       }
 
       await configureGitIdentityTask;
@@ -637,8 +608,8 @@ sandboxesRouter.openapi(
       const parsed =
         devcontainerJson.exit_code === 0
           ? (JSON.parse(devcontainerJson.stdout || "{}") as {
-              forwardPorts?: number[];
-            })
+            forwardPorts?: number[];
+          })
           : { forwardPorts: [] as number[] };
 
       const devcontainerPorts = Array.isArray(parsed.forwardPorts)

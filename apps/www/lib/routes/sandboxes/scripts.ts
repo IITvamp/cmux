@@ -53,34 +53,13 @@ if [ -f ${pidFile} ]; then
 fi
 `;
 
-const handleExecFailure = ({
-  context,
-  exitCode,
-  stdout,
-  stderr,
-}: {
-  context: string;
-  exitCode: number;
-  stdout?: string;
-  stderr?: string;
-}): never => {
-  const stderrPreview = previewOutput(stderr, 2000);
-  const stdoutPreview = previewOutput(stdout, 500);
-  const messageParts = [
-    `${context} failed with exit code ${exitCode}`,
-    stderrPreview ? `stderr: ${stderrPreview}` : null,
-    stdoutPreview ? `stdout: ${stdoutPreview}` : null,
-  ].filter((part): part is string => part !== null);
-  throw new Error(messageParts.join(" | "));
-};
-
 export const runMaintenanceScript = async (
   instance: MorphInstance,
   script: string | null | undefined
-): Promise<void> => {
+): Promise<{ error?: string }> => {
   const sanitized = sanitizeScript(script);
   if (!sanitized) {
-    return;
+    return {};
   }
 
   const maintenanceScriptPath = `${CMUX_RUNTIME_DIR}/maintenance-script.sh`;
@@ -91,25 +70,34 @@ cd ${WORKSPACE_ROOT}
 bash -eu -o pipefail ${maintenanceScriptPath}
 `;
 
-  const result = await instance.exec(`bash -lc ${singleQuote(command)}`);
+  try {
+    const result = await instance.exec(`bash -lc ${singleQuote(command)}`);
 
-  if (result.exit_code !== 0) {
-    handleExecFailure({
-      context: "Maintenance script",
-      exitCode: result.exit_code,
-      stdout: result.stdout,
-      stderr: result.stderr,
-    });
+    if (result.exit_code !== 0) {
+      const stderrPreview = previewOutput(result.stderr, 2000);
+      const stdoutPreview = previewOutput(result.stdout, 500);
+      const messageParts = [
+        `Maintenance script failed with exit code ${result.exit_code}`,
+        stderrPreview ? `stderr: ${stderrPreview}` : null,
+        stdoutPreview ? `stdout: ${stdoutPreview}` : null,
+      ].filter((part): part is string => part !== null);
+      return { error: messageParts.join(" | ") };
+    }
+
+    return {};
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return { error: `Maintenance script execution failed: ${errorMessage}` };
   }
 };
 
 export const startDevScript = async (
   instance: MorphInstance,
   script: string | null | undefined
-): Promise<void> => {
+): Promise<{ error?: string }> => {
   const sanitized = sanitizeScript(script);
   if (!sanitized) {
-    return;
+    return {};
   }
 
   const devScriptPath = `${CMUX_RUNTIME_DIR}/dev-script.sh`;
@@ -126,14 +114,48 @@ nohup bash -eu -o pipefail ${devScriptPath} > ${logFile} 2>&1 &
 echo $! > ${pidFile}
 `;
 
-  const result = await instance.exec(`bash -lc ${singleQuote(command)}`);
+  try {
+    const result = await instance.exec(`bash -lc ${singleQuote(command)}`);
 
-  if (result.exit_code !== 0) {
-    handleExecFailure({
-      context: "Dev script",
-      exitCode: result.exit_code,
-      stdout: result.stdout,
-      stderr: result.stderr,
-    });
+    if (result.exit_code !== 0) {
+      const stderrPreview = previewOutput(result.stderr, 2000);
+      const stdoutPreview = previewOutput(result.stdout, 500);
+      const messageParts = [
+        `Dev script failed to start with exit code ${result.exit_code}`,
+        stderrPreview ? `stderr: ${stderrPreview}` : null,
+        stdoutPreview ? `stdout: ${stdoutPreview}` : null,
+      ].filter((part): part is string => part !== null);
+      return { error: messageParts.join(" | ") };
+    }
+
+    // Check if the process started successfully and is still running
+    const checkCommand = `
+if [ -f ${pidFile} ]; then
+  PID=$(cat ${pidFile} 2>/dev/null || echo "")
+  if [ -n "\$PID" ]; then
+    sleep 0.5
+    if ! kill -0 \$PID 2>/dev/null; then
+      if [ -f ${logFile} ]; then
+        tail -n 50 ${logFile}
+      fi
+      exit 1
+    fi
+  fi
+fi
+`;
+
+    const checkResult = await instance.exec(`bash -c ${singleQuote(checkCommand)}`);
+
+    if (checkResult.exit_code !== 0) {
+      const logPreview = previewOutput(checkResult.stdout, 2000);
+      return {
+        error: `Dev script failed immediately after start${logPreview ? ` | log: ${logPreview}` : ""}`,
+      };
+    }
+
+    return {};
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return { error: `Dev script execution failed: ${errorMessage}` };
   }
 };

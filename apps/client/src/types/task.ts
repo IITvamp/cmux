@@ -3,12 +3,7 @@ import { type Doc } from "@cmux/convex/dataModel";
 export type RunEnvironmentSummary = Pick<
   Doc<"environments">,
   "_id" | "name" | "selectedRepos"
-> & {
-  environmentError?: {
-    maintenanceError?: string;
-    devError?: string;
-  } | null;
-};
+>;
 
 export interface TaskRunWithChildren extends Doc<"taskRuns"> {
   children: TaskRunWithChildren[];

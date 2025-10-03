@@ -66,49 +66,10 @@ function deriveGeneratedBranchName(branch?: string | null): string | undefined {
   return candidate || trimmed;
 }
 
-type EnvironmentErrorSummary = {
-  maintenanceError?: string;
-  devError?: string;
-};
-
 type EnvironmentSummary = Pick<
   Doc<"environments">,
   "_id" | "name" | "selectedRepos"
-> & {
-  environmentError?: EnvironmentErrorSummary;
-};
-
-const sanitizeEnvironmentError = (
-  input: Doc<"environments">["environmentError"] | undefined,
-): EnvironmentErrorSummary | undefined => {
-  if (!input) {
-    return undefined;
-  }
-
-  const trimOrUndefined = (value: string | undefined): string | undefined => {
-    if (!value) {
-      return undefined;
-    }
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : undefined;
-  };
-
-  const maintenanceError = trimOrUndefined(input.maintenanceError);
-  const devError = trimOrUndefined(input.devError);
-
-  if (!maintenanceError && !devError) {
-    return undefined;
-  }
-
-  const result: EnvironmentErrorSummary = {};
-  if (maintenanceError) {
-    result.maintenanceError = maintenanceError;
-  }
-  if (devError) {
-    result.devError = devError;
-  }
-  return result;
-};
+>;
 
 type TaskRunWithChildren = Doc<"taskRuns"> & {
   children: TaskRunWithChildren[];
@@ -152,7 +113,6 @@ async function fetchTaskRunsForTask(
         _id: environment._id,
         name: environment.name,
         selectedRepos: environment.selectedRepos,
-        environmentError: sanitizeEnvironmentError(environment.environmentError),
       });
     }
   }
@@ -1128,6 +1088,44 @@ export const updateNetworking = authMutation({
     }
     await ctx.db.patch(args.id, {
       networking: args.networking,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// Update environment error for a task run
+export const updateEnvironmentError = authMutation({
+  args: {
+    teamSlugOrId: v.string(),
+    id: v.id("taskRuns"),
+    maintenanceError: v.optional(v.string()),
+    devError: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = ctx.identity.subject;
+    const run = await ctx.db.get(args.id);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+
+    if (!run || run.teamId !== teamId || run.userId !== userId) {
+      throw new Error("Task run not found or unauthorized");
+    }
+
+    const maintenanceError = args.maintenanceError?.trim() || undefined;
+    const devError = args.devError?.trim() || undefined;
+
+    if (!maintenanceError && !devError) {
+      await ctx.db.patch(args.id, {
+        environmentError: undefined,
+        updatedAt: Date.now(),
+      });
+      return;
+    }
+
+    await ctx.db.patch(args.id, {
+      environmentError: {
+        ...(maintenanceError ? { maintenanceError } : {}),
+        ...(devError ? { devError } : {}),
+      },
       updatedAt: Date.now(),
     });
   },

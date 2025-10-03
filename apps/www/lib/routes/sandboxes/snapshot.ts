@@ -14,7 +14,6 @@ export interface SnapshotResolution {
   environmentDataVaultKey?: string;
   environmentMaintenanceScript?: string;
   environmentDevScript?: string;
-  environmentExposedPorts?: number[];
 }
 
 export const resolveTeamAndSnapshot = async ({
@@ -51,7 +50,6 @@ export const resolveTeamAndSnapshot = async ({
       environmentDataVaultKey: environmentDoc.dataVaultKey ?? undefined,
       environmentMaintenanceScript: environmentDoc.maintenanceScript ?? undefined,
       environmentDevScript: environmentDoc.devScript ?? undefined,
-      environmentExposedPorts: environmentDoc.exposedPorts ?? undefined,
     };
   }
 

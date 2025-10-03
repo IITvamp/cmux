@@ -525,8 +525,8 @@ function TaskRunTreeInner({
     </Tooltip>
   ) : null;
 
-  const environmentErrorDetails = run.environment?.environmentError;
   const environmentErrorMessages = useMemo(() => {
+    const environmentErrorDetails = run.environmentError;
     if (!environmentErrorDetails) {
       return [] as string[];
     }
@@ -540,35 +540,13 @@ function TaskRunTreeInner({
       messages.push(`Dev script: ${devMessage}`);
     }
     return messages;
-  }, [environmentErrorDetails]);
+  }, [run.environmentError]);
 
-  const environmentErrorIcon =
-    environmentErrorMessages.length > 0 ? (
-      <Tooltip delayDuration={0}>
-        <TooltipTrigger asChild>
-          <AlertTriangle className="w-3 h-3 text-red-500" />
-        </TooltipTrigger>
-        <TooltipContent
-          side="right"
-          sideOffset={6}
-          className="max-w-sm p-3 z-[var(--z-overlay)]"
-        >
-          <div className="space-y-1.5">
-            <p className="font-medium text-sm text-red-500">Environment issue</p>
-            {environmentErrorMessages.map((message, index) => (
-              <p key={index} className="text-xs text-muted-foreground">
-                {message}
-              </p>
-            ))}
-          </div>
-        </TooltipContent>
-      </Tooltip>
-    ) : null;
+  const hasEnvironmentError = environmentErrorMessages.length > 0;
 
-  const leadingContent = crownIcon || environmentErrorIcon ? (
+  const leadingContent = crownIcon ? (
     <div className="flex items-center gap-1">
       {crownIcon}
-      {environmentErrorIcon}
       {runLeadingIcon}
     </div>
   ) : (
@@ -606,9 +584,9 @@ function TaskRunTreeInner({
     (run.pullRequestUrl && run.pullRequestUrl !== "pending") ||
       run.pullRequests?.some((pr) => pr.url)
   );
-  const shouldRenderPreviewLink = previewServices.length > 0;
-  const hasOpenWithActions = openWithActions.length > 0;
-  const hasPortActions = portActions.length > 0;
+  const shouldRenderPreviewLink = !hasEnvironmentError && previewServices.length > 0;
+  const hasOpenWithActions = !hasEnvironmentError && openWithActions.length > 0;
+  const hasPortActions = !hasEnvironmentError && portActions.length > 0;
   const canCopyBranch = Boolean(copyRunBranch);
   const shouldShowCopyDivider =
     canCopyBranch && (hasOpenWithActions || hasPortActions);
@@ -724,7 +702,8 @@ function TaskRunTreeInner({
         hasActiveVSCode={hasActiveVSCode}
         hasChildren={hasChildren}
         shouldRenderPullRequestLink={shouldRenderPullRequestLink}
-        previewServices={previewServices}
+        previewServices={!hasEnvironmentError ? previewServices : []}
+        environmentErrorMessages={environmentErrorMessages}
       />
     </Fragment>
   );
@@ -738,6 +717,7 @@ interface TaskRunDetailLinkProps {
   indentLevel: number;
   className?: string;
   onClick?: (event: MouseEvent<HTMLAnchorElement>) => void;
+  trailing?: ReactNode;
 }
 
 function TaskRunDetailLink({
@@ -748,6 +728,7 @@ function TaskRunDetailLink({
   indentLevel,
   className,
   onClick,
+  trailing,
 }: TaskRunDetailLinkProps) {
   return (
     <Link
@@ -755,7 +736,7 @@ function TaskRunDetailLink({
       params={params}
       activeOptions={{ exact: true }}
       className={clsx(
-        "flex items-center px-2 py-1 text-xs rounded-md hover:bg-neutral-200/45 dark:hover:bg-neutral-800/45 cursor-default mt-px",
+        "flex items-center justify-between gap-2 px-2 py-1 text-xs rounded-md hover:bg-neutral-200/45 dark:hover:bg-neutral-800/45 cursor-default mt-px",
         "[&.active]:bg-neutral-200/75 dark:[&.active]:bg-neutral-800/65",
         "[&.active]:hover:bg-neutral-200/75 dark:[&.active]:hover:bg-neutral-800/65",
         className
@@ -763,8 +744,13 @@ function TaskRunDetailLink({
       style={{ paddingLeft: `${24 + indentLevel * 8}px` }}
       onClick={onClick}
     >
-      {icon}
-      <span className="text-neutral-600 dark:text-neutral-400">{label}</span>
+      <span className="flex min-w-0 items-center">
+        {icon}
+        <span className="text-neutral-600 dark:text-neutral-400">{label}</span>
+      </span>
+      {trailing ? (
+        <span className="ml-2 flex shrink-0 items-center">{trailing}</span>
+      ) : null}
     </Link>
   );
 }
@@ -779,6 +765,7 @@ interface TaskRunDetailsProps {
   hasChildren: boolean;
   shouldRenderPullRequestLink: boolean;
   previewServices: PreviewService[];
+  environmentErrorMessages: string[];
 }
 
 function TaskRunDetails({
@@ -791,12 +778,36 @@ function TaskRunDetails({
   hasChildren,
   shouldRenderPullRequestLink,
   previewServices,
+  environmentErrorMessages,
 }: TaskRunDetailsProps) {
   if (!isExpanded) {
     return null;
   }
 
   const indentLevel = level + 1;
+  const hasEnvironmentError = environmentErrorMessages.length > 0;
+
+  const environmentErrorIndicator = hasEnvironmentError ? (
+    <Tooltip delayDuration={0}>
+      <TooltipTrigger asChild>
+        <AlertTriangle className="w-3 h-3 text-red-500" />
+      </TooltipTrigger>
+      <TooltipContent
+        side="right"
+        sideOffset={6}
+        className="max-w-sm p-3 z-[var(--z-overlay)]"
+      >
+        <div className="space-y-1.5">
+          <p className="font-medium text-sm text-red-500">Environment issue</p>
+          {environmentErrorMessages.map((message, index) => (
+            <p key={index} className="text-xs text-muted-foreground">
+              {message}
+            </p>
+          ))}
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  ) : null;
 
   return (
     <Fragment>
@@ -809,6 +820,7 @@ function TaskRunDetails({
           }
           label="VS Code"
           indentLevel={indentLevel}
+          trailing={environmentErrorIndicator}
         />
       )}
 

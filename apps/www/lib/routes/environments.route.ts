@@ -62,12 +62,6 @@ const GetEnvironmentResponse = z
     description: z.string().optional(),
     maintenanceScript: z.string().optional(),
     devScript: z.string().optional(),
-    environmentError: z
-      .object({
-        devError: z.string(),
-        maintenanceError: z.string(),
-      })
-      .optional(),
     exposedPorts: z.array(z.number()).optional(),
     createdAt: z.number(),
     updatedAt: z.number(),
@@ -326,7 +320,6 @@ environmentsRouter.openapi(
         description: env.description,
         maintenanceScript: env.maintenanceScript,
         devScript: env.devScript,
-        environmentError: env.environmentError ?? undefined,
         exposedPorts: env.exposedPorts,
         createdAt: env.createdAt,
         updatedAt: env.updatedAt,
@@ -398,7 +391,6 @@ environmentsRouter.openapi(
         description: environment.description,
         maintenanceScript: environment.maintenanceScript,
         devScript: environment.devScript,
-        environmentError: environment.environmentError ?? undefined,
         exposedPorts: environment.exposedPorts,
         createdAt: environment.createdAt,
         updatedAt: environment.updatedAt,

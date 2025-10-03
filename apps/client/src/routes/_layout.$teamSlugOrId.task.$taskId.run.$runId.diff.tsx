@@ -54,12 +54,7 @@ type DiffControls = Parameters<
 type RunEnvironmentSummary = Pick<
   Doc<"environments">,
   "_id" | "name" | "selectedRepos"
-> & {
-  environmentError?: {
-    maintenanceError?: string;
-    devError?: string;
-  } | null;
-};
+>;
 
 type TaskRunWithChildren = Doc<"taskRuns"> & {
   children: TaskRunWithChildren[];
