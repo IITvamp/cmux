@@ -9,7 +9,9 @@ import type {
   ElectronDevToolsMode,
   ElectronWebContentsEvent,
   ElectronWebContentsState,
+  ElectronWebContentsSnapshot,
 } from "../../src/types/electron-webcontents";
+import type { WebContentsLayoutActualState } from "../../src/types/webcontents-debug";
 import { applyChromeCamouflage, type Logger } from "./chrome-camouflage";
 
 interface RegisterOptions {
@@ -82,7 +84,7 @@ function eventChannelFor(id: number): string {
 function sendEventToOwner(
   entry: Entry,
   payload: ElectronWebContentsEvent,
-  logger: Logger
+  logger: Logger,
 ) {
   const sender = entry.ownerSender;
   if (!sender || sender.isDestroyed()) {
@@ -193,7 +195,7 @@ function setupEventForwarders(entry: Entry, logger: Logger) {
     errorCode: number,
     errorDescription: string,
     validatedURL: string,
-    isMainFrame: boolean
+    isMainFrame: boolean,
   ) => {
     const payload: ElectronWebContentsEvent = {
       type: "load-failed",
@@ -287,7 +289,7 @@ function evictExcessSuspended(logger: Logger) {
 function suspendEntriesForDestroyedOwner(
   windowId: number,
   webContentsId: number,
-  logger: Logger
+  logger: Logger,
 ) {
   logger.log("Renderer destroyed; evaluating owned WebContentsViews", {
     windowId,
@@ -308,7 +310,7 @@ function suspendEntriesForDestroyedOwner(
         {
           id: entry.id,
           webContentsId: entry.view.webContents.id,
-        }
+        },
       );
       destroyView(entry.id);
       suspendedAny = true;
@@ -385,6 +387,30 @@ function destroyView(id: number): boolean {
   return true;
 }
 
+function destroyConflictingEntries(
+  persistKey: string,
+  windowId: number,
+  logger: Logger,
+): void {
+  for (const entry of Array.from(viewEntries.values())) {
+    if (entry.persistKey !== persistKey) {
+      continue;
+    }
+    if (entry.ownerWindowId !== windowId) {
+      continue;
+    }
+
+    logger.warn("Destroying stale WebContentsView with duplicate persistKey", {
+      id: entry.id,
+      persistKey,
+      ownerWindowId: entry.ownerWindowId,
+      ownerWebContentsId: entry.ownerWebContentsId,
+      suspended: entry.suspended,
+    });
+    destroyView(entry.id);
+  }
+}
+
 function toBounds(bounds: Rectangle | undefined): Rectangle {
   if (!bounds) return { x: 0, y: 0, width: 0, height: 0 };
   return {
@@ -402,7 +428,7 @@ function evaluateVisibility(bounds: Rectangle, explicit?: boolean): boolean {
 
 function applyBackgroundColor(
   view: Electron.WebContentsView,
-  color: string | undefined
+  color: string | undefined,
 ) {
   if (!color) return;
   try {
@@ -414,7 +440,7 @@ function applyBackgroundColor(
 
 function applyBorderRadius(
   view: Electron.WebContentsView,
-  radius: number | undefined
+  radius: number | undefined,
 ) {
   if (typeof radius !== "number" || Number.isNaN(radius)) return;
   const safe = Math.max(0, Math.round(radius));
@@ -476,7 +502,7 @@ export function registerWebContentsViewHandlers({
             } catch (error) {
               logger.error(
                 "Failed to reattach suspended WebContentsView",
-                error
+                error,
               );
               destroyView(candidate.id);
               throw error;
@@ -493,7 +519,7 @@ export function registerWebContentsViewHandlers({
                 {
                   error,
                   id: candidate.id,
-                }
+                },
               );
             }
 
@@ -542,6 +568,18 @@ export function registerWebContentsViewHandlers({
               restored: true,
             };
           }
+
+          if (candidate && sameWindow && !(sameSender || canAdopt)) {
+            logger.warn("Unable to reattach WebContentsView despite matching persistKey", {
+              persistKey,
+              candidateId: candidate.id,
+              candidateOwnerWebContentsId: candidate.ownerWebContentsId,
+              requestWebContentsId: sender.id,
+              ownerDestroyed: candidate.ownerWebContentsDestroyed,
+            });
+          }
+
+          destroyConflictingEntries(persistKey, win.id, logger);
         }
 
         const view = new WebContentsView();
@@ -569,7 +607,7 @@ export function registerWebContentsViewHandlers({
         } catch (error) {
           logger.warn(
             "Failed to set initial bounds for WebContentsView",
-            error
+            error,
           );
         }
 
@@ -578,7 +616,7 @@ export function registerWebContentsViewHandlers({
           logger.warn("WebContentsView initial load failed", {
             url: finalUrl,
             error,
-          })
+          }),
         );
 
         const id = nextViewId++;
@@ -624,7 +662,7 @@ export function registerWebContentsViewHandlers({
         logger.error("webcontents-view:create failed", error);
         throw error;
       }
-    }
+    },
   );
 
   ipcMain.handle(
@@ -649,7 +687,7 @@ export function registerWebContentsViewHandlers({
         entry.view.setVisible(false);
         return { ok: false, error: String(error) };
       }
-    }
+    },
   );
 
   ipcMain.handle(
@@ -676,7 +714,7 @@ export function registerWebContentsViewHandlers({
         logger.warn("Failed to load URL", { id, url, error });
         return { ok: false, error: String(error) };
       }
-    }
+    },
   );
 
   ipcMain.handle("cmux:webcontents:go-back", (event, id: number) => {
@@ -798,7 +836,7 @@ export function registerWebContentsViewHandlers({
       evictExcessSuspended(logger);
 
       return { ok: true, suspended: true };
-    }
+    },
   );
 
   ipcMain.handle("cmux:webcontents:destroy", (event, id: number) => {
@@ -832,7 +870,7 @@ export function registerWebContentsViewHandlers({
       applyBackgroundColor(entry.view, backgroundColor);
       applyBorderRadius(entry.view, borderRadius);
       return { ok: true };
-    }
+    },
   );
 
   ipcMain.handle("cmux:webcontents:get-state", (event, id: number) => {
@@ -846,6 +884,57 @@ export function registerWebContentsViewHandlers({
     const state = buildState(entry);
     if (!state) return { ok: false };
     return { ok: true, state };
+  });
+
+  ipcMain.handle("cmux:webcontents:get-all-states", (event) => {
+    const sender = event.sender;
+    const senderWindow = BrowserWindow.fromWebContents(sender);
+    const senderWindowId = senderWindow?.id ?? null;
+
+    const states: ElectronWebContentsSnapshot[] = [];
+
+    for (const entry of viewEntries.values()) {
+      const sameSender = entry.ownerWebContentsId === sender.id;
+      const suspendedForSender =
+        entry.ownerWebContentsDestroyed &&
+        senderWindowId === entry.ownerWindowId;
+      if (!sameSender && !suspendedForSender) {
+        continue;
+      }
+
+      if (sameSender) {
+        entry.ownerSender = sender;
+      }
+
+      let bounds: ElectronWebContentsSnapshot["bounds"] = null;
+      let visible: ElectronWebContentsSnapshot["visible"] = null;
+      try {
+        bounds = toBounds(entry.view.getBounds());
+      } catch {
+        bounds = null;
+      }
+      try {
+        visible = entry.view.getVisible();
+      } catch {
+        visible = null;
+      }
+
+      const state = buildState(entry);
+
+      states.push({
+        id: entry.id,
+        ownerWindowId: entry.ownerWindowId,
+        ownerWebContentsId: entry.ownerWebContentsId,
+        persistKey: entry.persistKey,
+        suspended: entry.suspended,
+        ownerWebContentsDestroyed: entry.ownerWebContentsDestroyed,
+        bounds,
+        visible,
+        state: state ?? null,
+      });
+    }
+
+    return { ok: true, states };
   });
 
   ipcMain.handle(
@@ -878,7 +967,7 @@ export function registerWebContentsViewHandlers({
         });
         return { ok: false, error: String(error) };
       }
-    }
+    },
   );
 
   ipcMain.handle("cmux:webcontents:close-devtools", (event, id: number) => {
@@ -901,4 +990,33 @@ export function registerWebContentsViewHandlers({
       return { ok: false, error: String(error) };
     }
   });
+}
+
+export function getWebContentsLayoutSnapshot(
+  id: number,
+): WebContentsLayoutActualState | null {
+  const entry = viewEntries.get(id);
+  if (!entry) return null;
+
+  try {
+    const rawBounds = entry.view.getBounds();
+    const normalized = toBounds(rawBounds);
+    const bounds = {
+      x: normalized.x,
+      y: normalized.y,
+      width: normalized.width,
+      height: normalized.height,
+    };
+
+    return {
+      bounds,
+      ownerWindowId: entry.ownerWindowId,
+      ownerWebContentsId: entry.ownerWebContentsId,
+      suspended: entry.suspended,
+      destroyed: entry.view.webContents.isDestroyed(),
+      visible: evaluateVisibility(normalized),
+    };
+  } catch {
+    return null;
+  }
 }
