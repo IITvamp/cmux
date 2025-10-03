@@ -335,19 +335,21 @@ sandboxesRouter.openapi(
       }
 
       if (taskRunConvexId && (maintenanceError || devError)) {
-        try {
-          await convex.mutation(api.taskRuns.updateEnvironmentError, {
-            teamSlugOrId: body.teamSlugOrId,
-            id: taskRunConvexId,
-            maintenanceError: maintenanceError || undefined,
-            devError: devError || undefined,
-          });
-        } catch (mutationError) {
-          console.error(
-            "[sandboxes.start] Failed to record environment error to taskRun",
-            mutationError
-          );
-        }
+        (async () => {
+          try {
+            await convex.mutation(api.taskRuns.updateEnvironmentError, {
+              teamSlugOrId: body.teamSlugOrId,
+              id: taskRunConvexId,
+              maintenanceError: maintenanceError || undefined,
+              devError: devError || undefined,
+            });
+          } catch (mutationError) {
+            console.error(
+              "[sandboxes.start] Failed to record environment error to taskRun",
+              mutationError
+            );
+          }
+        })();
       }
 
       await configureGitIdentityTask;
