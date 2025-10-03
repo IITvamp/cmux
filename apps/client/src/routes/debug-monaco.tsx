@@ -1012,6 +1012,9 @@ function DebugMonacoPage() {
         }
 
         const disposables: Array<{ dispose: () => void }> = [];
+        const originalVisibility = container.style.visibility;
+        const originalTransform = container.style.transform;
+        let isContainerVisible = container.style.visibility !== "hidden";
 
         const computeHeight = (targetEditor: editor.IStandaloneCodeEditor) => {
           const contentHeight = targetEditor.getContentHeight();
@@ -1051,6 +1054,29 @@ function DebugMonacoPage() {
           }
         };
 
+        const logVisibilityChange = (nextVisible: boolean) => {
+          if (isContainerVisible === nextVisible) {
+            return;
+          }
+
+          isContainerVisible = nextVisible;
+          console.log(
+            `[debug-monaco] ${sample.id} ${nextVisible ? "visible" : "hidden"}`,
+          );
+        };
+
+        const showContainer = () => {
+          container.style.visibility = originalVisibility || "visible";
+          container.style.transform = originalTransform || "";
+          logVisibilityChange(true);
+        };
+
+        const hideContainer = () => {
+          container.style.visibility = "hidden";
+          container.style.transform = "translateX(100000px)";
+          logVisibilityChange(false);
+        };
+
         const observer =
           typeof ResizeObserver === "undefined"
             ? null
@@ -1062,6 +1088,48 @@ function DebugMonacoPage() {
           observer.observe(container);
           disposables.push({ dispose: () => observer.disconnect() });
         }
+
+        const intersectionTarget = container.closest("article") ?? container;
+
+        const intersectionObserver =
+          typeof IntersectionObserver === "undefined"
+            ? null
+            : new IntersectionObserver(
+                (entries) => {
+                  for (const entry of entries) {
+                    if (entry.target !== intersectionTarget) {
+                      continue;
+                    }
+
+                    if (entry.isIntersecting) {
+                      showContainer();
+                      applyLayout();
+                    } else {
+                      hideContainer();
+                    }
+                  }
+                },
+                {
+                  threshold: 0.1,
+                },
+              );
+
+        if (intersectionObserver) {
+          intersectionObserver.observe(intersectionTarget);
+          disposables.push({
+            dispose: () => intersectionObserver.unobserve(intersectionTarget),
+          });
+          disposables.push({ dispose: () => intersectionObserver.disconnect() });
+        }
+
+        showContainer();
+        disposables.push({
+          dispose: () => {
+            isContainerVisible = true;
+            container.style.visibility = originalVisibility || "visible";
+            container.style.transform = originalTransform || "";
+          },
+        });
 
         const onOriginalContentChange = originalEditor.onDidChangeModelContent(
           () => {
