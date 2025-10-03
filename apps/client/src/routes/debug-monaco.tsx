@@ -15,6 +15,7 @@ const CARD_HEADER_MAX_HEIGHT = 30;
 const MIN_EDITOR_LINE_FALLBACK = 4;
 const HIDDEN_REGION_BASE_PLACEHOLDER_HEIGHT = 20;
 const HIDDEN_REGION_PER_LINE_HEIGHT = 0.6;
+const INTERSECTION_VISIBILITY_MARGIN_PX = 96;
 
 const HIDE_UNCHANGED_REGIONS_SETTINGS = {
   revealLineCount: 2,
@@ -586,21 +587,43 @@ function DebugMonacoPage() {
             ? null
             : new IntersectionObserver(
                 (entries) => {
+                  const viewportHeight =
+                    typeof window === "undefined"
+                      ? 0
+                      : window.innerHeight ||
+                        document.documentElement.clientHeight ||
+                        0;
+
                   for (const entry of entries) {
                     if (entry.target !== intersectionTarget) {
                       continue;
                     }
 
-                    if (entry.isIntersecting) {
-                      showContainer();
-                      applyLayout();
-                    } else {
+                    const { top, bottom } = entry.boundingClientRect;
+                    const isAboveViewport = bottom <= 0;
+                    const isBelowViewport = top >= viewportHeight;
+                    const beyondMargin =
+                      bottom < -INTERSECTION_VISIBILITY_MARGIN_PX ||
+                      top > viewportHeight + INTERSECTION_VISIBILITY_MARGIN_PX;
+                    const shouldHide =
+                      viewportHeight > 0 &&
+                      (isAboveViewport || isBelowViewport) &&
+                      beyondMargin;
+
+                    if (shouldHide) {
                       hideContainer();
+                    } else {
+                      showContainer();
+
+                      if (entry.isIntersecting || entry.intersectionRatio > 0) {
+                        applyLayout();
+                      }
                     }
                   }
                 },
                 {
-                  threshold: 0.1,
+                  threshold: 0,
+                  rootMargin: `${INTERSECTION_VISIBILITY_MARGIN_PX}px 0px ${INTERSECTION_VISIBILITY_MARGIN_PX}px 0px`,
                 },
               );
 

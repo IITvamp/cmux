@@ -778,7 +778,7 @@ function buildCombinedDiff(diffFiles: FileDiff[]): CombinedDiffOutput {
 
   let totalLines = 0;
 
-  groupedDiffFiles.forEach((fileDiff, fileIndex) => {
+  groupedDiffFiles.forEach((fileDiff) => {
     const startLineNumber = totalLines + 1;
     fileBoundaries.push({ filePath: fileDiff.filePath, startLineNumber });
 
@@ -821,13 +821,6 @@ function buildCombinedDiff(diffFiles: FileDiff[]): CombinedDiffOutput {
       }
     });
 
-    if (fileIndex < groupedDiffFiles.length - 1) {
-      originalLines.push("");
-      modifiedLines.push("");
-      originalNumbers.push(null);
-      modifiedNumbers.push(null);
-      totalLines += 1;
-    }
   });
 
   return {
@@ -1016,6 +1009,14 @@ function createUnifiedOverlay({
       }
 
       label.style.transform = `translateY(${y}px)`;
+      const boundary = boundaries[index];
+      if (boundary) {
+        console.debug("Unified overlay translateY", {
+          index,
+          filePath: boundary.filePath,
+          y,
+        });
+      }
     });
   };
 
@@ -1031,8 +1032,21 @@ function createUnifiedOverlay({
 
   const disposables: Disposable[] = [];
   editors.forEach((currentEditor) => {
+    const handleScrollChange: Parameters<editor.ICodeEditor["onDidScrollChange"]>[0] = (
+      event,
+    ) => {
+      console.debug("Unified overlay scroll", {
+        editorId: currentEditor.getId(),
+        scrollTop: event.scrollTop,
+        scrollTopChanged: event.scrollTopChanged,
+        scrollLeft: event.scrollLeft,
+        scrollLeftChanged: event.scrollLeftChanged,
+      });
+      scheduleUpdate();
+    };
+
     disposables.push(
-      currentEditor.onDidScrollChange(scheduleUpdate),
+      currentEditor.onDidScrollChange(handleScrollChange),
       currentEditor.onDidLayoutChange(scheduleUpdate),
       currentEditor.onDidContentSizeChange(scheduleUpdate),
     );
