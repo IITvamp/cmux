@@ -153,6 +153,10 @@ const convexSchema = defineSchema({
     updatedAt: v.number(),
     completedAt: v.optional(v.number()),
     exitCode: v.optional(v.number()),
+    environmentError: v.optional(v.object({
+      devError: v.string(),
+      maintenanceError: v.string(),
+    })),
     errorMessage: v.optional(v.string()), // Error message when run fails early
     userId: v.string(), // Link to user who created the run
     teamId: v.string(),
@@ -436,6 +440,12 @@ const convexSchema = defineSchema({
     description: v.optional(v.string()), // Optional description
     maintenanceScript: v.optional(v.string()),
     devScript: v.optional(v.string()),
+    environmentError: v.optional(
+      v.object({
+        devError: v.string(),
+        maintenanceError: v.string(),
+      })
+    ),
     exposedPorts: v.optional(v.array(v.number())),
     createdAt: v.number(),
     updatedAt: v.number(),

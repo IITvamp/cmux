@@ -6,6 +6,7 @@ import { verifyTeamAccess } from "@/lib/utils/team-verification";
 import { env } from "@/lib/utils/www-env";
 import { api } from "@cmux/convex/api";
 import { RESERVED_CMUX_PORT_SET } from "@cmux/shared/utils/reserved-cmux-ports";
+import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { MorphCloudClient } from "morphcloud";
@@ -142,6 +143,60 @@ sandboxesRouter.openapi(
 
     try {
       const convex = getConvex({ accessToken });
+
+      const environmentConvexId = body.environmentId
+        ? typedZid("environments").parse(body.environmentId)
+        : null;
+
+      const truncate = (value: string, maxLength = 1000): string => {
+        const trimmed = value.trim();
+        const normalized = trimmed.length > 0 ? trimmed : value;
+        return normalized.length > maxLength
+          ? `${normalized.slice(0, maxLength)}…`
+          : normalized;
+      };
+
+      const extractErrorMessage = (error: unknown): string => {
+        if (error instanceof Error && typeof error.message === "string") {
+          return truncate(error.message);
+        }
+        return truncate(String(error));
+      };
+
+      const recordEnvironmentError = async (params: {
+        maintenanceError?: string;
+        devError?: string;
+      }) => {
+        if (!environmentConvexId) {
+          return;
+        }
+        try {
+          await convex.mutation(api.environments.updateEnvironmentError, {
+            teamSlugOrId: body.teamSlugOrId,
+            id: environmentConvexId,
+            ...params,
+          });
+        } catch (mutationError) {
+          console.error(
+            "[sandboxes.start] Failed to record environment error",
+            mutationError
+          );
+        }
+      };
+
+      if (environmentConvexId) {
+        try {
+          await convex.mutation(api.environments.updateEnvironmentError, {
+            teamSlugOrId: body.teamSlugOrId,
+            id: environmentConvexId,
+          });
+        } catch (error) {
+          console.error(
+            "[sandboxes.start] Failed to reset environment error",
+            error
+          );
+        }
+      }
 
       const {
         team,
@@ -299,23 +354,29 @@ sandboxesRouter.openapi(
       }
 
       if (maintenanceScript) {
-        try {
-          await runMaintenanceScript(instance, maintenanceScript);
-        } catch (error) {
-          console.error(`[sandboxes.start] Maintenance script failed:`, error);
-          await instance.stop().catch(() => {});
-          return c.text("Maintenance script failed", 500);
-        }
+        void (async () => {
+          try {
+            await runMaintenanceScript(instance, maintenanceScript);
+          } catch (error) {
+            console.error(`[sandboxes.start] Maintenance script failed:`, error);
+            await recordEnvironmentError({
+              maintenanceError: extractErrorMessage(error),
+            });
+          }
+        })();
       }
 
       if (devScript) {
-        try {
-          await startDevScript(instance, devScript);
-        } catch (error) {
-          console.error(`[sandboxes.start] Dev script failed:`, error);
-          await instance.stop().catch(() => {});
-          return c.text("Failed to start dev script", 500);
-        }
+        void (async () => {
+          try {
+            await startDevScript(instance, devScript);
+          } catch (error) {
+            console.error(`[sandboxes.start] Dev script failed:`, error);
+            await recordEnvironmentError({
+              devError: extractErrorMessage(error),
+            });
+          }
+        })();
       }
 
       await configureGitIdentityTask;

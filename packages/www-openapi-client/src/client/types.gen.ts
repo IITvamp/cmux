@@ -346,6 +346,10 @@ export type GetEnvironmentResponse = {
     description?: string;
     maintenanceScript?: string;
     devScript?: string;
+    environmentError?: {
+        devError: string;
+        maintenanceError: string;
+    };
     exposedPorts?: Array<number>;
     createdAt: number;
     updatedAt: number;

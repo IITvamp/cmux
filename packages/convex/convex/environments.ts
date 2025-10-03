@@ -174,6 +174,54 @@ export const updateExposedPorts = authMutation({
   },
 });
 
+export const updateEnvironmentError = authMutation({
+  args: {
+    teamSlugOrId: v.string(),
+    id: v.id("environments"),
+    maintenanceError: v.optional(v.string()),
+    devError: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+    const environment = await ctx.db.get(args.id);
+
+    if (!environment || environment.teamId !== teamId) {
+      throw new Error("Environment not found");
+    }
+
+    const hasErrorField =
+      args.maintenanceError !== undefined || args.devError !== undefined;
+
+    const patch: {
+      environmentError?: { devError: string; maintenanceError: string };
+      updatedAt: number;
+    } = {
+      updatedAt: Date.now(),
+    };
+
+    if (hasErrorField) {
+      const current = environment.environmentError ?? {
+        devError: "",
+        maintenanceError: "",
+      };
+      patch.environmentError = {
+        maintenanceError:
+          args.maintenanceError !== undefined
+            ? args.maintenanceError
+            : current.maintenanceError,
+        devError:
+          args.devError !== undefined ? args.devError : current.devError,
+      };
+    } else {
+      patch.environmentError = undefined;
+    }
+
+    await ctx.db.patch(args.id, patch);
+
+    return patch.environmentError ?? null;
+  },
+});
+
 export const remove = authMutation({
   args: {
     teamSlugOrId: v.string(),

@@ -17,6 +17,7 @@ import { Link, useLocation } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useQuery as useConvexQuery } from "convex/react";
 import {
+  AlertTriangle,
   Archive as ArchiveIcon,
   ArchiveRestore as ArchiveRestoreIcon,
   CheckCircle,
@@ -524,9 +525,50 @@ function TaskRunTreeInner({
     </Tooltip>
   ) : null;
 
-  const leadingContent = crownIcon ? (
+  const environmentErrorDetails = run.environment?.environmentError;
+  const environmentErrorMessages = useMemo(() => {
+    if (!environmentErrorDetails) {
+      return [] as string[];
+    }
+    const messages: string[] = [];
+    const maintenanceMessage = environmentErrorDetails.maintenanceError?.trim();
+    if (maintenanceMessage) {
+      messages.push(`Maintenance script: ${maintenanceMessage}`);
+    }
+    const devMessage = environmentErrorDetails.devError?.trim();
+    if (devMessage) {
+      messages.push(`Dev script: ${devMessage}`);
+    }
+    return messages;
+  }, [environmentErrorDetails]);
+
+  const environmentErrorIcon =
+    environmentErrorMessages.length > 0 ? (
+      <Tooltip delayDuration={0}>
+        <TooltipTrigger asChild>
+          <AlertTriangle className="w-3 h-3 text-red-500" />
+        </TooltipTrigger>
+        <TooltipContent
+          side="right"
+          sideOffset={6}
+          className="max-w-sm p-3 z-[var(--z-overlay)]"
+        >
+          <div className="space-y-1.5">
+            <p className="font-medium text-sm text-red-500">Environment issue</p>
+            {environmentErrorMessages.map((message, index) => (
+              <p key={index} className="text-xs text-muted-foreground">
+                {message}
+              </p>
+            ))}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    ) : null;
+
+  const leadingContent = crownIcon || environmentErrorIcon ? (
     <div className="flex items-center gap-1">
       {crownIcon}
+      {environmentErrorIcon}
       {runLeadingIcon}
     </div>
   ) : (

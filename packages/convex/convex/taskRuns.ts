@@ -66,10 +66,49 @@ function deriveGeneratedBranchName(branch?: string | null): string | undefined {
   return candidate || trimmed;
 }
 
+type EnvironmentErrorSummary = {
+  maintenanceError?: string;
+  devError?: string;
+};
+
 type EnvironmentSummary = Pick<
   Doc<"environments">,
   "_id" | "name" | "selectedRepos"
->;
+> & {
+  environmentError?: EnvironmentErrorSummary;
+};
+
+const sanitizeEnvironmentError = (
+  input: Doc<"environments">["environmentError"] | undefined,
+): EnvironmentErrorSummary | undefined => {
+  if (!input) {
+    return undefined;
+  }
+
+  const trimOrUndefined = (value: string | undefined): string | undefined => {
+    if (!value) {
+      return undefined;
+    }
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  };
+
+  const maintenanceError = trimOrUndefined(input.maintenanceError);
+  const devError = trimOrUndefined(input.devError);
+
+  if (!maintenanceError && !devError) {
+    return undefined;
+  }
+
+  const result: EnvironmentErrorSummary = {};
+  if (maintenanceError) {
+    result.maintenanceError = maintenanceError;
+  }
+  if (devError) {
+    result.devError = devError;
+  }
+  return result;
+};
 
 type TaskRunWithChildren = Doc<"taskRuns"> & {
   children: TaskRunWithChildren[];
@@ -113,6 +152,7 @@ async function fetchTaskRunsForTask(
         _id: environment._id,
         name: environment.name,
         selectedRepos: environment.selectedRepos,
+        environmentError: sanitizeEnvironmentError(environment.environmentError),
       });
     }
   }
