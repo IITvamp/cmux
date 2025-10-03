@@ -13,7 +13,10 @@ const sanitizeScript = (script: string | null | undefined): string | null => {
   return trimmed.length === 0 ? null : trimmed;
 };
 
-const previewOutput = (value: string | undefined, maxLength = 2000): string | null => {
+const previewOutput = (
+  value: string | undefined,
+  maxLength = 2000,
+): string | null => {
   if (!value) {
     return null;
   }
@@ -53,19 +56,17 @@ if [ -f ${pidFile} ]; then
 fi
 `;
 
-export const runMaintenanceScript = async (
-  instance: MorphInstance,
-  script: string | null | undefined
-): Promise<{ error?: string }> => {
-  const sanitized = sanitizeScript(script);
-  if (!sanitized) {
-    return {};
-  }
-
+export async function runMaintenanceScript({
+  instance,
+  script,
+}: {
+  instance: MorphInstance;
+  script: string;
+}): Promise<{ error: string | null }> {
   const maintenanceScriptPath = `${CMUX_RUNTIME_DIR}/maintenance-script.sh`;
   const command = `
 set -euo pipefail
-${buildScriptFileCommand(maintenanceScriptPath, sanitized)}
+${buildScriptFileCommand(maintenanceScriptPath, script)}
 cd ${WORKSPACE_ROOT}
 bash -eu -o pipefail ${maintenanceScriptPath}
 `;
@@ -84,22 +85,20 @@ bash -eu -o pipefail ${maintenanceScriptPath}
       return { error: messageParts.join(" | ") };
     }
 
-    return {};
+    return { error: null };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     return { error: `Maintenance script execution failed: ${errorMessage}` };
   }
-};
+}
 
-export const startDevScript = async (
-  instance: MorphInstance,
-  script: string | null | undefined
-): Promise<{ error?: string }> => {
-  const sanitized = sanitizeScript(script);
-  if (!sanitized) {
-    return {};
-  }
-
+export async function startDevScript({
+  instance,
+  script,
+}: {
+  instance: MorphInstance;
+  script: string;
+}): Promise<{ error: string | null }> {
   const devScriptPath = `${CMUX_RUNTIME_DIR}/dev-script.sh`;
   const pidFile = `${LOG_DIR}/dev-script.pid`;
   const logFile = `${LOG_DIR}/dev-script.log`;
@@ -108,7 +107,7 @@ export const startDevScript = async (
 set -euo pipefail
 mkdir -p ${LOG_DIR}
 ${ensurePidStoppedCommand(pidFile)}
-${buildScriptFileCommand(devScriptPath, sanitized)}
+${buildScriptFileCommand(devScriptPath, script)}
 cd ${WORKSPACE_ROOT}
 nohup bash -eu -o pipefail ${devScriptPath} > ${logFile} 2>&1 &
 echo $! > ${pidFile}
@@ -144,7 +143,9 @@ if [ -f ${pidFile} ]; then
 fi
 `;
 
-    const checkResult = await instance.exec(`bash -c ${singleQuote(checkCommand)}`);
+    const checkResult = await instance.exec(
+      `bash -c ${singleQuote(checkCommand)}`,
+    );
 
     if (checkResult.exit_code !== 0) {
       const logPreview = previewOutput(checkResult.stdout, 2000);
@@ -153,9 +154,9 @@ fi
       };
     }
 
-    return {};
+    return { error: null };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     return { error: `Dev script execution failed: ${errorMessage}` };
   }
-};
+}
