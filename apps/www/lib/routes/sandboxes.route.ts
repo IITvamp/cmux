@@ -147,7 +147,8 @@ sandboxesRouter.openapi(
         team,
         resolvedSnapshotId,
         environmentDataVaultKey,
-        environment,
+        environmentMaintenanceScript,
+        environmentDevScript,
       } =
         await resolveTeamAndSnapshot({
           req: c.req.raw,
@@ -161,9 +162,8 @@ sandboxesRouter.openapi(
         ? loadEnvironmentEnvVars(environmentDataVaultKey)
         : Promise.resolve<string | null>(null);
 
-      const environmentMaintenanceScript =
-        environment?.maintenanceScript ?? null;
-      const environmentDevScript = environment?.devScript ?? null;
+      const maintenanceScript = environmentMaintenanceScript ?? null;
+      const devScript = environmentDevScript ?? null;
 
       const gitIdentityPromise = githubAccessTokenPromise.then(
         ({ githubAccessToken }) => {
@@ -298,9 +298,9 @@ sandboxesRouter.openapi(
         return c.text("Failed to hydrate sandbox", 500);
       }
 
-      if (environmentMaintenanceScript) {
+      if (maintenanceScript) {
         try {
-          await runMaintenanceScript(instance, environmentMaintenanceScript);
+          await runMaintenanceScript(instance, maintenanceScript);
         } catch (error) {
           console.error(`[sandboxes.start] Maintenance script failed:`, error);
           await instance.stop().catch(() => {});
@@ -308,9 +308,9 @@ sandboxesRouter.openapi(
         }
       }
 
-      if (environmentDevScript) {
+      if (devScript) {
         try {
-          await startDevScript(instance, environmentDevScript);
+          await startDevScript(instance, devScript);
         } catch (error) {
           console.error(`[sandboxes.start] Dev script failed:`, error);
           await instance.stop().catch(() => {});
