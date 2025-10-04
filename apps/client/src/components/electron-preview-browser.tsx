@@ -379,7 +379,7 @@ export function ElectronPreviewBrowser({
               onMouseUp={handleInputMouseUp}
               onKeyDown={handleInputKeyDown}
               className="flex-1 bg-transparent text-[11px] text-neutral-900 outline-none placeholder:text-neutral-400 disabled:cursor-not-allowed disabled:text-neutral-400 dark:text-neutral-100 dark:placeholder:text-neutral-600"
-              placeholder="Enter a URL"
+              placeholder={committedUrl || "Enter a URL"}
               spellCheck={false}
               autoCapitalize="none"
               autoCorrect="off"
