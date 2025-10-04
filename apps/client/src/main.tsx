@@ -1,5 +1,6 @@
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
+import { isElectron } from "@/lib/electron";
 import { App } from "./app";
 
 import "./antd-overrides.css";
@@ -14,6 +15,20 @@ if (typeof window !== "undefined") {
   });
   window.addEventListener("unhandledrejection", (event) => {
     console.error("[UnhandledRejection]", event.reason ?? "Unknown rejection");
+  });
+}
+
+if (isElectron && typeof window !== "undefined" && typeof document !== "undefined") {
+  const preventAnchorDrag = (event: DragEvent) => {
+    const target = event.target;
+    if (target instanceof Element && target.closest("a")) {
+      event.preventDefault();
+    }
+  };
+
+  document.addEventListener("dragstart", preventAnchorDrag);
+  window.addEventListener("beforeunload", () => {
+    document.removeEventListener("dragstart", preventAnchorDrag);
   });
 }
 
