@@ -19,6 +19,7 @@ import {
 import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { createFakeConvexId } from "@/lib/fakeConvexId";
+import { teamSelectedProjectStorageKey } from "@/lib/storageKeys";
 import { branchesQueryOptions } from "@/queries/branches";
 import { api } from "@cmux/convex/api";
 import type { Doc, Id } from "@cmux/convex/dataModel";
@@ -45,9 +46,24 @@ function DashboardComponent() {
   const { theme } = useTheme();
   const { addTaskToExpand } = useExpandTasks();
 
+  const projectStorageKey = useMemo(
+    () => teamSelectedProjectStorageKey(teamSlugOrId),
+    [teamSlugOrId]
+  );
+
+  const readStoredProjects = useCallback((): string[] => {
+    try {
+      const stored = localStorage.getItem(projectStorageKey);
+      const parsed = stored ? JSON.parse(stored) : [];
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter((val): val is string => typeof val === "string");
+    } catch {
+      return [];
+    }
+  }, [projectStorageKey]);
+
   const [selectedProject, setSelectedProject] = useState<string[]>(() => {
-    const stored = localStorage.getItem("selectedProject");
-    return stored ? JSON.parse(stored) : [];
+    return readStoredProjects();
   });
   const [selectedBranch, setSelectedBranch] = useState<string[]>([]);
 
@@ -76,11 +92,15 @@ function DashboardComponent() {
     if (searchParams?.environmentId) {
       const val = `env:${searchParams.environmentId}`;
       setSelectedProject([val]);
-      localStorage.setItem("selectedProject", JSON.stringify([val]));
+      try {
+        localStorage.setItem(projectStorageKey, JSON.stringify([val]));
+      } catch {
+        // ignore storage write failures (e.g., Safari private mode)
+      }
       setIsCloudMode(true);
       localStorage.setItem("isCloudMode", JSON.stringify(true));
     }
-  }, [searchParams?.environmentId]);
+  }, [projectStorageKey, searchParams?.environmentId]);
 
   // Callback for task description changes
   const handleTaskDescriptionChange = useCallback((value: string) => {
@@ -108,7 +128,11 @@ function DashboardComponent() {
   const handleProjectChange = useCallback(
     (newProjects: string[]) => {
       setSelectedProject(newProjects);
-      localStorage.setItem("selectedProject", JSON.stringify(newProjects));
+      try {
+        localStorage.setItem(projectStorageKey, JSON.stringify(newProjects));
+      } catch {
+        // ignore storage write failures
+      }
       if (newProjects[0] !== selectedProject[0]) {
         setSelectedBranch([]);
       }
@@ -118,7 +142,7 @@ function DashboardComponent() {
         localStorage.setItem("isCloudMode", JSON.stringify(true));
       }
     },
-    [selectedProject]
+    [projectStorageKey, selectedProject]
   );
 
   // Callback for branch selection changes
@@ -536,10 +560,14 @@ function DashboardComponent() {
       // Always set the selected project when a default repo is provided
       // This ensures CLI-provided repos take precedence
       setSelectedProject([data.repoFullName]);
-      localStorage.setItem(
-        "selectedProject",
-        JSON.stringify([data.repoFullName])
-      );
+      try {
+        localStorage.setItem(
+          projectStorageKey,
+          JSON.stringify([data.repoFullName])
+        );
+      } catch {
+        // ignore storage write failures
+      }
 
       // Set the selected branch
       if (data.branch) {
@@ -552,7 +580,12 @@ function DashboardComponent() {
     return () => {
       socket.off("default-repo", handleDefaultRepo);
     };
-  }, [socket]);
+  }, [projectStorageKey, socket]);
+
+  useEffect(() => {
+    setSelectedProject(readStoredProjects());
+    setSelectedBranch([]);
+  }, [readStoredProjects]);
 
   // Global keydown handler for autofocus
   useEffect(() => {

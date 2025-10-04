@@ -12,6 +12,7 @@ import { convexQuery } from "@convex-dev/react-query";
 import { useQuery as useRQ } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { ArrowLeftRight, GitBranch } from "lucide-react";
+import { teamSelectedProjectStorageKey } from "@/lib/storageKeys";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -30,15 +31,29 @@ function DashboardDiffPage() {
   const router = useRouter();
   const { socket } = useSocket();
 
-  const [selectedProject, setSelectedProject] = useState<string | null>(() => {
+  const projectStorageKey = useMemo(
+    () => teamSelectedProjectStorageKey(teamSlugOrId),
+    [teamSlugOrId]
+  );
+
+  const readStoredProject = useCallback((): string | null => {
     try {
-      const stored = localStorage.getItem("selectedProject");
-      const parsed = stored ? (JSON.parse(stored) as string[]) : [];
-      return parsed[0] || null;
+      const stored = localStorage.getItem(projectStorageKey);
+      const parsed = stored ? JSON.parse(stored) : [];
+      if (!Array.isArray(parsed)) return null;
+      return (parsed[0] as string | undefined) || null;
     } catch {
       return null;
     }
+  }, [projectStorageKey]);
+
+  const [selectedProject, setSelectedProject] = useState<string | null>(() => {
+    return readStoredProject();
   });
+
+  useEffect(() => {
+    setSelectedProject(readStoredProject());
+  }, [readStoredProject]);
 
   useEffect(() => {
     if (selectedProject) return;
@@ -46,10 +61,14 @@ function DashboardDiffPage() {
       const data = payload as { repoFullName: string; branch?: string };
       if (!data || typeof data.repoFullName !== "string") return;
       setSelectedProject(data.repoFullName);
-      localStorage.setItem(
-        "selectedProject",
-        JSON.stringify([data.repoFullName])
-      );
+      try {
+        localStorage.setItem(
+          projectStorageKey,
+          JSON.stringify([data.repoFullName])
+        );
+      } catch {
+        // ignore storage write failures
+      }
     };
     // Rely on SocketProvider attaching a socket to window if available
     const w = window as unknown as {
@@ -65,7 +84,7 @@ function DashboardDiffPage() {
       };
     }
     return () => {};
-  }, [selectedProject]);
+  }, [projectStorageKey, selectedProject]);
 
   const isEnvironmentProject =
     !!selectedProject && selectedProject.startsWith("env:");
@@ -187,10 +206,14 @@ function DashboardDiffPage() {
           onChange={(vals) => {
             const v = vals[0];
             setSelectedProject(v ?? null);
-            localStorage.setItem(
-              "selectedProject",
-              JSON.stringify(v ? [v] : [])
-            );
+            try {
+              localStorage.setItem(
+                projectStorageKey,
+                JSON.stringify(v ? [v] : [])
+              );
+            } catch {
+              // ignore storage write failures
+            }
             // Clear refs when repo changes
             setSearch({ ref1: undefined, ref2: undefined });
           }}
