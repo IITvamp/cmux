@@ -3,8 +3,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { HeroUIProvider } from "@heroui/react";
 import { StackProvider, StackTheme } from "@stackframe/react";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Component, type ErrorInfo, type ReactNode, Suspense } from "react";
+import { Component, type ErrorInfo, type ReactNode, Suspense, useEffect } from "react";
 import { AntdProvider } from "./components/antd-provider";
+import { isElectron } from "./lib/electron";
 import { stackClientApp } from "./lib/stack";
 import { queryClient } from "./query-client";
 
@@ -13,6 +14,17 @@ interface ProvidersProps {
 }
 
 export function Providers({ children }: ProvidersProps) {
+  useEffect(() => {
+    if (!isElectron) return;
+    const handleDragStart = (e: DragEvent) => {
+      if (e.target instanceof HTMLAnchorElement) {
+        e.preventDefault();
+      }
+    };
+    document.addEventListener('dragstart', handleDragStart);
+    return () => document.removeEventListener('dragstart', handleDragStart);
+  }, []);
+
   return (
     <ThemeProvider>
       <StackTheme>
