@@ -16,6 +16,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { authJsonQueryOptions } from "@/contexts/convex/authJsonQueryOptions";
 import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { createFakeConvexId } from "@/lib/fakeConvexId";
@@ -44,6 +45,7 @@ function DashboardComponent() {
   const { socket } = useSocket();
   const { theme } = useTheme();
   const { addTaskToExpand } = useExpandTasks();
+  const authJsonQuery = useQuery(authJsonQueryOptions());
 
   const [selectedProject, setSelectedProject] = useState<string[]>(() => {
     const stored = localStorage.getItem("selectedProject");
@@ -288,6 +290,19 @@ function DashboardComponent() {
       return;
     }
 
+    // Force refresh auth token before starting task to prevent token expiration errors
+    let freshAuthJson: string | undefined;
+    try {
+      const refreshResult = await authJsonQuery.refetch();
+      if (refreshResult.data) {
+        freshAuthJson = JSON.stringify(refreshResult.data);
+      }
+    } catch (error) {
+      console.error("Failed to refresh auth token:", error);
+      toast.error("Failed to refresh authentication. Please try again.");
+      return;
+    }
+
     // Use the effective selected branch (respects available branches and sensible defaults)
     const branch = effectiveSelectedBranch[0];
     const projectFullName = selectedProject[0];
@@ -377,6 +392,8 @@ function DashboardComponent() {
           ...(environmentId ? { environmentId } : {}),
           images: images.length > 0 ? images : undefined,
           theme,
+          // Include fresh auth JSON to prevent token expiration errors
+          ...(freshAuthJson ? { authJson: freshAuthJson } : {}),
         },
         (response) => {
           if ("error" in response) {
@@ -392,6 +409,7 @@ function DashboardComponent() {
       console.error("Error starting task:", error);
     }
   }, [
+    authJsonQuery,
     selectedProject,
     taskDescription,
     socket,

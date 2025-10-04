@@ -104,9 +104,11 @@ sandboxesRouter.openapi(
     if (!user) {
       return c.text("Unauthorized", 401);
     }
-    const { accessToken } = await user.getAuthJson();
+    // Get fresh auth JSON - Stack Auth will automatically refresh if expired
+    const authJson = await user.getAuthJson();
+    const { accessToken } = authJson;
     if (!accessToken) {
-      return c.text("Unauthorized", 401);
+      return c.text("Unauthorized - access token expired or invalid", 401);
     }
     const githubAccessTokenPromise = (async () => {
       const githubAccount = await user.getConnectedAccount("github");
@@ -116,6 +118,7 @@ sandboxesRouter.openapi(
           githubAccessToken: null,
         } as const;
       }
+      // Stack Auth automatically refreshes expired tokens when getAccessToken() is called
       const { accessToken: githubAccessToken } =
         await githubAccount.getAccessToken();
       if (!githubAccessToken) {

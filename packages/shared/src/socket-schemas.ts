@@ -47,6 +47,8 @@ export const StartTaskSchema = z.object({
     .optional(),
   theme: z.enum(["dark", "light", "system"]).optional(),
   environmentId: typedZid("environments").optional(),
+  // Fresh auth JSON to prevent token expiration errors
+  authJson: z.string().optional(),
 });
 
 // Server to Client Events

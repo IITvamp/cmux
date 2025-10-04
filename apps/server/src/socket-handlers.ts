@@ -78,6 +78,161 @@ export function setupSocketHandlers(
   let hasRefreshedGithub = false;
   let dockerEventsStarted = false;
 
+  // Helper function for start-task logic (extracted to support fresh token injection)
+  async function startTaskLogic(
+    taskData: z.infer<typeof StartTaskSchema>,
+    taskId: string,
+    callback: (response: unknown) => void,
+    safeTeam: string,
+    rt: RealtimeServer,
+    gitDiffManager: GitDiffManager,
+  ) {
+    try {
+      // For local mode, ensure Docker is running before attempting to spawn
+      if (!taskData.isCloudMode) {
+        try {
+          const { checkDockerStatus } = await import("@cmux/shared");
+          const docker = await checkDockerStatus();
+          if (!docker.isRunning) {
+            callback({
+              taskId,
+              error:
+                "Docker is not running. Please start Docker Desktop or switch to Cloud mode.",
+            });
+            return;
+          }
+        } catch (e) {
+          serverLogger.warn(
+            "Failed to verify Docker status before start-task",
+            e,
+          );
+          callback({
+            taskId,
+            error:
+              "Unable to verify Docker status. Ensure Docker is running or switch to Cloud mode.",
+          });
+          return;
+        }
+      }
+
+      // Generate PR title early from the task description
+      let generatedTitle: string | null = null;
+      try {
+        generatedTitle = await getPRTitleFromTaskDescription(
+          taskData.taskDescription,
+          safeTeam,
+        );
+        // Persist to Convex immediately
+        await getConvex().mutation(api.tasks.setPullRequestTitle, {
+          teamSlugOrId: safeTeam,
+          id: taskId,
+          pullRequestTitle: generatedTitle,
+        });
+        serverLogger.info(`[Server] Saved early PR title: ${generatedTitle}`);
+      } catch (e) {
+        serverLogger.error(
+          `[Server] Failed generating/saving early PR title:`,
+          e,
+        );
+      }
+
+      // Spawn all agents in parallel (each will create its own taskRun)
+      const agentResults = await spawnAllAgents(
+        taskId,
+        {
+          repoUrl: taskData.repoUrl,
+          branch: taskData.branch,
+          taskDescription: taskData.taskDescription,
+          prTitle: generatedTitle ?? undefined,
+          selectedAgents: taskData.selectedAgents,
+          isCloudMode: taskData.isCloudMode,
+          images: taskData.images,
+          theme: taskData.theme,
+          environmentId: taskData.environmentId,
+        },
+        safeTeam,
+      );
+
+      // Check if at least one agent spawned successfully
+      const successfulAgents = agentResults.filter(
+        (result) => result.success,
+      );
+      if (successfulAgents.length === 0) {
+        const errors = agentResults
+          .filter((r) => !r.success)
+          .map((r) => `${r.agentName}: ${r.error || "Unknown error"}`)
+          .join("; ");
+        callback({
+          taskId,
+          error: errors || "Failed to spawn any agents",
+        });
+        return;
+      }
+
+      // Log results for debugging
+      agentResults.forEach((result) => {
+        if (result.success) {
+          serverLogger.info(
+            `Successfully spawned ${result.agentName} with terminal ${result.terminalId}`,
+          );
+          if (result.vscodeUrl) {
+            serverLogger.info(
+              `VSCode URL for ${result.agentName}: ${result.vscodeUrl}`,
+            );
+          }
+        } else {
+          serverLogger.error(
+            `Failed to spawn ${result.agentName}: ${result.error}`,
+          );
+        }
+      });
+
+      // Return the first successful agent's info (you might want to modify this to return all)
+      const primaryAgent = successfulAgents[0];
+
+      // Emit VSCode URL if available
+      if (primaryAgent.vscodeUrl) {
+        rt.emit("vscode-spawned", {
+          instanceId: primaryAgent.terminalId,
+          url: primaryAgent.vscodeUrl.replace("/?folder=/root/workspace", ""),
+          workspaceUrl: primaryAgent.vscodeUrl,
+          provider: taskData.isCloudMode ? "morph" : "docker",
+        });
+      }
+
+      // Set up file watching for git changes (optional - don't fail if it doesn't work)
+      try {
+        void gitDiffManager.watchWorkspace(
+          primaryAgent.worktreePath,
+          (changedPath) => {
+            rt.emit("git-file-changed", {
+              workspacePath: primaryAgent.worktreePath,
+              filePath: changedPath,
+            });
+          },
+        );
+      } catch (error) {
+        serverLogger.warn(
+          "Could not set up file watching for workspace:",
+          error,
+        );
+        // Continue without file watching
+      }
+
+      callback({
+        taskId,
+        worktreePath: primaryAgent.worktreePath,
+        terminalId: primaryAgent.terminalId,
+      });
+    } catch (error) {
+      serverLogger.error("Error in start-task:", error);
+      callback({
+        taskId,
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
   rt.onConnection((socket) => {
     // Ensure every packet runs within the auth context associated with this socket
     const q = socket.handshake.query?.auth;
@@ -306,150 +461,29 @@ export function setupSocketHandlers(
       const taskData = taskDataParseResult.data;
       serverLogger.info("starting task!", taskData);
       const taskId = taskData.taskId;
-      try {
-        // For local mode, ensure Docker is running before attempting to spawn
-        if (!taskData.isCloudMode) {
-          try {
-            const { checkDockerStatus } = await import("@cmux/shared");
-            const docker = await checkDockerStatus();
-            if (!docker.isRunning) {
-              callback({
-                taskId,
-                error:
-                  "Docker is not running. Please start Docker Desktop or switch to Cloud mode.",
-              });
-              return;
-            }
-          } catch (e) {
-            serverLogger.warn(
-              "Failed to verify Docker status before start-task",
-              e,
-            );
-            callback({
-              taskId,
-              error:
-                "Unable to verify Docker status. Ensure Docker is running or switch to Cloud mode.",
+
+      // If fresh authJson is provided, use it instead of the socket handshake token
+      // This prevents token expiration errors when tasks are started long after socket connection
+      if (taskData.authJson) {
+        try {
+          const parsedAuthJson = JSON.parse(taskData.authJson);
+          const freshToken = parsedAuthJson.accessToken;
+          if (freshToken) {
+            serverLogger.info("[start-task] Using fresh auth token from request");
+            // The rest of the handler will run in the context of this fresh token
+            return await runWithAuth(freshToken, taskData.authJson, async () => {
+              // Continue with task start logic below
+              return await startTaskLogic(taskData, taskId, callback, safeTeam, rt, gitDiffManager);
             });
-            return;
           }
-        }
-
-        // Generate PR title early from the task description
-        let generatedTitle: string | null = null;
-        try {
-          generatedTitle = await getPRTitleFromTaskDescription(
-            taskData.taskDescription,
-            safeTeam,
-          );
-          // Persist to Convex immediately
-          await getConvex().mutation(api.tasks.setPullRequestTitle, {
-            teamSlugOrId: safeTeam,
-            id: taskId,
-            pullRequestTitle: generatedTitle,
-          });
-          serverLogger.info(`[Server] Saved early PR title: ${generatedTitle}`);
-        } catch (e) {
-          serverLogger.error(
-            `[Server] Failed generating/saving early PR title:`,
-            e,
-          );
-        }
-
-        // Spawn all agents in parallel (each will create its own taskRun)
-        const agentResults = await spawnAllAgents(
-          taskId,
-          {
-            repoUrl: taskData.repoUrl,
-            branch: taskData.branch,
-            taskDescription: taskData.taskDescription,
-            prTitle: generatedTitle ?? undefined,
-            selectedAgents: taskData.selectedAgents,
-            isCloudMode: taskData.isCloudMode,
-            images: taskData.images,
-            theme: taskData.theme,
-            environmentId: taskData.environmentId,
-          },
-          safeTeam,
-        );
-
-        // Check if at least one agent spawned successfully
-        const successfulAgents = agentResults.filter(
-          (result) => result.success,
-        );
-        if (successfulAgents.length === 0) {
-          const errors = agentResults
-            .filter((r) => !r.success)
-            .map((r) => `${r.agentName}: ${r.error || "Unknown error"}`)
-            .join("; ");
-          callback({
-            taskId,
-            error: errors || "Failed to spawn any agents",
-          });
-          return;
-        }
-
-        // Log results for debugging
-        agentResults.forEach((result) => {
-          if (result.success) {
-            serverLogger.info(
-              `Successfully spawned ${result.agentName} with terminal ${result.terminalId}`,
-            );
-            if (result.vscodeUrl) {
-              serverLogger.info(
-                `VSCode URL for ${result.agentName}: ${result.vscodeUrl}`,
-              );
-            }
-          } else {
-            serverLogger.error(
-              `Failed to spawn ${result.agentName}: ${result.error}`,
-            );
-          }
-        });
-
-        // Return the first successful agent's info (you might want to modify this to return all)
-        const primaryAgent = successfulAgents[0];
-
-        // Emit VSCode URL if available
-        if (primaryAgent.vscodeUrl) {
-          rt.emit("vscode-spawned", {
-            instanceId: primaryAgent.terminalId,
-            url: primaryAgent.vscodeUrl.replace("/?folder=/root/workspace", ""),
-            workspaceUrl: primaryAgent.vscodeUrl,
-            provider: taskData.isCloudMode ? "morph" : "docker",
-          });
-        }
-
-        // Set up file watching for git changes (optional - don't fail if it doesn't work)
-        try {
-          void gitDiffManager.watchWorkspace(
-            primaryAgent.worktreePath,
-            (changedPath) => {
-              rt.emit("git-file-changed", {
-                workspacePath: primaryAgent.worktreePath,
-                filePath: changedPath,
-              });
-            },
-          );
         } catch (error) {
-          serverLogger.warn(
-            "Could not set up file watching for workspace:",
-            error,
-          );
-          // Continue without file watching
+          serverLogger.error("[start-task] Failed to parse fresh authJson:", error);
+          // Fall through to use socket handshake token
         }
-
-        callback({
-          taskId,
-          worktreePath: primaryAgent.worktreePath,
-          terminalId: primaryAgent.terminalId,
-        });
-      } catch (error) {
-        serverLogger.error("Error in start-task:", error);
-        callback({
-          taskId,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
       }
+
+      // Use socket handshake token if no fresh token provided
+      return await startTaskLogic(taskData, taskId, callback, safeTeam, rt, gitDiffManager);
     });
 
     // Sync PR state (non-destructive): query GitHub and update Convex
