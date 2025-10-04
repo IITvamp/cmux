@@ -100,10 +100,27 @@ function DashboardComponent() {
     }),
     enabled: !!selectedProject[0] && !isEnvSelected,
   });
-  const branches = useMemo(
-    () => branchesQuery.data || [],
-    [branchesQuery.data]
-  );
+  const branchSummary = useMemo(() => {
+    const data = branchesQuery.data;
+    if (!data?.branches) {
+      return { names: [] as string[], defaultName: undefined as string | undefined };
+    }
+    const names = data.branches.map((branch) => branch.name);
+    const fromResponse = data.defaultBranch?.trim();
+    const flaggedDefault = data.branches.find((branch) => branch.isDefault)?.name;
+    const normalizedFromResponse =
+      fromResponse && names.includes(fromResponse) ? fromResponse : undefined;
+    const normalizedFlagged =
+      flaggedDefault && names.includes(flaggedDefault) ? flaggedDefault : undefined;
+
+    return {
+      names,
+      defaultName: normalizedFromResponse ?? normalizedFlagged,
+    };
+  }, [branchesQuery.data]);
+
+  const branchNames = branchSummary.names;
+  const remoteDefaultBranch = branchSummary.defaultName;
   // Callback for project selection changes
   const handleProjectChange = useCallback(
     (newProjects: string[]) => {
@@ -215,21 +232,24 @@ function DashboardComponent() {
   );
   const generateUploadUrl = useMutation(api.storage.generateUploadUrl);
 
-  const effectiveSelectedBranch = useMemo(
-    () =>
-      selectedBranch.length > 0
-        ? selectedBranch
-        : branches && branches.length > 0
-          ? [
-              branches.includes("main")
-                ? "main"
-                : branches.includes("master")
-                  ? "master"
-                  : branches[0],
-            ]
-          : [],
-    [selectedBranch, branches]
-  );
+  const effectiveSelectedBranch = useMemo(() => {
+    if (selectedBranch.length > 0) {
+      return selectedBranch;
+    }
+    if (branchNames.length === 0) {
+      return [];
+    }
+    const fallbackBranch = branchNames.includes("main")
+      ? "main"
+      : branchNames.includes("master")
+        ? "master"
+        : branchNames[0];
+    const preferredBranch =
+      remoteDefaultBranch && branchNames.includes(remoteDefaultBranch)
+        ? remoteDefaultBranch
+        : fallbackBranch;
+    return [preferredBranch];
+  }, [selectedBranch, branchNames, remoteDefaultBranch]);
 
   const handleStartTask = useCallback(async () => {
     // For local mode, perform a fresh docker check right before starting
@@ -492,7 +512,7 @@ function DashboardComponent() {
     return options;
   }, [reposByOrg, environmentsQuery.data]);
 
-  const branchOptions = branches || [];
+  const branchOptions = branchNames;
 
   // Cloud mode toggle handler
   const handleCloudModeToggle = useCallback(() => {

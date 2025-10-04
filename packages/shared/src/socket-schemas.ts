@@ -236,9 +236,19 @@ export const GitHubFetchBranchesSchema = z.object({
   repo: z.string(),
 });
 
+export const GitHubBranchSchema = z.object({
+  name: z.string(),
+  lastCommitSha: z.string().optional(),
+  lastActivityAt: z.number().optional(),
+  isDefault: z.boolean().optional(),
+  lastKnownBaseSha: z.string().optional(),
+  lastKnownMergeCommitSha: z.string().optional(),
+});
+
 export const GitHubBranchesResponseSchema = z.object({
   success: z.boolean(),
-  branches: z.array(z.string()),
+  branches: z.array(GitHubBranchSchema),
+  defaultBranch: z.string().optional(),
   error: z.string().optional(),
 });
 
@@ -393,6 +403,7 @@ export type ListFilesRequest = z.infer<typeof ListFilesRequestSchema>;
 export type FileInfo = z.infer<typeof FileInfoSchema>;
 export type ListFilesResponse = z.infer<typeof ListFilesResponseSchema>;
 export type VSCodeSpawned = z.infer<typeof VSCodeSpawnedSchema>;
+export type GitHubBranch = z.infer<typeof GitHubBranchSchema>;
 export type GitHubFetchBranches = z.infer<typeof GitHubFetchBranchesSchema>;
 export type GitHubBranchesResponse = z.infer<
   typeof GitHubBranchesResponseSchema
