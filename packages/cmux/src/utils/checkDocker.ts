@@ -1,7 +1,7 @@
 import { exec as childProcessExec } from "node:child_process";
 import { promisify } from "node:util";
 
-import { ensureDockerDaemonReady } from "@cmux/shared";
+import { ensureDockerDaemonReady } from "@cmux/shared/providers/common/check-docker";
 
 export type DockerStatus = "ok" | "not_installed" | "not_running";
 

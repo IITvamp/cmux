@@ -52,10 +52,6 @@ import {
   QWEN_OPENROUTER_CODER_FREE_CONFIG,
 } from "./providers/qwen/configs";
 
-export {
-  checkDockerStatus,
-  ensureDockerDaemonReady,
-} from "./providers/common/check-docker";
 export { checkGitStatus } from "./providers/common/check-git";
 
 export { type EnvironmentResult };
