@@ -232,6 +232,28 @@ export function TaskDetailHeader({
     [selectedRun?.newBranch],
   );
 
+  const environmentName = useMemo(() => {
+    const trimmedSelected = selectedRun?.environment?.name?.trim();
+    if (trimmedSelected) {
+      return trimmedSelected;
+    }
+    if (!taskRuns) {
+      return null;
+    }
+    const stack: TaskRunWithChildren[] = [...taskRuns];
+    while (stack.length > 0) {
+      const current = stack.pop()!;
+      const candidate = current.environment?.name?.trim();
+      if (candidate) {
+        return candidate;
+      }
+      if (current.children.length > 0) {
+        stack.push(...current.children);
+      }
+    }
+    return null;
+  }, [selectedRun, taskRuns]);
+
   const environmentRepos = useMemo<string[]>(() => {
     const repos = selectedRun?.environment?.selectedRepos ?? [];
     const trimmed = repos
@@ -239,6 +261,14 @@ export function TaskDetailHeader({
       .filter((repo): repo is string => Boolean(repo));
     return Array.from(new Set(trimmed));
   }, [selectedRun]);
+
+  const locationLabel = useMemo(() => {
+    if (environmentName) {
+      return environmentName;
+    }
+    const trimmedProject = task?.projectFullName?.trim();
+    return trimmedProject && trimmedProject.length > 0 ? trimmedProject : null;
+  }, [environmentName, task?.projectFullName]);
 
   const repoFullNames = useMemo(() => {
     const names = new Set<string>();
@@ -413,9 +443,9 @@ export function TaskDetailHeader({
             in
           </span>
 
-          {task?.projectFullName && (
+          {locationLabel && (
             <span className="font-mono text-neutral-600 dark:text-neutral-300 truncate min-w-0 max-w-[40%] whitespace-nowrap select-none text-[11px]">
-              {task.projectFullName}
+              {locationLabel}
             </span>
           )}
 

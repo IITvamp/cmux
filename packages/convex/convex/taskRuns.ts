@@ -76,6 +76,31 @@ type TaskRunWithChildren = Doc<"taskRuns"> & {
   environment: EnvironmentSummary | null;
 };
 
+function toEnvironmentSummary(
+  environment: Doc<"environments">,
+): EnvironmentSummary {
+  return {
+    _id: environment._id,
+    name: environment.name,
+    selectedRepos: environment.selectedRepos,
+  };
+}
+
+async function getEnvironmentSummary(
+  ctx: QueryCtx,
+  environmentId: Id<"environments"> | undefined,
+  teamId: string,
+): Promise<EnvironmentSummary | null> {
+  if (!environmentId) {
+    return null;
+  }
+  const environment = await ctx.db.get(environmentId);
+  if (!environment || environment.teamId !== teamId) {
+    return null;
+  }
+  return toEnvironmentSummary(environment);
+}
+
 async function fetchTaskRunsForTask(
   ctx: QueryCtx,
   teamId: string,
@@ -109,11 +134,10 @@ async function fetchTaskRunsForTask(
 
     for (const environment of environmentDocs) {
       if (!environment || environment.teamId !== teamId) continue;
-      environmentSummaries.set(environment._id, {
-        _id: environment._id,
-        name: environment.name,
-        selectedRepos: environment.selectedRepos,
-      });
+      environmentSummaries.set(
+        environment._id,
+        toEnvironmentSummary(environment),
+      );
     }
   }
 
@@ -423,17 +447,24 @@ export const get = authQuery({
     if (!doc || doc.teamId !== teamId || doc.userId !== userId) {
       return null;
     }
-    // Rewrite morph URLs in networking field
-    if (doc.networking) {
-      return {
-        ...doc,
-        networking: doc.networking.map((item) => ({
-          ...item,
-          url: rewriteMorphUrl(item.url),
-        })),
-      };
-    }
-    return doc;
+    const environment = await getEnvironmentSummary(
+      ctx,
+      doc.environmentId,
+      teamId,
+    );
+    const baseDoc = doc.networking
+      ? {
+          ...doc,
+          networking: doc.networking.map((item) => ({
+            ...item,
+            url: rewriteMorphUrl(item.url),
+          })),
+        }
+      : { ...doc };
+    return {
+      ...baseDoc,
+      environment,
+    };
   },
 });
 
@@ -447,17 +478,24 @@ export const subscribe = authQuery({
     if (!doc || doc.teamId !== teamId || doc.userId !== userId) {
       return null;
     }
-    // Rewrite morph URLs in networking field
-    if (doc.networking) {
-      return {
-        ...doc,
-        networking: doc.networking.map((item) => ({
-          ...item,
-          url: rewriteMorphUrl(item.url),
-        })),
-      };
-    }
-    return doc;
+    const environment = await getEnvironmentSummary(
+      ctx,
+      doc.environmentId,
+      teamId,
+    );
+    const baseDoc = doc.networking
+      ? {
+          ...doc,
+          networking: doc.networking.map((item) => ({
+            ...item,
+            url: rewriteMorphUrl(item.url),
+          })),
+        }
+      : { ...doc };
+    return {
+      ...baseDoc,
+      environment,
+    };
   },
 });
 

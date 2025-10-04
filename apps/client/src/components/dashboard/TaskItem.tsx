@@ -5,7 +5,7 @@ import { isFakeConvexId } from "@/lib/fakeConvexId";
 import { ContextMenu } from "@base-ui-components/react/context-menu";
 import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
-import type { RunEnvironmentSummary } from "@/types/task";
+import type { TaskRunWithChildren } from "@/types/task";
 import { useClipboard } from "@mantine/hooks";
 import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
@@ -36,43 +36,57 @@ export const TaskItem = memo(function TaskItem({
   // Mutation for toggling keep-alive status
   const toggleKeepAlive = useMutation(api.taskRuns.toggleKeepAlive);
 
-  // Find the latest task run with a VSCode instance
-  const getLatestVSCodeInstance = useCallback(() => {
-    if (!taskRunsQuery || taskRunsQuery.length === 0) return null;
-
-    // Define task run type with nested structure
-    interface TaskRunWithChildren extends Doc<"taskRuns"> {
-      children?: TaskRunWithChildren[];
-      environment?: RunEnvironmentSummary | null;
+  const flattenedRuns = useMemo<TaskRunWithChildren[]>(() => {
+    if (!taskRunsQuery || typeof taskRunsQuery === "string") {
+      return [];
     }
-
-    // Flatten all task runs (including children)
-    const allRuns: TaskRunWithChildren[] = [];
-    const flattenRuns = (runs: TaskRunWithChildren[]) => {
-      runs.forEach((run) => {
-        allRuns.push(run);
-        if (run.children) {
-          flattenRuns(run.children);
-        }
-      });
-    };
-    flattenRuns(taskRunsQuery);
-
-    // Find the most recent run with VSCode instance that's running or starting
-    const runWithVSCode = allRuns
-      .filter(
-        (run) =>
-          run.vscode &&
-          (run.vscode.status === "running" || run.vscode.status === "starting")
-      )
-      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
-
-    return runWithVSCode;
+    const stack = [...taskRunsQuery];
+    const result: TaskRunWithChildren[] = [];
+    while (stack.length > 0) {
+      const current = stack.pop()!;
+      result.push(current);
+      if (current.children.length > 0) {
+        stack.push(...current.children);
+      }
+    }
+    return result;
   }, [taskRunsQuery]);
 
-  const runWithVSCode = useMemo(
-    () => getLatestVSCodeInstance(),
-    [getLatestVSCodeInstance]
+  const runWithVSCode = useMemo(() => {
+    const candidates = flattenedRuns.filter(
+      (run) =>
+        run.vscode &&
+        (run.vscode.status === "running" || run.vscode.status === "starting"),
+    );
+    if (candidates.length === 0) {
+      return null;
+    }
+    candidates.sort((a, b) => b.createdAt - a.createdAt);
+    return candidates[0];
+  }, [flattenedRuns]);
+
+  const environmentName = useMemo(() => {
+    for (const run of flattenedRuns) {
+      const candidate = run.environment?.name?.trim();
+      if (candidate) {
+        return candidate;
+      }
+    }
+    return null;
+  }, [flattenedRuns]);
+
+  const repoShortName = useMemo(() => {
+    const fullName = task.projectFullName?.trim();
+    if (!fullName) {
+      return null;
+    }
+    const [, repo] = fullName.split("/");
+    return repo ?? fullName;
+  }, [task.projectFullName]);
+
+  const metadataLabel = environmentName ?? repoShortName;
+  const shouldShowBranch = Boolean(
+    task.baseBranch && task.baseBranch !== "main",
   );
   const hasActiveVSCode = runWithVSCode?.vscode?.status === "running";
 
@@ -169,19 +183,11 @@ export const TaskItem = memo(function TaskItem({
             />
             <div className="flex-1 min-w-0 flex items-center gap-2">
               <span className="text-[14px] truncate min-w-0">{task.text}</span>
-              {(task.projectFullName ||
-                (task.baseBranch && task.baseBranch !== "main")) && (
+              {(metadataLabel || shouldShowBranch) && (
                 <span className="text-[11px] text-neutral-400 dark:text-neutral-500 flex-shrink-0 ml-auto mr-0">
-                  {task.projectFullName && (
-                    <span>{task.projectFullName.split("/")[1]}</span>
-                  )}
-                  {task.projectFullName &&
-                    task.baseBranch &&
-                    task.baseBranch !== "main" &&
-                    "/"}
-                  {task.baseBranch && task.baseBranch !== "main" && (
-                    <span>{task.baseBranch}</span>
-                  )}
+                  {metadataLabel && <span>{metadataLabel}</span>}
+                  {metadataLabel && shouldShowBranch && "/"}
+                  {shouldShowBranch && <span>{task.baseBranch}</span>}
                 </span>
               )}
             </div>

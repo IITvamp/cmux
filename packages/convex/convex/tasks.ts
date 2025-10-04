@@ -1,9 +1,33 @@
 import { v } from "convex/values";
 import { resolveTeamIdLoose } from "../_shared/team";
 import { api } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
-import { internalQuery } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
+import { internalQuery, type QueryCtx } from "./_generated/server";
 import { authMutation, authQuery, taskIdWithFake } from "./users/utils";
+
+type EnvironmentSummary = Pick<
+  Doc<"environments">,
+  "_id" | "name" | "selectedRepos"
+>;
+
+async function getEnvironmentSummaryForTaskRun(
+  ctx: QueryCtx,
+  environmentId: Id<"environments"> | undefined,
+  teamId: string,
+): Promise<EnvironmentSummary | null> {
+  if (!environmentId) {
+    return null;
+  }
+  const environment = await ctx.db.get(environmentId);
+  if (!environment || environment.teamId !== teamId) {
+    return null;
+  }
+  return {
+    _id: environment._id,
+    name: environment.name,
+    selectedRepos: environment.selectedRepos,
+  };
+}
 
 export const get = authQuery({
   args: {
@@ -78,7 +102,9 @@ export const getTasksWithTaskRuns = authQuery({
           .filter((query) => query.eq(query.field("isCrowned"), true))
           .first();
 
-        let selectedTaskRun = crownedRun ?? null;
+        let selectedTaskRun:
+          | (Doc<"taskRuns"> & { environment?: EnvironmentSummary | null })
+          | null = crownedRun ?? null;
 
         if (!selectedTaskRun) {
           const [latestRun] = await ctx.db
@@ -87,6 +113,18 @@ export const getTasksWithTaskRuns = authQuery({
             .order("desc")
             .take(1);
           selectedTaskRun = latestRun ?? null;
+        }
+
+        if (selectedTaskRun) {
+          const environment = await getEnvironmentSummaryForTaskRun(
+            ctx,
+            selectedTaskRun.environmentId,
+            teamId,
+          );
+          selectedTaskRun = {
+            ...selectedTaskRun,
+            environment,
+          };
         }
 
         return {
