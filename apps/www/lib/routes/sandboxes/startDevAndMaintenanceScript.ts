@@ -2,7 +2,7 @@ import type { MorphInstance } from "./git";
 import { maskSensitive, singleQuote } from "./shell";
 
 const WORKSPACE_ROOT = "/root/workspace";
-const CMUX_RUNTIME_DIR = `${WORKSPACE_ROOT}/.cmux`;
+const CMUX_RUNTIME_DIR = "/var/tmp/cmux-scripts";
 const LOG_DIR = "/var/log/cmux";
 
 const previewOutput = (
