@@ -36,7 +36,11 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId/dashboard")({
 });
 
 // Default agents (not persisted to localStorage)
-const DEFAULT_AGENTS = ["claude/sonnet-4.5", "claude/opus-4.1", "codex/gpt-5-codex-high"];
+const DEFAULT_AGENTS = [
+  "claude/sonnet-4.5",
+  "claude/opus-4.1",
+  "codex/gpt-5-codex-high",
+];
 
 function DashboardComponent() {
   const { teamSlugOrId } = Route.useParams();
@@ -90,7 +94,7 @@ function DashboardComponent() {
   // Fetch branches for selected repo from Convex
   const isEnvSelected = useMemo(
     () => (selectedProject[0] || "").startsWith("env:"),
-    [selectedProject]
+    [selectedProject],
   );
 
   const branchesQuery = useQuery({
@@ -102,7 +106,7 @@ function DashboardComponent() {
   });
   const branches = useMemo(
     () => branchesQuery.data || [],
-    [branchesQuery.data]
+    [branchesQuery.data],
   );
   // Callback for project selection changes
   const handleProjectChange = useCallback(
@@ -118,7 +122,7 @@ function DashboardComponent() {
         localStorage.setItem("isCloudMode", JSON.stringify(true));
       }
     },
-    [selectedProject]
+    [selectedProject],
   );
 
   // Callback for branch selection changes
@@ -150,7 +154,7 @@ function DashboardComponent() {
   });
   const reposByOrg = useMemo(
     () => reposByOrgQuery.data || {},
-    [reposByOrgQuery.data]
+    [reposByOrgQuery.data],
   );
 
   // Socket-based functions to fetch data from GitHub
@@ -211,7 +215,7 @@ function DashboardComponent() {
           ...currentTasks,
         ]);
       }
-    }
+    },
   );
   const generateUploadUrl = useMutation(api.storage.generateUploadUrl);
 
@@ -220,15 +224,9 @@ function DashboardComponent() {
       selectedBranch.length > 0
         ? selectedBranch
         : branches && branches.length > 0
-          ? [
-              branches.includes("main")
-                ? "main"
-                : branches.includes("master")
-                  ? "master"
-                  : branches[0],
-            ]
+          ? [branches[0]] // Default branch is now sorted first by backend
           : [],
-    [selectedBranch, branches]
+    [selectedBranch, branches],
   );
 
   const handleStartTask = useCallback(async () => {
@@ -254,7 +252,9 @@ function DashboardComponent() {
       } else {
         // If socket is not connected, we can't verify Docker status
         console.error("Cannot verify Docker status: socket not connected");
-        toast.error("Cannot verify Docker status. Please ensure the server is running.");
+        toast.error(
+          "Cannot verify Docker status. Please ensure the server is running.",
+        );
         return;
       }
     }
@@ -313,8 +313,8 @@ function DashboardComponent() {
               fileName: image.fileName,
               altText: image.altText,
             };
-          }
-        )
+          },
+        ),
       );
 
       // Clear input after successful task creation
@@ -365,7 +365,7 @@ function DashboardComponent() {
           } else {
             console.log("Task started:", response);
           }
-        }
+        },
       );
       console.log("Task created:", taskId);
     } catch (error) {
@@ -417,7 +417,7 @@ function DashboardComponent() {
   // Format repos for multiselect
   // Fetch environments
   const environmentsQuery = useQuery(
-    convexQuery(api.environments.list, { teamSlugOrId })
+    convexQuery(api.environments.list, { teamSlugOrId }),
   );
 
   const projectOptions = useMemo(() => {
@@ -538,7 +538,7 @@ function DashboardComponent() {
       setSelectedProject([data.repoFullName]);
       localStorage.setItem(
         "selectedProject",
-        JSON.stringify([data.repoFullName])
+        JSON.stringify([data.repoFullName]),
       );
 
       // Set the selected branch
@@ -646,7 +646,7 @@ function DashboardComponent() {
 
   const lexicalBranch = useMemo(
     () => effectiveSelectedBranch[0],
-    [effectiveSelectedBranch]
+    [effectiveSelectedBranch],
   );
 
   const canSubmit = useMemo(() => {

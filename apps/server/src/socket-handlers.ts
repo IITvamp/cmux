@@ -625,26 +625,26 @@ export function setupSocketHandlers(
           const updatedRecords: StoredPullRequestInfo[] =
             existingRecords.length > 0
               ? existingRecords.map((record) =>
-                record.repoFullName === repoFullName
-                  ? {
-                    ...record,
+                  record.repoFullName === repoFullName
+                    ? {
+                        ...record,
+                        state: "merged",
+                        isDraft: false,
+                      }
+                    : record,
+                )
+              : [
+                  {
+                    repoFullName,
+                    url:
+                      run.pullRequestUrl && run.pullRequestUrl !== "pending"
+                        ? run.pullRequestUrl
+                        : undefined,
+                    number: run.pullRequestNumber ?? undefined,
                     state: "merged",
                     isDraft: false,
-                  }
-                  : record,
-              )
-              : [
-                {
-                  repoFullName,
-                  url:
-                    run.pullRequestUrl && run.pullRequestUrl !== "pending"
-                      ? run.pullRequestUrl
-                      : undefined,
-                  number: run.pullRequestNumber ?? undefined,
-                  state: "merged",
-                  isDraft: false,
-                },
-              ];
+                  },
+                ];
 
           await getConvex().mutation(api.taskRuns.updatePullRequestState, {
             teamSlugOrId: safeTeam,
@@ -1093,8 +1093,9 @@ export function setupSocketHandlers(
         serverLogger.error("Error fetching repos:", error);
         callback({
           success: false,
-          error: `Failed to fetch GitHub repos: ${error instanceof Error ? error.message : String(error)
-            }`,
+          error: `Failed to fetch GitHub repos: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
         });
       }
     });
@@ -1219,12 +1220,34 @@ Please address the issue mentioned in the comment above.`;
       try {
         const { repo } = GitHubFetchBranchesSchema.parse(data);
 
-        const { listRemoteBranches } = await import("./native/git.js");
-        const branches = await listRemoteBranches({ repoFullName: repo });
-        callback({ success: true, branches: branches.map((b) => b.name) });
+        const { ghApi } = await import("./ghApi");
+        const [repoInfo, branches] = await Promise.all([
+          ghApi.getRepoInfo(repo),
+          ghApi.getRepoBranches(repo),
+        ]);
+
+        const { pinDefaultBranchFirst } = await import("./utils/sortBranches");
+        const sortedBranches = pinDefaultBranchFirst(
+          branches,
+          repoInfo.default_branch,
+        );
+
+        callback({ success: true, branches: sortedBranches });
         return;
       } catch (error) {
         serverLogger.error("Error fetching branches:", error);
+        // Fallback to native git if GitHub API fails
+        try {
+          const { listRemoteBranches } = await import("./native/git.js");
+          const branches = await listRemoteBranches({ repoFullName: repo });
+          callback({ success: true, branches: branches.map((b) => b.name) });
+        } catch (fallbackError) {
+          serverLogger.error(
+            "Fallback branch fetch also failed:",
+            fallbackError,
+          );
+          callback({ success: false, error: "Failed to fetch branches" });
+        }
       }
     });
 
@@ -1401,7 +1424,6 @@ ${title}`;
         });
       }
     });
-
 
     socket.on("check-provider-status", async (callback) => {
       try {
