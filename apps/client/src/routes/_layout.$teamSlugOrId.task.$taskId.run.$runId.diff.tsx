@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
 import type { Doc, Id } from "@cmux/convex/dataModel";
+import type { ProviderStatusResponse } from "@cmux/shared";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
@@ -339,6 +340,60 @@ function RunDiffPage() {
     if (restartAgents.length === 0) {
       toast.error(
         "No previous agents found for this task. Start a new run from the dashboard.",
+      );
+      return;
+    }
+
+    const providerStatus = await new Promise<ProviderStatusResponse | null>(
+      (resolve) => {
+        let settled = false;
+        const timeoutId = setTimeout(() => {
+          if (!settled) {
+            settled = true;
+            resolve(null);
+          }
+        }, 4000);
+
+        socket.emit("check-provider-status", (response) => {
+          if (!settled) {
+            settled = true;
+            clearTimeout(timeoutId);
+            resolve(response ?? null);
+          }
+        });
+      },
+    );
+
+    if (!providerStatus) {
+      toast.error(
+        "Cannot restart because the original models are not configured. Update your API keys in Settings and try again.",
+      );
+      return;
+    }
+
+    const providers = providerStatus.providers ?? [];
+    if (providers.length === 0) {
+      toast.error(
+        "Cannot restart because the original models are not configured. Update your API keys in Settings and try again.",
+      );
+      return;
+    }
+
+    const availableForRestart = new Set(
+      providers
+        .filter((provider) => provider.isAvailable)
+        .map((provider) => provider.name),
+    );
+    const missingForRestart = restartAgents.filter(
+      (agent) => !availableForRestart.has(agent),
+    );
+
+    if (missingForRestart.length > 0) {
+      const uniqueMissing = Array.from(new Set(missingForRestart));
+      const verb = uniqueMissing.length === 1 ? "is" : "are";
+      const label = uniqueMissing.length === 1 ? "model" : "models";
+      toast.error(
+        `Cannot restart because ${uniqueMissing.join(", ")} ${verb} not configured. Update your API keys in Settings to use this ${label}.`,
       );
       return;
     }
