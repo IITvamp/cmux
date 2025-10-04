@@ -1223,10 +1223,21 @@ Please address the issue mentioned in the comment above.`;
 
         const { listRemoteBranches } = await import("./native/git.js");
         const branches = await listRemoteBranches({ repoFullName: repo });
-        callback({ success: true, branches: branches.map((b) => b.name) });
+        const defaultBranch = branches.find((branch) => branch.isDefault)?.name;
+
+        callback({
+          success: true,
+          branches,
+          defaultBranch,
+        });
         return;
       } catch (error) {
         serverLogger.error("Error fetching branches:", error);
+        callback({
+          success: false,
+          branches: [],
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
       }
     });
 
