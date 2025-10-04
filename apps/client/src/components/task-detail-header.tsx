@@ -54,9 +54,7 @@ import {
   type ToastFeedbackContext,
   getErrorDescription,
 } from "./task-detail-header.mutations";
-import type {
-  SocketMutationErrorInstance,
-} from "./task-detail-header.mutations";
+import type { SocketMutationErrorInstance } from "./task-detail-header.mutations";
 
 interface TaskDetailHeaderProps {
   task?: Doc<"tasks"> | null;
@@ -413,11 +411,16 @@ export function TaskDetailHeader({
             in
           </span>
 
-          {task?.projectFullName && (
-            <span className="font-mono text-neutral-600 dark:text-neutral-300 truncate min-w-0 max-w-[40%] whitespace-nowrap select-none text-[11px]">
-              {task.projectFullName}
-            </span>
-          )}
+          {(() => {
+            const environmentName = selectedRun?.environment?.name;
+            const repoName = task?.projectFullName;
+            const displayName = environmentName || repoName;
+            return displayName ? (
+              <span className="font-mono text-neutral-600 dark:text-neutral-300 truncate min-w-0 max-w-[40%] whitespace-nowrap select-none text-[11px]">
+                {displayName}
+              </span>
+            ) : null;
+          })()}
 
           {taskRuns && taskRuns.length > 0 && (
             <>
@@ -681,7 +684,9 @@ function SocketActions({
           if (resp.success) {
             resolve(resp);
           } else {
-            reject(new SocketMutationError(resp.error ?? draftErrorLabel, resp));
+            reject(
+              new SocketMutationError(resp.error ?? draftErrorLabel, resp),
+            );
           }
         });
       });
@@ -817,8 +822,7 @@ function SocketActions({
 
   const isOpeningPr = openPrMutation.isPending;
   const isCreatingPr = createDraftPrMutation.isPending;
-  const isMerging =
-    mergePrMutation.isPending || mergeBranchMutation.isPending;
+  const isMerging = mergePrMutation.isPending || mergeBranchMutation.isPending;
 
   const hasAnyRemotePr = pullRequests.some((pr) => pr.url);
 
@@ -878,9 +882,13 @@ function SocketActions({
         </div>
       ) : (
         <MergeButton
-          onMerge={prIsOpen ? handleMerge : () => {
-            void handleOpenPRs();
-          }}
+          onMerge={
+            prIsOpen
+              ? handleMerge
+              : () => {
+                  void handleOpenPRs();
+                }
+          }
           isOpen={prIsOpen}
           disabled={
             isOpeningPr ||
