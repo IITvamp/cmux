@@ -361,6 +361,8 @@ export type UpdateEnvironmentBody = {
     teamSlugOrId: string;
     name?: string;
     description?: string;
+    maintenanceScript?: string;
+    devScript?: string;
 };
 
 export type ExposedService = {
@@ -387,6 +389,8 @@ export type SnapshotVersionResponse = {
     createdByUserId: string;
     label?: string;
     isActive: boolean;
+    maintenanceScript?: string;
+    devScript?: string;
 };
 
 export type ListSnapshotVersionsResponse = Array<SnapshotVersionResponse>;
@@ -402,6 +406,8 @@ export type CreateSnapshotVersionBody = {
     morphInstanceId: string;
     label?: string;
     activate?: boolean;
+    maintenanceScript?: string;
+    devScript?: string;
 };
 
 export type ActivateSnapshotVersionResponse = {

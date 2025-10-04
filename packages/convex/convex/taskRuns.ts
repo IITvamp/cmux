@@ -1094,6 +1094,46 @@ export const updateNetworking = authMutation({
   },
 });
 
+// Update environment error for a task run
+export const updateEnvironmentError = authMutation({
+  args: {
+    teamSlugOrId: v.string(),
+    id: v.id("taskRuns"),
+    maintenanceError: v.optional(v.string()),
+    devError: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = ctx.identity.subject;
+    const run = await ctx.db.get(args.id);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+
+    if (!run || run.teamId !== teamId || run.userId !== userId) {
+      throw new Error("Task run not found or unauthorized");
+    }
+
+    const MAX_ERROR_MESSAGE_CHARS = 2500;
+    const truncate = (msg: string | undefined) => {
+      if (!msg) return undefined;
+      const trimmed = msg.trim();
+      if (!trimmed) return undefined;
+      return trimmed.length > MAX_ERROR_MESSAGE_CHARS
+        ? `${trimmed.slice(0, MAX_ERROR_MESSAGE_CHARS)}…`
+        : trimmed;
+    };
+
+    const maintenanceError = truncate(args.maintenanceError);
+    const devError = truncate(args.devError);
+
+    await ctx.db.patch(args.id, {
+      environmentError: {
+        ...(maintenanceError ? { maintenanceError } : {}),
+        ...(devError ? { devError } : {}),
+      },
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 // Get containers that should be stopped based on TTL and settings
 export const getContainersToStop = authQuery({
   args: { teamSlugOrId: v.string() },
