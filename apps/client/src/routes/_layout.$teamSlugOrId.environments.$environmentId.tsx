@@ -11,18 +11,19 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { api } from "@cmux/convex/api";
-import type { Id } from "@cmux/convex/dataModel";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { validateExposedPorts } from "@cmux/shared/utils/validate-exposed-ports";
 import {
   patchApiEnvironmentsByIdPortsMutation,
   patchApiEnvironmentsByIdMutation,
+  getApiEnvironmentsByIdSnapshotsOptions,
   postApiEnvironmentsByIdSnapshotsBySnapshotVersionIdActivateMutation,
   postApiSandboxesStartMutation,
 } from "@cmux/www-openapi-client/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import {
   useMutation as useRQMutation,
+  useQuery,
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
@@ -59,15 +60,9 @@ export const Route = createFileRoute(
       }),
     );
     void queryClient.ensureQueryData(
-      convexQuery(api.environmentSnapshots.list, {
-        teamSlugOrId: params.teamSlugOrId,
-        environmentId: params.environmentId,
-      }),
-    );
-    void queryClient.ensureQueryData(
-      convexQuery(api.environments.get, {
-        teamSlugOrId: params.teamSlugOrId,
-        id: params.environmentId,
+      getApiEnvironmentsByIdSnapshotsOptions({
+        path: { id: String(params.environmentId) },
+        query: { teamSlugOrId: params.teamSlugOrId },
       }),
     );
   },
@@ -87,11 +82,17 @@ function EnvironmentDetailsPage() {
   if (!environment) {
     throw new Error("Environment not found");
   }
-  const snapshotsQuery = convexQuery(api.environmentSnapshots.list, {
-    teamSlugOrId,
-    environmentId,
+  const snapshotsQueryOptions = getApiEnvironmentsByIdSnapshotsOptions({
+    path: { id: String(environmentId) },
+    query: { teamSlugOrId },
   });
-  const { data: snapshotVersions } = useSuspenseQuery(snapshotsQuery);
+  const snapshotsQuery = useQuery(snapshotsQueryOptions);
+  if (snapshotsQuery.error) {
+    throw snapshotsQuery.error;
+  }
+  const snapshotVersions = snapshotsQuery.data ?? [];
+  const areSnapshotVersionsLoading = snapshotsQuery.isPending;
+  const snapshotsQueryKey = snapshotsQueryOptions.queryKey;
   const deleteEnvironment = useMutation(api.environments.remove);
   const deleteSnapshotVersion = useMutation(api.environmentSnapshots.remove);
   const updatePortsMutation = useRQMutation(
@@ -357,16 +358,13 @@ function EnvironmentDetailsPage() {
     );
   };
 
-  const handleActivateSnapshot = (
-    versionId: Id<"environmentSnapshotVersions">,
-  ) => {
-    const versionIdString = String(versionId);
-    setActivatingVersionId(versionIdString);
+  const handleActivateSnapshot = (versionId: string) => {
+    setActivatingVersionId(versionId);
     activateSnapshotMutation.mutate(
       {
         path: {
           id: String(environmentId),
-          snapshotVersionId: versionIdString,
+          snapshotVersionId: versionId,
         },
         body: { teamSlugOrId },
       },
@@ -374,6 +372,9 @@ function EnvironmentDetailsPage() {
         onSuccess: async () => {
           setActivatingVersionId(null);
           toast.success("Snapshot version activated");
+          await queryClient.invalidateQueries({
+            queryKey: snapshotsQueryKey,
+          });
         },
         onError: (error) => {
           setActivatingVersionId(null);
@@ -425,9 +426,7 @@ function EnvironmentDetailsPage() {
   const isModifyPending = modifyVmMutation.isPending;
   const isSnapshotPending = snapshotLaunchMutation.isPending;
 
-  const handleDeleteSnapshotVersion = async (
-    versionId: Id<"environmentSnapshotVersions">,
-  ) => {
+  const handleDeleteSnapshotVersion = async (versionId: string) => {
     if (
       !confirm(
         "Are you sure you want to delete this snapshot version? This action cannot be undone.",
@@ -436,16 +435,17 @@ function EnvironmentDetailsPage() {
       return;
     }
 
-    const versionIdString = String(versionId);
-    setDeletingVersionId(versionIdString);
+    setDeletingVersionId(versionId);
     try {
       await deleteSnapshotVersion({
         teamSlugOrId,
         environmentId,
-        snapshotVersionId: versionId,
+        snapshotVersionId: typedZid("environmentSnapshotVersions").parse(
+          versionId,
+        ),
       });
       toast.success("Snapshot version deleted");
-      await queryClient.invalidateQueries({ queryKey: snapshotsQuery.queryKey });
+      await queryClient.invalidateQueries({ queryKey: snapshotsQueryKey });
     } catch (error) {
       const message =
         error instanceof Error
@@ -961,91 +961,90 @@ function EnvironmentDetailsPage() {
                   </Tooltip>
                 </div>
                 <div className="space-y-2">
-                  {snapshotVersions.length === 0 ? (
+                  {areSnapshotVersionsLoading ? (
+                    <SnapshotVersionsSkeleton />
+                  ) : snapshotVersions.length === 0 ? (
                     <p className="text-sm text-neutral-500 dark:text-neutral-500">
                       No snapshot versions yet.
                     </p>
                   ) : (
-                    snapshotVersions.map((version) => (
-                      <div
-                        key={version._id}
-                        className="rounded-md border border-neutral-200 p-3 dark:border-neutral-800"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                              Version {version.version}
-                              {version.isActive && (
-                                <span className="ml-2 inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700 dark:bg-green-900 dark:text-green-100">
-                                  Active
-                                </span>
+                    snapshotVersions.map((version) => {
+                      const versionId = version.id;
+                      const isActivating =
+                        activateSnapshotMutation.isPending &&
+                        activatingVersionId === versionId;
+                      const isDeleting = deletingVersionId === versionId;
+                      return (
+                        <div
+                          key={versionId}
+                          className="rounded-md border border-neutral-200 p-3 dark:border-neutral-800"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                                Version {version.version}
+                                {version.isActive && (
+                                  <span className="ml-2 inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700 dark:bg-green-900 dark:text-green-100">
+                                    Active
+                                  </span>
+                                )}
+                              </p>
+                              <p className="text-xs text-neutral-500 dark:text-neutral-500">
+                                Snapshot ID: {version.morphSnapshotId}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {!version.isActive && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleActivateSnapshot(versionId)}
+                                  disabled={isActivating}
+                                  className="inline-flex items-center rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-60 disabled:cursor-not-allowed dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
+                                >
+                                  {isActivating ? "Activating..." : "Activate"}
+                                </button>
                               )}
-                            </p>
-                            <p className="text-xs text-neutral-500 dark:text-neutral-500">
-                              Snapshot ID: {version.morphSnapshotId}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {!version.isActive && (
                               <button
                                 type="button"
-                                onClick={() =>
-                                  handleActivateSnapshot(version._id)
+                                onClick={() => handleDeleteSnapshotVersion(versionId)}
+                                disabled={version.isActive || isDeleting}
+                                title={
+                                  version.isActive
+                                    ? "Cannot delete the active snapshot version"
+                                    : undefined
                                 }
-                                disabled={
-                                  activateSnapshotMutation.isPending &&
-                                  activatingVersionId === String(version._id)
-                                }
-                                className="inline-flex items-center rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-60 disabled:cursor-not-allowed dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
+                                className="inline-flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
                               >
-                                {activateSnapshotMutation.isPending &&
-                                activatingVersionId === String(version._id)
-                                  ? "Activating..."
-                                  : "Activate"}
+                                {isDeleting ? (
+                                  <>
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                    Deleting…
+                                  </>
+                                ) : (
+                                  <>
+                                    <Trash2 className="h-3 w-3" />
+                                    Delete
+                                  </>
+                                )}
                               </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleDeleteSnapshotVersion(version._id)
-                              }
-                              disabled={
-                                version.isActive ||
-                                deletingVersionId === String(version._id)
-                              }
-                              title={
-                                version.isActive
-                                  ? "Cannot delete the active snapshot version"
-                                  : undefined
-                              }
-                              className="inline-flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
-                            >
-                              {deletingVersionId === String(version._id) ? (
-                                <>
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                  Deleting…
-                                </>
-                              ) : (
-                                <>
-                                  <Trash2 className="h-3 w-3" />
-                                  Delete
-                                </>
-                              )}
-                            </button>
+                            </div>
+                          </div>
+                          <div className="mt-2 space-y-1 text-xs text-neutral-500 dark:text-neutral-500">
+                            <p>
+                              Created{" "}
+                              {formatDistanceToNow(new Date(version.createdAt), {
+                                addSuffix: true,
+                              })}
+                            </p>
+                            <p>
+                              Created by{" "}
+                              {version.createdByUserName ?? version.createdByUserId}
+                            </p>
+                            {version.label && <p>Label: {version.label}</p>}
                           </div>
                         </div>
-                        <div className="mt-2 space-y-1 text-xs text-neutral-500 dark:text-neutral-500">
-                          <p>
-                            Created{" "}
-                            {formatDistanceToNow(new Date(version.createdAt), {
-                              addSuffix: true,
-                            })}
-                          </p>
-                          <p>Created by {version.createdByUserId}</p>
-                          {version.label && <p>Label: {version.label}</p>}
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -1097,5 +1096,30 @@ function EnvironmentDetailsPage() {
         )}
       </div>
     </FloatingPane>
+  );
+}
+
+function SnapshotVersionsSkeleton() {
+  return (
+    <>
+      {Array.from({ length: 3 }).map((_, index) => (
+        <div
+          key={index}
+          className="rounded-md border border-neutral-200 p-3 dark:border-neutral-800 animate-pulse"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="space-y-2">
+              <div className="h-4 w-28 rounded bg-neutral-200 dark:bg-neutral-800" />
+              <div className="h-3 w-40 rounded bg-neutral-200 dark:bg-neutral-800" />
+            </div>
+            <div className="h-6 w-20 rounded bg-neutral-200 dark:bg-neutral-800" />
+          </div>
+          <div className="mt-3 space-y-2">
+            <div className="h-3 w-32 rounded bg-neutral-200 dark:bg-neutral-800" />
+            <div className="h-3 w-24 rounded bg-neutral-200 dark:bg-neutral-800" />
+          </div>
+        </div>
+      ))}
+    </>
   );
 }

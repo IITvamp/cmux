@@ -125,6 +125,7 @@ const SnapshotVersionResponse = z
     morphSnapshotId: z.string(),
     createdAt: z.number(),
     createdByUserId: z.string(),
+    createdByUserName: z.string().nullable(),
     label: z.string().optional(),
     isActive: z.boolean(),
     maintenanceScript: z.string().optional(),
@@ -783,12 +784,41 @@ environmentsRouter.openapi(
         return c.text("Environment not found", 404);
       }
 
+      const creatorIds = Array.from(
+        new Set(versions.map((version) => version.createdByUserId)),
+      );
+
+      const creatorEntries = await Promise.all(
+        creatorIds.map(async (userId) => {
+          try {
+            const user = await stackServerAppJs.getUser(userId);
+            if (!user) {
+              return [userId, null] as const;
+            }
+            const displayName =
+              user.displayName ??
+              ("primaryEmail" in user ? user.primaryEmail ?? null : null);
+            return [userId, displayName] as const;
+          } catch (error) {
+            console.error(
+              `Failed to fetch Stack user ${userId} for snapshot version list`,
+              error,
+            );
+            return [userId, null] as const;
+          }
+        }),
+      );
+
+      const creatorNameById = new Map(creatorEntries);
+
       const mapped = versions.map((version) => ({
         id: String(version._id),
         version: version.version,
         morphSnapshotId: version.morphSnapshotId,
         createdAt: version.createdAt,
         createdByUserId: version.createdByUserId,
+        createdByUserName:
+          creatorNameById.get(version.createdByUserId) ?? null,
         label: version.label ?? undefined,
         isActive: version.isActive,
         maintenanceScript: version.maintenanceScript ?? undefined,

@@ -387,6 +387,7 @@ export type SnapshotVersionResponse = {
     morphSnapshotId: string;
     createdAt: number;
     createdByUserId: string;
+    createdByUserName: string | null;
     label?: string;
     isActive: boolean;
     maintenanceScript?: string;
