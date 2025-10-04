@@ -236,8 +236,6 @@ export function EnvironmentConfiguration({
             morphInstanceId: localInstanceId,
             label: envName.trim(),
             activate: true,
-            maintenanceScript: maintenanceScript.trim() || undefined,
-            devScript: devScript.trim() || undefined,
           },
         },
         {
@@ -594,7 +592,8 @@ export function EnvironmentConfiguration({
               <p className="text-xs text-neutral-500 dark:text-neutral-500">
                 We execute this from <code>/root/workspace</code>, where your
                 repositories are cloned. For example,{" "}
-                <code>cd my-repo && npm install</code> installs dependencies inside{" "}
+                <code>cd my-repo && npm install</code>
+                installs dependencies inside{" "}
                 <code>/root/workspace/my-repo</code>.
               </p>
               <TextareaAutosize
