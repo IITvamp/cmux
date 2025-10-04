@@ -1,17 +1,36 @@
 # syntax=docker/dockerfile:1.7-labs
 
 # Stage 1: Build stage (runs natively on ARM64, cross-compiles to x86_64)
+ARG DOCKER_CHANNEL=stable
+ARG DOCKER_VERSION
+ARG DOCKER_COMPOSE_VERSION
+ARG BUILDKIT_VERSION
+ARG BUILDX_VERSION
+ARG UV_VERSION
+ARG PYTHON_VERSION
+ARG PIP_VERSION
+ARG RUST_VERSION
+ARG NVM_VERSION=0.39.7
+ARG NODE_VERSION=24.9.0
+
 FROM --platform=$BUILDPLATFORM ubuntu:24.04 AS builder
 
 ARG VERSION
 ARG CODE_RELEASE
-ARG DOCKER_VERSION=28.3.2
-ARG DOCKER_CHANNEL=stable
+ARG DOCKER_VERSION
+ARG DOCKER_CHANNEL
 ARG BUILDPLATFORM
 ARG TARGETPLATFORM
+ARG UV_VERSION
+ARG PYTHON_VERSION
+ARG PIP_VERSION
+ARG RUST_VERSION
+ARG NODE_VERSION
+ARG NVM_VERSION
 
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
+    NVM_DIR=/root/.nvm \
     PATH="/usr/local/cargo/bin:${PATH}"
 
 # Install build dependencies + cross-compilation toolchain
@@ -22,6 +41,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     curl \
     wget \
     git \
+    jq \
     python3 \
     make \
     g++ \
@@ -30,23 +50,65 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     libc6-dev-amd64-cross \
     bash \
     unzip \
+    xz-utils \
     gnupg
 
 # Install Rust toolchain with x86_64 cross-compilation support
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
-    sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable && \
-    rustup component add rustfmt && \
-    rustup target add x86_64-unknown-linux-gnu && \
-    cargo --version
+RUN <<'EOF'
+set -eux
+RUST_VERSION_RAW="${RUST_VERSION:-}"
+if [ -z "${RUST_VERSION_RAW}" ]; then
+  RUST_VERSION_RAW="$(curl -fsSL https://static.rust-lang.org/dist/channel-rust-stable.toml \
+    | awk '/\[pkg.rust\]/{flag=1;next}/\[pkg\./{flag=0}flag && /^version =/ {gsub(/"/,"",$3); split($3, parts, " "); print parts[1]; exit}')"
+fi
+RUST_VERSION="$(printf '%s' "${RUST_VERSION_RAW}" | tr -d '[:space:]')"
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+  sh -s -- -y --no-modify-path --profile minimal --default-toolchain "${RUST_VERSION}"
+rustup component add rustfmt --toolchain "${RUST_VERSION}"
+rustup target add x86_64-unknown-linux-gnu --toolchain "${RUST_VERSION}"
+cargo --version
+EOF
 
-# Install Node.js 24.x
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
-    apt-get install -y nodejs && \
-    npm install -g node-gyp && \
-    corepack enable && \
-    corepack prepare pnpm@10.14.0 --activate
+# Install Node.js 24.x without relying on external APT mirrors
+RUN <<EOF
+set -eux
+NODE_VERSION="${NODE_VERSION:-24.9.0}"
+arch="$(uname -m)"
+case "${arch}" in
+  x86_64) node_arch="x64" ;;
+  aarch64|arm64) node_arch="arm64" ;;
+  *) echo "Unsupported architecture: ${arch}" >&2; exit 1 ;;
+esac
+tmp_dir="$(mktemp -d)"
+trap 'rm -rf "${tmp_dir}"' EXIT
+cd "${tmp_dir}"
+curl -fsSLO "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz"
+curl -fsSLO "https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt"
+grep " node-v${NODE_VERSION}-linux-${node_arch}.tar.xz$" SHASUMS256.txt | sha256sum -c -
+tar -xJf "node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" -C /usr/local --strip-components=1
+cd /
+ln -sf /usr/local/bin/node /usr/bin/node
+ln -sf /usr/local/bin/npm /usr/bin/npm
+ln -sf /usr/local/bin/npx /usr/bin/npx
+ln -sf /usr/local/bin/corepack /usr/bin/corepack
+npm install -g node-gyp
+corepack enable
+corepack prepare pnpm@10.14.0 --activate
+EOF
+
+# Install nvm for optional Node version management
+RUN <<'EOF'
+set -eux
+NVM_VERSION="${NVM_VERSION:-0.39.7}"
+mkdir -p "${NVM_DIR}"
+curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash
+cat <<'PROFILE' > /etc/profile.d/nvm.sh
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"
+PROFILE
+bash -lc 'source /etc/profile.d/nvm.sh && nvm --version'
+EOF
 
 # Install Bun
 RUN curl -fsSL https://bun.sh/install | bash && \
@@ -157,6 +219,13 @@ RUN /app/openvscode-server/bin/openvscode-server --install-extension /tmp/cmux-v
 # Stage 2: Runtime base (shared between local and morph)
 FROM ubuntu:24.04 AS runtime-base
 
+ARG UV_VERSION
+ARG PYTHON_VERSION
+ARG PIP_VERSION
+ARG RUST_VERSION
+ARG NODE_VERSION
+ARG NVM_VERSION
+
 # Install runtime dependencies only
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -184,6 +253,65 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     dbus \
     util-linux
 
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    NVM_DIR=/root/.nvm \
+    PATH="/root/.local/bin:/usr/local/cargo/bin:/usr/local/bin:${PATH}"
+
+# Install uv-managed Python runtime (latest by default) and keep pip pinned
+RUN <<'EOF'
+set -eux
+ARCH="$(uname -m)"
+case "${ARCH}" in
+  x86_64)
+    UV_ASSET_SUFFIX="x86_64-unknown-linux-gnu"
+    RUST_HOST_TARGET="x86_64-unknown-linux-gnu"
+    ;;
+  aarch64)
+    UV_ASSET_SUFFIX="aarch64-unknown-linux-gnu"
+    RUST_HOST_TARGET="aarch64-unknown-linux-gnu"
+    ;;
+  *)
+    echo "Unsupported architecture: ${ARCH}" >&2
+    exit 1
+    ;;
+esac
+
+UV_VERSION_RAW="${UV_VERSION:-}"
+if [ -z "${UV_VERSION_RAW}" ]; then
+  UV_VERSION_RAW="$(curl -fsSL https://api.github.com/repos/astral-sh/uv/releases/latest | jq -r '.tag_name')"
+fi
+UV_VERSION="$(printf '%s' "${UV_VERSION_RAW}" | tr -d ' \t\r\n')"
+curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-${UV_ASSET_SUFFIX}.tar.gz" -o /tmp/uv.tar.gz
+tar -xzf /tmp/uv.tar.gz -C /tmp
+install -m 0755 /tmp/uv-${UV_ASSET_SUFFIX}/uv /usr/local/bin/uv
+install -m 0755 /tmp/uv-${UV_ASSET_SUFFIX}/uvx /usr/local/bin/uvx
+rm -rf /tmp/uv.tar.gz /tmp/uv-${UV_ASSET_SUFFIX}
+
+export PATH="/root/.local/bin:${PATH}"
+
+if [ -n "${PYTHON_VERSION:-}" ]; then
+  uv python install "${PYTHON_VERSION}" --default
+else
+  uv python install --default
+fi
+
+PIP_VERSION="${PIP_VERSION:-$(curl -fsSL https://pypi.org/pypi/pip/json | jq -r '.info.version') }"
+python3 -m pip install --break-system-packages --upgrade "pip==${PIP_VERSION}"
+
+RUST_VERSION_RAW="${RUST_VERSION:-}"
+if [ -z "${RUST_VERSION_RAW}" ]; then
+  RUST_VERSION_RAW="$(curl -fsSL https://static.rust-lang.org/dist/channel-rust-stable.toml \
+    | awk '/\[pkg.rust\]/{flag=1;next}/\[pkg\./{flag=0}flag && /^version =/ {gsub(/"/,"",$3); split($3, parts, " "); print parts[1]; exit}')"
+fi
+RUST_VERSION="$(printf '%s' "${RUST_VERSION_RAW}" | tr -d ' \t\r\n')"
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+  sh -s -- -y --no-modify-path --profile minimal --default-toolchain "${RUST_VERSION}"
+rustup component add rustfmt --toolchain "${RUST_VERSION}"
+rustup target add "${RUST_HOST_TARGET}" --toolchain "${RUST_VERSION}"
+rustup default "${RUST_VERSION}"
+EOF
+
 # Install GitHub CLI
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -194,12 +322,44 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && apt-get install -y gh
 
 # Install Node.js 24.x (runtime) and enable pnpm via corepack
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
-    apt-get install -y nodejs && \
-    corepack enable && \
-    corepack prepare pnpm@10.14.0 --activate
+RUN <<EOF
+set -eux
+NODE_VERSION="${NODE_VERSION:-24.9.0}"
+arch="$(uname -m)"
+case "${arch}" in
+  x86_64) node_arch="x64" ;;
+  aarch64|arm64) node_arch="arm64" ;;
+  *) echo "Unsupported architecture: ${arch}" >&2; exit 1 ;;
+esac
+tmp_dir="$(mktemp -d)"
+trap 'rm -rf "${tmp_dir}"' EXIT
+cd "${tmp_dir}"
+curl -fsSLO "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz"
+curl -fsSLO "https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt"
+grep " node-v${NODE_VERSION}-linux-${node_arch}.tar.xz$" SHASUMS256.txt | sha256sum -c -
+tar -xJf "node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" -C /usr/local --strip-components=1
+cd /
+ln -sf /usr/local/bin/node /usr/bin/node
+ln -sf /usr/local/bin/npm /usr/bin/npm
+ln -sf /usr/local/bin/npx /usr/bin/npx
+ln -sf /usr/local/bin/corepack /usr/bin/corepack
+corepack enable
+corepack prepare pnpm@10.14.0 --activate
+EOF
+
+# Install nvm for optional Node version management in runtime
+RUN <<'EOF'
+set -eux
+NVM_VERSION="${NVM_VERSION:-0.39.7}"
+mkdir -p "${NVM_DIR}"
+curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash
+cat <<'PROFILE' > /etc/profile.d/nvm.sh
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"
+PROFILE
+bash -lc 'source /etc/profile.d/nvm.sh && nvm --version'
+EOF
 
 # Install Bun natively (since runtime is x86_64, we can't copy from ARM64 builder)
 RUN curl -fsSL https://bun.sh/install | bash && \
@@ -333,8 +493,11 @@ CMD []
 # Stage 3: Local (DinD) runtime with Docker available
 FROM runtime-base AS runtime-local
 
-ARG DOCKER_VERSION=28.3.2
-ARG DOCKER_CHANNEL=stable
+ARG DOCKER_VERSION
+ARG DOCKER_CHANNEL
+ARG DOCKER_COMPOSE_VERSION
+ARG BUILDX_VERSION
+ARG BUILDKIT_VERSION
 
 # Switch to legacy iptables for Docker compatibility
 RUN update-alternatives --set iptables /usr/sbin/iptables-legacy
@@ -343,6 +506,8 @@ RUN update-alternatives --set iptables /usr/sbin/iptables-legacy
 RUN <<-'EOF'
     set -eux; \
     arch="$(uname -m)"; \
+    DOCKER_CHANNEL="${DOCKER_CHANNEL:-stable}"; \
+    DOCKER_VERSION="${DOCKER_VERSION:-$(curl -fsSL https://api.github.com/repos/docker/docker/releases/latest | jq -r '.tag_name' | sed 's/^v//')}"; \
     case "$arch" in \
         x86_64) dockerArch='x86_64' ;; \
         aarch64) dockerArch='aarch64' ;; \
@@ -355,18 +520,34 @@ RUN <<-'EOF'
     docker --version || echo "docker --version failed (ignored during build)"
 EOF
 
-# Install Docker Compose and Buildx plugins
+# Install Docker Compose, Buildx, and BuildKit
 RUN <<-'EOF'
     set -eux; \
     mkdir -p /usr/local/lib/docker/cli-plugins; \
     arch="$(uname -m)"; \
-    curl -SL "https://github.com/docker/compose/releases/download/v2.32.2/docker-compose-linux-${arch}" \
+    case "$arch" in \
+        x86_64) composeArch='x86_64'; buildxAsset='linux-amd64'; buildkitAsset='linux-amd64' ;; \
+        aarch64) composeArch='aarch64'; buildxAsset='linux-arm64'; buildkitAsset='linux-arm64' ;; \
+        *) echo >&2 "error: unsupported architecture ($arch)"; exit 1 ;; \
+    esac; \
+    DOCKER_COMPOSE_VERSION="${DOCKER_COMPOSE_VERSION:-$(curl -fsSL https://api.github.com/repos/docker/compose/releases/latest | jq -r '.tag_name' | sed 's/^v//')}"; \
+    curl -fsSL "https://github.com/docker/compose/releases/download/v${DOCKER_COMPOSE_VERSION}/docker-compose-linux-${composeArch}" \
         -o /usr/local/lib/docker/cli-plugins/docker-compose; \
     chmod +x /usr/local/lib/docker/cli-plugins/docker-compose; \
-    curl -SL "https://github.com/docker/buildx/releases/download/v0.18.0/buildx-v0.18.0.linux-${arch}" \
+    BUILDX_VERSION="${BUILDX_VERSION:-$(curl -fsSL https://api.github.com/repos/docker/buildx/releases/latest | jq -r '.tag_name' | sed 's/^v//')}"; \
+    curl -fsSL "https://github.com/docker/buildx/releases/download/v${BUILDX_VERSION}/buildx-v${BUILDX_VERSION}.${buildxAsset}" \
         -o /usr/local/lib/docker/cli-plugins/docker-buildx; \
     chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx; \
-    echo "Docker plugins installed successfully"
+    BUILDKIT_VERSION="${BUILDKIT_VERSION:-$(curl -fsSL https://api.github.com/repos/moby/buildkit/releases/latest | jq -r '.tag_name' | sed 's/^v//')}"; \
+    curl -fsSL "https://github.com/moby/buildkit/releases/download/v${BUILDKIT_VERSION}/buildkit-v${BUILDKIT_VERSION}.${buildkitAsset}.tar.gz" \
+        -o /tmp/buildkit.tar.gz; \
+    tar -xzf /tmp/buildkit.tar.gz -C /tmp; \
+    install -m 0755 /tmp/bin/buildctl /usr/local/bin/buildctl; \
+    install -m 0755 /tmp/bin/buildkitd /usr/local/bin/buildkitd; \
+    rm -rf /tmp/buildkit.tar.gz /tmp/bin; \
+    docker compose version || true; \
+    docker buildx version || true; \
+    buildctl --version || true
 EOF
 
 # Create modprobe script (required for DinD)

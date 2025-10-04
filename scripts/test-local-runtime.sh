@@ -26,6 +26,17 @@ platform_slug() {
   echo "$slug"
 }
 
+platform_supported() {
+  local platform="$1"
+  local probe_image="${PLATFORM_PROBE_IMAGE:-ubuntu:24.04}"
+
+  if docker run --rm --platform "$platform" --entrypoint /bin/true "$probe_image" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  return 1
+}
+
 cleanup_container() {
   local container="$1"
   if docker ps -a --format '{{.Names}}' | grep -Fxq "$container"; then
@@ -130,6 +141,11 @@ run_checks_for_platform() {
   local image_name="${IMAGE_BASENAME}-${suffix}"
   local container_name="cmux-local-sanity-${suffix}"
   local volume_name="cmux-local-docker-${suffix}"
+
+  if ! platform_supported "$platform" && [[ "${FORCE_CROSS_BUILD:-0}" != "1" ]]; then
+    echo "[sanity][$platform] Skipping build: platform not runnable on this host (set FORCE_CROSS_BUILD=1 to force)." >&2
+    return
+  fi
 
   echo "[sanity][$platform] Building local runtime image ($image_name)..."
   docker build --platform "$platform" -t "$image_name" .

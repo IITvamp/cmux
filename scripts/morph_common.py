@@ -9,8 +9,9 @@ if TYPE_CHECKING:  # pragma: no cover - typing helpers only
     from morphcloud.api import Snapshot
 
 MORPH_EXPECTED_UNAME_ARCH = "x86_64"
-DOCKER_COMPOSE_VERSION = "v2.32.2"
-DOCKER_BUILDX_VERSION = "v0.18.0"
+DOCKER_ENGINE_VERSION = "28.4.0"
+DOCKER_COMPOSE_VERSION = "v2.39.4"
+DOCKER_BUILDX_VERSION = "v0.29.0"
 
 
 def _run_remote(snapshot: "Snapshot", command: str) -> "Snapshot":
@@ -81,10 +82,12 @@ def ensure_docker_cli_plugins(
 
     docker_plugin_cmds = [
         "mkdir -p /usr/local/lib/docker/cli-plugins",
+        "mkdir -p /usr/local/bin",
         "arch=$(uname -m)",
         f'echo "Architecture detected: $arch"',
         compose_download,
         "chmod +x /usr/local/lib/docker/cli-plugins/docker-compose",
+        "ln -sf /usr/local/lib/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose",
         buildx_download,
         "chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx",
         "docker compose version",
@@ -112,15 +115,29 @@ def ensure_docker() -> str:
 
     commands = [
         "DEBIAN_FRONTEND=noninteractive apt-get update",
-        "DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io docker-compose python3-docker git curl",
+        "DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl gnupg lsb-release",
+        ". /etc/os-release && export distro=${ID:-debian} && export codename=${VERSION_CODENAME:-${UBUNTU_CODENAME:-stable}}",
+        "case \"$distro\" in ubuntu|debian) ;; *) distro='debian';; esac",
+        "install -m 0755 -d /etc/apt/keyrings",
+        "curl -fsSL https://download.docker.com/linux/${distro}/gpg | gpg --batch --yes --dearmor -o /etc/apt/keyrings/docker.gpg",
+        "chmod a+r /etc/apt/keyrings/docker.gpg",
+        "printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/%s %s stable\\n' \"$(dpkg --print-architecture)\" \"$distro\" \"$codename\" > /etc/apt/sources.list.d/docker.list",
+        "DEBIAN_FRONTEND=noninteractive apt-get update",
+        f"export DOCKER_VERSION={shlex.quote(DOCKER_ENGINE_VERSION)}",
+        "target_version=$(apt-cache madison docker-ce | awk -v ver=\"$DOCKER_VERSION\" '$3 ~ ver {print $3; exit}')",
+        "if [ -n \"$target_version\" ]; then version_args=\"docker-ce=$target_version docker-ce-cli=$target_version\"; else echo \"Desired Docker Engine $DOCKER_VERSION not found in apt repo; installing latest available.\" >&2; version_args=\"docker-ce docker-ce-cli\"; fi",
+        "DEBIAN_FRONTEND=noninteractive apt-get install -y $version_args containerd.io docker-buildx-plugin docker-compose-plugin python3-docker git",
         "rm -rf /var/lib/apt/lists/*",
         "mkdir -p /etc/docker",
         f"echo {shlex.quote(daemon_config)} > /etc/docker/daemon.json",
         "echo 'DOCKER_BUILDKIT=1' >> /etc/environment",
         "systemctl restart docker",
         docker_ready_loop,
-        "docker --version && docker-compose --version",
-        "(docker compose version 2>/dev/null || echo 'docker compose plugin not available')",
+        "installed_version=$(docker --version | awk '{print $3}' | tr -d ',')",
+        "echo \"Docker version: $installed_version\"",
+        "if ! dpkg --compare-versions \"$installed_version\" ge \"$DOCKER_VERSION\"; then echo \"Docker version $installed_version is older than required $DOCKER_VERSION\" >&2; exit 1; fi",
+        "docker compose version",
+        "docker buildx version",
         "echo 'Docker commands verified'",
         "echo '::1       localhost' >> /etc/hosts",
     ]
