@@ -58,14 +58,19 @@ type TaskWithGeneratedBranch = Doc<"tasks"> & {
   generatedBranchName?: string | null;
 };
 
+const CMUX_BRANCH_PREFIX = "cmux/";
+
 function sanitizeBranchName(input?: string | null): string | null {
   if (!input) return null;
   const trimmed = input.trim();
   if (!trimmed) return null;
   const idx = trimmed.lastIndexOf("-");
-  if (idx <= 0) return trimmed;
-  const candidate = trimmed.slice(0, idx);
-  return candidate || trimmed;
+  const withoutSuffix = idx > 0 ? trimmed.slice(0, idx) || trimmed : trimmed;
+  if (withoutSuffix.startsWith(CMUX_BRANCH_PREFIX)) {
+    const withoutPrefix = withoutSuffix.slice(CMUX_BRANCH_PREFIX.length);
+    return withoutPrefix || withoutSuffix;
+  }
+  return withoutSuffix;
 }
 
 function getTaskBranch(task: TaskWithGeneratedBranch): string | null {
