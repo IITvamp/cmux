@@ -10,9 +10,22 @@ runtime_root="${CMUX_RUNTIME_ROOT:-${CMUX_ROOTFS:-/}}"
 overlay_upper="${CMUX_OVERLAY_UPPER:-/opt/app/overlay/upper}"
 overlay_work="${CMUX_OVERLAY_WORK:-/opt/app/overlay/work}"
 
+# Use a predictable scratch directory instead of writing directly to /tmp so we
+# can ensure the directory exists even in minimal environments.
+tmp_base="${TMPDIR:-/tmp}"
+tmp_base="${tmp_base%/}"
+if [[ -z "${tmp_base}" ]]; then
+  tmp_base="/tmp"
+fi
+
+cmux_tmp_dir="${CMUX_TMPDIR:-${tmp_base}/cmux-rootfs-exec}"
+mkdir -p "${cmux_tmp_dir}"
+
+debug_log_path="${cmux_tmp_dir}/debug.log"
+
 debug_log() {
   if [[ -n "${CMUX_DEBUG:-}" ]]; then
-    printf '%s\n' "$*" >> /tmp/cmux-rootfs-exec.log || true
+    printf '%s\n' "$*" >> "${debug_log_path}" || true
   fi
 }
 
@@ -34,25 +47,30 @@ ensure_overlay() {
 
   mkdir -p "${runtime_root}" "${overlay_upper}" "${overlay_work}"
 
+  if command -v modprobe >/dev/null 2>&1; then
+    modprobe overlay 2>/dev/null || true
+  fi
+
   # Attempt to mount overlay; if already mounted by another unit, tolerate the EBUSY case.
   debug_log "mounting overlay lower=${rootfs} upper=${overlay_upper} work=${overlay_work} target=${runtime_root}"
-  if ! mount -t overlay overlay \
+  local err
+  if ! err=$(mount -t overlay overlay \
     -o "lowerdir=${rootfs},upperdir=${overlay_upper},workdir=${overlay_work}" \
-    "${runtime_root}" 2>/tmp/cmux-overlay-mount.err; then
-    err=$(< /tmp/cmux-overlay-mount.err)
-    rm -f /tmp/cmux-overlay-mount.err
-    if grep -q "busy" <<<"${err}"; then
+    "${runtime_root}" 2>&1); then
+    if grep -qi "busy" <<<"${err}"; then
       # Someone else mounted concurrently; verify mountpoint now exists.
       if ! mountpoint -q "${runtime_root}"; then
         echo "cmux-rootfs-exec: failed to mount overlay: ${err}" >&2
         exit 1
       fi
+    elif grep -qiE "(no such device|special device overlay does not exist|invalid argument)" <<<"${err}"; then
+      debug_log "overlayfs unavailable (${err}); falling back to rootfs without overlay"
+      runtime_root="${rootfs}"
+      return
     else
       echo "cmux-rootfs-exec: failed to mount overlay: ${err}" >&2
       exit 1
     fi
-  else
-    rm -f /tmp/cmux-overlay-mount.err
   fi
 }
 
@@ -64,14 +82,11 @@ ensure_runtime_mounts() {
   mount_or_ignore() {
     local description="$1"
     shift
-    if "${@}" 2>/tmp/cmux-mount.err; then
-      rm -f /tmp/cmux-mount.err
+    local err
+    if err=$("${@}" 2>&1); then
       return
     fi
 
-    local err
-    err=$(< /tmp/cmux-mount.err)
-    rm -f /tmp/cmux-mount.err
     if grep -qiE 'already mounted|busy' <<<"${err}"; then
       return
     fi
@@ -92,6 +107,14 @@ ensure_runtime_mounts() {
     mount --make-rslave "${runtime_root}/dev" 2>/dev/null || true
   fi
 
+  if ! mountpoint -q "${runtime_root}/dev/pts"; then
+    mkdir -p "${runtime_root}/dev/pts"
+    mount_or_ignore devpts mount -t devpts devpts "${runtime_root}/dev/pts"
+    if [[ ! -e "${runtime_root}/dev/ptmx" ]]; then
+      ln -sf pts/ptmx "${runtime_root}/dev/ptmx"
+    fi
+  fi
+
   if ! mountpoint -q "${runtime_root}/proc"; then
     mount_or_ignore proc mount -t proc proc "${runtime_root}/proc"
   fi
@@ -105,9 +128,6 @@ ensure_runtime_mounts() {
     mount --make-rslave "${runtime_root}/run" 2>/dev/null || true
   fi
 
-  if ! mountpoint -q "${runtime_root}/dev/pts"; then
-    mount_or_ignore devpts mount -t devpts devpts "${runtime_root}/dev/pts"
-  fi
 }
 
 install_host_wrapper() {

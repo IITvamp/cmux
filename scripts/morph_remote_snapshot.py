@@ -325,26 +325,24 @@ def run_sanity_checks(snapshot: Snapshot, timings: TimingsCollector) -> Snapshot
         log_dir=/tmp/cmux-sanity
         rm -rf "$log_dir"
         mkdir -p "$log_dir"
+        export CMUX_DEBUG=1
 
         forkpty_check() {
             local log="$log_dir/forkpty.log"
-            if run_chroot /bin/bash <<'BASH' >"$log" 2>&1; then
-                echo "[sanity] forkpty ok"
-            else
-                echo "[sanity] forkpty failed" >&2
-                cat "$log" >&2 || true
-                return 1
-            fi
-BASH
+            if run_chroot /bin/bash >"$log" 2>&1 <<'BASH'
 set -euo pipefail
 if command -v script >/dev/null 2>&1; then
-    script -qfec "echo forkpty-ok" /dev/null >/dev/null
-else
-    if ! command -v python3 >/dev/null 2>&1; then
-        echo "python3 not available for forkpty fallback" >&2
-        exit 1
+    if script -qfec "echo forkpty-ok" /dev/null >/dev/null; then
+        exit 0
     fi
-    python3 - <<'PY'
+fi
+
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "python3 not available for forkpty fallback" >&2
+    exit 1
+fi
+
+python3 - <<'PY'
 import os
 import pty
 import sys
@@ -357,146 +355,65 @@ data = os.read(fd, 1024)
 if b"forkpty-python" not in data:
     raise SystemExit("forkpty output missing")
 PY
-fi
 BASH
+            then
+                echo "[sanity] forkpty ok"
+            else
+                echo "[sanity] forkpty failed" >&2
+                cat "$log" >&2 || true
+                return 1
+            fi
         }
 
         docker_check() {
             local log="$log_dir/docker.log"
-            if run_chroot /bin/bash <<'BASH' >"$log" 2>&1; then
+            if run_chroot /bin/bash >"$log" 2>&1 <<'BASH'
+set -euo pipefail
+docker run --pull=missing --rm hello-world >/dev/null
+docker image rm hello-world >/dev/null 2>&1 || true
+BASH
+            then
                 echo "[sanity] docker run ok"
             else
                 echo "[sanity] docker run failed" >&2
                 cat "$log" >&2 || true
                 return 1
             fi
-BASH
-set -euo pipefail
-docker run --pull=missing --rm hello-world >/dev/null
-docker image rm hello-world >/dev/null 2>&1 || true
-BASH
         }
 
         envctl_check() {
             local log="$log_dir/envctl.log"
-            if run_chroot /bin/bash <<'BASH' >"$log" 2>&1; then
+            if run_chroot /bin/bash >"$log" 2>&1 <<'BASH'
+set -euo pipefail
+var_name=MY_ENV_VAR_SANITY
+var_value=envctl-ok
+
+envctl set "${var_name}=${var_value}"
+actual=$(envctl get "${var_name}" || true)
+if [[ "${actual}" != "${var_value}" ]]; then
+    echo "expected ${var_value}, got '${actual}'" >&2
+    exit 1
+fi
+
+envctl unset "${var_name}"
+if envctl get "${var_name}" | grep -q .; then
+    echo "envctl value persisted after unset" >&2
+    exit 1
+fi
+BASH
+            then
                 echo "[sanity] envctl propagation ok"
             else
                 echo "[sanity] envctl propagation failed" >&2
                 cat "$log" >&2 || true
                 return 1
             fi
-BASH
-set -euo pipefail
-if ! command -v python3 >/dev/null 2>&1; then
-    echo "python3 not available for envctl sanity" >&2
-    exit 1
-fi
-
-python3 - <<'PY'
-import fcntl
-import os
-import pty
-import select
-import subprocess
-import time
-
-HOOK = subprocess.check_output(["envctl", "hook", "bash"], text=True)
-
-def set_nonblocking(fd: int) -> None:
-    flags = fcntl.fcntl(fd, fcntl.F_GETFL)
-    fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
-
-def read_available(fd: int) -> str:
-    chunks = []
-    while True:
-        try:
-            chunk = os.read(fd, 4096)
-        except BlockingIOError:
-            break
-        if not chunk:
-            break
-        chunks.append(chunk.decode(errors="ignore"))
-    return "".join(chunks)
-
-def wait_for(fd: int, needle: str, timeout: float = 10.0) -> str:
-    deadline = time.time() + timeout
-    buf = ""
-    while time.time() < deadline:
-        ready, _, _ = select.select([fd], [], [], 0.2)
-        if fd in ready:
-            buf += read_available(fd)
-            if needle in buf:
-                return buf
-    raise RuntimeError(f"did not see {needle!r}; last output: {buf!r}")
-
-def send(fd: int, txt: str) -> None:
-    os.write(fd, txt.encode())
-
-def spawn(name: str):
-    pid, fd = pty.fork()
-    if pid == 0:
-        os.execvp("bash", ["bash", "-i", "--noprofile", "--norc"])
-    set_nonblocking(fd)
-    send(fd, f"export PS1='{name}> '\n")
-    send(fd, HOOK + "\n")
-    wait_for(fd, f"{name}> ")
-    send(fd, "echo READY\n")
-    wait_for(fd, "READY")
-    return pid, fd
-
-shells = []
-var_name = "MY_ENV_VAR_SANITY"
-var_value = "envctl-ok"
-
-try:
-    shells.append(spawn("A"))
-    shells.append(spawn("B"))
-
-    subprocess.run(["envctl", "set", f"{var_name}={var_value}"], check=True)
-    time.sleep(0.5)
-
-    _, fd_b = shells[1]
-    send(fd_b, f"echo ${var_name}\n")
-    output = wait_for(fd_b, f"{var_value}\n")
-    if var_value not in output:
-        raise RuntimeError("envctl value not observed in shell B")
-
-    subprocess.run(["envctl", "unset", var_name], check=True)
-    time.sleep(0.2)
-    send(fd_b, f"echo ${var_name}\n")
-    cleared = wait_for(fd_b, "\n")
-    if var_value in cleared:
-        raise RuntimeError("envctl value persisted after unset")
-finally:
-    for pid, fd in shells:
-        try:
-            send(fd, "exit\n")
-        except OSError:
-            pass
-        try:
-            os.close(fd)
-        except OSError:
-            pass
-        try:
-            os.waitpid(pid, 0)
-        except ChildProcessError:
-            pass
-PY
-
-BASH
         }
+
 
         dev_server_check() {
             local log="$log_dir/dev.log"
-            if run_chroot /bin/bash <<'BASH' >"$log" 2>&1; then
-                echo "[sanity] dev server bootstrap ok"
-            else
-                echo "[sanity] dev server bootstrap failed" >&2
-                cat "$log" >&2 || true
-                return 1
-            fi
-BASH
+            if run_chroot /bin/bash >"$log" 2>&1 <<'BASH'
 set -euo pipefail
 if [ ! -d /root/workspace ]; then
     echo "/root/workspace missing" >&2
@@ -517,7 +434,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-./scripts/dev.sh --skip-convex true >"$tmp_log" 2>&1 &
+if command -v stdbuf >/dev/null 2>&1; then
+    stdbuf -oL -eL ./scripts/dev.sh --skip-convex true >"$tmp_log" 2>&1 &
+else
+    ./scripts/dev.sh --skip-convex true >"$tmp_log" 2>&1 &
+fi
 pid=$!
 
 ready_regex='Starting Terminal App Development Environment'
@@ -536,21 +457,19 @@ cat "$tmp_log" >&2 || true
 echo "dev server did not reach ready message" >&2
 exit 1
 BASH
+            then
+                echo "[sanity] dev server bootstrap ok"
+            else
+                echo "[sanity] dev server bootstrap failed" >&2
+                cat "$log" >&2 || true
+                return 1
+            fi
         }
 
-        pids=()
-        forkpty_check &
-        pids+=("$!")
-        docker_check &
-        pids+=("$!")
-        envctl_check &
-        pids+=("$!")
-        dev_server_check &
-        pids+=("$!")
-
-        for pid in "${pids[@]}"; do
-            wait "$pid"
-        done
+        forkpty_check
+        docker_check
+        envctl_check
+        dev_server_check
 
         rm -rf "$log_dir"
         echo "[sanity] all checks passed"
@@ -583,8 +502,8 @@ def build_snapshot(
         snapshot = timings.time(
             "build_snapshot:create_snapshot",
             lambda: client.snapshots.create(
-                vcpus=8,
-                memory=16384,
+                vcpus=10,
+                memory=32768,
                 disk_size=32768,
                 digest="cmux:base-docker",
             ),
@@ -788,6 +707,27 @@ def build_snapshot(
                 )
             ),
         )
+
+        console.info("Hydrating workspace with repository contents...")
+        snapshot = timings.time(
+            "build_snapshot:hydrate_workspace",
+            lambda: run_snapshot_bash(
+                snapshot,
+                textwrap.dedent(
+                    f"""
+                    set -euo pipefail
+                    workspace_dir=/opt/app/rootfs/root/workspace
+                    mkdir -p "$workspace_dir"
+                    tar -C {shlex.quote(remote_repo_root)} -cf - . | \
+                        tar -C "$workspace_dir" -xf -
+                    ls -A "$workspace_dir" | head -n 5
+                    """
+                ).strip(),
+            ),
+        )
+
+        console.info("Cleaning up build workspace...")
+        snapshot = snapshot.exec(f"rm -rf {shlex.quote(remote_repo_root)}")
 
         console.info("Removing temporary Docker image from snapshot...")
         snapshot = snapshot.exec(

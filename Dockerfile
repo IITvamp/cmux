@@ -181,7 +181,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     ripgrep \
     jq \
     systemd \
-    dbus
+    dbus \
+    util-linux
 
 # Install GitHub CLI
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
