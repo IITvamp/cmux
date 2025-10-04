@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type { MorphInstance } from "./git";
 import { maskSensitive, singleQuote } from "./shell";
 
@@ -97,14 +99,17 @@ export async function startDevScript({
   instance: MorphInstance;
   script: string;
 }): Promise<{ error: string | null }> {
-  const devScriptPath = `${CMUX_RUNTIME_DIR}/dev-script.sh`;
+  const devScriptRunId = randomUUID().replace(/-/g, "");
+  const devScriptDir = `${CMUX_RUNTIME_DIR}/${devScriptRunId}`;
+  const devScriptPath = `${devScriptDir}/dev-script.sh`;
   const pidFile = `${LOG_DIR}/dev-script.pid`;
   const logFile = `${LOG_DIR}/dev-script.log`;
 
   const command = `
 set -euo pipefail
-trap 'rm -f ${devScriptPath}' EXIT
+trap 'rm -rf ${devScriptDir}' EXIT
 mkdir -p ${LOG_DIR}
+mkdir -p ${devScriptDir}
 ${ensurePidStoppedCommand(pidFile)}
 ${buildScriptFileCommand(devScriptPath, script)}
 cd ${WORKSPACE_ROOT}
