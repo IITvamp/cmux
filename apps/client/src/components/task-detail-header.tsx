@@ -419,6 +419,17 @@ export function TaskDetailHeader({
             </span>
           )}
 
+          {selectedRun?.environment && (
+            <>
+              <span className="text-neutral-500 dark:text-neutral-600 select-none">
+                •
+              </span>
+              <span className="font-mono text-neutral-600 dark:text-neutral-300 truncate min-w-0 max-w-[40%] whitespace-nowrap select-none text-[11px]">
+                {selectedRun.environment.name}
+              </span>
+            </>
+          )}
+
           {taskRuns && taskRuns.length > 0 && (
             <>
               <span className="text-neutral-500 dark:text-neutral-600 select-none">
