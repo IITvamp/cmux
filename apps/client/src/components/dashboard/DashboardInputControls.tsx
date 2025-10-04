@@ -290,6 +290,25 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     agentSelectRef.current?.open({ focusValue: agent });
   }, []);
 
+  // Auto-deselect agents that become unavailable
+  useEffect(() => {
+    const unavailableAgents = new Set<string>();
+    for (const agent of selectedAgents) {
+      const status = providerStatusMap.get(agent);
+      const isAvailable = status?.isAvailable ?? true;
+      if (!isAvailable) {
+        unavailableAgents.add(agent);
+      }
+    }
+
+    if (unavailableAgents.size > 0) {
+      const filtered = selectedAgents.filter(
+        (agent) => !unavailableAgents.has(agent)
+      );
+      onAgentChange(filtered);
+    }
+  }, [providerStatusMap, selectedAgents, onAgentChange]);
+
   const agentSelectionFooter = selectedAgents.length ? (
     <div className="bg-neutral-50 dark:bg-neutral-900/70">
       <div className="relative">
