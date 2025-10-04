@@ -37,9 +37,9 @@ export class GitDiffManager {
         }
       }
 
-      // Run git diff with color to get all changes
+      // Run git diff with color to get all changes, excluding lockfiles
       const { stdout, stderr } = await execAsync(
-        `git diff --color=always ${baseRef}`,
+        `git diff --color=always ${baseRef} -- . ':(exclude)pnpm-lock.yaml' ':(exclude)yarn.lock' ':(exclude)package-lock.json' ':(exclude)bun.lockb' ':(exclude)bun.lock' ':(exclude)Pipfile.lock' ':(exclude)poetry.lock' ':(exclude)Gemfile.lock' ':(exclude)composer.lock' ':(exclude)Cargo.lock'`,
         {
           cwd: workspacePath,
           maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large diffs
