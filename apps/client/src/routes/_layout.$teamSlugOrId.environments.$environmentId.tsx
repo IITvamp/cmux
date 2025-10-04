@@ -1,5 +1,7 @@
 import { EditableLabel } from "@/components/editable-label";
 import { FloatingPane } from "@/components/floating-pane";
+import { ScriptTextareaField } from "@/components/ScriptTextareaField";
+import { SCRIPT_COPY } from "@/components/scriptCopy";
 import { TitleBar } from "@/components/TitleBar";
 import { queryClient } from "@/query-client";
 import {
@@ -98,6 +100,12 @@ function EnvironmentDetailsPage() {
   const updateEnvironmentMutation = useRQMutation(
     patchApiEnvironmentsByIdMutation(),
   );
+  const updateDevScriptMutation = useRQMutation(
+    patchApiEnvironmentsByIdMutation(),
+  );
+  const updateMaintenanceScriptMutation = useRQMutation(
+    patchApiEnvironmentsByIdMutation(),
+  );
   const activateSnapshotMutation = useRQMutation(
     postApiEnvironmentsByIdSnapshotsBySnapshotVersionIdActivateMutation(),
   );
@@ -114,6 +122,15 @@ function EnvironmentDetailsPage() {
     null,
   );
   const [deletingVersionId, setDeletingVersionId] = useState<string | null>(null);
+  const [isEditingDevScript, setIsEditingDevScript] = useState(false);
+  const [devScriptDraft, setDevScriptDraft] = useState(
+    environment.devScript ?? "",
+  );
+  const [isEditingMaintenanceScript, setIsEditingMaintenanceScript] =
+    useState(false);
+  const [maintenanceScriptDraft, setMaintenanceScriptDraft] = useState(
+    environment.maintenanceScript ?? "",
+  );
 
   const handleRenameStart = () => {
     updateEnvironmentMutation.reset();
@@ -168,6 +185,18 @@ function EnvironmentDetailsPage() {
     }
   }, [environment.exposedPorts, isEditingPorts]);
 
+  useEffect(() => {
+    if (!isEditingDevScript) {
+      setDevScriptDraft(environment.devScript ?? "");
+    }
+  }, [environment.devScript, isEditingDevScript]);
+
+  useEffect(() => {
+    if (!isEditingMaintenanceScript) {
+      setMaintenanceScriptDraft(environment.maintenanceScript ?? "");
+    }
+  }, [environment.maintenanceScript, isEditingMaintenanceScript]);
+
   const handleStartEditingPorts = () => {
     setPortsDraft(environment.exposedPorts ?? []);
     setPortInput("");
@@ -180,6 +209,84 @@ function EnvironmentDetailsPage() {
     setPortsDraft(environment.exposedPorts ?? []);
     setPortInput("");
     setPortsError(null);
+  };
+
+  const handleStartEditingDevScript = () => {
+    setDevScriptDraft(environment.devScript ?? "");
+    setIsEditingDevScript(true);
+    updateDevScriptMutation.reset();
+  };
+
+  const handleCancelDevScript = () => {
+    setDevScriptDraft(environment.devScript ?? "");
+    setIsEditingDevScript(false);
+    updateDevScriptMutation.reset();
+  };
+
+  const handleSaveDevScript = async () => {
+    const normalizedDevScript = devScriptDraft.trim();
+    if (normalizedDevScript === (environment.devScript ?? "")) {
+      setIsEditingDevScript(false);
+      return;
+    }
+
+    try {
+      await updateDevScriptMutation.mutateAsync({
+        path: { id: String(environmentId) },
+        body: {
+          teamSlugOrId,
+          devScript: normalizedDevScript,
+        },
+      });
+      toast.success("Dev script updated");
+      setIsEditingDevScript(false);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to update dev script";
+      toast.error(message);
+    }
+  };
+
+  const handleStartEditingMaintenanceScript = () => {
+    setMaintenanceScriptDraft(environment.maintenanceScript ?? "");
+    setIsEditingMaintenanceScript(true);
+    updateMaintenanceScriptMutation.reset();
+  };
+
+  const handleCancelMaintenanceScript = () => {
+    setMaintenanceScriptDraft(environment.maintenanceScript ?? "");
+    setIsEditingMaintenanceScript(false);
+    updateMaintenanceScriptMutation.reset();
+  };
+
+  const handleSaveMaintenanceScript = async () => {
+    const normalizedMaintenanceScript = maintenanceScriptDraft.trim();
+    if (
+      normalizedMaintenanceScript === (environment.maintenanceScript ?? "")
+    ) {
+      setIsEditingMaintenanceScript(false);
+      return;
+    }
+
+    try {
+      await updateMaintenanceScriptMutation.mutateAsync({
+        path: { id: String(environmentId) },
+        body: {
+          teamSlugOrId,
+          maintenanceScript: normalizedMaintenanceScript,
+        },
+      });
+      toast.success("Maintenance script updated");
+      setIsEditingMaintenanceScript(false);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to update maintenance script";
+      toast.error(message);
+    }
   };
 
   const handleAddPort = () => {
@@ -556,37 +663,154 @@ function EnvironmentDetailsPage() {
 
               {/* Scripts */}
               <div className="space-y-4">
-                {environment.devScript && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
+                <div>
+                  <div className="mb-2 flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
                       <Terminal className="w-4 h-4 text-neutral-500" />
                       <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
                         Dev Script
                       </h3>
                     </div>
-                    <div className="p-3 rounded-lg bg-neutral-900 dark:bg-neutral-950 border border-neutral-800">
-                      <code className="text-sm text-green-400 font-mono">
-                        {environment.devScript}
-                      </code>
-                    </div>
+                    {!isEditingDevScript && (
+                      <button
+                        type="button"
+                        onClick={handleStartEditingDevScript}
+                        disabled={updateDevScriptMutation.isPending}
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-300",
+                          !updateDevScriptMutation.isPending &&
+                            "hover:bg-neutral-100 dark:hover:bg-neutral-900",
+                        )}
+                      >
+                        {environment.devScript && environment.devScript.length > 0
+                          ? "Edit"
+                          : "Add"}
+                      </button>
+                    )}
                   </div>
-                )}
+                  {isEditingDevScript ? (
+                    <div className="space-y-2">
+                      <ScriptTextareaField
+                        description={SCRIPT_COPY.dev.description}
+                        subtitle={SCRIPT_COPY.dev.subtitle}
+                        value={devScriptDraft}
+                        onChange={(next) => setDevScriptDraft(next)}
+                        placeholder={SCRIPT_COPY.dev.placeholder}
+                        disabled={updateDevScriptMutation.isPending}
+                        minHeightClassName="min-h-[130px]"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={handleSaveDevScript}
+                          disabled={updateDevScriptMutation.isPending}
+                          className="inline-flex h-8 items-center justify-center rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
+                        >
+                          {updateDevScriptMutation.isPending ? "Saving..." : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCancelDevScript}
+                          disabled={updateDevScriptMutation.isPending}
+                          className={cn(
+                            "inline-flex h-8 items-center justify-center rounded-md border border-neutral-300 px-4 text-sm font-medium text-neutral-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-300",
+                            !updateDevScriptMutation.isPending &&
+                              "hover:bg-neutral-100 dark:hover:bg-neutral-900",
+                          )}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : environment.devScript && environment.devScript.length > 0 ? (
+                    <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-3 dark:bg-neutral-950">
+                      <pre className="whitespace-pre-wrap break-words font-mono text-sm text-green-400">
+                        {environment.devScript}
+                      </pre>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-neutral-500 dark:text-neutral-500">
+                      No dev script configured.
+                    </p>
+                  )}
+                </div>
 
-                {environment.maintenanceScript && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
+                <div>
+                  <div className="mb-2 flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
                       <Code className="w-4 h-4 text-neutral-500" />
                       <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
                         Maintenance Script
                       </h3>
                     </div>
-                    <div className="p-3 rounded-lg bg-neutral-900 dark:bg-neutral-950 border border-neutral-800">
-                      <code className="text-sm text-green-400 font-mono">
-                        {environment.maintenanceScript}
-                      </code>
-                    </div>
+                    {!isEditingMaintenanceScript && (
+                      <button
+                        type="button"
+                        onClick={handleStartEditingMaintenanceScript}
+                        disabled={updateMaintenanceScriptMutation.isPending}
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-300",
+                          !updateMaintenanceScriptMutation.isPending &&
+                            "hover:bg-neutral-100 dark:hover:bg-neutral-900",
+                        )}
+                      >
+                        {environment.maintenanceScript &&
+                        environment.maintenanceScript.length > 0
+                          ? "Edit"
+                          : "Add"}
+                      </button>
+                    )}
                   </div>
-                )}
+                  {isEditingMaintenanceScript ? (
+                    <div className="space-y-2">
+                      <ScriptTextareaField
+                        description={SCRIPT_COPY.maintenance.description}
+                        subtitle={SCRIPT_COPY.maintenance.subtitle}
+                        value={maintenanceScriptDraft}
+                        onChange={(next) => setMaintenanceScriptDraft(next)}
+                        placeholder={SCRIPT_COPY.maintenance.placeholder}
+                        disabled={updateMaintenanceScriptMutation.isPending}
+                        descriptionClassName="mb-3"
+                        minHeightClassName="min-h-[114px]"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={handleSaveMaintenanceScript}
+                          disabled={updateMaintenanceScriptMutation.isPending}
+                          className="inline-flex h-8 items-center justify-center rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
+                        >
+                          {updateMaintenanceScriptMutation.isPending
+                            ? "Saving..."
+                            : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCancelMaintenanceScript}
+                          disabled={updateMaintenanceScriptMutation.isPending}
+                          className={cn(
+                            "inline-flex h-8 items-center justify-center rounded-md border border-neutral-300 px-4 text-sm font-medium text-neutral-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-300",
+                            !updateMaintenanceScriptMutation.isPending &&
+                              "hover:bg-neutral-100 dark:hover:bg-neutral-900",
+                          )}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : environment.maintenanceScript &&
+                    environment.maintenanceScript.length > 0 ? (
+                    <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-3 dark:bg-neutral-950">
+                      <pre className="whitespace-pre-wrap break-words font-mono text-sm text-green-400">
+                        {environment.maintenanceScript}
+                      </pre>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-neutral-500 dark:text-neutral-500">
+                      No maintenance script configured.
+                    </p>
+                  )}
+                </div>
               </div>
 
               {/* Exposed Ports */}

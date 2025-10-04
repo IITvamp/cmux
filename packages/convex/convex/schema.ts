@@ -456,6 +456,8 @@ const convexSchema = defineSchema({
     createdAt: v.number(),
     createdByUserId: v.string(),
     label: v.optional(v.string()),
+    maintenanceScript: v.optional(v.string()),
+    devScript: v.optional(v.string()),
   })
     .index("by_environment_version", ["environmentId", "version"])
     .index("by_environment_createdAt", ["environmentId", "createdAt"])
