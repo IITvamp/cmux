@@ -51,7 +51,7 @@ function DashboardComponent() {
   });
   const [selectedBranch, setSelectedBranch] = useState<string[]>([]);
 
-  const [selectedAgents, setSelectedAgents] = useState<string[]>(() => {
+  const [rawSelectedAgents, setRawSelectedAgents] = useState<string[]>(() => {
     const stored = localStorage.getItem("selectedAgents");
     // Only use stored value if it exists and has selections, otherwise use defaults
     return stored && JSON.parse(stored).length > 0
@@ -67,6 +67,9 @@ function DashboardComponent() {
   const [, setDockerReady] = useState<boolean | null>(null);
   const [providerStatus, setProviderStatus] =
     useState<ProviderStatusResponse | null>(null);
+
+  // Keep track of when we've shown the unconfigured models toast
+  const [hasShownUnconfiguredToast, setHasShownUnconfiguredToast] = useState(false);
 
   // Ref to access editor API
   const editorApiRef = useRef<EditorApi | null>(null);
@@ -143,9 +146,48 @@ function DashboardComponent() {
     setSelectedBranch(newBranches);
   }, []);
 
+  // Get available agent names from provider status
+  const availableAgentNames = useMemo(() => {
+    const available = new Set<string>();
+    providerStatus?.providers?.forEach((provider) => {
+      if (provider.isAvailable) {
+        available.add(provider.name);
+      }
+    });
+    return available;
+  }, [providerStatus]);
+
+  // Automatically filter out unconfigured models from selected agents
+  const selectedAgents = useMemo(() => {
+    if (!providerStatus) {
+      // If provider status hasn't loaded yet, return raw selection
+      return rawSelectedAgents;
+    }
+
+    // Filter out unavailable agents
+    const filtered = rawSelectedAgents.filter((agent) =>
+      availableAgentNames.has(agent)
+    );
+
+    // If agents were removed, show toast once
+    const removed = rawSelectedAgents.filter(
+      (agent) => !availableAgentNames.has(agent)
+    );
+    if (removed.length > 0 && !hasShownUnconfiguredToast) {
+      const names = removed.join(", ");
+      toast.error(`Models not configured: ${names}`);
+      setHasShownUnconfiguredToast(true);
+    }
+
+    return filtered;
+  }, [rawSelectedAgents, availableAgentNames, providerStatus, hasShownUnconfiguredToast]);
+
   // Callback for agent selection changes
   const handleAgentChange = useCallback((newAgents: string[]) => {
-    setSelectedAgents(newAgents);
+    setRawSelectedAgents(newAgents);
+    // Reset toast flag when user manually changes selection
+    setHasShownUnconfiguredToast(false);
+
     // Only persist to localStorage if the user made a selection (not using defaults)
     // If newAgents is empty or equals defaults, remove from localStorage
     const isDefault =

@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
 import type { Doc, Id } from "@cmux/convex/dataModel";
+import type { ProviderStatusResponse } from "@cmux/shared";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
@@ -300,6 +301,33 @@ function RunDiffPage() {
     };
   }, [primaryRepo, baseBranchMetadata]);
 
+  // Query provider status to check which agents are configured
+  const providerStatusQuery = useRQ({
+    queryKey: ["provider-status"],
+    queryFn: async () => {
+      if (!socket) {
+        throw new Error("Socket not connected");
+      }
+      return new Promise<ProviderStatusResponse | null>((resolve) => {
+        socket.emit("check-provider-status", (response) => {
+          resolve(response || null);
+        });
+      });
+    },
+    enabled: Boolean(socket),
+    refetchInterval: 10000,
+  });
+
+  const availableAgentNames = useMemo(() => {
+    const available = new Set<string>();
+    providerStatusQuery.data?.providers?.forEach((provider) => {
+      if (provider.isAvailable) {
+        available.add(provider.name);
+      }
+    });
+    return available;
+  }, [providerStatusQuery.data]);
+
   const restartAgents = useMemo(() => {
     const previousAgents = collectAgentNamesFromRuns(taskRuns);
     if (previousAgents.length > 0) {
@@ -311,6 +339,15 @@ function RunDiffPage() {
     }
     return [];
   }, [selectedRun?.agentName, taskRuns]);
+
+  // Filter to only configured agents
+  const configuredRestartAgents = useMemo(() => {
+    if (!providerStatusQuery.data) {
+      // If provider status hasn't loaded yet, return all agents
+      return restartAgents;
+    }
+    return restartAgents.filter((agent) => availableAgentNames.has(agent));
+  }, [restartAgents, availableAgentNames, providerStatusQuery.data]);
 
   const taskRunId = selectedRun?._id ?? runId;
 
@@ -339,6 +376,23 @@ function RunDiffPage() {
     if (restartAgents.length === 0) {
       toast.error(
         "No previous agents found for this task. Start a new run from the dashboard.",
+      );
+      return;
+    }
+
+    // Check if any agents are unconfigured and show toast
+    const unconfiguredAgents = restartAgents.filter(
+      (agent) => !availableAgentNames.has(agent)
+    );
+    if (unconfiguredAgents.length > 0) {
+      const names = unconfiguredAgents.join(", ");
+      toast.error(`Models not configured: ${names}`);
+      return;
+    }
+
+    if (configuredRestartAgents.length === 0) {
+      toast.error(
+        "All previous agents are unconfigured. Configure agents in Settings or start a new run from the dashboard.",
       );
       return;
     }
@@ -405,7 +459,7 @@ function RunDiffPage() {
             taskDescription: combinedPrompt,
             projectFullName: projectFullNameForSocket,
             taskId: newTaskId,
-            selectedAgents: [...restartAgents],
+            selectedAgents: [...configuredRestartAgents],
             isCloudMode: restartIsCloudMode,
             ...(task.environmentId
               ? { environmentId: task.environmentId }
@@ -440,6 +494,8 @@ function RunDiffPage() {
     teamSlugOrId,
     theme,
     restartAgents,
+    configuredRestartAgents,
+    availableAgentNames,
     restartIsCloudMode,
   ]);
 
