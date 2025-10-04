@@ -1221,7 +1221,15 @@ Please address the issue mentioned in the comment above.`;
 
         const { listRemoteBranches } = await import("./native/git.js");
         const branches = await listRemoteBranches({ repoFullName: repo });
-        callback({ success: true, branches: branches.map((b) => b.name) });
+        callback({
+          success: true,
+          branches: branches.map((b) => ({
+            name: b.name,
+            isDefault: b.isDefault,
+            lastCommitSha: b.lastCommitSha,
+            lastActivityAt: b.lastActivityAt,
+          })),
+        });
         return;
       } catch (error) {
         serverLogger.error("Error fetching branches:", error);

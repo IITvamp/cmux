@@ -115,9 +115,9 @@ function DashboardDiffPage() {
   }, [reposByOrgQuery.data]);
 
   const branchOptions: SelectOption[] = useMemo(() => {
-    const b = (branchesQuery.data || []) as string[];
+    const b = branchesQuery.data || [];
     // Avoid duplicate icons by not adding per-option icons; use leftIcon on control instead
-    return b.map((name) => ({ label: name, value: name }));
+    return b.map((branch) => ({ label: branch.name, value: branch.name }));
   }, [branchesQuery.data]);
 
   const setSearch = useCallback(

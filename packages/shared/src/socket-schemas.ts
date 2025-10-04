@@ -238,7 +238,14 @@ export const GitHubFetchBranchesSchema = z.object({
 
 export const GitHubBranchesResponseSchema = z.object({
   success: z.boolean(),
-  branches: z.array(z.string()),
+  branches: z.array(
+    z.object({
+      name: z.string(),
+      isDefault: z.boolean().optional(),
+      lastCommitSha: z.string().optional(),
+      lastActivityAt: z.number().optional(),
+    })
+  ),
   error: z.string().optional(),
 });
 

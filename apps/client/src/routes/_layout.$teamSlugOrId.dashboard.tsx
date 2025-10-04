@@ -216,18 +216,28 @@ function DashboardComponent() {
   const generateUploadUrl = useMutation(api.storage.generateUploadUrl);
 
   const effectiveSelectedBranch = useMemo(
-    () =>
-      selectedBranch.length > 0
-        ? selectedBranch
-        : branches && branches.length > 0
-          ? [
-              branches.includes("main")
-                ? "main"
-                : branches.includes("master")
-                  ? "master"
-                  : branches[0],
-            ]
-          : [],
+    () => {
+      if (selectedBranch.length > 0) {
+        return selectedBranch;
+      }
+      if (branches && branches.length > 0) {
+        // First, try to find the default branch (from origin/HEAD)
+        const defaultBranch = branches.find((b) => b.isDefault);
+        if (defaultBranch) {
+          return [defaultBranch.name];
+        }
+        // Fallback to hardcoded defaults for backwards compatibility
+        const branchNames = branches.map((b) => b.name);
+        if (branchNames.includes("main")) {
+          return ["main"];
+        }
+        if (branchNames.includes("master")) {
+          return ["master"];
+        }
+        return [branches[0].name];
+      }
+      return [];
+    },
     [selectedBranch, branches]
   );
 
@@ -492,7 +502,10 @@ function DashboardComponent() {
     return options;
   }, [reposByOrg, environmentsQuery.data]);
 
-  const branchOptions = branches || [];
+  const branchOptions = useMemo(
+    () => (branches || []).map((b) => b.name),
+    [branches]
+  );
 
   // Cloud mode toggle handler
   const handleCloudModeToggle = useCallback(() => {

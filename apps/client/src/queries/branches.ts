@@ -1,6 +1,13 @@
 import { waitForConnectedSocket } from "@/contexts/socket/socket-boot";
 import { queryOptions } from "@tanstack/react-query";
 
+export interface BranchInfo {
+  name: string;
+  isDefault?: boolean;
+  lastCommitSha?: string;
+  lastActivityAt?: number;
+}
+
 export function branchesQueryOptions({
   teamSlugOrId,
   repoFullName,
@@ -12,7 +19,7 @@ export function branchesQueryOptions({
     queryKey: ["branches", teamSlugOrId, repoFullName],
     queryFn: async () => {
       const socket = await waitForConnectedSocket();
-      return await new Promise<string[]>((resolve, reject) => {
+      return await new Promise<BranchInfo[]>((resolve, reject) => {
         socket.emit(
           "github-fetch-branches",
           { teamSlugOrId, repo: repoFullName },
