@@ -1,9 +1,20 @@
 import { Agent, fetch } from "undici";
+import { access, constants } from "node:fs/promises";
 
 export async function checkDockerReadiness(): Promise<boolean> {
+  const socketPath = "/var/run/docker.sock";
+
+  // First, check if the Docker socket exists
+  try {
+    await access(socketPath, constants.F_OK);
+  } catch (_error) {
+    // Socket doesn't exist yet - Docker hasn't started
+    return false;
+  }
+
   const agent = new Agent({
     connect: {
-      socketPath: "/var/run/docker.sock",
+      socketPath,
     },
   });
 
