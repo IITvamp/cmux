@@ -15,7 +15,7 @@ import { normalizeGitRef } from "@/lib/refWithOrigin";
 import { cn } from "@/lib/utils";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
-import type { Doc } from "@cmux/convex/dataModel";
+import type { Doc, Id } from "@cmux/convex/dataModel";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
@@ -31,7 +31,6 @@ import {
   useRef,
   useState,
   type FormEvent,
-  type KeyboardEvent,
 } from "react";
 import { toast } from "sonner";
 import z from "zod";
@@ -362,9 +361,9 @@ function RunDiffPage() {
           }))
         : [];
 
-      const newImages = editorContent?.images && editorContent.images.length > 0
-        ? editorContent.images
-        : [];
+      const newImages = (editorContent?.images && editorContent.images.length > 0
+        ? editorContent.images.filter((img) => 'storageId' in img)
+        : []) as { storageId: Id<"_storage">; fileName: string | undefined; altText: string }[];
 
       const imagesPayload = [...existingImages, ...newImages].length > 0
         ? [...existingImages, ...newImages]
