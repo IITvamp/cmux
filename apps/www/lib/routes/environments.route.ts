@@ -83,9 +83,15 @@ const UpdateEnvironmentBody = z
     teamSlugOrId: z.string(),
     name: z.string().trim().min(1).optional(),
     description: z.string().optional(),
+    maintenanceScript: z.string().optional(),
+    devScript: z.string().optional(),
   })
   .refine(
-    (value) => value.name !== undefined || value.description !== undefined,
+    (value) =>
+      value.name !== undefined ||
+      value.description !== undefined ||
+      value.maintenanceScript !== undefined ||
+      value.devScript !== undefined,
     "At least one field must be provided",
   )
   .openapi("UpdateEnvironmentBody");
@@ -121,6 +127,8 @@ const SnapshotVersionResponse = z
     createdByUserId: z.string(),
     label: z.string().optional(),
     isActive: z.boolean(),
+    maintenanceScript: z.string().optional(),
+    devScript: z.string().optional(),
   })
   .openapi("SnapshotVersionResponse");
 
@@ -134,6 +142,8 @@ const CreateSnapshotVersionBody = z
     morphInstanceId: z.string(),
     label: z.string().optional(),
     activate: z.boolean().optional(),
+    maintenanceScript: z.string().optional(),
+    devScript: z.string().optional(),
   })
   .openapi("CreateSnapshotVersionBody");
 
@@ -528,6 +538,8 @@ environmentsRouter.openapi(
         id: environmentId,
         name: body.name,
         description: body.description,
+        maintenanceScript: body.maintenanceScript,
+        devScript: body.devScript,
       });
 
       const updated = await convexClient.query(api.environments.get, {
@@ -779,6 +791,8 @@ environmentsRouter.openapi(
         createdByUserId: version.createdByUserId,
         label: version.label ?? undefined,
         isActive: version.isActive,
+        maintenanceScript: version.maintenanceScript ?? undefined,
+        devScript: version.devScript ?? undefined,
       }));
 
       return c.json(mapped);
@@ -867,6 +881,8 @@ environmentsRouter.openapi(
           morphSnapshotId: snapshot.id,
           label: body.label,
           activate: body.activate,
+          maintenanceScript: body.maintenanceScript,
+          devScript: body.devScript,
         }
       );
 

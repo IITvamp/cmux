@@ -73,6 +73,15 @@ export const create = authMutation({
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
     const sanitizedPorts = normalizeExposedPorts(args.exposedPorts ?? []);
     const createdAt = Date.now();
+    const normalizeScript = (script: string | undefined): string | undefined => {
+      if (script === undefined) {
+        return undefined;
+      }
+      const trimmed = script.trim();
+      return trimmed.length > 0 ? trimmed : undefined;
+    };
+    const maintenanceScript = normalizeScript(args.maintenanceScript);
+    const devScript = normalizeScript(args.devScript);
 
     const environmentId = await ctx.db.insert("environments", {
       name: args.name,
@@ -82,8 +91,8 @@ export const create = authMutation({
       dataVaultKey: args.dataVaultKey,
       selectedRepos: args.selectedRepos,
       description: args.description,
-      maintenanceScript: args.maintenanceScript,
-      devScript: args.devScript,
+      maintenanceScript,
+      devScript,
       exposedPorts:
         sanitizedPorts.length > 0 ? sanitizedPorts : undefined,
       createdAt,
@@ -97,6 +106,8 @@ export const create = authMutation({
       version: 1,
       createdAt,
       createdByUserId: userId,
+      maintenanceScript,
+      devScript,
     });
 
     return environmentId;
@@ -109,6 +120,8 @@ export const update = authMutation({
     id: v.id("environments"),
     name: v.optional(v.string()),
     description: v.optional(v.string()),
+    maintenanceScript: v.optional(v.string()),
+    devScript: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
@@ -121,11 +134,13 @@ export const update = authMutation({
     const updates: {
       name?: string;
       description?: string;
+      maintenanceScript?: string;
+      devScript?: string;
       updatedAt: number;
     } = {
       updatedAt: Date.now(),
     };
-    
+
     if (args.name !== undefined) {
       updates.name = args.name;
     }
@@ -133,9 +148,20 @@ export const update = authMutation({
     if (args.description !== undefined) {
       updates.description = args.description;
     }
-    
+
+    if (args.maintenanceScript !== undefined) {
+      const trimmedMaintenance = args.maintenanceScript.trim();
+      updates.maintenanceScript =
+        trimmedMaintenance.length > 0 ? trimmedMaintenance : undefined;
+    }
+
+    if (args.devScript !== undefined) {
+      const trimmedDevScript = args.devScript.trim();
+      updates.devScript = trimmedDevScript.length > 0 ? trimmedDevScript : undefined;
+    }
+
     await ctx.db.patch(args.id, updates);
-    
+
     return args.id;
   },
 });
