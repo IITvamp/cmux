@@ -68,17 +68,28 @@ function collectAgentNamesFromRuns(
 ): string[] {
   if (!runs) return [];
 
-  const seen = new Set<string>();
-  const ordered: string[] = [];
+  // Top-level runs mirror the user's original agent selection, including duplicates.
+  const rootAgents = runs
+    .map((run) => run.agentName?.trim())
+    .filter((name): name is string => {
+      if (!name) {
+        return false;
+      }
+      return AVAILABLE_AGENT_NAMES.has(name);
+    });
 
+  if (rootAgents.length > 0) {
+    return rootAgents;
+  }
+
+  const ordered: string[] = [];
   const traverse = (items: TaskRunWithChildren[]) => {
     for (const run of items) {
       const trimmed = run.agentName?.trim();
-      if (trimmed && AVAILABLE_AGENT_NAMES.has(trimmed) && !seen.has(trimmed)) {
-        seen.add(trimmed);
+      if (trimmed && AVAILABLE_AGENT_NAMES.has(trimmed)) {
         ordered.push(trimmed);
       }
-      if (run.children && run.children.length > 0) {
+      if (run.children.length > 0) {
         traverse(run.children);
       }
     }
