@@ -1,0 +1,8 @@
+# Lockfiles - collapse diffs by default
+*.lock linguist-generated=true diff=nodiff
+*.lockb linguist-generated=true diff=nodiff
+uv.lock linguist-generated=true diff=nodiff
+bun.lock linguist-generated=true diff=nodiff
+package-lock.json linguist-generated=true diff=nodiff
+yarn.lock linguist-generated=true diff=nodiff
+pnpm-lock.yaml linguist-generated=true diff=nodiff
