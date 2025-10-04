@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 import { App } from "./app";
+import { isElectron } from "./lib/electron";
 
 import "./antd-overrides.css";
 import "./index.css";
@@ -15,6 +16,20 @@ if (typeof window !== "undefined") {
   window.addEventListener("unhandledrejection", (event) => {
     console.error("[UnhandledRejection]", event.reason ?? "Unknown rejection");
   });
+
+  if (isElectron) {
+    window.addEventListener(
+      "dragstart",
+      (event) => {
+        const target = event.target as HTMLElement | null;
+        const anchor = target?.closest?.("a");
+        if (anchor) {
+          event.preventDefault();
+        }
+      },
+      { capture: true }
+    );
+  }
 }
 
 const rootElement = document.getElementById("root")!;
