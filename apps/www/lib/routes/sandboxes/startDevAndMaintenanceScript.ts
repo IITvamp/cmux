@@ -2,7 +2,7 @@ import type { MorphInstance } from "./git";
 import { maskSensitive, singleQuote } from "./shell";
 
 const WORKSPACE_ROOT = "/root/workspace";
-const CMUX_RUNTIME_DIR = `${WORKSPACE_ROOT}/.cmux`;
+const CMUX_RUNTIME_DIR = "/var/tmp/cmux-scripts";
 const LOG_DIR = "/var/log/cmux";
 
 const previewOutput = (
@@ -58,6 +58,7 @@ export async function runMaintenanceScript({
   const maintenanceScriptPath = `${CMUX_RUNTIME_DIR}/maintenance-script.sh`;
   const command = `
 set -euo pipefail
+trap 'rm -f ${maintenanceScriptPath}' EXIT
 ${buildScriptFileCommand(maintenanceScriptPath, script)}
 cd ${WORKSPACE_ROOT}
 bash -eu -o pipefail ${maintenanceScriptPath}
@@ -97,6 +98,7 @@ export async function startDevScript({
 
   const command = `
 set -euo pipefail
+trap 'rm -f ${devScriptPath}' EXIT
 mkdir -p ${LOG_DIR}
 ${ensurePidStoppedCommand(pidFile)}
 ${buildScriptFileCommand(devScriptPath, script)}
