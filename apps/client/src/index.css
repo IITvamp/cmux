@@ -442,12 +442,12 @@ pre,
 .editor-code:before {
   content: attr(data-gutter);
   position: absolute;
-  background-color: #eee;
+  @apply bg-neutral-200 dark:bg-neutral-700;
   left: 0;
   top: 0;
-  border-right: 1px solid #ccc;
+  @apply border-r border-neutral-300 dark:border-neutral-600;
   padding: 8px;
-  color: #777;
+  @apply text-neutral-600 dark:text-neutral-400;
   white-space: pre-wrap;
   text-align: right;
   min-width: 25px;
