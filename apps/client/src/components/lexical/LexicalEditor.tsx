@@ -483,6 +483,7 @@ interface LexicalEditorProps {
   environmentId?: Id<"environments">;
   persistenceKey?: string; // Key for localStorage persistence
   maxHeight?: string;
+  minHeight?: string;
   onEditorReady?: (editor: {
     getContent: () => {
       text: string;
@@ -509,6 +510,7 @@ export default function LexicalEditor({
   environmentId,
   persistenceKey,
   maxHeight,
+  minHeight,
   onEditorReady,
 }: LexicalEditorProps) {
   const initialConfig = useMemo(
@@ -544,6 +546,7 @@ export default function LexicalEditor({
               style={{
                 ...padding,
                 maxHeight: maxHeight,
+                minHeight: minHeight ?? "60px",
                 overflowY: maxHeight ? "auto" : undefined,
               }}
               aria-placeholder={placeholder}

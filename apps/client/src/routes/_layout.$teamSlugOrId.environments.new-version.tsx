@@ -7,6 +7,7 @@ import { typedZid } from "@cmux/shared/utils/typed-zid";
 import {
   getApiEnvironmentsByIdOptions,
   getApiEnvironmentsByIdVarsOptions,
+  getApiEnvironmentsByIdSnapshotsOptions,
 } from "@cmux/www-openapi-client/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -63,14 +64,28 @@ function NewSnapshotVersionPage() {
     enabled: !!sourceEnvironmentId,
   });
 
+  const snapshotVersionsQuery = useQuery({
+    ...getApiEnvironmentsByIdSnapshotsOptions({
+      path: { id: String(sourceEnvironmentId) },
+      query: { teamSlugOrId },
+    }),
+    enabled: !!sourceEnvironmentId,
+  });
+
   if (environmentQuery.error) {
     throw environmentQuery.error;
   }
   if (environmentVarsQuery.error) {
     throw environmentVarsQuery.error;
   }
+  if (snapshotVersionsQuery.error) {
+    throw snapshotVersionsQuery.error;
+  }
 
-  const isLoading = environmentQuery.isPending || environmentVarsQuery.isPending;
+  const isLoading =
+    environmentQuery.isPending ||
+    environmentVarsQuery.isPending ||
+    snapshotVersionsQuery.isPending;
   const environment = environmentQuery.data;
 
   if (!environment && !isLoading) {
@@ -88,6 +103,21 @@ function NewSnapshotVersionPage() {
       isSecret: true,
     }));
   }, [environmentVarsQuery.data?.envVarsContent]);
+
+  const activeSnapshotScripts = useMemo(() => {
+    const snapshots = snapshotVersionsQuery.data ?? [];
+    const activeSnapshot = snapshots.find((snapshot) => snapshot.isActive);
+    if (!activeSnapshot) {
+      return {
+        maintenanceScript: environment?.maintenanceScript ?? "",
+        devScript: environment?.devScript ?? "",
+      };
+    }
+    return {
+      maintenanceScript: activeSnapshot.maintenanceScript ?? environment?.maintenanceScript ?? "",
+      devScript: activeSnapshot.devScript ?? environment?.devScript ?? "",
+    };
+  }, [snapshotVersionsQuery.data, environment?.maintenanceScript, environment?.devScript]);
 
   const effectiveVscodeUrl = urlVscodeUrl ?? derivedVscodeUrl;
 
@@ -112,8 +142,8 @@ function NewSnapshotVersionPage() {
             mode="snapshot"
             sourceEnvironmentId={sourceEnvironmentId}
             initialEnvName={environment.name}
-            initialMaintenanceScript={environment.maintenanceScript ?? ""}
-            initialDevScript={environment.devScript ?? ""}
+            initialMaintenanceScript={activeSnapshotScripts.maintenanceScript}
+            initialDevScript={activeSnapshotScripts.devScript}
             initialExposedPorts={
               environment.exposedPorts && environment.exposedPorts.length > 0
                 ? environment.exposedPorts.join(", ")

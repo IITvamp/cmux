@@ -361,6 +361,8 @@ export type UpdateEnvironmentBody = {
     teamSlugOrId: string;
     name?: string;
     description?: string;
+    maintenanceScript?: string;
+    devScript?: string;
 };
 
 export type ExposedService = {
@@ -387,6 +389,8 @@ export type SnapshotVersionResponse = {
     createdByUserId: string;
     label?: string;
     isActive: boolean;
+    maintenanceScript?: string;
+    devScript?: string;
 };
 
 export type ListSnapshotVersionsResponse = Array<SnapshotVersionResponse>;
@@ -402,6 +406,8 @@ export type CreateSnapshotVersionBody = {
     morphInstanceId: string;
     label?: string;
     activate?: boolean;
+    maintenanceScript?: string;
+    devScript?: string;
 };
 
 export type ActivateSnapshotVersionResponse = {
@@ -482,6 +488,22 @@ export type CreateTeamRequest = {
      * Optional list of teammate emails to invite
      */
     inviteEmails?: Array<string>;
+};
+
+export type GenerateBranchesResponse = {
+    branchNames: Array<string>;
+    baseBranchName: string;
+    prTitle?: string;
+    usedFallback: boolean;
+    providerName: string | null;
+};
+
+export type GenerateBranchesBody = {
+    teamSlugOrId: string;
+    taskDescription?: string;
+    prTitle?: string;
+    count?: number;
+    uniqueId?: string;
 };
 
 export type GetApiHealthData = {
@@ -2016,6 +2038,37 @@ export type PostApiTeamsResponses = {
 };
 
 export type PostApiTeamsResponse = PostApiTeamsResponses[keyof PostApiTeamsResponses];
+
+export type PostApiBranchesGenerateData = {
+    body: GenerateBranchesBody;
+    path?: never;
+    query?: never;
+    url: '/api/branches/generate';
+};
+
+export type PostApiBranchesGenerateErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Forbidden
+     */
+    403: unknown;
+    /**
+     * Failed to generate branch names
+     */
+    500: unknown;
+};
+
+export type PostApiBranchesGenerateResponses = {
+    /**
+     * Generated branch metadata
+     */
+    200: GenerateBranchesResponse;
+};
+
+export type PostApiBranchesGenerateResponse = PostApiBranchesGenerateResponses[keyof PostApiBranchesGenerateResponses];
 
 export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});

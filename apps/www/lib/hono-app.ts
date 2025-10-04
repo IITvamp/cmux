@@ -11,6 +11,7 @@ import { githubWorkflowsRouter } from "@/lib/routes/github.workflows.route";
 import { githubReposRouter } from "@/lib/routes/github.repos.route";
 import {
   booksRouter,
+  branchRouter,
   devServerRouter,
   environmentsRouter,
   healthRouter,
@@ -112,6 +113,7 @@ app.route("/", morphRouter);
 app.route("/", environmentsRouter);
 app.route("/", sandboxesRouter);
 app.route("/", teamsRouter);
+app.route("/", branchRouter);
 
 // OpenAPI documentation
 app.doc("/doc", {

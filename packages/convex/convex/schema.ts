@@ -153,6 +153,10 @@ const convexSchema = defineSchema({
     updatedAt: v.number(),
     completedAt: v.optional(v.number()),
     exitCode: v.optional(v.number()),
+    environmentError: v.optional(v.object({
+      devError: v.optional(v.string()),
+      maintenanceError: v.optional(v.string()),
+    })),
     errorMessage: v.optional(v.string()), // Error message when run fails early
     userId: v.string(), // Link to user who created the run
     teamId: v.string(),
@@ -452,6 +456,8 @@ const convexSchema = defineSchema({
     createdAt: v.number(),
     createdByUserId: v.string(),
     label: v.optional(v.string()),
+    maintenanceScript: v.optional(v.string()),
+    devScript: v.optional(v.string()),
   })
     .index("by_environment_version", ["environmentId", "version"])
     .index("by_environment_createdAt", ["environmentId", "createdAt"])

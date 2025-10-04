@@ -17,6 +17,7 @@ import { Link, useLocation } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useQuery as useConvexQuery } from "convex/react";
 import {
+  AlertTriangle,
   Archive as ArchiveIcon,
   ArchiveRestore as ArchiveRestoreIcon,
   CheckCircle,
@@ -189,7 +190,7 @@ function TaskTreeInner({
 
   const handleCopyDescription = useCallback(() => {
     if (navigator?.clipboard?.writeText) {
-      navigator.clipboard.writeText(task.text).catch(() => {});
+      navigator.clipboard.writeText(task.text).catch(() => { });
     }
   }, [task.text]);
 
@@ -516,8 +517,8 @@ function TaskRunTreeInner({
           className="max-w-sm p-3 z-[var(--z-overlay)]"
         >
           <div className="space-y-1.5">
-            <p className="font-medium text-sm">Evaluation Reason</p>
-            <p className="text-xs text-muted-foreground">{run.crownReason}</p>
+            <p className="font-medium text-sm text-neutral-200">Evaluation Reason</p>
+            <p className="text-xs text-neutral-400">{run.crownReason}</p>
           </div>
         </TooltipContent>
       ) : null}
@@ -562,7 +563,7 @@ function TaskRunTreeInner({
   const shouldRenderDiffLink = true;
   const shouldRenderPullRequestLink = Boolean(
     (run.pullRequestUrl && run.pullRequestUrl !== "pending") ||
-      run.pullRequests?.some((pr) => pr.url)
+    run.pullRequests?.some((pr) => pr.url)
   );
   const shouldRenderPreviewLink = previewServices.length > 0;
   const hasOpenWithActions = openWithActions.length > 0;
@@ -683,6 +684,7 @@ function TaskRunTreeInner({
         hasChildren={hasChildren}
         shouldRenderPullRequestLink={shouldRenderPullRequestLink}
         previewServices={previewServices}
+        environmentError={run.environmentError}
       />
     </Fragment>
   );
@@ -696,6 +698,7 @@ interface TaskRunDetailLinkProps {
   indentLevel: number;
   className?: string;
   onClick?: (event: MouseEvent<HTMLAnchorElement>) => void;
+  trailing?: ReactNode;
 }
 
 function TaskRunDetailLink({
@@ -706,6 +709,7 @@ function TaskRunDetailLink({
   indentLevel,
   className,
   onClick,
+  trailing,
 }: TaskRunDetailLinkProps) {
   return (
     <Link
@@ -713,7 +717,7 @@ function TaskRunDetailLink({
       params={params}
       activeOptions={{ exact: true }}
       className={clsx(
-        "flex items-center px-2 py-1 text-xs rounded-md hover:bg-neutral-200/45 dark:hover:bg-neutral-800/45 cursor-default mt-px",
+        "flex items-center justify-between gap-2 px-2 py-1 text-xs rounded-md hover:bg-neutral-200/45 dark:hover:bg-neutral-800/45 cursor-default mt-px",
         "[&.active]:bg-neutral-200/75 dark:[&.active]:bg-neutral-800/65",
         "[&.active]:hover:bg-neutral-200/75 dark:[&.active]:hover:bg-neutral-800/65",
         className
@@ -721,8 +725,13 @@ function TaskRunDetailLink({
       style={{ paddingLeft: `${24 + indentLevel * 8}px` }}
       onClick={onClick}
     >
-      {icon}
-      <span className="text-neutral-600 dark:text-neutral-400">{label}</span>
+      <span className="flex min-w-0 items-center">
+        {icon}
+        <span className="text-neutral-600 dark:text-neutral-400">{label}</span>
+      </span>
+      {trailing ? (
+        <span className="ml-2 flex shrink-0 items-center">{trailing}</span>
+      ) : null}
     </Link>
   );
 }
@@ -737,6 +746,10 @@ interface TaskRunDetailsProps {
   hasChildren: boolean;
   shouldRenderPullRequestLink: boolean;
   previewServices: PreviewService[];
+  environmentError?: {
+    maintenanceError?: string;
+    devError?: string;
+  };
 }
 
 function TaskRunDetails({
@@ -749,12 +762,43 @@ function TaskRunDetails({
   hasChildren,
   shouldRenderPullRequestLink,
   previewServices,
+  environmentError,
 }: TaskRunDetailsProps) {
   if (!isExpanded) {
     return null;
   }
 
   const indentLevel = level + 1;
+  const hasEnvironmentError = Boolean(
+    environmentError?.maintenanceError || environmentError?.devError
+  );
+
+  const environmentErrorIndicator = hasEnvironmentError ? (
+    <Tooltip delayDuration={0}>
+      <TooltipTrigger asChild>
+        <AlertTriangle className="w-3 h-3 text-neutral-700" />
+      </TooltipTrigger>
+      <TooltipContent
+        side="right"
+        sideOffset={6}
+        className="max-w-sm p-3 z-[var(--z-overlay)]"
+      >
+        <div className="space-y-1.5">
+          <p className="font-medium text-sm text-neutral-200">Environment Issue</p>
+          {environmentError?.maintenanceError && (
+            <p className="text-xs text-neutral-400">
+              Maintenance script: {environmentError.maintenanceError}
+            </p>
+          )}
+          {environmentError?.devError && (
+            <p className="text-xs text-neutral-400">
+              Dev script: {environmentError.devError}
+            </p>
+          )}
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  ) : null;
 
   return (
     <Fragment>
@@ -767,6 +811,7 @@ function TaskRunDetails({
           }
           label="VS Code"
           indentLevel={indentLevel}
+          trailing={environmentErrorIndicator}
         />
       )}
 

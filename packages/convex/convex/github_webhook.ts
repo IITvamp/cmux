@@ -1,5 +1,6 @@
 import type {
   InstallationEvent,
+  InstallationRepositoriesEvent,
   PullRequestEvent,
   PushEvent,
   WebhookEvent,
@@ -8,6 +9,7 @@ import type {
 import { env } from "../_shared/convex-env";
 import { hmacSha256, safeEqualHex, sha256Hex } from "../_shared/crypto";
 import { bytesToHex } from "../_shared/encoding";
+import { streamInstallationRepositories } from "../_shared/githubApp";
 import { internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 
@@ -124,7 +126,80 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
         }
         break;
       }
-      case "installation_repositories":
+      case "installation_repositories": {
+        try {
+          const inst = body as InstallationRepositoriesEvent;
+          const installation = Number(inst.installation?.id ?? installationId ?? 0);
+          if (!installation) {
+            break;
+          }
+
+          const connection = await _ctx.runQuery(
+            internal.github_app.getProviderConnectionByInstallationId,
+            { installationId: installation },
+          );
+          if (!connection) {
+            console.warn(
+              "[github_webhook] No provider connection found for installation during repo sync",
+              {
+                installation,
+                delivery,
+              },
+            );
+            break;
+          }
+
+          const teamId = connection.teamId;
+          const userId = connection.connectedByUserId;
+          if (!teamId || !userId) {
+            console.warn(
+              "[github_webhook] Missing team/user context for installation repo sync",
+              {
+                installation,
+                teamId,
+                userId,
+                delivery,
+              },
+            );
+            break;
+          }
+
+          await streamInstallationRepositories(
+            installation,
+            (repos, currentPageIndex) =>
+              (async () => {
+                try {
+                  await _ctx.runMutation(internal.github.syncReposForInstallation, {
+                    teamId,
+                    userId,
+                    connectionId: connection._id,
+                    repos,
+                  });
+                } catch (error) {
+                  console.error(
+                    "[github_webhook] Failed to sync installation repositories from webhook",
+                    {
+                      installation,
+                      delivery,
+                      pageIndex: currentPageIndex,
+                      repoCount: repos.length,
+                      error,
+                    },
+                  );
+                }
+              })(),
+          );
+        } catch (error) {
+          console.error(
+            "[github_webhook] Unexpected error handling installation_repositories webhook",
+            {
+              error,
+              delivery,
+            },
+          );
+        }
+        break;
+      }
       case "repository":
       case "create":
       case "delete":

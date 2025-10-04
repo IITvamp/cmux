@@ -49,21 +49,21 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
       client: getWwwClient(),
       body: {
         teamSlugOrId: this.teamSlugOrId,
-        ttlSeconds: 20 * 60,
+        ttlSeconds: 60 * 60,
         metadata: {
           instance: `cmux-${this.taskRunId}`,
-          taskRunId: String(this.taskRunId),
           agentName: this.config.agentName || "",
-          taskRunJwt: this.taskRunJwt || "",
         },
+        taskRunId: this.taskRunId,
+        taskRunJwt: this.taskRunJwt || "",
         ...(this.environmentId ? { environmentId: this.environmentId } : {}),
         ...(this.repoUrl
           ? {
-              repoUrl: this.repoUrl,
-              branch: this.branch,
-              newBranch: this.newBranch,
-              depth: 1,
-            }
+            repoUrl: this.repoUrl,
+            branch: this.branch,
+            newBranch: this.newBranch,
+            depth: 1,
+          }
           : {}),
       },
     });
@@ -162,7 +162,7 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
         path: { id: this.sandboxId },
         body: {
           teamSlugOrId: this.teamSlugOrId,
-          taskRunId: String(this.taskRunId),
+          taskRunId: this.taskRunId,
         },
       });
     } catch (e) {

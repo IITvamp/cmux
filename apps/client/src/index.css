@@ -518,3 +518,9 @@ pre,
 .diff-hidden-lines-widget {
   user-select: none;
 }
+
+/* Prevent anchor dragging in Electron only */
+.is-electron a {
+  -webkit-user-drag: none;
+  user-drag: none;
+}

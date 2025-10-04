@@ -625,26 +625,26 @@ export function setupSocketHandlers(
           const updatedRecords: StoredPullRequestInfo[] =
             existingRecords.length > 0
               ? existingRecords.map((record) =>
-                  record.repoFullName === repoFullName
-                    ? {
-                        ...record,
-                        state: "merged",
-                        isDraft: false,
-                      }
-                    : record,
-                )
-              : [
-                  {
-                    repoFullName,
-                    url:
-                      run.pullRequestUrl && run.pullRequestUrl !== "pending"
-                        ? run.pullRequestUrl
-                        : undefined,
-                    number: run.pullRequestNumber ?? undefined,
+                record.repoFullName === repoFullName
+                  ? {
+                    ...record,
                     state: "merged",
                     isDraft: false,
-                  },
-                ];
+                  }
+                  : record,
+              )
+              : [
+                {
+                  repoFullName,
+                  url:
+                    run.pullRequestUrl && run.pullRequestUrl !== "pending"
+                      ? run.pullRequestUrl
+                      : undefined,
+                  number: run.pullRequestNumber ?? undefined,
+                  state: "merged",
+                  isDraft: false,
+                },
+              ];
 
           await getConvex().mutation(api.taskRuns.updatePullRequestState, {
             teamSlugOrId: safeTeam,
@@ -1061,11 +1061,11 @@ export function setupSocketHandlers(
           return;
         }
         // First, try to get existing repos from Convex
-        const existingRepos = await getConvex().query(api.github.getAllRepos, {
+        const hasRepos = await getConvex().query(api.github.hasReposForTeam, {
           teamSlugOrId,
         });
 
-        if (existingRepos.length > 0) {
+        if (hasRepos) {
           // If we have repos, return them and refresh in the background
           const reposByOrg = await getConvex().query(api.github.getReposByOrg, {
             teamSlugOrId,
@@ -1093,9 +1093,8 @@ export function setupSocketHandlers(
         serverLogger.error("Error fetching repos:", error);
         callback({
           success: false,
-          error: `Failed to fetch GitHub repos: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          error: `Failed to fetch GitHub repos: ${error instanceof Error ? error.message : String(error)
+            }`,
         });
       }
     });
@@ -1222,10 +1221,21 @@ Please address the issue mentioned in the comment above.`;
 
         const { listRemoteBranches } = await import("./native/git.js");
         const branches = await listRemoteBranches({ repoFullName: repo });
-        callback({ success: true, branches: branches.map((b) => b.name) });
+        const defaultBranch = branches.find((branch) => branch.isDefault)?.name;
+
+        callback({
+          success: true,
+          branches,
+          defaultBranch,
+        });
         return;
       } catch (error) {
         serverLogger.error("Error fetching branches:", error);
+        callback({
+          success: false,
+          branches: [],
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
       }
     });
 
