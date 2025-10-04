@@ -1,0 +1,7 @@
+# Lockfiles change frequently and do not yield helpful diffs.
+*.lock -diff
+*.lock.json -diff
+*.lockb -diff
+pnpm-lock.yaml -diff
+yarn.lock -diff
+package-lock.json -diff
