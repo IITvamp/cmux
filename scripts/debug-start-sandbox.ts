@@ -133,7 +133,7 @@ async function main(): Promise<void> {
         body: {
           teamSlugOrId: options.teamSlugOrId,
           environmentId: options.environmentId,
-          ttlSeconds: options.ttlSeconds ?? 20 * 60,
+          ttlSeconds: options.ttlSeconds ?? 60 * 60,
         },
       });
 
