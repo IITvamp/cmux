@@ -21,6 +21,7 @@ import clsx from "clsx";
 import { useMutation } from "convex/react";
 import { GitBranch, Image, Mic, Server, X } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { AgentCommandItem, MAX_AGENT_COMMAND_COUNT } from "./AgentCommandItem";
 
 interface DashboardInputControlsProps {
@@ -142,6 +143,60 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     });
   }, [handleOpenSettings, providerStatusMap]);
 
+  // Auto-filter selected agents to only include available ones
+  const filteredSelectedAgents = useMemo(() => {
+    const availableAgentNames = new Set(
+      agentOptions.filter((opt) => !opt.isUnavailable).map((opt) => opt.value),
+    );
+    return selectedAgents.filter((agent) => availableAgentNames.has(agent));
+  }, [selectedAgents, agentOptions]);
+
+  // Sync filtered agents back to parent when they differ
+  const previousFilteredRef = useRef<string[]>([]);
+  const previousSelectedRef = useRef<string[]>(selectedAgents);
+  if (
+    filteredSelectedAgents.length !== previousFilteredRef.current.length ||
+    !filteredSelectedAgents.every(
+      (agent, index) => agent === previousFilteredRef.current[index],
+    )
+  ) {
+    previousFilteredRef.current = filteredSelectedAgents;
+    if (
+      selectedAgents.length !== filteredSelectedAgents.length ||
+      !selectedAgents.every(
+        (agent, index) => agent === filteredSelectedAgents[index],
+      )
+    ) {
+      const removedAgents = selectedAgents.filter(
+        (agent) => !filteredSelectedAgents.includes(agent),
+      );
+
+      // Schedule the update to avoid render-during-render
+      Promise.resolve().then(() => {
+        onAgentChange(filteredSelectedAgents);
+
+        // Only show toast if agents were actually removed due to configuration changes
+        // (not on initial load or user removal)
+        if (
+          removedAgents.length > 0 &&
+          previousSelectedRef.current.length === selectedAgents.length
+        ) {
+          const agentNames = removedAgents
+            .map((name) => {
+              const slashIndex = name.indexOf("/");
+              return slashIndex >= 0 ? name.slice(slashIndex + 1) : name;
+            })
+            .join(", ");
+          toast.error(
+            `Models not configured: ${agentNames}. Add credentials in Settings.`,
+            { duration: 6000 }
+          );
+        }
+      });
+    }
+  }
+  previousSelectedRef.current = selectedAgents;
+
   const agentOptionsByValue = useMemo(() => {
     const map = new Map<string, AgentOption>();
     for (const option of agentOptions) {
@@ -159,7 +214,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     const remaining = [...previous];
     const next: AgentSelectionInstance[] = [];
 
-    for (const agent of selectedAgents) {
+    for (const agent of filteredSelectedAgents) {
       const matchIndex = remaining.findIndex(
         (instance) => instance.agent === agent,
       );
@@ -172,7 +227,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
 
     agentInstancesRef.current = next;
     return next;
-  }, [selectedAgents]);
+  }, [filteredSelectedAgents]);
 
   const instanceIndexMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -280,17 +335,17 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       if (instanceIndex === undefined) {
         return;
       }
-      const next = selectedAgents.filter((_, index) => index !== instanceIndex);
+      const next = filteredSelectedAgents.filter((_, index) => index !== instanceIndex);
       onAgentChange(next);
     },
-    [instanceIndexMap, onAgentChange, selectedAgents],
+    [instanceIndexMap, onAgentChange, filteredSelectedAgents],
   );
 
   const handleFocusAgentOption = useCallback((agent: string) => {
     agentSelectRef.current?.open({ focusValue: agent });
   }, []);
 
-  const agentSelectionFooter = selectedAgents.length ? (
+  const agentSelectionFooter = filteredSelectedAgents.length ? (
     <div className="bg-neutral-50 dark:bg-neutral-900/70">
       <div className="relative">
         <div
@@ -521,7 +576,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
         <SearchableSelect
           ref={agentSelectRef}
           options={agentOptions}
-          value={selectedAgents}
+          value={filteredSelectedAgents}
           onChange={onAgentChange}
           placeholder="Select agents"
           singleSelect={false}

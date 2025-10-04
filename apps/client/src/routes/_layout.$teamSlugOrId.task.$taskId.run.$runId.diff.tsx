@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
 import type { Doc, Id } from "@cmux/convex/dataModel";
+import type { ProviderStatusResponse } from "@cmux/shared";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
@@ -27,6 +28,7 @@ import { Command } from "lucide-react";
 import {
   Suspense,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -223,6 +225,7 @@ function RunDiffPage() {
   const [isRestartingTask, setIsRestartingTask] = useState(false);
   const [overridePrompt, setOverridePrompt] = useState(false);
   const editorApiRef = useRef<EditorApi | null>(null);
+  const [providerStatus, setProviderStatus] = useState<ProviderStatusResponse | null>(null);
   const task = useQuery(api.tasks.getById, {
     teamSlugOrId,
     id: taskId,
@@ -312,6 +315,53 @@ function RunDiffPage() {
     return [];
   }, [selectedRun?.agentName, taskRuns]);
 
+  // Check provider status on mount
+  useEffect(() => {
+    if (!socket) return;
+
+    const checkProviderStatus = () => {
+      socket.emit("check-provider-status", (response) => {
+        if (response?.success) {
+          setProviderStatus(response);
+        }
+      });
+    };
+
+    checkProviderStatus();
+  }, [socket]);
+
+  // Filter restart agents to only available ones
+  const availableRestartAgents = useMemo(() => {
+    if (!providerStatus?.providers) {
+      return restartAgents;
+    }
+
+    const providerStatusMap = new Map(
+      providerStatus.providers.map((p) => [p.name, p]),
+    );
+
+    return restartAgents.filter((agent) => {
+      const status = providerStatusMap.get(agent);
+      return status?.isAvailable ?? true;
+    });
+  }, [restartAgents, providerStatus]);
+
+  // Track unavailable agents for toast notification
+  const unavailableRestartAgents = useMemo(() => {
+    if (!providerStatus?.providers) {
+      return [];
+    }
+
+    const providerStatusMap = new Map(
+      providerStatus.providers.map((p) => [p.name, p]),
+    );
+
+    return restartAgents.filter((agent) => {
+      const status = providerStatusMap.get(agent);
+      return status && !status.isAvailable;
+    });
+  }, [restartAgents, providerStatus]);
+
   const taskRunId = selectedRun?._id ?? runId;
 
   const handleRestartTask = useCallback(async () => {
@@ -339,6 +389,28 @@ function RunDiffPage() {
     if (restartAgents.length === 0) {
       toast.error(
         "No previous agents found for this task. Start a new run from the dashboard.",
+      );
+      return;
+    }
+
+    // Check if any originally selected agents are unavailable
+    if (unavailableRestartAgents.length > 0) {
+      const agentNames = unavailableRestartAgents
+        .map((name) => {
+          const slashIndex = name.indexOf("/");
+          return slashIndex >= 0 ? name.slice(slashIndex + 1) : name;
+        })
+        .join(", ");
+      toast.error(
+        `Models not configured: ${agentNames}. Add credentials in Settings.`,
+        { duration: 6000 }
+      );
+    }
+
+    // Use only available agents for the restart
+    if (availableRestartAgents.length === 0) {
+      toast.error(
+        "None of the original agents are available. Configure at least one agent in Settings.",
       );
       return;
     }
@@ -405,7 +477,7 @@ function RunDiffPage() {
             taskDescription: combinedPrompt,
             projectFullName: projectFullNameForSocket,
             taskId: newTaskId,
-            selectedAgents: [...restartAgents],
+            selectedAgents: [...availableRestartAgents],
             isCloudMode: restartIsCloudMode,
             ...(task.environmentId
               ? { environmentId: task.environmentId }
@@ -441,6 +513,8 @@ function RunDiffPage() {
     theme,
     restartAgents,
     restartIsCloudMode,
+    availableRestartAgents,
+    unavailableRestartAgents,
   ]);
 
   const handleFormSubmit = useCallback(
