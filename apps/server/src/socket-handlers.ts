@@ -1219,8 +1219,28 @@ Please address the issue mentioned in the comment above.`;
       try {
         const { repo } = GitHubFetchBranchesSchema.parse(data);
 
-        const { listRemoteBranches } = await import("./native/git.js");
-        const branches = await listRemoteBranches({ repoFullName: repo });
+        // Try native git first, then fallback to GitHub API
+        let branches: Array<{
+          name: string;
+          lastCommitSha?: string;
+          lastActivityAt?: number;
+          isDefault?: boolean;
+        }>;
+
+        try {
+          const { listRemoteBranches } = await import("./native/git.js");
+          branches = await listRemoteBranches({ repoFullName: repo });
+        } catch (nativeError) {
+          // Fallback to GitHub API if native fails
+          const nativeMsg = nativeError instanceof Error ? nativeError.message : String(nativeError);
+          serverLogger.info(
+            `Native branch listing failed for ${repo}; falling back to GitHub API: ${nativeMsg}`
+          );
+
+          const { ghApi } = await import("./ghApi.js");
+          branches = await ghApi.getRepoBranchesWithActivity(repo);
+        }
+
         const defaultBranch = branches.find((branch) => branch.isDefault)?.name;
 
         callback({
