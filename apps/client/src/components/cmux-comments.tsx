@@ -530,7 +530,7 @@ export function CmuxComments({ teamSlugOrId }: { teamSlugOrId: string }) {
       }
       // Regular C to enter comment mode
       else if (e.key === "c" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        const target = e.target as HTMLElement | null;
+        const target = e.target as HTMLElement;
         const isEditableElement = Boolean(
           target &&
           (target.tagName === "INPUT" ||
