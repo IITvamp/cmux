@@ -54,9 +54,7 @@ import {
   type ToastFeedbackContext,
   getErrorDescription,
 } from "./task-detail-header.mutations";
-import type {
-  SocketMutationErrorInstance,
-} from "./task-detail-header.mutations";
+import type { SocketMutationErrorInstance } from "./task-detail-header.mutations";
 
 interface TaskDetailHeaderProps {
   task?: Doc<"tasks"> | null;
@@ -251,6 +249,16 @@ export function TaskDetailHeader({
     return Array.from(names);
   }, [task?.projectFullName, environmentRepos]);
 
+  // Get environment name from task runs (all runs for an environment task should have the same environment)
+  const environmentName = useMemo(() => {
+    if (taskRuns && taskRuns.length > 0) {
+      // Find the first run with environment data
+      const runWithEnvironment = taskRuns.find((run) => run.environment);
+      return runWithEnvironment?.environment?.name;
+    }
+    return undefined;
+  }, [taskRuns]);
+
   const repoDiffTargets = useMemo<RepoDiffTarget[]>(() => {
     const baseRef = normalizedBaseBranch || undefined;
     const headRef = normalizedHeadBranch || undefined;
@@ -413,9 +421,9 @@ export function TaskDetailHeader({
             in
           </span>
 
-          {task?.projectFullName && (
+          {(task?.projectFullName || environmentName) && (
             <span className="font-mono text-neutral-600 dark:text-neutral-300 truncate min-w-0 max-w-[40%] whitespace-nowrap select-none text-[11px]">
-              {task.projectFullName}
+              {task?.projectFullName || environmentName}
             </span>
           )}
 
@@ -681,7 +689,9 @@ function SocketActions({
           if (resp.success) {
             resolve(resp);
           } else {
-            reject(new SocketMutationError(resp.error ?? draftErrorLabel, resp));
+            reject(
+              new SocketMutationError(resp.error ?? draftErrorLabel, resp),
+            );
           }
         });
       });
@@ -817,8 +827,7 @@ function SocketActions({
 
   const isOpeningPr = openPrMutation.isPending;
   const isCreatingPr = createDraftPrMutation.isPending;
-  const isMerging =
-    mergePrMutation.isPending || mergeBranchMutation.isPending;
+  const isMerging = mergePrMutation.isPending || mergeBranchMutation.isPending;
 
   const hasAnyRemotePr = pullRequests.some((pr) => pr.url);
 
@@ -878,9 +887,13 @@ function SocketActions({
         </div>
       ) : (
         <MergeButton
-          onMerge={prIsOpen ? handleMerge : () => {
-            void handleOpenPRs();
-          }}
+          onMerge={
+            prIsOpen
+              ? handleMerge
+              : () => {
+                  void handleOpenPRs();
+                }
+          }
           isOpen={prIsOpen}
           disabled={
             isOpeningPr ||
