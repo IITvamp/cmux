@@ -28,6 +28,7 @@ import {
   Suspense,
   memo,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -90,6 +91,17 @@ const RestartTaskForm = memo(function RestartTaskForm({
   const [followUpText, setFollowUpText] = useState("");
   const [isRestartingTask, setIsRestartingTask] = useState(false);
   const [overridePrompt, setOverridePrompt] = useState(false);
+  const persistenceKey = useMemo(
+    () => `restart-task-${taskId}-${runId}`,
+    [runId, taskId],
+  );
+
+  useEffect(() => {
+    editorApiRef.current = null;
+    setFollowUpText("");
+    setOverridePrompt(false);
+    setIsRestartingTask(false);
+  }, [persistenceKey]);
 
   const handleRestartTask = useCallback(async () => {
     if (!task) {
@@ -266,6 +278,7 @@ const RestartTaskForm = memo(function RestartTaskForm({
       >
         <div className="px-3.5 pt-3.5">
           <LexicalEditor
+            key={persistenceKey}
             placeholder={
               overridePrompt
                 ? "Edit original task instructions..."
@@ -280,7 +293,7 @@ const RestartTaskForm = memo(function RestartTaskForm({
             }
             branch={task?.baseBranch ?? undefined}
             environmentId={task?.environmentId ?? undefined}
-            persistenceKey={`restart-task-${taskId}-${runId}`}
+            persistenceKey={persistenceKey}
             maxHeight="96px"
             onEditorReady={(api) => {
               editorApiRef.current = api;
