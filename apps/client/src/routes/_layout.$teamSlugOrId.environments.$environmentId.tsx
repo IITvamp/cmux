@@ -41,8 +41,15 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+
+const areNumberArraysEqual = (
+  left: readonly number[],
+  right: readonly number[],
+): boolean =>
+  left.length === right.length &&
+  left.every((value, index) => value === right[index]);
 
 export const Route = createFileRoute(
   "/_layout/$teamSlugOrId/environments/$environmentId",
@@ -111,13 +118,27 @@ function EnvironmentDetailsPage() {
   );
   const modifyVmMutation = useRQMutation(postApiSandboxesStartMutation());
   const snapshotLaunchMutation = useRQMutation(postApiSandboxesStartMutation());
+  const normalizedEnvironmentPorts = useMemo(
+    () => validateExposedPorts(environment.exposedPorts ?? []).sanitized,
+    [environment.exposedPorts],
+  );
   const [renameError, setRenameError] = useState<string | null>(null);
   const [isEditingPorts, setIsEditingPorts] = useState(false);
   const [portsDraft, setPortsDraft] = useState<number[]>(
-    environment.exposedPorts ?? [],
+    normalizedEnvironmentPorts,
   );
   const [portInput, setPortInput] = useState("");
   const [portsError, setPortsError] = useState<string | null>(null);
+  const normalizedPortsDraft = useMemo(
+    () => validateExposedPorts(portsDraft).sanitized,
+    [portsDraft],
+  );
+  const hasPortChanges = useMemo(
+    () =>
+      isEditingPorts &&
+      !areNumberArraysEqual(normalizedEnvironmentPorts, normalizedPortsDraft),
+    [isEditingPorts, normalizedEnvironmentPorts, normalizedPortsDraft],
+  );
   const [activatingVersionId, setActivatingVersionId] = useState<string | null>(
     null,
   );
@@ -181,9 +202,9 @@ function EnvironmentDetailsPage() {
 
   useEffect(() => {
     if (!isEditingPorts) {
-      setPortsDraft(environment.exposedPorts ?? []);
+      setPortsDraft(normalizedEnvironmentPorts);
     }
-  }, [environment.exposedPorts, isEditingPorts]);
+  }, [normalizedEnvironmentPorts, isEditingPorts]);
 
   useEffect(() => {
     if (!isEditingDevScript) {
@@ -198,17 +219,19 @@ function EnvironmentDetailsPage() {
   }, [environment.maintenanceScript, isEditingMaintenanceScript]);
 
   const handleStartEditingPorts = () => {
-    setPortsDraft(environment.exposedPorts ?? []);
+    setPortsDraft(normalizedEnvironmentPorts);
     setPortInput("");
     setPortsError(null);
+    updatePortsMutation.reset();
     setIsEditingPorts(true);
   };
 
   const handleCancelPorts = () => {
     setIsEditingPorts(false);
-    setPortsDraft(environment.exposedPorts ?? []);
+    setPortsDraft(normalizedEnvironmentPorts);
     setPortInput("");
     setPortsError(null);
+    updatePortsMutation.reset();
   };
 
   const handleStartEditingDevScript = () => {
@@ -290,13 +313,19 @@ function EnvironmentDetailsPage() {
   };
 
   const handleAddPort = () => {
-    if (portInput.trim().length === 0) {
+    const trimmedInput = portInput.trim();
+    if (trimmedInput.length === 0) {
       setPortsError("Enter a port number.");
       return;
     }
-    const parsed = Number.parseInt(portInput.trim(), 10);
+    const parsed = Number.parseInt(trimmedInput, 10);
     if (!Number.isFinite(parsed)) {
       setPortsError("Enter a valid port number.");
+      return;
+    }
+
+    if (portsDraft.includes(parsed)) {
+      setPortsError(`Port ${parsed} is already added.`);
       return;
     }
 
@@ -319,9 +348,13 @@ function EnvironmentDetailsPage() {
 
   const handleRemovePort = (port: number) => {
     setPortsDraft((prev) => prev.filter((value) => value !== port));
+    setPortsError(null);
   };
 
   const handleSavePorts = () => {
+    if (!hasPortChanges) {
+      return;
+    }
     const validation = validateExposedPorts(portsDraft);
     if (validation.reserved.length > 0) {
       setPortsError(
@@ -851,7 +884,21 @@ function EnvironmentDetailsPage() {
                       <input
                         type="number"
                         value={portInput}
-                        onChange={(event) => setPortInput(event.target.value)}
+                        onChange={(event) => {
+                          if (portsError) {
+                            setPortsError(null);
+                          }
+                          setPortInput(event.target.value);
+                        }}
+                        onKeyDown={(event) => {
+                          if (
+                            event.key === "Enter" &&
+                            !event.nativeEvent.isComposing
+                          ) {
+                            event.preventDefault();
+                            handleAddPort();
+                          }
+                        }}
                         placeholder="Add port"
                         className="h-7 w-28 rounded-md border border-neutral-300 px-3 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:ring-neutral-700 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                       />
@@ -868,7 +915,9 @@ function EnvironmentDetailsPage() {
                       <button
                         type="button"
                         onClick={handleSavePorts}
-                        disabled={updatePortsMutation.isPending}
+                        disabled={
+                          updatePortsMutation.isPending || !hasPortChanges
+                        }
                         className="inline-flex h-7 items-center justify-center rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
                       >
                         {updatePortsMutation.isPending ? "Saving..." : "Save"}
