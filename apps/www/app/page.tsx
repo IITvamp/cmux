@@ -164,12 +164,15 @@ export default async function LandingPage() {
                   </li>
                   <li>
                     <a
-                      href="https://cal.com/team/manaflow/meeting"
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      href={macDownloadUrl}
+                      title={
+                        latestVersion
+                          ? `Download cmux v${latestVersion} for macOS arm64`
+                          : "Requires macOS"
+                      }
                       className="inline-flex h-8 items-center bg-blue-500 px-3 text-sm font-semibold text-white hover:bg-blue-400"
                     >
-                      Book a meeting
+                      Download
                     </a>
                   </li>
                 </ul>
@@ -249,7 +252,6 @@ export default async function LandingPage() {
                     ></path>
                   </svg>
                   Download for Mac
-                  {latestVersion ? ` (v${latestVersion})` : null}
                 </a>
                 <a
                   href="https://github.com/manaflow-ai/cmux"
