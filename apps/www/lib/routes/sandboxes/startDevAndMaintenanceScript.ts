@@ -32,19 +32,24 @@ chmod +x ${path}
 
 const ensurePidStoppedCommand = (pidFile: string): string => `
 if [ -f ${pidFile} ]; then
-  EXISTING_PID=$(cat ${pidFile} 2>/dev/null || true)
-  if [ -n "\${EXISTING_PID}" ]; then
-    if kill -0 \${EXISTING_PID} 2>/dev/null; then
-      kill \${EXISTING_PID} 2>/dev/null || true
-      for attempt in 1 2 3 4 5; do
-        if kill -0 \${EXISTING_PID} 2>/dev/null; then
-          sleep 0.2
-        else
-          break
-        fi
-      done
+  (
+    set -euo pipefail
+    trap 'status=$?; echo "Failed to stop process recorded in ${pidFile} (pid \${EXISTING_PID:-unknown}) (exit $status)" >&2' ERR
+    EXISTING_PID=$(cat ${pidFile} 2>/dev/null || true)
+    if [ -n "\${EXISTING_PID}" ] && kill -0 \${EXISTING_PID} 2>/dev/null; then
+      if kill \${EXISTING_PID} 2>/dev/null; then
+        sleep 0.2
+      elif kill -0 \${EXISTING_PID} 2>/dev/null; then
+        echo "Unable to terminate process \${EXISTING_PID}" >&2
+        exit 1
+      fi
+
+      if kill -0 \${EXISTING_PID} 2>/dev/null; then
+        echo "Process \${EXISTING_PID} still running after SIGTERM" >&2
+        exit 1
+      fi
     fi
-  fi
+  )
 fi
 `;
 
