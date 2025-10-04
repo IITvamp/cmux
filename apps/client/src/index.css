@@ -518,3 +518,8 @@ pre,
 .diff-hidden-lines-widget {
   user-select: none;
 }
+
+/* Prevent dragging on links in Electron */
+.electron a {
+  -webkit-user-drag: none;
+}
