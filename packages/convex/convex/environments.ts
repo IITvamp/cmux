@@ -97,6 +97,8 @@ export const create = authMutation({
       version: 1,
       createdAt,
       createdByUserId: userId,
+      maintenanceScript: args.maintenanceScript,
+      devScript: args.devScript,
     });
 
     return environmentId;
