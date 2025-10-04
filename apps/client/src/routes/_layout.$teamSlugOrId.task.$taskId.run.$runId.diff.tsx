@@ -374,33 +374,29 @@ function RunDiffPage() {
         ? `https://github.com/${projectFullNameForSocket}.git`
         : undefined;
 
-      await new Promise<void>((resolve) => {
-        socket.emit(
-          "start-task",
-          {
-            ...(repoUrl ? { repoUrl } : {}),
-            ...(task.baseBranch ? { branch: task.baseBranch } : {}),
-            taskDescription: combinedPrompt,
-            projectFullName: projectFullNameForSocket,
-            taskId: newTaskId,
-            selectedAgents: [...restartAgents],
-            isCloudMode: restartIsCloudMode,
-            ...(task.environmentId
-              ? { environmentId: task.environmentId }
-              : {}),
-            theme,
-          },
-          (response) => {
-            if ("error" in response) {
-              toast.error(`Task restart error: ${response.error}`);
-            } else {
-              setFollowUpText("");
-              toast.success("Started follow-up task");
-            }
-            resolve();
-          },
-        );
-      });
+      socket.emit(
+        "start-task",
+        {
+          ...(repoUrl ? { repoUrl } : {}),
+          ...(task.baseBranch ? { branch: task.baseBranch } : {}),
+          taskDescription: combinedPrompt,
+          projectFullName: projectFullNameForSocket,
+          taskId: newTaskId,
+          selectedAgents: [...restartAgents],
+          isCloudMode: restartIsCloudMode,
+          ...(task.environmentId ? { environmentId: task.environmentId } : {}),
+          theme,
+        },
+        (response) => {
+          if ("error" in response) {
+            toast.error(`Task restart error: ${response.error}`);
+            return;
+          }
+          setFollowUpText("");
+        },
+      );
+
+      toast.success("Started follow-up task");
     } catch (error) {
       console.error("Failed to restart task", error);
       toast.error("Failed to start follow-up task");
