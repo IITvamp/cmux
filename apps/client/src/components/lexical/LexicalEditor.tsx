@@ -470,6 +470,18 @@ function LocalStoragePersistencePlugin({
   return null;
 }
 
+type EditorImage =
+  | {
+      src: string;
+      fileName?: string;
+      altText: string;
+    }
+  | {
+      storageId: Id<"_storage">;
+      fileName?: string;
+      altText: string;
+    };
+
 interface LexicalEditorProps {
   placeholder?: string;
   onChange?: (text: string) => void;
@@ -486,11 +498,7 @@ interface LexicalEditorProps {
   onEditorReady?: (editor: {
     getContent: () => {
       text: string;
-      images: Array<{
-        src: string;
-        fileName?: string;
-        altText: string;
-      }>;
+      images: EditorImage[];
     };
     clear: () => void;
   }) => void;

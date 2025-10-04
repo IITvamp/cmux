@@ -172,7 +172,8 @@ export const Route = createFileRoute(
           return;
         }
 
-        const baseRefForDiff = normalizeGitRef(task.baseBranch || "main");
+        const trimmedBaseBranch = task.baseBranch?.trim();
+        const baseRefForDiff = normalizeGitRef(trimmedBaseBranch || "main");
         const headRefForDiff = normalizeGitRef(selectedTaskRun.newBranch);
         if (!headRefForDiff || !baseRefForDiff) {
           return;
@@ -182,7 +183,7 @@ export const Route = createFileRoute(
           ? branchMetadataByRepo?.[trimmedProjectFullName]
           : undefined;
         const baseBranchMeta = metadataForPrimaryRepo?.find(
-          (branch) => branch.name === task.baseBranch,
+          (branch) => branch.name === trimmedBaseBranch,
         );
 
         const prefetches = Array.from(targetRepos).map(async (repoFullName) => {
@@ -237,6 +238,8 @@ function RunDiffPage() {
   const restartProvider = selectedRun?.vscode?.provider;
   const restartRunEnvironmentId = selectedRun?.environmentId;
   const taskEnvironmentId = task?.environmentId;
+  const trimmedProjectFullName = task?.projectFullName?.trim();
+  const trimmedBaseBranch = task?.baseBranch?.trim();
   const restartIsCloudMode = useMemo(() => {
     if (restartProvider === "docker") {
       return false;
@@ -258,11 +261,11 @@ function RunDiffPage() {
   }, [selectedRun]);
 
   const repoFullNames = useMemo(() => {
-    if (task?.projectFullName) {
-      return [task.projectFullName];
+    if (trimmedProjectFullName) {
+      return [trimmedProjectFullName];
     }
     return environmentRepos;
-  }, [task?.projectFullName, environmentRepos]);
+  }, [trimmedProjectFullName, environmentRepos]);
 
   const [primaryRepo, ...additionalRepos] = repoFullNames;
 
@@ -279,11 +282,11 @@ function RunDiffPage() {
     | undefined;
 
   const baseBranchMetadata = useMemo(() => {
-    if (!task?.baseBranch) {
+    if (!trimmedBaseBranch) {
       return undefined;
     }
-    return branchMetadata?.find((branch) => branch.name === task.baseBranch);
-  }, [branchMetadata, task?.baseBranch]);
+    return branchMetadata?.find((branch) => branch.name === trimmedBaseBranch);
+  }, [branchMetadata, trimmedBaseBranch]);
 
   const metadataByRepo = useMemo(() => {
     if (!primaryRepo) return undefined;
@@ -352,8 +355,9 @@ function RunDiffPage() {
           : originalPrompt
         : followUp;
 
+    const runProjectFullName = task.projectFullName?.trim();
     const projectFullNameForSocket =
-      task.projectFullName ??
+      runProjectFullName ??
       (task.environmentId ? `env:${task.environmentId}` : undefined);
 
     if (!projectFullNameForSocket) {
@@ -364,27 +368,34 @@ function RunDiffPage() {
     setIsRestartingTask(true);
 
     try {
-      const existingImages = task.images && task.images.length > 0
-        ? task.images.map((image) => ({
-            storageId: image.storageId,
-            fileName: image.fileName,
-            altText: image.altText,
-          }))
-        : [];
+      const trimmedBaseBranchForTask = task.baseBranch?.trim();
+      const existingImages = (task.images ?? []).map((image) => ({
+        storageId: image.storageId,
+        fileName: image.fileName,
+        altText: image.altText,
+      }));
 
-      const newImages = (editorContent?.images && editorContent.images.length > 0
-        ? editorContent.images.filter((img) => 'storageId' in img)
-        : []) as { storageId: Id<"_storage">; fileName: string | undefined; altText: string }[];
+      const newImages = (editorContent?.images ?? [])
+        .filter(
+          (
+            img,
+          ): img is { storageId: Id<"_storage">; fileName?: string; altText: string } =>
+            "storageId" in img && Boolean(img.storageId),
+        )
+        .map((img) => ({
+          storageId: img.storageId,
+          fileName: img.fileName ?? undefined,
+          altText: img.altText,
+        }));
 
-      const imagesPayload = [...existingImages, ...newImages].length > 0
-        ? [...existingImages, ...newImages]
-        : undefined;
+      const combinedImages = [...existingImages, ...newImages];
+      const imagesPayload = combinedImages.length > 0 ? combinedImages : undefined;
 
       const newTaskId = await createTask({
         teamSlugOrId,
         text: combinedPrompt,
-        projectFullName: task.projectFullName ?? undefined,
-        baseBranch: task.baseBranch ?? undefined,
+        projectFullName: runProjectFullName ?? undefined,
+        baseBranch: trimmedBaseBranchForTask || undefined,
         images: imagesPayload,
         environmentId: task.environmentId ?? undefined,
       });
@@ -392,8 +403,8 @@ function RunDiffPage() {
       addTaskToExpand(newTaskId);
 
       const isEnvTask = projectFullNameForSocket.startsWith("env:");
-      const repoUrl = !isEnvTask
-        ? `https://github.com/${projectFullNameForSocket}.git`
+      const repoUrl = !isEnvTask && runProjectFullName
+        ? `https://github.com/${runProjectFullName}.git`
         : undefined;
 
       await new Promise<void>((resolve) => {
@@ -401,7 +412,9 @@ function RunDiffPage() {
           "start-task",
           {
             ...(repoUrl ? { repoUrl } : {}),
-            ...(task.baseBranch ? { branch: task.baseBranch } : {}),
+            ...(trimmedBaseBranchForTask
+              ? { branch: trimmedBaseBranchForTask }
+              : {}),
             taskDescription: combinedPrompt,
             projectFullName: projectFullNameForSocket,
             taskId: newTaskId,
@@ -488,7 +501,7 @@ function RunDiffPage() {
     );
   }
 
-  const baseRef = normalizeGitRef(task?.baseBranch || "main");
+  const baseRef = normalizeGitRef(trimmedBaseBranch || "main");
   const headRef = normalizeGitRef(selectedRun.newBranch);
   const hasDiffSources =
     Boolean(primaryRepo) && Boolean(baseRef) && Boolean(headRef);
@@ -559,11 +572,11 @@ function RunDiffPage() {
                     onChange={setFollowUpText}
                     onSubmit={() => void handleRestartTask()}
                     repoUrl={
-                      task?.projectFullName
-                        ? `https://github.com/${task.projectFullName}.git`
+                      trimmedProjectFullName
+                        ? `https://github.com/${trimmedProjectFullName}.git`
                         : undefined
                     }
-                    branch={task?.baseBranch ?? undefined}
+                    branch={task?.baseBranch?.trim() || undefined}
                     environmentId={task?.environmentId ?? undefined}
                     persistenceKey={`restart-task-${taskId}-${runId}`}
                     maxHeight="96px"
