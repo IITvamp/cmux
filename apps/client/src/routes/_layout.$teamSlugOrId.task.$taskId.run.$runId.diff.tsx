@@ -30,7 +30,7 @@ import {
   useMemo,
   useState,
   type FormEvent,
-  type KeyboardEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import TextareaAutosize from "react-textarea-autosize";
 import { toast } from "sonner";
@@ -62,6 +62,25 @@ type TaskRunWithChildren = Doc<"taskRuns"> & {
 };
 
 const AVAILABLE_AGENT_NAMES = new Set(AGENT_CONFIGS.map((agent) => agent.name));
+
+type StoredTaskImage = NonNullable<Doc<"tasks">["images"]>[number];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isStoredTaskImage(image: unknown): image is StoredTaskImage {
+  if (!isRecord(image)) {
+    return false;
+  }
+  if (!("storageId" in image) || typeof image.storageId !== "string") {
+    return false;
+  }
+  if (!("altText" in image) || typeof image.altText !== "string") {
+    return false;
+  }
+  return true;
+}
 
 function collectAgentNamesFromRuns(
   runs: TaskRunWithChildren[] | undefined,
@@ -349,12 +368,13 @@ function RunDiffPage() {
     setIsRestartingTask(true);
 
     try {
+      const storedImages = (task.images ?? []).filter(isStoredTaskImage);
       const imagesPayload =
-        task.images && task.images.length > 0
-          ? task.images.map((image) => ({
-              storageId: image.storageId,
-              fileName: image.fileName,
-              altText: image.altText,
+        storedImages.length > 0
+          ? storedImages.map(({ storageId, fileName, altText }) => ({
+              storageId,
+              fileName,
+              altText,
             }))
           : undefined;
 
@@ -457,7 +477,7 @@ function RunDiffPage() {
   }, [isRestartingTask, overridePrompt, socket, task, trimmedFollowUp]);
 
   const handleFollowUpKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
       if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
         if (!isRestartDisabled) {

@@ -31,6 +31,7 @@ import { stopContainersForRuns } from "./archiveTask";
 import { execWithEnv } from "./execWithEnv";
 import { getGitDiff } from "./diffs/gitDiff";
 import { GitDiffManager } from "./gitDiff";
+import { ghApi } from "./ghApi";
 import { getRustTime } from "./native/core";
 import type { RealtimeServer } from "./realtime";
 import { RepositoryManager } from "./repositoryManager";
@@ -1217,18 +1218,57 @@ Please address the issue mentioned in the comment above.`;
 
     socket.on("github-fetch-branches", async (data, callback) => {
       try {
-        const { repo } = GitHubFetchBranchesSchema.parse(data);
+        const { repo, teamSlugOrId } = GitHubFetchBranchesSchema.parse(data);
 
-        const { listRemoteBranches } = await import("./native/git.js");
-        const branches = await listRemoteBranches({ repoFullName: repo });
-        const defaultBranch = branches.find((branch) => branch.isDefault)?.name;
+        let branches: Array<{
+          name: string;
+          lastCommitSha?: string;
+          lastActivityAt?: number;
+          isDefault?: boolean;
+          lastKnownBaseSha?: string;
+          lastKnownMergeCommitSha?: string;
+        }> = [];
+        let defaultBranch: string | undefined;
+
+        try {
+          const { listRemoteBranches } = await import("./native/git.js");
+          branches = await listRemoteBranches({ repoFullName: repo });
+          defaultBranch = branches.find((branch) => branch.isDefault)?.name;
+        } catch (nativeError) {
+          const nativeMessage =
+            nativeError instanceof Error
+              ? nativeError.message
+              : String(nativeError);
+          serverLogger.warn(
+            `Native branch listing failed for ${repo} (team ${teamSlugOrId}): ${nativeMessage}. Falling back to GitHub API.`,
+          );
+
+          try {
+            branches = await ghApi.getRepoBranchesWithActivity(repo);
+            defaultBranch =
+              defaultBranch ?? (await ghApi.getRepoDefaultBranch(repo));
+          } catch (fallbackError) {
+            serverLogger.error(
+              "GitHub API branch fallback failed:",
+              fallbackError,
+            );
+            callback({
+              success: false,
+              branches: [],
+              error:
+                fallbackError instanceof Error
+                  ? fallbackError.message
+                  : nativeMessage || "Unknown error",
+            });
+            return;
+          }
+        }
 
         callback({
           success: true,
           branches,
           defaultBranch,
         });
-        return;
       } catch (error) {
         serverLogger.error("Error fetching branches:", error);
         callback({

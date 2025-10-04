@@ -88,6 +88,13 @@ export const ghApi = {
     return branches.map(branch => branch.name);
   },
 
+  // Get the default branch for a repository
+  async getRepoDefaultBranch(repo: string): Promise<string | undefined> {
+    const response = await this.fetchGitHub(`/repos/${repo}`);
+    const data = (await response.json()) as { default_branch?: string };
+    return data.default_branch ?? undefined;
+  },
+
   // Get repo branches with last activity timestamp
   async getRepoBranchesWithActivity(repo: string): Promise<{
     name: string;
