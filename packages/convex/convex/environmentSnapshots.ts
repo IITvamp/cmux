@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { resolveTeamIdLoose } from "../_shared/team";
+import { stackServerAppJs } from "../_shared/stackServerAppJs";
 import { authMutation, authQuery } from "./users/utils";
 
 export const list = authQuery({
@@ -22,9 +23,24 @@ export const list = authQuery({
       .order("desc")
       .collect();
 
+    // Fetch user data for each unique createdByUserId
+    const userIds = [...new Set(versions.map(v => v.createdByUserId))];
+    const userPromises = userIds.map(async (userId) => {
+      try {
+        const user = await stackServerAppJs.getUser(userId);
+        return { userId, displayName: user?.displayName || userId };
+      } catch (error) {
+        console.error(`Failed to fetch user ${userId}:`, error);
+        return { userId, displayName: userId };
+      }
+    });
+    const users = await Promise.all(userPromises);
+    const userMap = new Map(users.map(u => [u.userId, u.displayName]));
+
     return versions.map((version) => ({
       ...version,
       isActive: version.morphSnapshotId === environment.morphSnapshotId,
+      createdByUserName: userMap.get(version.createdByUserId) || version.createdByUserId,
     }));
   },
 });

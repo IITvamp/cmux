@@ -10,6 +10,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
@@ -23,6 +24,7 @@ import {
 import { convexQuery } from "@convex-dev/react-query";
 import {
   useMutation as useRQMutation,
+  useQuery,
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
@@ -91,7 +93,7 @@ function EnvironmentDetailsPage() {
     teamSlugOrId,
     environmentId,
   });
-  const { data: snapshotVersions } = useSuspenseQuery(snapshotsQuery);
+  const { data: snapshotVersions, isLoading: isSnapshotsLoading } = useQuery(snapshotsQuery);
   const deleteEnvironment = useMutation(api.environments.remove);
   const deleteSnapshotVersion = useMutation(api.environmentSnapshots.remove);
   const updatePortsMutation = useRQMutation(
@@ -960,94 +962,117 @@ function EnvironmentDetailsPage() {
                     </TooltipContent>
                   </Tooltip>
                 </div>
-                <div className="space-y-2">
-                  {snapshotVersions.length === 0 ? (
-                    <p className="text-sm text-neutral-500 dark:text-neutral-500">
-                      No snapshot versions yet.
-                    </p>
-                  ) : (
-                    snapshotVersions.map((version) => (
-                      <div
-                        key={version._id}
-                        className="rounded-md border border-neutral-200 p-3 dark:border-neutral-800"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                              Version {version.version}
-                              {version.isActive && (
-                                <span className="ml-2 inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700 dark:bg-green-900 dark:text-green-100">
-                                  Active
-                                </span>
-                              )}
-                            </p>
-                            <p className="text-xs text-neutral-500 dark:text-neutral-500">
-                              Snapshot ID: {version.morphSnapshotId}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {!version.isActive && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleActivateSnapshot(version._id)
-                                }
-                                disabled={
-                                  activateSnapshotMutation.isPending &&
-                                  activatingVersionId === String(version._id)
-                                }
-                                className="inline-flex items-center rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-60 disabled:cursor-not-allowed dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
-                              >
-                                {activateSnapshotMutation.isPending &&
-                                activatingVersionId === String(version._id)
-                                  ? "Activating..."
-                                  : "Activate"}
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleDeleteSnapshotVersion(version._id)
-                              }
-                              disabled={
-                                version.isActive ||
-                                deletingVersionId === String(version._id)
-                              }
-                              title={
-                                version.isActive
-                                  ? "Cannot delete the active snapshot version"
-                                  : undefined
-                              }
-                              className="inline-flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
-                            >
-                              {deletingVersionId === String(version._id) ? (
-                                <>
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                  Deleting…
-                                </>
-                              ) : (
-                                <>
-                                  <Trash2 className="h-3 w-3" />
-                                  Delete
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                        <div className="mt-2 space-y-1 text-xs text-neutral-500 dark:text-neutral-500">
-                          <p>
-                            Created{" "}
-                            {formatDistanceToNow(new Date(version.createdAt), {
-                              addSuffix: true,
-                            })}
-                          </p>
-                          <p>Created by {version.createdByUserId}</p>
-                          {version.label && <p>Label: {version.label}</p>}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
+                 <div className="space-y-2">
+                   {isSnapshotsLoading ? (
+                     // Loading skeletons
+                     Array.from({ length: 3 }).map((_, i) => (
+                       <div
+                         key={i}
+                         className="rounded-md border border-neutral-200 p-3 dark:border-neutral-800"
+                       >
+                         <div className="flex items-center justify-between gap-3">
+                           <div className="space-y-2">
+                             <Skeleton className="h-4 w-24" />
+                             <Skeleton className="h-3 w-48" />
+                           </div>
+                           <div className="flex items-center gap-2">
+                             <Skeleton className="h-6 w-16" />
+                             <Skeleton className="h-6 w-16" />
+                           </div>
+                         </div>
+                         <div className="mt-2 space-y-1">
+                           <Skeleton className="h-3 w-32" />
+                           <Skeleton className="h-3 w-40" />
+                         </div>
+                       </div>
+                     ))
+                   ) : snapshotVersions && snapshotVersions.length === 0 ? (
+                     <p className="text-sm text-neutral-500 dark:text-neutral-500">
+                       No snapshot versions yet.
+                     </p>
+                   ) : (
+                     snapshotVersions?.map((version) => (
+                       <div
+                         key={version._id}
+                         className="rounded-md border border-neutral-200 p-3 dark:border-neutral-800"
+                       >
+                         <div className="flex items-center justify-between gap-3">
+                           <div>
+                             <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                               Version {version.version}
+                               {version.isActive && (
+                                 <span className="ml-2 inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700 dark:bg-green-900 dark:text-green-100">
+                                   Active
+                                 </span>
+                               )}
+                             </p>
+                             <p className="text-xs text-neutral-500 dark:text-neutral-500">
+                               Snapshot ID: {version.morphSnapshotId}
+                             </p>
+                           </div>
+                           <div className="flex items-center gap-2">
+                             {!version.isActive && (
+                               <button
+                                 type="button"
+                                 onClick={() =>
+                                   handleActivateSnapshot(version._id)
+                                 }
+                                 disabled={
+                                   activateSnapshotMutation.isPending &&
+                                   activatingVersionId === String(version._id)
+                                 }
+                                 className="inline-flex items-center rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-60 disabled:cursor-not-allowed dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
+                               >
+                                 {activateSnapshotMutation.isPending &&
+                                 activatingVersionId === String(version._id)
+                                   ? "Activating..."
+                                   : "Activate"}
+                               </button>
+                             )}
+                             <button
+                               type="button"
+                               onClick={() =>
+                                 handleDeleteSnapshotVersion(version._id)
+                               }
+                               disabled={
+                                 version.isActive ||
+                                 deletingVersionId === String(version._id)
+                               }
+                               title={
+                                 version.isActive
+                                   ? "Cannot delete the active snapshot version"
+                                   : undefined
+                               }
+                               className="inline-flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
+                             >
+                               {deletingVersionId === String(version._id) ? (
+                                 <>
+                                   <Loader2 className="h-3 w-3 animate-spin" />
+                                   Deleting…
+                                 </>
+                               ) : (
+                                 <>
+                                   <Trash2 className="h-3 w-3" />
+                                   Delete
+                                 </>
+                               )}
+                             </button>
+                           </div>
+                         </div>
+                         <div className="mt-2 space-y-1 text-xs text-neutral-500 dark:text-neutral-500">
+                           <p>
+                             Created{" "}
+                             {formatDistanceToNow(new Date(version.createdAt), {
+                               addSuffix: true,
+                             })}
+                           </p>
+                           <p>Created by {version.createdByUserName || version.createdByUserId}</p>
+                           {version.label && <p>Label: {version.label}</p>}
+                         </div>
+                       </div>
+                     ))
+                   )}
+                 </div>
               </div>
             </div>
 
