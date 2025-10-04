@@ -236,6 +236,8 @@ export function EnvironmentConfiguration({
             morphInstanceId: localInstanceId,
             label: envName.trim(),
             activate: true,
+            maintenanceScript: maintenanceScript.trim() || undefined,
+            devScript: devScript.trim() || undefined,
           },
         },
         {
