@@ -89,6 +89,15 @@ export function EnvironmentConfiguration({
   const [devScript, setDevScript] = useState(() => initialDevScript);
   const [exposedPorts, setExposedPorts] = useState(() => initialExposedPorts);
   const [portsError, setPortsError] = useState<string | null>(null);
+
+  // Track initial state for detecting changes
+  const initialStateRef = useRef({
+    envName: initialEnvName,
+    maintenanceScript: initialMaintenanceScript,
+    devScript: initialDevScript,
+    exposedPorts: initialExposedPorts,
+    envVars: initialEnvVars,
+  });
   const keyInputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [pendingFocusIndex, setPendingFocusIndex] = useState<number | null>(
     null,
@@ -147,6 +156,36 @@ export function EnvironmentConfiguration({
   useEffect(() => {
     lastSubmittedEnvContent.current = null;
   }, [localInstanceId]);
+
+  // Check if current state differs from initial state
+  const hasChanges = (): boolean => {
+    const initial = initialStateRef.current;
+
+    // Check basic fields
+    if (envName !== initial.envName) return true;
+    if (maintenanceScript !== initial.maintenanceScript) return true;
+    if (devScript !== initial.devScript) return true;
+    if (exposedPorts !== initial.exposedPorts) return true;
+
+    // Check envVars (filter out empty rows for comparison)
+    const currentVars = envVars.filter(
+      (v) => v.name.trim().length > 0 || v.value.trim().length > 0,
+    );
+    const initialVars = (initial.envVars ?? []).filter(
+      (v) => v.name.trim().length > 0 || v.value.trim().length > 0,
+    );
+
+    if (currentVars.length !== initialVars.length) return true;
+
+    for (let i = 0; i < currentVars.length; i++) {
+      const curr = currentVars[i];
+      const init = initialVars[i];
+      if (!curr || !init) return true;
+      if (curr.name !== init.name || curr.value !== init.value) return true;
+    }
+
+    return false;
+  };
 
   useEffect(() => {
     if (!localInstanceId) {
@@ -633,12 +672,21 @@ export function EnvironmentConfiguration({
                   type="text"
                   value={exposedPorts}
                   onChange={(e) => setExposedPorts(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const trimmed = exposedPorts.trim();
+                      if (trimmed && !trimmed.endsWith(",")) {
+                        setExposedPorts(trimmed + ", ");
+                      }
+                    }
+                  }}
                   placeholder="3000, 8080, 5432"
                   className="w-full rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700"
                 />
                 <p className="text-xs text-neutral-500 dark:text-neutral-500">
                   Comma-separated list of ports that should be exposed from the
-                  container for preview URLs.
+                  container for preview URLs. Press Enter to add a new port.
                 </p>
                 {portsError && (
                   <p className="text-xs text-red-500">{portsError}</p>
@@ -655,7 +703,8 @@ export function EnvironmentConfiguration({
             disabled={
               isProvisioning ||
               createEnvironmentMutation.isPending ||
-              createSnapshotMutation.isPending
+              createSnapshotMutation.isPending ||
+              !hasChanges()
             }
             className="inline-flex items-center rounded-md bg-neutral-900 text-white disabled:bg-neutral-300 dark:disabled:bg-neutral-700 disabled:cursor-not-allowed px-4 py-2 text-sm hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
           >
