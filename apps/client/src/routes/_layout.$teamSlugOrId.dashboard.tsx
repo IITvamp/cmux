@@ -51,7 +51,8 @@ function DashboardComponent() {
   });
   const [selectedBranch, setSelectedBranch] = useState<string[]>([]);
 
-  const [selectedAgents, setSelectedAgents] = useState<string[]>(() => {
+  // Raw selected agents from localStorage (before filtering for availability)
+  const [rawSelectedAgents, setRawSelectedAgents] = useState<string[]>(() => {
     const stored = localStorage.getItem("selectedAgents");
     // Only use stored value if it exists and has selections, otherwise use defaults
     return stored && JSON.parse(stored).length > 0
@@ -67,6 +68,19 @@ function DashboardComponent() {
   const [, setDockerReady] = useState<boolean | null>(null);
   const [providerStatus, setProviderStatus] =
     useState<ProviderStatusResponse | null>(null);
+
+  // Derive selectedAgents by filtering out unavailable agents
+  const selectedAgents = useMemo(() => {
+    if (!providerStatus?.providers) return rawSelectedAgents;
+
+    const availableAgents = new Set(
+      providerStatus.providers
+        .filter((p) => p.isAvailable)
+        .map((p) => p.name)
+    );
+
+    return rawSelectedAgents.filter((agent) => availableAgents.has(agent));
+  }, [rawSelectedAgents, providerStatus?.providers]);
 
   // Ref to access editor API
   const editorApiRef = useRef<EditorApi | null>(null);
@@ -145,7 +159,7 @@ function DashboardComponent() {
 
   // Callback for agent selection changes
   const handleAgentChange = useCallback((newAgents: string[]) => {
-    setSelectedAgents(newAgents);
+    setRawSelectedAgents(newAgents);
     // Only persist to localStorage if the user made a selection (not using defaults)
     // If newAgents is empty or equals defaults, remove from localStorage
     const isDefault =
