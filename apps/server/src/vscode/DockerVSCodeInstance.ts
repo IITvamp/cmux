@@ -4,6 +4,7 @@ import Docker from "dockerode";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { getDockerSocketCandidates } from "@cmux/shared/providers/common/check-docker";
 import { getConvex } from "../utils/convexClient";
 import { cleanupGitCredentials } from "../utils/dockerGitSetup";
 import { dockerLogger } from "../utils/fileLogger";
@@ -58,9 +59,10 @@ export class DockerVSCodeInstance extends VSCodeInstance {
   // Get or create the Docker singleton
   static getDocker(): Docker {
     if (!DockerVSCodeInstance.dockerInstance) {
-      DockerVSCodeInstance.dockerInstance = new Docker({
-        socketPath: "/var/run/docker.sock",
-      });
+      const socketPath = DockerVSCodeInstance.getDockerSocketPath();
+      DockerVSCodeInstance.dockerInstance = socketPath
+        ? new Docker({ socketPath })
+        : new Docker();
     }
     return DockerVSCodeInstance.dockerInstance;
   }
@@ -1257,21 +1259,18 @@ export class DockerVSCodeInstance extends VSCodeInstance {
   }
 
   private static getDockerSocketPath(): string | null {
-    const explicitSocket = process.env.DOCKER_SOCKET;
-    if (explicitSocket) {
-      return explicitSocket;
-    }
-
-    const dockerHost = process.env.DOCKER_HOST;
-    if (dockerHost && !dockerHost.startsWith("unix://")) {
+    const { remoteHost, candidates } = getDockerSocketCandidates();
+    if (remoteHost) {
       return null;
     }
 
-    if (dockerHost && dockerHost.startsWith("unix://")) {
-      return dockerHost.replace("unix://", "");
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
     }
 
-    return "/var/run/docker.sock";
+    return candidates[0] ?? null;
   }
 
   private static async handleDockerEvent(event: DockerEvent): Promise<void> {

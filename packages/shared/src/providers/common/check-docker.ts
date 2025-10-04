@@ -1,6 +1,8 @@
 import { exec as childProcessExec } from "node:child_process";
-import { constants as fsConstants } from "node:fs";
+import { constants as fsConstants, existsSync } from "node:fs";
 import { access } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
 
 const execAsync = promisify(childProcessExec);
@@ -8,18 +10,76 @@ const execAsync = promisify(childProcessExec);
 const DOCKER_INFO_COMMAND = "docker info --format '{{json .ServerVersion}}'";
 const DOCKER_VERSION_COMMAND = "docker version --format '{{.Server.Version}}'";
 
-function getDockerSocketPath(): string | null {
+export interface DockerSocketCandidates {
+  remoteHost: boolean;
+  candidates: string[];
+}
+
+function collectDefaultSocketCandidates(): string[] {
+  const defaults = new Set<string>([
+    "/var/run/docker.sock",
+    "/private/var/run/docker.sock",
+  ]);
+  const home = homedir();
+  if (home) {
+    defaults.add(join(home, ".docker/run/docker.sock"));
+    if (process.platform === "darwin") {
+      defaults.add(
+        join(home, "Library/Containers/com.docker.docker/Data/docker.sock"),
+      );
+      defaults.add(
+        join(home, "Library/Containers/com.docker.docker/Data/docker-api.sock"),
+      );
+      defaults.add(
+        join(home, "Library/Containers/com.docker.docker/Data/docker.raw.sock"),
+      );
+    }
+  }
+
+  const existing: string[] = [];
+  const missing: string[] = [];
+  defaults.forEach((candidate) => {
+    if (existsSync(candidate)) {
+      existing.push(candidate);
+    } else {
+      missing.push(candidate);
+    }
+  });
+
+  return [...existing, ...missing];
+}
+
+export function getDockerSocketCandidates(): DockerSocketCandidates {
   const explicitSocket = process.env.DOCKER_SOCKET;
   if (explicitSocket) {
-    return explicitSocket;
+    return { remoteHost: false, candidates: [explicitSocket] };
   }
 
   const dockerHost = process.env.DOCKER_HOST;
-  if (dockerHost?.startsWith("unix://")) {
-    return dockerHost.replace("unix://", "");
+  if (dockerHost) {
+    if (dockerHost.startsWith("unix://")) {
+      return {
+        remoteHost: false,
+        candidates: [dockerHost.replace("unix://", "")],
+      };
+    }
+
+    return { remoteHost: true, candidates: [] };
   }
 
-  return dockerHost ? null : "/var/run/docker.sock";
+  return {
+    remoteHost: false,
+    candidates: collectDefaultSocketCandidates(),
+  };
+}
+
+function getDockerSocketPath(): string | null {
+  const { remoteHost, candidates } = getDockerSocketCandidates();
+  if (remoteHost) {
+    return null;
+  }
+
+  return candidates[0] ?? null;
 }
 
 function delay(ms: number): Promise<void> {
@@ -110,18 +170,32 @@ function parseVersion(output: string): string | undefined {
   return trimmed;
 }
 
-async function dockerSocketExists(): Promise<boolean> {
-  const socketPath = getDockerSocketPath();
-  if (!socketPath) {
-    return true;
+async function dockerSocketExists(): Promise<{
+  accessible: boolean;
+  path?: string;
+  candidates: string[];
+  remoteHost: boolean;
+}> {
+  const { remoteHost, candidates } = getDockerSocketCandidates();
+  if (remoteHost) {
+    return { accessible: true, remoteHost, candidates };
   }
 
-  try {
-    await access(socketPath, fsConstants.F_OK);
-    return true;
-  } catch {
-    return false;
+  for (const candidate of candidates) {
+    try {
+      await access(candidate, fsConstants.F_OK);
+      return {
+        accessible: true,
+        path: candidate,
+        candidates,
+        remoteHost: false,
+      };
+    } catch {
+      // continue checking remaining candidates
+    }
   }
+
+  return { accessible: false, candidates, remoteHost: false };
 }
 
 export async function ensureDockerDaemonReady(options?: {
@@ -185,14 +259,17 @@ export async function checkDockerStatus(): Promise<{
     };
   }
 
-  if (!(await dockerSocketExists())) {
-    const socketPath = getDockerSocketPath();
+  const socketCheck = await dockerSocketExists();
+  if (!socketCheck.accessible) {
+    const attempted = socketCheck.candidates;
+    const attemptedMessage =
+      attempted.length > 0
+        ? `Docker socket not accessible. Checked: ${attempted.join(", ")}`
+        : "Docker socket not accessible";
+
     return {
       isRunning: false,
-      error:
-        socketPath === null
-          ? "Unable to reach Docker host"
-          : `Docker socket not accessible at ${socketPath}`,
+      error: attemptedMessage,
     };
   }
 
