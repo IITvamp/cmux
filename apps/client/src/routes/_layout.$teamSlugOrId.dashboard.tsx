@@ -45,14 +45,17 @@ function DashboardComponent() {
   const { theme } = useTheme();
   const { addTaskToExpand } = useExpandTasks();
 
+  // Helper function to get team-scoped localStorage keys
+  const getStorageKey = useCallback((key: string) => `${key}-${teamSlugOrId}`, [teamSlugOrId]);
+
   const [selectedProject, setSelectedProject] = useState<string[]>(() => {
-    const stored = localStorage.getItem("selectedProject");
+    const stored = localStorage.getItem(getStorageKey("selectedProject"));
     return stored ? JSON.parse(stored) : [];
   });
   const [selectedBranch, setSelectedBranch] = useState<string[]>([]);
 
   const [selectedAgents, setSelectedAgents] = useState<string[]>(() => {
-    const stored = localStorage.getItem("selectedAgents");
+    const stored = localStorage.getItem(getStorageKey("selectedAgents"));
     // Only use stored value if it exists and has selections, otherwise use defaults
     return stored && JSON.parse(stored).length > 0
       ? JSON.parse(stored)
@@ -60,7 +63,7 @@ function DashboardComponent() {
   });
   const [taskDescription, setTaskDescription] = useState<string>("");
   const [isCloudMode, setIsCloudMode] = useState<boolean>(() => {
-    const stored = localStorage.getItem("isCloudMode");
+    const stored = localStorage.getItem(getStorageKey("isCloudMode"));
     return stored ? JSON.parse(stored) : false;
   });
 
@@ -76,11 +79,11 @@ function DashboardComponent() {
     if (searchParams?.environmentId) {
       const val = `env:${searchParams.environmentId}`;
       setSelectedProject([val]);
-      localStorage.setItem("selectedProject", JSON.stringify([val]));
+      localStorage.setItem(getStorageKey("selectedProject"), JSON.stringify([val]));
       setIsCloudMode(true);
-      localStorage.setItem("isCloudMode", JSON.stringify(true));
+      localStorage.setItem(getStorageKey("isCloudMode"), JSON.stringify(true));
     }
-  }, [searchParams?.environmentId]);
+  }, [searchParams?.environmentId, getStorageKey]);
 
   // Callback for task description changes
   const handleTaskDescriptionChange = useCallback((value: string) => {
@@ -108,17 +111,17 @@ function DashboardComponent() {
   const handleProjectChange = useCallback(
     (newProjects: string[]) => {
       setSelectedProject(newProjects);
-      localStorage.setItem("selectedProject", JSON.stringify(newProjects));
+      localStorage.setItem(getStorageKey("selectedProject"), JSON.stringify(newProjects));
       if (newProjects[0] !== selectedProject[0]) {
         setSelectedBranch([]);
       }
       // If selecting an environment, enforce cloud mode
       if ((newProjects[0] || "").startsWith("env:")) {
         setIsCloudMode(true);
-        localStorage.setItem("isCloudMode", JSON.stringify(true));
+        localStorage.setItem(getStorageKey("isCloudMode"), JSON.stringify(true));
       }
     },
-    [selectedProject]
+    [selectedProject, getStorageKey]
   );
 
   // Callback for branch selection changes
@@ -136,11 +139,11 @@ function DashboardComponent() {
       newAgents.every((agent, index) => agent === DEFAULT_AGENTS[index]);
 
     if (isDefault || newAgents.length === 0) {
-      localStorage.removeItem("selectedAgents");
+      localStorage.removeItem(getStorageKey("selectedAgents"));
     } else {
-      localStorage.setItem("selectedAgents", JSON.stringify(newAgents));
+      localStorage.setItem(getStorageKey("selectedAgents"), JSON.stringify(newAgents));
     }
-  }, []);
+  }, [getStorageKey]);
 
   // Fetch repos from Convex
   const reposByOrgQuery = useQuery({
@@ -499,8 +502,8 @@ function DashboardComponent() {
     if (isEnvSelected) return; // environment forces cloud mode
     const newMode = !isCloudMode;
     setIsCloudMode(newMode);
-    localStorage.setItem("isCloudMode", JSON.stringify(newMode));
-  }, [isCloudMode, isEnvSelected]);
+    localStorage.setItem(getStorageKey("isCloudMode"), JSON.stringify(newMode));
+  }, [isCloudMode, isEnvSelected, getStorageKey]);
 
   // Listen for VSCode spawned events
   useEffect(() => {
@@ -537,7 +540,7 @@ function DashboardComponent() {
       // This ensures CLI-provided repos take precedence
       setSelectedProject([data.repoFullName]);
       localStorage.setItem(
-        "selectedProject",
+        getStorageKey("selectedProject"),
         JSON.stringify([data.repoFullName])
       );
 
@@ -552,7 +555,7 @@ function DashboardComponent() {
     return () => {
       socket.off("default-repo", handleDefaultRepo);
     };
-  }, [socket]);
+  }, [socket, getStorageKey]);
 
   // Global keydown handler for autofocus
   useEffect(() => {
