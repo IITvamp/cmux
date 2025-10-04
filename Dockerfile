@@ -115,19 +115,19 @@ COPY packages/vscode-extension/LICENSE.md ./packages/vscode-extension/
 COPY crates ./crates
 
 # Build Rust binaries for envctl/envd and cmux-proxy
-# Cross-compile from ARM64 to x86_64 (much faster than emulation)
+# Cross-compile to x86_64 only when the target platform requires it
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/cmux/crates/target \
-    if [ "$(uname -m)" = "aarch64" ]; then \
-        # Cross-compile ARM64 -> x86_64
+    if [ "$TARGETPLATFORM" = "linux/amd64" ] && [ "$BUILDPLATFORM" != "linux/amd64" ]; then \
+        # Cross-compile to x86_64 when building on a non-amd64 builder
         export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc && \
         export CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc && \
         export CXX_x86_64_unknown_linux_gnu=x86_64-linux-gnu-g++ && \
         cargo install --path crates/cmux-env --target x86_64-unknown-linux-gnu --locked --force && \
         cargo install --path crates/cmux-proxy --target x86_64-unknown-linux-gnu --locked --force; \
     else \
-        # Native x86_64 build
+        # Build natively for the requested platform (e.g., arm64 on Apple Silicon)
         cargo install --path crates/cmux-env --locked --force && \
         cargo install --path crates/cmux-proxy --locked --force; \
     fi
