@@ -36,6 +36,8 @@ export const create = authMutation({
     morphSnapshotId: v.string(),
     label: v.optional(v.string()),
     activate: v.optional(v.boolean()),
+    maintenanceScript: v.optional(v.string()),
+    devScript: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
@@ -58,6 +60,9 @@ export const create = authMutation({
 
     const nextVersion = (latest?.version ?? 0) + 1;
     const createdAt = Date.now();
+    const maintenanceScript =
+      args.maintenanceScript ?? environment.maintenanceScript ?? undefined;
+    const devScript = args.devScript ?? environment.devScript ?? undefined;
 
     const snapshotVersionId = await ctx.db.insert(
       "environmentSnapshotVersions",
@@ -69,12 +74,16 @@ export const create = authMutation({
         createdAt,
         createdByUserId: userId,
         label: args.label,
+        maintenanceScript,
+        devScript,
       }
     );
 
     if (args.activate ?? true) {
       await ctx.db.patch(args.environmentId, {
         morphSnapshotId: args.morphSnapshotId,
+        maintenanceScript,
+        devScript,
         updatedAt: Date.now(),
       });
     }
@@ -108,8 +117,15 @@ export const activate = authMutation({
       throw new Error("Snapshot version not found");
     }
 
+    const maintenanceScript =
+      versionDoc.maintenanceScript ?? environment.maintenanceScript ?? undefined;
+    const devScript =
+      versionDoc.devScript ?? environment.devScript ?? undefined;
+
     await ctx.db.patch(args.environmentId, {
       morphSnapshotId: versionDoc.morphSnapshotId,
+      maintenanceScript,
+      devScript,
       updatedAt: Date.now(),
     });
 

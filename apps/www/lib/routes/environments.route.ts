@@ -121,6 +121,8 @@ const SnapshotVersionResponse = z
     createdByUserId: z.string(),
     label: z.string().optional(),
     isActive: z.boolean(),
+    maintenanceScript: z.string().optional(),
+    devScript: z.string().optional(),
   })
   .openapi("SnapshotVersionResponse");
 
@@ -134,6 +136,8 @@ const CreateSnapshotVersionBody = z
     morphInstanceId: z.string(),
     label: z.string().optional(),
     activate: z.boolean().optional(),
+    maintenanceScript: z.string().optional(),
+    devScript: z.string().optional(),
   })
   .openapi("CreateSnapshotVersionBody");
 
@@ -779,6 +783,8 @@ environmentsRouter.openapi(
         createdByUserId: version.createdByUserId,
         label: version.label ?? undefined,
         isActive: version.isActive,
+        maintenanceScript: version.maintenanceScript ?? undefined,
+        devScript: version.devScript ?? undefined,
       }));
 
       return c.json(mapped);
@@ -867,6 +873,8 @@ environmentsRouter.openapi(
           morphSnapshotId: snapshot.id,
           label: body.label,
           activate: body.activate,
+          maintenanceScript: body.maintenanceScript,
+          devScript: body.devScript,
         }
       );
 
