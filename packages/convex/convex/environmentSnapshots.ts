@@ -17,7 +17,7 @@ export const list = authQuery({
     const versions = await ctx.db
       .query("environmentSnapshotVersions")
       .withIndex("by_environment_version", (q) =>
-        q.eq("environmentId", args.environmentId)
+        q.eq("environmentId", args.environmentId),
       )
       .order("desc")
       .collect();
@@ -25,6 +25,8 @@ export const list = authQuery({
     return versions.map((version) => ({
       ...version,
       isActive: version.morphSnapshotId === environment.morphSnapshotId,
+      maintenanceScript: version.maintenanceScript,
+      devScript: version.devScript,
     }));
   },
 });
@@ -36,6 +38,8 @@ export const create = authMutation({
     morphSnapshotId: v.string(),
     label: v.optional(v.string()),
     activate: v.optional(v.boolean()),
+    maintenanceScript: v.optional(v.string()),
+    devScript: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
@@ -51,7 +55,7 @@ export const create = authMutation({
     const latest = await ctx.db
       .query("environmentSnapshotVersions")
       .withIndex("by_environment_version", (q) =>
-        q.eq("environmentId", args.environmentId)
+        q.eq("environmentId", args.environmentId),
       )
       .order("desc")
       .first();
@@ -69,7 +73,9 @@ export const create = authMutation({
         createdAt,
         createdByUserId: userId,
         label: args.label,
-      }
+        maintenanceScript: args.maintenanceScript,
+        devScript: args.devScript,
+      },
     );
 
     if (args.activate ?? true) {
@@ -110,6 +116,8 @@ export const activate = authMutation({
 
     await ctx.db.patch(args.environmentId, {
       morphSnapshotId: versionDoc.morphSnapshotId,
+      maintenanceScript: versionDoc.maintenanceScript,
+      devScript: versionDoc.devScript,
       updatedAt: Date.now(),
     });
 
@@ -163,7 +171,7 @@ export const findBySnapshotId = authQuery({
     return await ctx.db
       .query("environmentSnapshotVersions")
       .withIndex("by_team_snapshot", (q) =>
-        q.eq("teamId", teamId).eq("morphSnapshotId", args.snapshotId)
+        q.eq("teamId", teamId).eq("morphSnapshotId", args.snapshotId),
       )
       .first();
   },

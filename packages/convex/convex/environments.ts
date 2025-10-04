@@ -4,7 +4,7 @@ import { resolveTeamIdLoose } from "../_shared/team";
 import { authMutation, authQuery } from "./users/utils";
 
 const normalizeExposedPorts = (
-  ports: readonly number[] | undefined
+  ports: readonly number[] | undefined,
 ): number[] => {
   if (!ports || ports.length === 0) {
     return [];
@@ -13,13 +13,11 @@ const normalizeExposedPorts = (
   const result = validateExposedPorts(ports);
   if (result.reserved.length > 0) {
     throw new Error(
-      `Reserved ports cannot be exposed: ${result.reserved.join(", ")}`
+      `Reserved ports cannot be exposed: ${result.reserved.join(", ")}`,
     );
   }
   if (result.invalid.length > 0) {
-    throw new Error(
-      `Invalid ports provided: ${result.invalid.join(", ")}`
-    );
+    throw new Error(`Invalid ports provided: ${result.invalid.join(", ")}`);
   }
   return result.sanitized;
 };
@@ -44,11 +42,11 @@ export const get = authQuery({
   handler: async (ctx, args) => {
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
     const environment = await ctx.db.get(args.id);
-    
+
     if (!environment || environment.teamId !== teamId) {
       return null;
     }
-    
+
     return environment;
   },
 });
@@ -84,8 +82,7 @@ export const create = authMutation({
       description: args.description,
       maintenanceScript: args.maintenanceScript,
       devScript: args.devScript,
-      exposedPorts:
-        sanitizedPorts.length > 0 ? sanitizedPorts : undefined,
+      exposedPorts: sanitizedPorts.length > 0 ? sanitizedPorts : undefined,
       createdAt,
       updatedAt: createdAt,
     });
@@ -97,6 +94,8 @@ export const create = authMutation({
       version: 1,
       createdAt,
       createdByUserId: userId,
+      maintenanceScript: args.maintenanceScript,
+      devScript: args.devScript,
     });
 
     return environmentId;
@@ -113,11 +112,11 @@ export const update = authMutation({
   handler: async (ctx, args) => {
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
     const environment = await ctx.db.get(args.id);
-    
+
     if (!environment || environment.teamId !== teamId) {
       throw new Error("Environment not found");
     }
-    
+
     const updates: {
       name?: string;
       description?: string;
@@ -125,17 +124,17 @@ export const update = authMutation({
     } = {
       updatedAt: Date.now(),
     };
-    
+
     if (args.name !== undefined) {
       updates.name = args.name;
     }
-    
+
     if (args.description !== undefined) {
       updates.description = args.description;
     }
-    
+
     await ctx.db.patch(args.id, updates);
-    
+
     return args.id;
   },
 });
@@ -182,11 +181,11 @@ export const remove = authMutation({
   handler: async (ctx, args) => {
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
     const environment = await ctx.db.get(args.id);
-    
+
     if (!environment || environment.teamId !== teamId) {
       throw new Error("Environment not found");
     }
-    
+
     await ctx.db.delete(args.id);
   },
 });
@@ -198,7 +197,9 @@ export const getByDataVaultKey = authQuery({
   handler: async (ctx, args) => {
     return await ctx.db
       .query("environments")
-      .withIndex("by_dataVaultKey", (q) => q.eq("dataVaultKey", args.dataVaultKey))
+      .withIndex("by_dataVaultKey", (q) =>
+        q.eq("dataVaultKey", args.dataVaultKey),
+      )
       .first();
   },
 });

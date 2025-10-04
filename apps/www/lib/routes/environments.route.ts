@@ -121,6 +121,8 @@ const SnapshotVersionResponse = z
     createdByUserId: z.string(),
     label: z.string().optional(),
     isActive: z.boolean(),
+    maintenanceScript: z.string().optional(),
+    devScript: z.string().optional(),
   })
   .openapi("SnapshotVersionResponse");
 
@@ -134,6 +136,8 @@ const CreateSnapshotVersionBody = z
     morphInstanceId: z.string(),
     label: z.string().optional(),
     activate: z.boolean().optional(),
+    maintenanceScript: z.string().optional(),
+    devScript: z.string().optional(),
   })
   .openapi("CreateSnapshotVersionBody");
 
@@ -236,7 +240,7 @@ environmentsRouter.openapi(
           "git config --global --unset credential.helper 2>/dev/null || true",
           "git credential-cache exit 2>/dev/null || true",
           "gh auth logout 2>/dev/null || true",
-        ].join(" && ")
+        ].join(" && "),
       );
 
       const snapshot = await instance.snapshot();
@@ -255,7 +259,7 @@ environmentsRouter.openapi(
           maintenanceScript: body.maintenanceScript,
           devScript: body.devScript,
           exposedPorts: sanitizedPorts.length > 0 ? sanitizedPorts : undefined,
-        }
+        },
       );
 
       return c.json({
@@ -269,7 +273,7 @@ environmentsRouter.openapi(
       console.error("Failed to create environment:", error);
       return c.text("Failed to create environment", 500);
     }
-  }
+  },
 );
 
 // List environments for a team
@@ -330,7 +334,7 @@ environmentsRouter.openapi(
       console.error("Failed to list environments:", error);
       return c.text("Failed to list environments", 500);
     }
-  }
+  },
 );
 
 // Get a specific environment
@@ -401,7 +405,7 @@ environmentsRouter.openapi(
       console.error("Failed to get environment:", error);
       return c.text("Failed to get environment", 500);
     }
-  }
+  },
 );
 
 // Get environment variables for a specific environment
@@ -470,7 +474,7 @@ environmentsRouter.openapi(
       console.error("Failed to get environment variables:", error);
       return c.text("Failed to get environment variables", 500);
     }
-  }
+  },
 );
 
 // Update metadata for an environment
@@ -560,7 +564,7 @@ environmentsRouter.openapi(
       console.error("Failed to update environment:", error);
       return c.text("Failed to update environment", 500);
     }
-  }
+  },
 );
 
 // Update exposed ports for an environment
@@ -632,14 +636,14 @@ environmentsRouter.openapi(
         if (instanceTeamId && instanceTeamId !== team.uuid) {
           return c.text(
             "Forbidden: Instance does not belong to this team",
-            403
+            403,
           );
         }
         const metadataEnvironmentId = metadata?.environmentId;
         if (metadataEnvironmentId && metadataEnvironmentId !== id) {
           return c.text(
             "Forbidden: Instance does not belong to this environment",
-            403
+            403,
           );
         }
 
@@ -647,11 +651,11 @@ environmentsRouter.openapi(
         const { servicesToHide, portsToExpose, servicesToKeep } =
           determineHttpServiceUpdates(
             workingInstance.networking.httpServices,
-            sanitizedPorts
+            sanitizedPorts,
           );
 
         const hidePromises = servicesToHide.map((service) =>
-          workingInstance.hideHttpService(service.name)
+          workingInstance.hideHttpService(service.name),
         );
 
         const exposePromises = portsToExpose.map((port) => {
@@ -662,7 +666,7 @@ environmentsRouter.openapi(
             } catch (error) {
               console.error(
                 `[environments.updatePorts] Failed to expose ${serviceName}`,
-                error
+                error,
               );
               throw new HTTPException(500, {
                 message: `Failed to expose ${serviceName}`,
@@ -697,7 +701,7 @@ environmentsRouter.openapi(
           teamSlugOrId: body.teamSlugOrId,
           id: environmentId,
           ports: sanitizedPorts,
-        }
+        },
       );
 
       return c.json({
@@ -714,7 +718,7 @@ environmentsRouter.openapi(
       console.error("Failed to update environment ports:", error);
       return c.text("Failed to update environment ports", 500);
     }
-  }
+  },
 );
 
 // List snapshot versions for an environment
@@ -779,6 +783,8 @@ environmentsRouter.openapi(
         createdByUserId: version.createdByUserId,
         label: version.label ?? undefined,
         isActive: version.isActive,
+        maintenanceScript: version.maintenanceScript ?? undefined,
+        devScript: version.devScript ?? undefined,
       }));
 
       return c.json(mapped);
@@ -786,7 +792,7 @@ environmentsRouter.openapi(
       console.error("Failed to list snapshot versions:", error);
       return c.text("Failed to list snapshot versions", 500);
     }
-  }
+  },
 );
 
 // Create a new snapshot version from a running instance
@@ -853,7 +859,7 @@ environmentsRouter.openapi(
       if (metadataEnvironmentId && metadataEnvironmentId !== id) {
         return c.text(
           "Forbidden: Instance does not belong to this environment",
-          403
+          403,
         );
       }
 
@@ -867,7 +873,9 @@ environmentsRouter.openapi(
           morphSnapshotId: snapshot.id,
           label: body.label,
           activate: body.activate,
-        }
+          maintenanceScript: body.maintenanceScript,
+          devScript: body.devScript,
+        },
       );
 
       return c.json({
@@ -885,7 +893,7 @@ environmentsRouter.openapi(
       console.error("Failed to create snapshot version:", error);
       return c.text("Failed to create snapshot version", 500);
     }
-  }
+  },
 );
 
 // Activate a specific snapshot version
@@ -933,7 +941,7 @@ environmentsRouter.openapi(
     try {
       const environmentId = typedZid("environments").parse(id);
       const versionId = typedZid("environmentSnapshotVersions").parse(
-        snapshotVersionId
+        snapshotVersionId,
       );
       const convexClient = getConvex({ accessToken });
 
@@ -948,7 +956,7 @@ environmentsRouter.openapi(
           teamSlugOrId: body.teamSlugOrId,
           environmentId,
           snapshotVersionId: versionId,
-        }
+        },
       );
 
       return c.json(result);
@@ -968,7 +976,7 @@ environmentsRouter.openapi(
       console.error("Failed to activate snapshot version:", error);
       return c.text("Failed to activate snapshot version", 500);
     }
-  }
+  },
 );
 
 // Delete an environment
@@ -1013,5 +1021,5 @@ environmentsRouter.openapi(
       console.error("Failed to delete environment:", error);
       return c.text("Failed to delete environment", 500);
     }
-  }
+  },
 );
