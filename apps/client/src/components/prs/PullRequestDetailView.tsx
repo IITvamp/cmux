@@ -1,12 +1,15 @@
 import { RunDiffSection } from "@/components/RunDiffSection";
 import { Dropdown } from "@/components/ui/dropdown";
+import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { normalizeGitRef } from "@/lib/refWithOrigin";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
-import { useQuery as useRQ } from "@tanstack/react-query";
+import { useQuery as useRQ, useMutation } from "@tanstack/react-query";
 import { useQuery as useConvexQuery } from "convex/react";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, X } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
+import { toast } from "sonner";
+import { useConvex } from "convex/react";
 
 type PullRequestDetailViewProps = {
   teamSlugOrId: string;
@@ -79,6 +82,7 @@ export function PullRequestDetailView({
   repo,
   number,
 }: PullRequestDetailViewProps) {
+  const convex = useConvex();
   const prs = useConvexQuery(api.github_prs.listPullRequests, {
     teamSlugOrId,
     state: "all",
@@ -93,6 +97,106 @@ export function PullRequestDetailView({
   }, [prs, owner, repo, number]);
 
   const [diffControls, setDiffControls] = useState<DiffControls | null>(null);
+
+  const prIsOpen = currentPR?.state === "open" && !currentPR.merged;
+  const prNumber = Number(number);
+
+  const mergePrMutation = useMutation({
+    mutationFn: async (method: MergeMethod) => {
+      const response = await fetch(
+        "/api/integrations/github/prs/merge-direct",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            teamSlugOrId,
+            owner,
+            repo,
+            number: prNumber,
+            method,
+          }),
+          credentials: "include",
+        },
+      );
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to merge PR");
+      }
+      return response.json();
+    },
+    onMutate: (method) => {
+      toast.loading(`Merging PR (${method})...`);
+    },
+    onSuccess: () => {
+      toast.dismiss();
+      toast.success("PR merged");
+      // Refresh the PR list
+      convex.query(api.github_prs.listPullRequests, {
+        teamSlugOrId,
+        state: "all",
+      });
+    },
+    onError: (error) => {
+      toast.dismiss();
+      toast.error("Failed to merge PR", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    },
+  });
+
+  const closePrMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(
+        "/api/integrations/github/prs/close-direct",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            teamSlugOrId,
+            owner,
+            repo,
+            number: prNumber,
+          }),
+          credentials: "include",
+        },
+      );
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to close PR");
+      }
+      return response.json();
+    },
+    onMutate: () => {
+      toast.loading("Closing PR...");
+    },
+    onSuccess: () => {
+      toast.dismiss();
+      toast.success("PR closed");
+      // Refresh the PR list
+      convex.query(api.github_prs.listPullRequests, {
+        teamSlugOrId,
+        state: "all",
+      });
+    },
+    onError: (error) => {
+      toast.dismiss();
+      toast.error("Failed to close PR", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    },
+  });
+
+  const handleMerge = (method: MergeMethod) => {
+    mergePrMutation.mutate(method);
+  };
+
+  const handleClose = () => {
+    closePrMutation.mutate();
+  };
 
   if (!currentPR) {
     return (
@@ -150,6 +254,27 @@ export function PullRequestDetailView({
                   <span className="text-xs px-2 py-1 rounded-md bg-green-200 dark:bg-green-900/40 text-green-900 dark:text-green-200 select-none">
                     Open
                   </span>
+                )}
+                {prIsOpen && (
+                  <>
+                    <MergeButton
+                      onMerge={handleMerge}
+                      isOpen={true}
+                      disabled={
+                        mergePrMutation.isPending || closePrMutation.isPending
+                      }
+                    />
+                    <button
+                      onClick={handleClose}
+                      disabled={
+                        mergePrMutation.isPending || closePrMutation.isPending
+                      }
+                      className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      Close PR
+                    </button>
+                  </>
                 )}
                 {currentPR.htmlUrl ? (
                   <a

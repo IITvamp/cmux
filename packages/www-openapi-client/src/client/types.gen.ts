@@ -225,6 +225,34 @@ export type GithubMergePrRequest = {
     method: 'squash' | 'rebase' | 'merge';
 };
 
+export type GithubClosePrRequest = {
+    teamSlugOrId: string;
+    taskRunId: string;
+};
+
+export type GithubPrDirectResponse = {
+    success: boolean;
+    url?: string;
+    number: number;
+    state: string;
+    error?: string;
+};
+
+export type GithubMergePrDirectRequest = {
+    teamSlugOrId: string;
+    owner: string;
+    repo: string;
+    number: number;
+    method: 'squash' | 'rebase' | 'merge';
+};
+
+export type GithubClosePrDirectRequest = {
+    teamSlugOrId: string;
+    owner: string;
+    repo: string;
+    number: number;
+};
+
 export type GithubPrsFilesResponse = {
     repoFullName: string;
     number: number;
@@ -1166,6 +1194,123 @@ export type PostApiIntegrationsGithubPrsMergeResponses = {
 };
 
 export type PostApiIntegrationsGithubPrsMergeResponse = PostApiIntegrationsGithubPrsMergeResponses[keyof PostApiIntegrationsGithubPrsMergeResponses];
+
+export type PostApiIntegrationsGithubPrsCloseData = {
+    body: GithubClosePrRequest;
+    path?: never;
+    query?: never;
+    url: '/api/integrations/github/prs/close';
+};
+
+export type PostApiIntegrationsGithubPrsCloseErrors = {
+    /**
+     * Invalid request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Forbidden
+     */
+    403: unknown;
+    /**
+     * Task run not found
+     */
+    404: unknown;
+    /**
+     * Failed to close PRs
+     */
+    500: unknown;
+};
+
+export type PostApiIntegrationsGithubPrsCloseResponses = {
+    /**
+     * PRs closed
+     */
+    200: GithubOpenPrResponse;
+};
+
+export type PostApiIntegrationsGithubPrsCloseResponse = PostApiIntegrationsGithubPrsCloseResponses[keyof PostApiIntegrationsGithubPrsCloseResponses];
+
+export type PostApiIntegrationsGithubPrsMergeDirectData = {
+    body: GithubMergePrDirectRequest;
+    path?: never;
+    query?: never;
+    url: '/api/integrations/github/prs/merge-direct';
+};
+
+export type PostApiIntegrationsGithubPrsMergeDirectErrors = {
+    /**
+     * Invalid request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Forbidden
+     */
+    403: unknown;
+    /**
+     * Pull request not found
+     */
+    404: unknown;
+    /**
+     * Failed to merge PR
+     */
+    500: unknown;
+};
+
+export type PostApiIntegrationsGithubPrsMergeDirectResponses = {
+    /**
+     * PR merged
+     */
+    200: GithubPrDirectResponse;
+};
+
+export type PostApiIntegrationsGithubPrsMergeDirectResponse = PostApiIntegrationsGithubPrsMergeDirectResponses[keyof PostApiIntegrationsGithubPrsMergeDirectResponses];
+
+export type PostApiIntegrationsGithubPrsCloseDirectData = {
+    body: GithubClosePrDirectRequest;
+    path?: never;
+    query?: never;
+    url: '/api/integrations/github/prs/close-direct';
+};
+
+export type PostApiIntegrationsGithubPrsCloseDirectErrors = {
+    /**
+     * Invalid request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Forbidden
+     */
+    403: unknown;
+    /**
+     * Pull request not found
+     */
+    404: unknown;
+    /**
+     * Failed to close PR
+     */
+    500: unknown;
+};
+
+export type PostApiIntegrationsGithubPrsCloseDirectResponses = {
+    /**
+     * PR closed
+     */
+    200: GithubPrDirectResponse;
+};
+
+export type PostApiIntegrationsGithubPrsCloseDirectResponse = PostApiIntegrationsGithubPrsCloseDirectResponses[keyof PostApiIntegrationsGithubPrsCloseDirectResponses];
 
 export type GetApiIntegrationsGithubPrsRawData = {
     body?: never;
