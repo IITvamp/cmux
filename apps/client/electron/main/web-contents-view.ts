@@ -134,6 +134,29 @@ function setupEventForwarders(entry: Entry, logger: Logger) {
   const { webContents } = entry.view;
   const cleanup: Array<() => void> = [];
 
+  const onDidStartNavigation = (
+    _event: Electron.Event,
+    url: string,
+    isInPlace: boolean,
+    isMainFrame: boolean,
+    frameProcessId: number,
+    frameRoutingId: number,
+  ) => {
+    const payload: ElectronWebContentsEvent = {
+      type: "did-start-navigation",
+      url,
+      isInPlace: Boolean(isInPlace),
+      isMainFrame: Boolean(isMainFrame),
+      frameProcessId,
+      frameRoutingId,
+    };
+    sendEventToOwner(entry, payload, logger);
+  };
+  webContents.on("did-start-navigation", onDidStartNavigation);
+  cleanup.push(() => {
+    webContents.removeListener("did-start-navigation", onDidStartNavigation);
+  });
+
   const onDidStartLoading = () => {
     sendState(entry, logger, "did-start-loading");
   };

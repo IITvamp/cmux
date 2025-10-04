@@ -43,6 +43,16 @@ export interface ElectronWebContentsLoadFailedEvent {
   isMainFrame: boolean;
 }
 
+export interface ElectronWebContentsDidStartNavigationEvent {
+  type: "did-start-navigation";
+  url: string;
+  isMainFrame: boolean;
+  isInPlace: boolean;
+  frameProcessId: number;
+  frameRoutingId: number;
+}
+
 export type ElectronWebContentsEvent =
   | ElectronWebContentsStateEvent
-  | ElectronWebContentsLoadFailedEvent;
+  | ElectronWebContentsLoadFailedEvent
+  | ElectronWebContentsDidStartNavigationEvent;

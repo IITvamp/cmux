@@ -88,6 +88,9 @@ export function ElectronPreviewBrowser({
   const [viewHandle, setViewHandle] = useState<NativeViewHandle | null>(null);
   const [addressValue, setAddressValue] = useState(src);
   const [committedUrl, setCommittedUrl] = useState(src);
+  const [pendingNavigationUrl, setPendingNavigationUrl] = useState<string | null>(
+    null
+  );
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [devtoolsOpen, setDevtoolsOpen] = useState(false);
@@ -102,17 +105,15 @@ export function ElectronPreviewBrowser({
   useEffect(() => {
     setAddressValue(src);
     setCommittedUrl(src);
+    setPendingNavigationUrl(null);
     setLastError(null);
     setCanGoBack(false);
     setCanGoForward(false);
   }, [src]);
 
   const applyState = useCallback(
-    (state: ElectronWebContentsState) => {
+    (state: ElectronWebContentsState, reason?: string) => {
       setCommittedUrl(state.url);
-      if (!isEditing) {
-        setAddressValue(state.url);
-      }
       setIsLoading(state.isLoading);
       setDevtoolsOpen(state.isDevToolsOpened);
       setCanGoBack(Boolean(state.canGoBack));
@@ -120,8 +121,31 @@ export function ElectronPreviewBrowser({
       if (state.isLoading) {
         setLastError(null);
       }
+      setPendingNavigationUrl((current) => {
+        if (!current) {
+          return current;
+        }
+        if (reason === "did-fail-load") {
+          return null;
+        }
+        if (state.url === current) {
+          if (
+            reason === "did-navigate" ||
+            reason === "did-navigate-in-page" ||
+            reason === "did-stop-loading" ||
+            !state.isLoading
+          ) {
+            return null;
+          }
+          return current;
+        }
+        if (!state.isLoading && reason !== "did-start-loading") {
+          return null;
+        }
+        return current;
+      });
     },
-    [isEditing]
+    []
   );
 
   useEffect(() => {
@@ -151,11 +175,19 @@ export function ElectronPreviewBrowser({
     const unsubscribe = subscribe(
       viewHandle.id,
       (event: ElectronWebContentsEvent) => {
+        if (event.type === "did-start-navigation") {
+          if (event.isMainFrame) {
+            setPendingNavigationUrl(event.url);
+            setLastError(null);
+          }
+          return;
+        }
         if (event.type === "state") {
-          applyState(event.state);
+          applyState(event.state, event.reason);
           return;
         }
         if (event.type === "load-failed" && event.isMainFrame) {
+          setPendingNavigationUrl(null);
           setLastError(event.errorDescription || "Failed to load page");
         }
       }
@@ -168,6 +200,7 @@ export function ElectronPreviewBrowser({
   const handleViewReady = useCallback((info: NativeViewHandle) => {
     setViewHandle(info);
     setLastError(null);
+    setPendingNavigationUrl(null);
   }, []);
 
   const handleViewDestroyed = useCallback(() => {
@@ -176,6 +209,7 @@ export function ElectronPreviewBrowser({
     setDevtoolsOpen(false);
     setCanGoBack(false);
     setCanGoForward(false);
+    setPendingNavigationUrl(null);
   }, []);
 
   const handleSubmit = useCallback(
@@ -187,6 +221,7 @@ export function ElectronPreviewBrowser({
       const target = normalizeUrl(raw);
       setCommittedUrl(target);
       setAddressValue(target);
+      setPendingNavigationUrl(target);
       setLastError(null);
       setIsEditing(false);
       inputRef.current?.blur();
@@ -201,16 +236,19 @@ export function ElectronPreviewBrowser({
 
   const handleInputFocus = useCallback(
     (event: React.FocusEvent<HTMLInputElement>) => {
+      const fallback = pendingNavigationUrl ?? committedUrl ?? "";
+      setAddressValue(fallback);
       setIsEditing(true);
       event.currentTarget.select();
     },
-    []
+    [committedUrl, pendingNavigationUrl]
   );
 
   const handleInputBlur = useCallback(
     (event: React.FocusEvent<HTMLInputElement>) => {
+      const fallback = pendingNavigationUrl ?? committedUrl ?? "";
       setIsEditing(false);
-      setAddressValue(committedUrl);
+      setAddressValue(fallback);
       const input = event.currentTarget;
       queueMicrotask(() => {
         try {
@@ -226,7 +264,7 @@ export function ElectronPreviewBrowser({
         }
       });
     },
-    [committedUrl]
+    [committedUrl, pendingNavigationUrl]
   );
 
   const handleInputMouseUp = useCallback(
@@ -244,10 +282,11 @@ export function ElectronPreviewBrowser({
       if (event.key === "Escape") {
         event.preventDefault();
         event.currentTarget.blur();
-        setAddressValue(committedUrl);
+        const fallback = pendingNavigationUrl ?? committedUrl ?? "";
+        setAddressValue(fallback);
       }
     },
-    [committedUrl]
+    [committedUrl, pendingNavigationUrl]
   );
 
   const handleToggleDevTools = useCallback(() => {
@@ -288,6 +327,15 @@ export function ElectronPreviewBrowser({
   const devtoolsTooltipLabel = devtoolsOpen
     ? "Close DevTools"
     : "Open DevTools";
+
+  const displayAddressValue = useMemo(() => {
+    if (isEditing) {
+      return addressValue;
+    }
+    return pendingNavigationUrl ?? committedUrl ?? "";
+  }, [addressValue, committedUrl, isEditing, pendingNavigationUrl]);
+
+  const inputPlaceholder = pendingNavigationUrl ?? committedUrl ?? "Enter a URL";
 
   const progressStyles = useMemo(() => {
     return {
@@ -372,14 +420,14 @@ export function ElectronPreviewBrowser({
             </div>
             <input
               ref={inputRef}
-              value={addressValue}
+              value={displayAddressValue}
               onChange={(event) => setAddressValue(event.target.value)}
               onFocus={handleInputFocus}
               onBlur={handleInputBlur}
               onMouseUp={handleInputMouseUp}
               onKeyDown={handleInputKeyDown}
               className="flex-1 bg-transparent text-[11px] text-neutral-900 outline-none placeholder:text-neutral-400 disabled:cursor-not-allowed disabled:text-neutral-400 dark:text-neutral-100 dark:placeholder:text-neutral-600"
-              placeholder="Enter a URL"
+              placeholder={inputPlaceholder}
               spellCheck={false}
               autoCapitalize="none"
               autoCorrect="off"
