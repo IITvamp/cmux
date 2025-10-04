@@ -34,11 +34,14 @@ describe("collect-crown-diff.sh", () => {
     writeFileSync(join(dir, "pnpm-lock.yaml"), "lock\n");
     writeFileSync(join(dir, "yarn.lock"), "lock\n");
     writeFileSync(join(dir, "package-lock.json"), "{}\n");
+    writeFileSync(join(dir, "bun.lock"), "{}\n");
+    writeFileSync(join(dir, "bun.lockb"), new Uint8Array([4, 5, 6]));
     mkdirSync(join(dir, "node_modules/pkg"), { recursive: true });
     writeFileSync(join(dir, "node_modules/pkg/index.js"), "module.exports = 1;\n");
 
     mkdirSync(join(dir, "venv/lib"), { recursive: true });
     writeFileSync(join(dir, "Pipfile.lock"), "{}\n");
+    writeFileSync(join(dir, "uv.lock"), "{}\n");
 
     mkdirSync(join(dir, "target"), { recursive: true });
     writeFileSync(join(dir, "target/output"), "binary\n");
@@ -51,8 +54,11 @@ describe("collect-crown-diff.sh", () => {
     expect(diff).not.toContain("pnpm-lock.yaml");
     expect(diff).not.toContain("yarn.lock");
     expect(diff).not.toContain("package-lock.json");
+    expect(diff).not.toContain("bun.lock");
+    expect(diff).not.toContain("bun.lockb");
     expect(diff).not.toContain("node_modules");
     expect(diff).not.toContain("Pipfile.lock");
+    expect(diff).not.toContain("uv.lock");
     expect(diff).not.toContain("target/");
   });
 });

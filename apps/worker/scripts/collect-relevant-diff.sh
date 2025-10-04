@@ -29,10 +29,10 @@ is_ignored_path() {
     .git/*|.git) return 0 ;;
 
     # Node/JS
-    node_modules/*|pnpm-lock.yaml|yarn.lock|package-lock.json|*.map|dist/*|build/*|.next/*|out/*|.turbo/*) return 0 ;;
+    node_modules/*|pnpm-lock.yaml|yarn.lock|package-lock.json|bun.lock|bun.lockb|*.map|dist/*|build/*|.next/*|out/*|.turbo/*) return 0 ;;
 
     # Python
-    venv/*|.venv/*|__pycache__/*|Pipfile.lock|poetry.lock) return 0 ;;
+    venv/*|.venv/*|__pycache__/*|Pipfile.lock|poetry.lock|uv.lock) return 0 ;;
 
     # Ruby/PHP
     Gemfile.lock|composer.lock|vendor/*) return 0 ;;

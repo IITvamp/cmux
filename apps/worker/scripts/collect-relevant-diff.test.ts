@@ -40,12 +40,15 @@ describe("collect-relevant-diff.sh", () => {
     writeFileSync(join(dir, "pnpm-lock.yaml"), "lock\n");
     writeFileSync(join(dir, "yarn.lock"), "lock\n");
     writeFileSync(join(dir, "package-lock.json"), "{}\n");
+    writeFileSync(join(dir, "bun.lock"), "{}\n");
+    writeFileSync(join(dir, "bun.lockb"), new Uint8Array([1, 2, 3]));
     mkdirSync(join(dir, "node_modules/pkg"), { recursive: true });
     writeFileSync(join(dir, "node_modules/pkg/index.js"), "module.exports=1;\n");
 
     // python
     mkdirSync(join(dir, "venv/lib"), { recursive: true });
     writeFileSync(join(dir, "Pipfile.lock"), "{}\n");
+    writeFileSync(join(dir, "uv.lock"), "{}\n");
 
     // rust
     mkdirSync(join(dir, "target/release"), { recursive: true });
@@ -71,8 +74,11 @@ describe("collect-relevant-diff.sh", () => {
     expect(diff).not.toContain("pnpm-lock.yaml");
     expect(diff).not.toContain("yarn.lock");
     expect(diff).not.toContain("package-lock.json");
+    expect(diff).not.toContain("bun.lock");
+    expect(diff).not.toContain("bun.lockb");
     expect(diff).not.toContain("node_modules");
     expect(diff).not.toContain("Pipfile.lock");
+    expect(diff).not.toContain("uv.lock");
     expect(diff).not.toContain("Cargo.lock");
     expect(diff).not.toContain("target/");
     expect(diff).not.toContain("dist/");
