@@ -12,7 +12,7 @@ function inferVendor(agentName: string): string {
   if (lower.startsWith("claude/")) return "claude";
   if (lower.startsWith("gemini/")) return "gemini";
   if (lower.startsWith("opencode/")) return "opencode";
-  if (lower.includes("qwen")) return "qwen";
+  if (lower.startsWith("qwen/")) return "qwen";
   if (lower.startsWith("cursor/")) return "cursor";
   if (lower.startsWith("amp")) return "amp";
   return "other";
