@@ -87,7 +87,18 @@ export function EnvironmentConfiguration({
     () => initialMaintenanceScript,
   );
   const [devScript, setDevScript] = useState(() => initialDevScript);
-  const [exposedPorts, setExposedPorts] = useState(() => initialExposedPorts);
+  const [exposedPorts, setExposedPorts] = useState(() =>
+    initialExposedPorts
+      .split(",")
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0),
+  );
+  const [originalExposedPorts, setOriginalExposedPorts] = useState(() =>
+    initialExposedPorts
+      .split(",")
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0),
+  );
   const [portsError, setPortsError] = useState<string | null>(null);
   const keyInputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [pendingFocusIndex, setPendingFocusIndex] = useState<number | null>(
@@ -218,7 +229,6 @@ export function EnvironmentConfiguration({
       normalizedDevScript.length > 0 ? normalizedDevScript : undefined;
 
     const parsedPorts = exposedPorts
-      .split(",")
       .map((p) => Number.parseInt(p.trim(), 10))
       .filter((n) => Number.isFinite(n));
 
@@ -629,16 +639,56 @@ export function EnvironmentConfiguration({
                 <label className="block text-sm font-medium text-neutral-800 dark:text-neutral-200">
                   Exposed ports
                 </label>
-                <input
-                  type="text"
-                  value={exposedPorts}
-                  onChange={(e) => setExposedPorts(e.target.value)}
-                  placeholder="3000, 8080, 5432"
-                  className="w-full rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700"
-                />
+                <div className="space-y-2">
+                  {exposedPorts.map((port, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={port}
+                        onChange={(e) => {
+                          const newPorts = [...exposedPorts];
+                          newPorts[index] = e.target.value;
+                          setExposedPorts(newPorts);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            const newPorts = [...exposedPorts];
+                            newPorts.splice(index + 1, 0, "");
+                            setExposedPorts(newPorts);
+                          }
+                        }}
+                        placeholder="3000"
+                        className="flex-1 rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newPorts = exposedPorts.filter(
+                            (_, i) => i !== index,
+                          );
+                          setExposedPorts(
+                            newPorts.length > 0 ? newPorts : [""],
+                          );
+                        }}
+                        className="p-2 rounded-md border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-900"
+                        aria-label="Remove port"
+                      >
+                        <Minus className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setExposedPorts([...exposedPorts, ""])}
+                    className="inline-flex items-center gap-2 rounded-md border border-neutral-200 dark:border-neutral-800 px-3 py-2 text-sm text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-900"
+                  >
+                    <Plus className="w-4 h-4" /> Add Port
+                  </button>
+                </div>
                 <p className="text-xs text-neutral-500 dark:text-neutral-500">
-                  Comma-separated list of ports that should be exposed from the
-                  container for preview URLs.
+                  Ports that should be exposed from the container for preview
+                  URLs. Press Enter in a port field to add another port.
                 </p>
                 {portsError && (
                   <p className="text-xs text-red-500">{portsError}</p>

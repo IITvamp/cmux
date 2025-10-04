@@ -121,7 +121,9 @@ function EnvironmentDetailsPage() {
   const [activatingVersionId, setActivatingVersionId] = useState<string | null>(
     null,
   );
-  const [deletingVersionId, setDeletingVersionId] = useState<string | null>(null);
+  const [deletingVersionId, setDeletingVersionId] = useState<string | null>(
+    null,
+  );
   const [isEditingDevScript, setIsEditingDevScript] = useState(false);
   const [devScriptDraft, setDevScriptDraft] = useState(
     environment.devScript ?? "",
@@ -242,9 +244,7 @@ function EnvironmentDetailsPage() {
       setIsEditingDevScript(false);
     } catch (error) {
       const message =
-        error instanceof Error
-          ? error.message
-          : "Failed to update dev script";
+        error instanceof Error ? error.message : "Failed to update dev script";
       toast.error(message);
     }
   };
@@ -263,9 +263,7 @@ function EnvironmentDetailsPage() {
 
   const handleSaveMaintenanceScript = async () => {
     const normalizedMaintenanceScript = maintenanceScriptDraft.trim();
-    if (
-      normalizedMaintenanceScript === (environment.maintenanceScript ?? "")
-    ) {
+    if (normalizedMaintenanceScript === (environment.maintenanceScript ?? "")) {
       setIsEditingMaintenanceScript(false);
       return;
     }
@@ -319,6 +317,14 @@ function EnvironmentDetailsPage() {
 
   const handleRemovePort = (port: number) => {
     setPortsDraft((prev) => prev.filter((value) => value !== port));
+  };
+
+  const hasPortsChanged = () => {
+    const currentPorts = environment.exposedPorts ?? [];
+    if (portsDraft.length !== currentPorts.length) {
+      return true;
+    }
+    return !portsDraft.every((port, index) => port === currentPorts[index]);
   };
 
   const handleSavePorts = () => {
@@ -445,7 +451,9 @@ function EnvironmentDetailsPage() {
         snapshotVersionId: versionId,
       });
       toast.success("Snapshot version deleted");
-      await queryClient.invalidateQueries({ queryKey: snapshotsQuery.queryKey });
+      await queryClient.invalidateQueries({
+        queryKey: snapshotsQuery.queryKey,
+      });
     } catch (error) {
       const message =
         error instanceof Error
@@ -457,7 +465,10 @@ function EnvironmentDetailsPage() {
     }
   };
 
-  const handleSandboxSuccess = (data: { vscodeUrl: string; instanceId: string }) => {
+  const handleSandboxSuccess = (data: {
+    vscodeUrl: string;
+    instanceId: string;
+  }) => {
     const baseUrl = data.vscodeUrl;
     const hasQuery = baseUrl.includes("?");
     const vscodeUrlWithFolder = `${baseUrl}${hasQuery ? "&" : "?"}folder=/root/workspace`;
@@ -682,7 +693,8 @@ function EnvironmentDetailsPage() {
                             "hover:bg-neutral-100 dark:hover:bg-neutral-900",
                         )}
                       >
-                        {environment.devScript && environment.devScript.length > 0
+                        {environment.devScript &&
+                        environment.devScript.length > 0
                           ? "Edit"
                           : "Add"}
                       </button>
@@ -706,7 +718,9 @@ function EnvironmentDetailsPage() {
                           disabled={updateDevScriptMutation.isPending}
                           className="inline-flex h-8 items-center justify-center rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
                         >
-                          {updateDevScriptMutation.isPending ? "Saving..." : "Save"}
+                          {updateDevScriptMutation.isPending
+                            ? "Saving..."
+                            : "Save"}
                         </button>
                         <button
                           type="button"
@@ -722,7 +736,8 @@ function EnvironmentDetailsPage() {
                         </button>
                       </div>
                     </div>
-                  ) : environment.devScript && environment.devScript.length > 0 ? (
+                  ) : environment.devScript &&
+                    environment.devScript.length > 0 ? (
                     <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-3 dark:bg-neutral-950">
                       <pre className="whitespace-pre-wrap break-words font-mono text-sm text-green-400">
                         {environment.devScript}
@@ -852,6 +867,12 @@ function EnvironmentDetailsPage() {
                         type="number"
                         value={portInput}
                         onChange={(event) => setPortInput(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            handleAddPort();
+                          }
+                        }}
                         placeholder="Add port"
                         className="h-7 w-28 rounded-md border border-neutral-300 px-3 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:ring-neutral-700 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                       />
@@ -868,7 +889,9 @@ function EnvironmentDetailsPage() {
                       <button
                         type="button"
                         onClick={handleSavePorts}
-                        disabled={updatePortsMutation.isPending}
+                        disabled={
+                          updatePortsMutation.isPending || !hasPortsChanged()
+                        }
                         className="inline-flex h-7 items-center justify-center rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
                       >
                         {updatePortsMutation.isPending ? "Saving..." : "Save"}
