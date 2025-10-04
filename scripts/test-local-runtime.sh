@@ -145,6 +145,7 @@ run_checks_for_platform() {
     -p 39376:39376 \
     -p 39377:39377 \
     -p 39378:39378 \
+    -p 39379:39379 \
     --name "$container_name" \
     "$image_name" >/dev/null
 

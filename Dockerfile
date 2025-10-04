@@ -319,7 +319,8 @@ RUN mkdir -p /root/.openvscode-server/data/User && \
 # 39376: VS Code Extension Socket Server
 # 39377: Worker service
 # 39378: OpenVSCode server
-EXPOSE 39376 39377 39378
+# 39379: cmux-proxy
+EXPOSE 39376 39377 39378 39379
 
 ENV container=docker
 STOPSIGNAL SIGRTMIN+3

@@ -3,12 +3,12 @@ set -euo pipefail
 
 # End-to-end tests for cmux-proxy using Docker and LD_PRELOAD isolation.
 # - Builds the runtime image
-# - Starts proxy container publishing :8080
+# - Starts proxy container publishing :39379
 # - Inside the container, starts HTTP servers bound by workspace via LD_PRELOAD
 # - Verifies isolation from inside the container
 # - Verifies proxy from host via headers and subdomain Host routing
 
-PORT="${PORT:-8080}"
+PORT="${PORT:-39379}"
 IMAGE="${IMAGE:-cmux-proxy-e2e:latest}"
 CONTAINER="${CONTAINER:-cmux-proxy-e2e}"
 
@@ -37,7 +37,7 @@ docker build --target runtime -t "$IMAGE" .
 echo "[2/8] Starting proxy container: $CONTAINER (publishing :$PORT)"
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 docker run -d --rm \
-  -p "$PORT:8080" \
+  -p "$PORT:39379" \
   --name "$CONTAINER" \
   "$IMAGE" >/dev/null
 

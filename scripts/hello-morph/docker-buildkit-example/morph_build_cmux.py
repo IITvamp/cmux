@@ -853,6 +853,7 @@ def main():
         # Expose HTTP services
         current_instance.expose_http_service("openvscode", 39378)
         current_instance.expose_http_service("worker", 39377)
+        current_instance.expose_http_service("proxy", 39379)
 
         print("\n--- Ensuring services are running ---")
         run_ssh_command(

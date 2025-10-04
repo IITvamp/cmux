@@ -26,6 +26,7 @@ docker run -d \
   -p 39376:39376 \
   -p 39377:39377 \
   -p 39378:39378 \
+  -p 39379:39379 \
   --name "$CONTAINER_NAME" \
   "$IMAGE_NAME"
 
@@ -38,6 +39,7 @@ echo "========================================="
 echo "Container services starting under systemd"
 echo "  - Worker: http://localhost:39377"
 echo "  - VS Code: http://localhost:39378"
+echo "  - cmux-proxy: http://localhost:39379"
 echo "========================================="
 echo ""
 

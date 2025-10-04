@@ -213,6 +213,31 @@ async fn test_http_proxy_routes_by_header() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_wildcard_bind_accepts_localhost_clients() {
+    let upstream_addr = start_upstream_http().await;
+    let (proxy_addr, shutdown, handle) = start_proxy(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)), "127.0.0.1").await;
+
+    let client: Client<HttpConnector, Body> = Client::new();
+    let host_addr = SocketAddr::from((Ipv4Addr::LOCALHOST, proxy_addr.port()));
+    let url = format!("http://{}:{}/wildcard", host_addr.ip(), host_addr.port());
+    let req = Request::builder()
+        .method("GET")
+        .uri(url)
+        .header("X-Cmux-Port-Internal", upstream_addr.port().to_string())
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = timeout(Duration::from_secs(5), client.request(req))
+        .await
+        .expect("resp timeout")
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    shutdown.send(()).ok();
+    let _ = handle.await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_websocket_proxy_upgrade() {
     let ws_addr = start_upstream_ws_like_upgrade_echo().await;
     let (proxy_addr, shutdown, handle) = start_proxy(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)), "127.0.0.1").await;

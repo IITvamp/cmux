@@ -8,8 +8,8 @@ use tracing::info;
 #[command(author, version, about = "Header-based proxy for HTTP, WS, and TCP (CONNECT)")]
 struct Args {
     /// Listen address(es). Accepts multiple or comma-separated values.
-    /// Example: --listen 0.0.0.0:8080 --listen 127.0.0.1:8080
-    #[arg(long, env = "CMUX_LISTEN", value_delimiter = ',', num_args = 1.., default_values = ["0.0.0.0:8080", "127.0.0.1:8080"])]
+    /// Example: --listen 0.0.0.0:39379 --listen 127.0.0.1:39379
+    #[arg(long, env = "CMUX_LISTEN", value_delimiter = ',', num_args = 1.., default_values = ["0.0.0.0:39379", "127.0.0.1:39379"])]
     listen: Vec<SocketAddr>,
 
     /// Default upstream host to use with the header-based port.

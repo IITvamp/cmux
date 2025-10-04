@@ -39,8 +39,8 @@ RUN apt-get update && \
 COPY --from=builder /app/target/release/cmux-proxy /usr/local/bin/cmux-proxy
 COPY --from=builder /app/ldpreload/libworkspace_net.so /usr/local/lib/libworkspace_net.so
 ENV LD_PRELOAD=/usr/local/lib/libworkspace_net.so
-ENV CMUX_LISTEN=0.0.0.0:8080
-EXPOSE 8080
+ENV CMUX_LISTEN=0.0.0.0:39379
+EXPOSE 39379
 USER root
 ENTRYPOINT ["/usr/local/bin/cmux-proxy"]
 

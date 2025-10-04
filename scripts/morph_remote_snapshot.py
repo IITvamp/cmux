@@ -295,6 +295,273 @@ def enable_cmux_units(snapshot: Snapshot) -> Snapshot:
     return run_snapshot_bash(snapshot, script)
 
 
+def run_sanity_checks(snapshot: Snapshot, timings: TimingsCollector) -> Snapshot:
+    """Run a battery of chroot sanity checks to verify runtime tooling."""
+
+    console.info("Running chroot sanity checks (forkpty, docker, envctl, dev server)...")
+
+    script = textwrap.dedent(
+        """
+        set -euo pipefail
+
+        if [ ! -f /opt/app/app.env ]; then
+            echo "cmux sanity: missing /opt/app/app.env" >&2
+            exit 1
+        fi
+
+        set -a
+        # shellcheck disable=SC1091
+        . /opt/app/app.env
+        set +a
+
+        run_chroot() {
+            CMUX_ROOTFS="$CMUX_ROOTFS" \
+            CMUX_RUNTIME_ROOT="$CMUX_RUNTIME_ROOT" \
+            CMUX_OVERLAY_UPPER="${CMUX_OVERLAY_UPPER:-}" \
+            CMUX_OVERLAY_WORK="${CMUX_OVERLAY_WORK:-}" \
+            /usr/local/lib/cmux/cmux-rootfs-exec "$@"
+        }
+
+        log_dir=/tmp/cmux-sanity
+        rm -rf "$log_dir"
+        mkdir -p "$log_dir"
+
+        forkpty_check() {
+            local log="$log_dir/forkpty.log"
+            if run_chroot /bin/bash <<'BASH' >"$log" 2>&1; then
+                echo "[sanity] forkpty ok"
+            else
+                echo "[sanity] forkpty failed" >&2
+                cat "$log" >&2 || true
+                return 1
+            fi
+BASH
+set -euo pipefail
+if command -v script >/dev/null 2>&1; then
+    script -qfec "echo forkpty-ok" /dev/null >/dev/null
+else
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "python3 not available for forkpty fallback" >&2
+        exit 1
+    fi
+    python3 - <<'PY'
+import os
+import pty
+import sys
+
+pid, fd = pty.fork()
+if pid == 0:
+    os.execlp("sh", "sh", "-c", "echo forkpty-python")
+
+data = os.read(fd, 1024)
+if b"forkpty-python" not in data:
+    raise SystemExit("forkpty output missing")
+PY
+fi
+BASH
+        }
+
+        docker_check() {
+            local log="$log_dir/docker.log"
+            if run_chroot /bin/bash <<'BASH' >"$log" 2>&1; then
+                echo "[sanity] docker run ok"
+            else
+                echo "[sanity] docker run failed" >&2
+                cat "$log" >&2 || true
+                return 1
+            fi
+BASH
+set -euo pipefail
+docker run --pull=missing --rm hello-world >/dev/null
+docker image rm hello-world >/dev/null 2>&1 || true
+BASH
+        }
+
+        envctl_check() {
+            local log="$log_dir/envctl.log"
+            if run_chroot /bin/bash <<'BASH' >"$log" 2>&1; then
+                echo "[sanity] envctl propagation ok"
+            else
+                echo "[sanity] envctl propagation failed" >&2
+                cat "$log" >&2 || true
+                return 1
+            fi
+BASH
+set -euo pipefail
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "python3 not available for envctl sanity" >&2
+    exit 1
+fi
+
+python3 - <<'PY'
+import fcntl
+import os
+import pty
+import select
+import subprocess
+import time
+
+HOOK = subprocess.check_output(["envctl", "hook", "bash"], text=True)
+
+def set_nonblocking(fd: int) -> None:
+    flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+    fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
+def read_available(fd: int) -> str:
+    chunks = []
+    while True:
+        try:
+            chunk = os.read(fd, 4096)
+        except BlockingIOError:
+            break
+        if not chunk:
+            break
+        chunks.append(chunk.decode(errors="ignore"))
+    return "".join(chunks)
+
+def wait_for(fd: int, needle: str, timeout: float = 10.0) -> str:
+    deadline = time.time() + timeout
+    buf = ""
+    while time.time() < deadline:
+        ready, _, _ = select.select([fd], [], [], 0.2)
+        if fd in ready:
+            buf += read_available(fd)
+            if needle in buf:
+                return buf
+    raise RuntimeError(f"did not see {needle!r}; last output: {buf!r}")
+
+def send(fd: int, txt: str) -> None:
+    os.write(fd, txt.encode())
+
+def spawn(name: str):
+    pid, fd = pty.fork()
+    if pid == 0:
+        os.execvp("bash", ["bash", "-i", "--noprofile", "--norc"])
+    set_nonblocking(fd)
+    send(fd, f"export PS1='{name}> '\n")
+    send(fd, HOOK + "\n")
+    wait_for(fd, f"{name}> ")
+    send(fd, "echo READY\n")
+    wait_for(fd, "READY")
+    return pid, fd
+
+shells = []
+var_name = "MY_ENV_VAR_SANITY"
+var_value = "envctl-ok"
+
+try:
+    shells.append(spawn("A"))
+    shells.append(spawn("B"))
+
+    subprocess.run(["envctl", "set", f"{var_name}={var_value}"], check=True)
+    time.sleep(0.5)
+
+    _, fd_b = shells[1]
+    send(fd_b, f"echo ${var_name}\n")
+    output = wait_for(fd_b, f"{var_value}\n")
+    if var_value not in output:
+        raise RuntimeError("envctl value not observed in shell B")
+
+    subprocess.run(["envctl", "unset", var_name], check=True)
+    time.sleep(0.2)
+    send(fd_b, f"echo ${var_name}\n")
+    cleared = wait_for(fd_b, "\n")
+    if var_value in cleared:
+        raise RuntimeError("envctl value persisted after unset")
+finally:
+    for pid, fd in shells:
+        try:
+            send(fd, "exit\n")
+        except OSError:
+            pass
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        try:
+            os.waitpid(pid, 0)
+        except ChildProcessError:
+            pass
+PY
+
+BASH
+        }
+
+        dev_server_check() {
+            local log="$log_dir/dev.log"
+            if run_chroot /bin/bash <<'BASH' >"$log" 2>&1; then
+                echo "[sanity] dev server bootstrap ok"
+            else
+                echo "[sanity] dev server bootstrap failed" >&2
+                cat "$log" >&2 || true
+                return 1
+            fi
+BASH
+set -euo pipefail
+if [ ! -d /root/workspace ]; then
+    echo "/root/workspace missing" >&2
+    exit 1
+fi
+
+cd /root/workspace
+export SKIP_DOCKER_BUILD=true
+export SKIP_CONVEX=true
+
+tmp_log=$(mktemp)
+cleanup() {
+    if [ -n "${pid:-}" ] && kill -0 "$pid" 2>/dev/null; then
+        kill "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+    fi
+    rm -f "$tmp_log"
+}
+trap cleanup EXIT
+
+./scripts/dev.sh --skip-convex true >"$tmp_log" 2>&1 &
+pid=$!
+
+ready_regex='Starting Terminal App Development Environment'
+for _ in $(seq 1 60); do
+    if grep -q "$ready_regex" "$tmp_log"; then
+        exit 0
+    fi
+    if ! kill -0 "$pid" 2>/dev/null; then
+        cat "$tmp_log" >&2 || true
+        exit 1
+    fi
+    sleep 2
+done
+
+cat "$tmp_log" >&2 || true
+echo "dev server did not reach ready message" >&2
+exit 1
+BASH
+        }
+
+        pids=()
+        forkpty_check &
+        pids+=("$!")
+        docker_check &
+        pids+=("$!")
+        envctl_check &
+        pids+=("$!")
+        dev_server_check &
+        pids+=("$!")
+
+        for pid in "${pids[@]}"; do
+            wait "$pid"
+        done
+
+        rm -rf "$log_dir"
+        echo "[sanity] all checks passed"
+        """
+    ).strip()
+
+    return timings.time(
+        "build_snapshot:sanity_checks",
+        lambda: run_snapshot_bash(snapshot, script),
+    )
+
 def build_snapshot(
     dockerfile_path: str | None,
     image_name: str | None,
@@ -560,6 +827,8 @@ def build_snapshot(
             lambda: enable_cmux_units(snapshot),
         )
 
+        snapshot = run_sanity_checks(snapshot, timings)
+
         return snapshot
     finally:
         if archive_path and os.path.exists(archive_path):
@@ -634,7 +903,7 @@ def main() -> None:
 
         console.always(f"Instance ID: {instance.id}")
 
-        expose_ports = [39376, 39377, 39378]
+        expose_ports = [39376, 39377, 39378, 39379]
         with timings.section("main:expose_http_services"):
             for port in expose_ports:
                 instance.expose_http_service(port=port, name=f"port-{port}")
@@ -667,6 +936,7 @@ def main() -> None:
                         "systemctl status cmux-openvscode.service --no-pager -l | tail -n 80 || true",
                         "ps aux | grep -E 'openvscode-server|node /builtins/build/index.js' | grep -v grep || true",
                         "ss -lntp | grep ':39378' || true",
+                        "ss -lntp | grep ':39379' || true",
                         "tail -n 80 /var/log/cmux/openvscode.log || true",
                     ]
                     for cmd in diag_cmds:
@@ -689,12 +959,14 @@ def main() -> None:
                     return getattr(obj, key, None)
 
                 vscode_service = None
+                proxy_service = None
                 for svc in services or []:
                     port = _get(svc, "port")
                     name = _get(svc, "name")
                     if port == 39378 or name == "port-39378":
                         vscode_service = svc
-                        break
+                    elif port == 39379 or name == "port-39379":
+                        proxy_service = svc
 
                 url = (
                     _get(vscode_service, "url") if vscode_service is not None else None
@@ -729,6 +1001,14 @@ def main() -> None:
                         )
 
                     console.always(f"VSCode URL: {health_url}")
+
+                proxy_url = (
+                    _get(proxy_service, "url") if proxy_service is not None else None
+                )
+                if proxy_url:
+                    console.always(f"Proxy URL: {proxy_url}")
+                else:
+                    console.always("No exposed HTTP service found for port 39379")
         except Exception as e:  # noqa: BLE001
             console.always(f"Error checking port 39378: {e}")
 
