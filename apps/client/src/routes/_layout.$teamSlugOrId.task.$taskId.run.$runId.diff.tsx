@@ -26,6 +26,7 @@ import { useMutation, useQuery } from "convex/react";
 import { Command } from "lucide-react";
 import {
   Suspense,
+  memo,
   useCallback,
   useMemo,
   useRef,
@@ -63,6 +64,317 @@ type TaskRunWithChildren = Doc<"taskRuns"> & {
 };
 
 const AVAILABLE_AGENT_NAMES = new Set(AGENT_CONFIGS.map((agent) => agent.name));
+
+interface RestartTaskFormProps {
+  task: Doc<"tasks"> | null | undefined;
+  teamSlugOrId: string;
+  restartAgents: string[];
+  restartIsCloudMode: boolean;
+  persistenceKey: string;
+}
+
+const RestartTaskForm = memo(function RestartTaskForm({
+  task,
+  teamSlugOrId,
+  restartAgents,
+  restartIsCloudMode,
+  persistenceKey,
+}: RestartTaskFormProps) {
+  const { socket } = useSocket();
+  const { theme } = useTheme();
+  const { addTaskToExpand } = useExpandTasks();
+  const createTask = useMutation(api.tasks.create);
+  const editorApiRef = useRef<EditorApi | null>(null);
+  const [followUpText, setFollowUpText] = useState("");
+  const [isRestartingTask, setIsRestartingTask] = useState(false);
+  const [overridePrompt, setOverridePrompt] = useState(false);
+
+  const handleRestartTask = useCallback(async () => {
+    if (!task) {
+      toast.error("Task data is still loading. Try again in a moment.");
+      return;
+    }
+    if (!socket) {
+      toast.error("Socket not connected. Refresh or try again later.");
+      return;
+    }
+
+    const editorContent = editorApiRef.current?.getContent();
+    const followUp = (editorContent?.text ?? followUpText).trim();
+
+    if (!followUp && overridePrompt) {
+      toast.error("Add new instructions when overriding the prompt.");
+      return;
+    }
+    if (!followUp && !task.text) {
+      toast.error("Add follow-up context before restarting.");
+      return;
+    }
+
+    if (restartAgents.length === 0) {
+      toast.error(
+        "No previous agents found for this task. Start a new run from the dashboard.",
+      );
+      return;
+    }
+
+    const originalPrompt = task.text ?? "";
+    const combinedPrompt = overridePrompt
+      ? followUp
+      : originalPrompt
+        ? followUp
+          ? `${originalPrompt}\n\n${followUp}`
+          : originalPrompt
+        : followUp;
+
+    const projectFullNameForSocket =
+      task.projectFullName ??
+      (task.environmentId ? `env:${task.environmentId}` : undefined);
+
+    if (!projectFullNameForSocket) {
+      toast.error("Missing repository or environment for this task.");
+      return;
+    }
+
+    setIsRestartingTask(true);
+
+    try {
+      const existingImages =
+        task.images && task.images.length > 0
+          ? task.images.map((image) => ({
+            storageId: image.storageId,
+            fileName: image.fileName,
+            altText: image.altText,
+          }))
+          : [];
+
+      const newImages = (editorContent?.images && editorContent.images.length > 0
+        ? editorContent.images.filter((img) => "storageId" in img)
+        : []) as {
+          storageId: Id<"_storage">;
+          fileName: string | undefined;
+          altText: string;
+        }[];
+
+      const imagesPayload =
+        [...existingImages, ...newImages].length > 0
+          ? [...existingImages, ...newImages]
+          : undefined;
+
+      const newTaskId = await createTask({
+        teamSlugOrId,
+        text: combinedPrompt,
+        projectFullName: task.projectFullName ?? undefined,
+        baseBranch: task.baseBranch ?? undefined,
+        images: imagesPayload,
+        environmentId: task.environmentId ?? undefined,
+      });
+
+      addTaskToExpand(newTaskId);
+
+      const isEnvTask = projectFullNameForSocket.startsWith("env:");
+      const repoUrl = !isEnvTask
+        ? `https://github.com/${projectFullNameForSocket}.git`
+        : undefined;
+
+      socket.emit(
+        "start-task",
+        {
+          ...(repoUrl ? { repoUrl } : {}),
+          ...(task.baseBranch ? { branch: task.baseBranch } : {}),
+          taskDescription: combinedPrompt,
+          projectFullName: projectFullNameForSocket,
+          taskId: newTaskId,
+          selectedAgents: [...restartAgents],
+          isCloudMode: restartIsCloudMode,
+          ...(task.environmentId ? { environmentId: task.environmentId } : {}),
+          theme,
+        },
+        (response) => {
+          if ("error" in response) {
+            toast.error(`Task restart error: ${response.error}`);
+            return;
+          }
+          editorApiRef.current?.clear();
+          setFollowUpText("");
+        },
+      );
+
+      toast.success("Started follow-up task");
+    } catch (error) {
+      console.error("Failed to restart task", error);
+      toast.error("Failed to start follow-up task");
+    } finally {
+      setIsRestartingTask(false);
+    }
+  }, [
+    addTaskToExpand,
+    createTask,
+    followUpText,
+    overridePrompt,
+    restartAgents,
+    restartIsCloudMode,
+    socket,
+    task,
+    teamSlugOrId,
+    theme,
+  ]);
+
+  const handleFormSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      void handleRestartTask();
+    },
+    [handleRestartTask],
+  );
+
+  const trimmedFollowUp = followUpText.trim();
+  const isRestartDisabled =
+    isRestartingTask ||
+    (overridePrompt ? !trimmedFollowUp : !trimmedFollowUp && !task?.text) ||
+    !socket ||
+    !task;
+  const isMac =
+    typeof navigator !== "undefined" &&
+    navigator.userAgent.toUpperCase().includes("MAC");
+  const restartDisabledReason = useMemo(() => {
+    if (isRestartingTask) {
+      return "Starting follow-up...";
+    }
+    if (!task) {
+      return "Task data loading...";
+    }
+    if (!socket) {
+      return "Socket not connected";
+    }
+    if (overridePrompt && !trimmedFollowUp) {
+      return "Add new instructions";
+    }
+    if (!trimmedFollowUp && !task?.text) {
+      return "Add follow-up context";
+    }
+    return undefined;
+  }, [isRestartingTask, overridePrompt, socket, task, trimmedFollowUp]);
+
+  return (
+    <div className="sticky bottom-0 z-[var(--z-popover)] border-t border-transparent px-3.5 pb-3.5 pt-2">
+      <form
+        onSubmit={handleFormSubmit}
+        className="mx-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-neutral-500/15 bg-white dark:border-neutral-500/15 dark:bg-neutral-950"
+      >
+        <div className="px-3.5 pt-3.5">
+          <LexicalEditor
+            key={persistenceKey}
+            placeholder={
+              overridePrompt
+                ? "Edit original task instructions..."
+                : "Add updated instructions or context..."
+            }
+            onChange={setFollowUpText}
+            onSubmit={() => void handleRestartTask()}
+            repoUrl={
+              task?.projectFullName
+                ? `https://github.com/${task.projectFullName}.git`
+                : undefined
+            }
+            branch={task?.baseBranch ?? undefined}
+            environmentId={task?.environmentId ?? undefined}
+            persistenceKey={persistenceKey}
+            maxHeight="42px"
+            minHeight="30px"
+            onEditorReady={(api) => {
+              editorApiRef.current = api;
+            }}
+            contentEditableClassName="text-[15px] text-neutral-900 dark:text-neutral-100 focus:outline-none"
+            padding={{
+              paddingLeft: "0px",
+              paddingRight: "0px",
+              paddingTop: "0px",
+            }}
+          />
+        </div>
+        <div className="flex items-center justify-between gap-2 px-3.5 pb-3 pt-2">
+          <div className="flex items-center gap-2.5">
+            <Switch
+              isSelected={overridePrompt}
+              onValueChange={(value) => {
+                setOverridePrompt(value);
+                if (value) {
+                  if (!task?.text) {
+                    return;
+                  }
+                  const promptText = task.text;
+                  const currentContent = editorApiRef.current?.getContent();
+                  const currentText = currentContent?.text ?? "";
+                  if (!currentText) {
+                    editorApiRef.current?.insertText?.(promptText);
+                  } else if (!currentText.includes(promptText)) {
+                    editorApiRef.current?.insertText?.(promptText);
+                  }
+                } else {
+                  editorApiRef.current?.clear();
+                }
+              }}
+              size="sm"
+              aria-label="Override prompt"
+              classNames={{
+                wrapper: cn(
+                  "group-data-[selected=true]:bg-neutral-600",
+                  "group-data-[selected=true]:border-neutral-600",
+                  "dark:group-data-[selected=true]:bg-neutral-500",
+                  "dark:group-data-[selected=true]:border-neutral-500",
+                ),
+              }}
+            />
+            <span className="text-xs leading-tight text-neutral-500 dark:text-neutral-400">
+              {overridePrompt
+                ? "Override initial prompt"
+                : task?.text
+                  ? "Original prompt included"
+                  : "New task prompt"}
+            </span>
+          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span tabIndex={0} className="inline-flex">
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="default"
+                  className="!h-7"
+                  disabled={isRestartDisabled}
+                >
+                  {isRestartingTask ? "Starting..." : "Restart task"}
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent
+              side="bottom"
+              className="flex items-center gap-1 border-black bg-black text-white [&>*:last-child]:bg-black [&>*:last-child]:fill-black"
+            >
+              {restartDisabledReason ? (
+                <span className="text-xs">{restartDisabledReason}</span>
+              ) : (
+                <>
+                  {isMac ? (
+                    <>
+                      <Command className="size-3.5 opacity-80" />
+                      <span className="text-xs leading-tight">+ Enter</span>
+                    </>
+                  ) : (
+                    <span className="text-xs leading-tight">Ctrl + Enter</span>
+                  )}
+                </>
+              )}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      </form>
+    </div>
+  );
+});
+
+RestartTaskForm.displayName = "RestartTaskForm";
 
 function collectAgentNamesFromRuns(
   runs: TaskRunWithChildren[] | undefined,
@@ -214,15 +526,7 @@ export const Route = createFileRoute(
 
 function RunDiffPage() {
   const { taskId, teamSlugOrId, runId } = Route.useParams();
-  const { socket } = useSocket();
-  const { theme } = useTheme();
-  const { addTaskToExpand } = useExpandTasks();
-  const createTask = useMutation(api.tasks.create);
   const [diffControls, setDiffControls] = useState<DiffControls | null>(null);
-  const [followUpText, setFollowUpText] = useState("");
-  const [isRestartingTask, setIsRestartingTask] = useState(false);
-  const [overridePrompt, setOverridePrompt] = useState(false);
-  const editorApiRef = useRef<EditorApi | null>(null);
   const task = useQuery(api.tasks.getById, {
     teamSlugOrId,
     id: taskId,
@@ -313,171 +617,7 @@ function RunDiffPage() {
   }, [selectedRun?.agentName, taskRuns]);
 
   const taskRunId = selectedRun?._id ?? runId;
-
-  const handleRestartTask = useCallback(async () => {
-    if (!task) {
-      toast.error("Task data is still loading. Try again in a moment.");
-      return;
-    }
-    if (!socket) {
-      toast.error("Socket not connected. Refresh or try again later.");
-      return;
-    }
-
-    const editorContent = editorApiRef.current?.getContent();
-    const followUp = (editorContent?.text ?? followUpText).trim();
-
-    if (!followUp && overridePrompt) {
-      toast.error("Add new instructions when overriding the prompt.");
-      return;
-    }
-    if (!followUp && !task.text) {
-      toast.error("Add follow-up context before restarting.");
-      return;
-    }
-
-    if (restartAgents.length === 0) {
-      toast.error(
-        "No previous agents found for this task. Start a new run from the dashboard.",
-      );
-      return;
-    }
-
-    const originalPrompt = task.text ?? "";
-    const combinedPrompt = overridePrompt
-      ? followUp
-      : originalPrompt
-        ? followUp
-          ? `${originalPrompt}\n\n${followUp}`
-          : originalPrompt
-        : followUp;
-
-    const projectFullNameForSocket =
-      task.projectFullName ??
-      (task.environmentId ? `env:${task.environmentId}` : undefined);
-
-    if (!projectFullNameForSocket) {
-      toast.error("Missing repository or environment for this task.");
-      return;
-    }
-
-    setIsRestartingTask(true);
-
-    try {
-      const existingImages = task.images && task.images.length > 0
-        ? task.images.map((image) => ({
-            storageId: image.storageId,
-            fileName: image.fileName,
-            altText: image.altText,
-          }))
-        : [];
-
-      const newImages = (editorContent?.images && editorContent.images.length > 0
-        ? editorContent.images.filter((img) => 'storageId' in img)
-        : []) as { storageId: Id<"_storage">; fileName: string | undefined; altText: string }[];
-
-      const imagesPayload = [...existingImages, ...newImages].length > 0
-        ? [...existingImages, ...newImages]
-        : undefined;
-
-      const newTaskId = await createTask({
-        teamSlugOrId,
-        text: combinedPrompt,
-        projectFullName: task.projectFullName ?? undefined,
-        baseBranch: task.baseBranch ?? undefined,
-        images: imagesPayload,
-        environmentId: task.environmentId ?? undefined,
-      });
-
-      addTaskToExpand(newTaskId);
-
-      const isEnvTask = projectFullNameForSocket.startsWith("env:");
-      const repoUrl = !isEnvTask
-        ? `https://github.com/${projectFullNameForSocket}.git`
-        : undefined;
-
-      await new Promise<void>((resolve) => {
-        socket.emit(
-          "start-task",
-          {
-            ...(repoUrl ? { repoUrl } : {}),
-            ...(task.baseBranch ? { branch: task.baseBranch } : {}),
-            taskDescription: combinedPrompt,
-            projectFullName: projectFullNameForSocket,
-            taskId: newTaskId,
-            selectedAgents: [...restartAgents],
-            isCloudMode: restartIsCloudMode,
-            ...(task.environmentId
-              ? { environmentId: task.environmentId }
-              : {}),
-            theme,
-          },
-          (response) => {
-            if ("error" in response) {
-              toast.error(`Task restart error: ${response.error}`);
-            } else {
-              editorApiRef.current?.clear();
-              setFollowUpText("");
-              toast.success("Started follow-up task");
-            }
-            resolve();
-          },
-        );
-      });
-    } catch (error) {
-      console.error("Failed to restart task", error);
-      toast.error("Failed to start follow-up task");
-    } finally {
-      setIsRestartingTask(false);
-    }
-  }, [
-    addTaskToExpand,
-    createTask,
-    followUpText,
-    overridePrompt,
-    socket,
-    task,
-    teamSlugOrId,
-    theme,
-    restartAgents,
-    restartIsCloudMode,
-  ]);
-
-  const handleFormSubmit = useCallback(
-    (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      void handleRestartTask();
-    },
-    [handleRestartTask],
-  );
-
-  const trimmedFollowUp = followUpText.trim();
-  const isRestartDisabled =
-    isRestartingTask ||
-    (overridePrompt ? !trimmedFollowUp : !trimmedFollowUp && !task?.text) ||
-    !socket ||
-    !task;
-  const isMac =
-    typeof navigator !== "undefined" &&
-    navigator.userAgent.toUpperCase().includes("MAC");
-  const restartDisabledReason = useMemo(() => {
-    if (isRestartingTask) {
-      return "Starting follow-up...";
-    }
-    if (!task) {
-      return "Task data loading...";
-    }
-    if (!socket) {
-      return "Socket not connected";
-    }
-    if (overridePrompt && !trimmedFollowUp) {
-      return "Add new instructions";
-    }
-    if (!trimmedFollowUp && !task?.text) {
-      return "Add follow-up context";
-    }
-    return undefined;
-  }, [isRestartingTask, overridePrompt, socket, task, trimmedFollowUp]);
+  const restartTaskPersistenceKey = `restart-task-${taskId}-${runId}`;
 
   // 404 if selected run is missing
   if (!selectedRun) {
@@ -544,116 +684,14 @@ function RunDiffPage() {
                 </div>
               )}
             </Suspense>
-            <div className="sticky bottom-0 z-[var(--z-popover)] border-t border-transparent px-3.5 pb-3.5 pt-2">
-              <form
-                onSubmit={handleFormSubmit}
-                className="mx-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-neutral-500/15 bg-white dark:border-neutral-500/15 dark:bg-neutral-950"
-              >
-                <div className="px-3.5 pt-3.5">
-                  <LexicalEditor
-                    placeholder={
-                      overridePrompt
-                        ? "Edit original task instructions..."
-                        : "Add updated instructions or context..."
-                    }
-                    onChange={setFollowUpText}
-                    onSubmit={() => void handleRestartTask()}
-                    repoUrl={
-                      task?.projectFullName
-                        ? `https://github.com/${task.projectFullName}.git`
-                        : undefined
-                    }
-                    branch={task?.baseBranch ?? undefined}
-                    environmentId={task?.environmentId ?? undefined}
-                    persistenceKey={`restart-task-${taskId}-${runId}`}
-                    maxHeight="96px"
-                    onEditorReady={(api) => {
-                      editorApiRef.current = api;
-                    }}
-                    contentEditableClassName="text-[15px] text-neutral-900 dark:text-neutral-100 focus:outline-none"
-                    padding={{
-                      paddingLeft: "0px",
-                      paddingRight: "0px",
-                      paddingTop: "0px",
-                    }}
-                  />
-                </div>
-                <div className="flex items-center justify-between gap-2 px-3.5 pb-3 pt-2">
-                  <div className="flex items-center gap-2.5">
-                    <Switch
-                      isSelected={overridePrompt}
-                      onValueChange={(value) => {
-                        setOverridePrompt(value);
-                        if (value) {
-                          if (!task?.text) {
-                            return;
-                          }
-                          const promptText = task.text;
-                          const currentContent = editorApiRef.current?.getContent();
-                          const currentText = currentContent?.text ?? "";
-                          if (!currentText) {
-                            editorApiRef.current?.insertText?.(promptText);
-                          } else if (!currentText.includes(promptText)) {
-                            editorApiRef.current?.insertText?.(promptText);
-                          }
-                        } else {
-                          editorApiRef.current?.clear();
-                        }
-                      }}
-                      size="sm"
-                      aria-label="Override prompt"
-                      classNames={{
-                        wrapper: cn(
-                          "group-data-[selected=true]:bg-neutral-600",
-                          "group-data-[selected=true]:border-neutral-600",
-                          "dark:group-data-[selected=true]:bg-neutral-500",
-                          "dark:group-data-[selected=true]:border-neutral-500",
-                        ),
-                      }}
-                    />
-                    <span className="text-xs leading-tight text-neutral-500 dark:text-neutral-400">
-                      {overridePrompt
-                        ? "Override initial prompt"
-                        : task?.text
-                          ? "Original prompt included"
-                          : "New task prompt"}
-                    </span>
-                  </div>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span tabIndex={0} className="inline-flex">
-                        <Button
-                          type="submit"
-                          size="sm"
-                          variant="default"
-                          className="!h-7"
-                          disabled={isRestartDisabled}
-                        >
-                          {isRestartingTask ? "Starting..." : "Restart task"}
-                        </Button>
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent
-                      side="bottom"
-                      className="flex items-center gap-1 border-black bg-black text-white [&>*:last-child]:bg-black [&>*:last-child]:fill-black"
-                    >
-                      {restartDisabledReason ? (
-                        <span className="text-xs">{restartDisabledReason}</span>
-                      ) : (
-                        <>
-                          {isMac ? (
-                            <Command className="h-3 w-3" />
-                          ) : (
-                            <span className="text-xs">Ctrl</span>
-                          )}
-                          <span>+ Enter</span>
-                        </>
-                      )}
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-              </form>
-            </div>
+            <RestartTaskForm
+              key={restartTaskPersistenceKey}
+              task={task}
+              teamSlugOrId={teamSlugOrId}
+              restartAgents={restartAgents}
+              restartIsCloudMode={restartIsCloudMode}
+              persistenceKey={restartTaskPersistenceKey}
+            />
           </div>
         </div>
       </div>
