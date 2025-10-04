@@ -110,7 +110,7 @@ export function ElectronPreviewBrowser({
   const applyState = useCallback(
     (state: ElectronWebContentsState) => {
       setCommittedUrl(state.url);
-      if (!isEditing) {
+      if (!isEditing && !state.isLoading) {
         setAddressValue(state.url);
       }
       setIsLoading(state.isLoading);
@@ -121,7 +121,7 @@ export function ElectronPreviewBrowser({
         setLastError(null);
       }
     },
-    [isEditing]
+    [isEditing],
   );
 
   useEffect(() => {
@@ -158,7 +158,7 @@ export function ElectronPreviewBrowser({
         if (event.type === "load-failed" && event.isMainFrame) {
           setLastError(event.errorDescription || "Failed to load page");
         }
-      }
+      },
     );
     return () => {
       unsubscribe?.();
@@ -196,7 +196,7 @@ export function ElectronPreviewBrowser({
           console.warn("Failed to navigate WebContentsView", error);
         });
     },
-    [addressValue, viewHandle]
+    [addressValue, viewHandle],
   );
 
   const handleInputFocus = useCallback(
@@ -204,7 +204,7 @@ export function ElectronPreviewBrowser({
       setIsEditing(true);
       event.currentTarget.select();
     },
-    []
+    [],
   );
 
   const handleInputBlur = useCallback(
@@ -226,7 +226,7 @@ export function ElectronPreviewBrowser({
         }
       });
     },
-    [committedUrl]
+    [committedUrl],
   );
 
   const handleInputMouseUp = useCallback(
@@ -236,7 +236,7 @@ export function ElectronPreviewBrowser({
       }
       event.currentTarget.select();
     },
-    []
+    [],
   );
 
   const handleInputKeyDown = useCallback(
@@ -247,7 +247,7 @@ export function ElectronPreviewBrowser({
         setAddressValue(committedUrl);
       }
     },
-    [committedUrl]
+    [committedUrl],
   );
 
   const handleToggleDevTools = useCallback(() => {
@@ -303,7 +303,7 @@ export function ElectronPreviewBrowser({
           <div
             className={cn(
               "relative flex items-center gap-2 border border-neutral-200 bg-white px-3 font-mono",
-              "dark:border-neutral-800 dark:bg-neutral-900"
+              "dark:border-neutral-800 dark:bg-neutral-900",
             )}
           >
             <div className="flex items-center gap-1">
@@ -353,7 +353,7 @@ export function ElectronPreviewBrowser({
                         .catch((error: unknown) => {
                           console.warn(
                             "Failed to reload WebContentsView",
-                            error
+                            error,
                           );
                         });
                     }}
@@ -394,7 +394,7 @@ export function ElectronPreviewBrowser({
                     size="icon"
                     className={clsx(
                       "size-7 rounded-full p-0 text-neutral-600 hover:text-neutral-800 disabled:opacity-30 disabled:hover:text-neutral-400 dark:text-neutral-500 dark:hover:text-neutral-100 dark:disabled:hover:text-neutral-500",
-                      devtoolsOpen && "text-primary hover:text-primary"
+                      devtoolsOpen && "text-primary hover:text-primary",
                     )}
                     onClick={handleToggleDevTools}
                     disabled={!viewHandle}
