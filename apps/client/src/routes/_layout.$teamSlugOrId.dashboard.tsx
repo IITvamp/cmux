@@ -22,7 +22,7 @@ import { createFakeConvexId } from "@/lib/fakeConvexId";
 import { branchesQueryOptions } from "@/queries/branches";
 import { api } from "@cmux/convex/api";
 import type { Doc, Id } from "@cmux/convex/dataModel";
-import type { ProviderStatusResponse } from "@cmux/shared";
+import type { ProviderStatus, ProviderStatusResponse } from "@cmux/shared";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -51,13 +51,15 @@ function DashboardComponent() {
   });
   const [selectedBranch, setSelectedBranch] = useState<string[]>([]);
 
-  const [selectedAgents, setSelectedAgents] = useState<string[]>(() => {
+  const [selectedAgents, setSelectedAgentsState] = useState<string[]>(() => {
     const stored = localStorage.getItem("selectedAgents");
     // Only use stored value if it exists and has selections, otherwise use defaults
     return stored && JSON.parse(stored).length > 0
       ? JSON.parse(stored)
       : DEFAULT_AGENTS;
   });
+  const selectedAgentsRef = useRef<string[]>(selectedAgents);
+  selectedAgentsRef.current = selectedAgents;
   const [taskDescription, setTaskDescription] = useState<string>("");
   const [isCloudMode, setIsCloudMode] = useState<boolean>(() => {
     const stored = localStorage.getItem("isCloudMode");
@@ -143,21 +145,78 @@ function DashboardComponent() {
     setSelectedBranch(newBranches);
   }, []);
 
-  // Callback for agent selection changes
-  const handleAgentChange = useCallback((newAgents: string[]) => {
-    setSelectedAgents(newAgents);
-    // Only persist to localStorage if the user made a selection (not using defaults)
-    // If newAgents is empty or equals defaults, remove from localStorage
-    const isDefault =
-      newAgents.length === DEFAULT_AGENTS.length &&
-      newAgents.every((agent, index) => agent === DEFAULT_AGENTS[index]);
+  const sanitizeAgents = useCallback(
+    (agents: string[], providers?: ProviderStatus[] | null): string[] => {
+      if (!providers || providers.length === 0) {
+        return agents;
+      }
+      const availability = new Map<string, boolean>();
+      for (const provider of providers) {
+        availability.set(provider.name, provider.isAvailable);
+      }
+      let modified = false;
+      const next: string[] = [];
+      for (const agent of agents) {
+        if (availability.get(agent) === false) {
+          modified = true;
+          continue;
+        }
+        next.push(agent);
+      }
+      return modified ? next : agents;
+    },
+    [],
+  );
 
-    if (isDefault || newAgents.length === 0) {
+  const persistSelectedAgents = useCallback((agents: string[]) => {
+    const isDefault =
+      agents.length === DEFAULT_AGENTS.length &&
+      agents.every((agent, index) => agent === DEFAULT_AGENTS[index]);
+
+    if (isDefault || agents.length === 0) {
       localStorage.removeItem("selectedAgents");
     } else {
-      localStorage.setItem("selectedAgents", JSON.stringify(newAgents));
+      localStorage.setItem("selectedAgents", JSON.stringify(agents));
     }
   }, []);
+
+  const areAgentListsEqual = useCallback(
+    (a: readonly string[], b: readonly string[]) => {
+      if (a === b) return true;
+      if (a.length !== b.length) return false;
+      for (let index = 0; index < a.length; index += 1) {
+        if (a[index] !== b[index]) {
+          return false;
+        }
+      }
+      return true;
+    },
+    [],
+  );
+
+  const commitSelectedAgents = useCallback(
+    (agents: string[]) => {
+      if (areAgentListsEqual(agents, selectedAgentsRef.current)) {
+        return;
+      }
+      setSelectedAgentsState(agents);
+      selectedAgentsRef.current = agents;
+      persistSelectedAgents(agents);
+    },
+    [areAgentListsEqual, persistSelectedAgents],
+  );
+
+  // Callback for agent selection changes
+  const handleAgentChange = useCallback(
+    (newAgents: string[]) => {
+      const sanitizedAgents = sanitizeAgents(
+        newAgents,
+        providerStatus?.providers ?? null,
+      );
+      commitSelectedAgents(sanitizedAgents);
+    },
+    [commitSelectedAgents, providerStatus?.providers, sanitizeAgents],
+  );
 
   // Fetch repos from Convex
   const reposByOrgQuery = useQuery({
@@ -185,8 +244,17 @@ function DashboardComponent() {
           setDockerReady(isRunning);
         }
       }
+      if (response.providers) {
+        const sanitized = sanitizeAgents(
+          selectedAgentsRef.current,
+          response.providers,
+        );
+        if (sanitized !== selectedAgentsRef.current) {
+          commitSelectedAgents(sanitized);
+        }
+      }
     });
-  }, [socket]);
+  }, [commitSelectedAgents, sanitizeAgents, socket]);
 
   // Mutation to create tasks with optimistic update
   const createTask = useMutation(api.tasks.create).withOptimisticUpdate(
