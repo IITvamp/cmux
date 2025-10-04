@@ -86,16 +86,16 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   const agentOptions = useMemo<AgentOption[]>(() => {
     const vendorKey = (name: string): string => {
       const lower = name.toLowerCase();
+      if (lower.startsWith("opencode/")) return "opencode";
       if (lower.startsWith("codex/")) return "openai";
       if (lower.startsWith("claude/")) return "claude";
       if (lower.startsWith("gemini/")) return "gemini";
-      if (lower.includes("kimi")) return "kimi";
-      if (lower.includes("glm")) return "glm";
-      if (lower.includes("grok")) return "grok";
-      if (lower.includes("qwen")) return "qwen";
+      if (lower.startsWith("grok")) return "grok";
+      if (lower.startsWith("qwen")) return "qwen";
+      if (lower.startsWith("kimi")) return "kimi";
+      if (lower.startsWith("glm")) return "glm";
       if (lower.startsWith("cursor/")) return "cursor";
       if (lower.startsWith("amp")) return "amp";
-      if (lower.startsWith("opencode/")) return "opencode";
       return "other";
     };
     const shortName = (label: string): string => {
