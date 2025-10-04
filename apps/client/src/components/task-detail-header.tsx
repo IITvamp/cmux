@@ -240,16 +240,64 @@ export function TaskDetailHeader({
     return Array.from(new Set(trimmed));
   }, [selectedRun]);
 
+  const projectFullName = useMemo(() => {
+    const trimmed = task?.projectFullName?.trim();
+    return trimmed && trimmed.length > 0 ? trimmed : null;
+  }, [task?.projectFullName]);
+
+  const environmentName = useMemo(() => {
+    const trimmed = selectedRun?.environment?.name?.trim();
+    if (trimmed && trimmed.length > 0) {
+      return trimmed;
+    }
+    const findEnvironmentName = (
+      runs: TaskRunWithChildren[] | null,
+    ): string | null => {
+      if (!runs) {
+        return null;
+      }
+      for (const run of runs) {
+        const candidate = run.environment?.name?.trim();
+        if (candidate && candidate.length > 0) {
+          return candidate;
+        }
+        if (run.children && run.children.length > 0) {
+          const nested = findEnvironmentName(run.children);
+          if (nested) {
+            return nested;
+          }
+        }
+      }
+      return null;
+    };
+    const fallback = findEnvironmentName(taskRuns);
+    if (fallback) {
+      return fallback;
+    }
+    return null;
+  }, [selectedRun, taskRuns]);
+
+  const locationLabels = useMemo(() => {
+    const labels: string[] = [];
+    if (environmentName) {
+      labels.push(environmentName);
+    }
+    if (projectFullName) {
+      labels.push(projectFullName);
+    }
+    return labels;
+  }, [environmentName, projectFullName]);
+
   const repoFullNames = useMemo(() => {
     const names = new Set<string>();
-    if (task?.projectFullName?.trim()) {
-      names.add(task.projectFullName.trim());
+    if (projectFullName) {
+      names.add(projectFullName);
     }
     for (const repo of environmentRepos) {
       names.add(repo);
     }
     return Array.from(names);
-  }, [task?.projectFullName, environmentRepos]);
+  }, [environmentRepos, projectFullName]);
 
   const repoDiffTargets = useMemo<RepoDiffTarget[]>(() => {
     const baseRef = normalizedBaseBranch || undefined;
@@ -409,15 +457,16 @@ export function TaskDetailHeader({
             )}
           </button>
 
-          <span className="text-neutral-500 dark:text-neutral-600 select-none">
-            in
-          </span>
-
-          {task?.projectFullName && (
-            <span className="font-mono text-neutral-600 dark:text-neutral-300 truncate min-w-0 max-w-[40%] whitespace-nowrap select-none text-[11px]">
-              {task.projectFullName}
-            </span>
-          )}
+          {locationLabels.length > 0 ? (
+            <>
+              <span className="text-neutral-500 dark:text-neutral-600 select-none">
+                in
+              </span>
+              <span className="font-mono text-neutral-600 dark:text-neutral-300 truncate min-w-0 max-w-[40%] whitespace-nowrap select-none text-[11px]">
+                {locationLabels.join(" • ")}
+              </span>
+            </>
+          ) : null}
 
           {taskRuns && taskRuns.length > 0 && (
             <>
