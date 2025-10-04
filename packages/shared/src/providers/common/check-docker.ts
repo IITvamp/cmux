@@ -15,14 +15,11 @@ function getDockerSocketPath(): string | null {
   }
 
   const dockerHost = process.env.DOCKER_HOST;
-  if (!dockerHost || dockerHost.startsWith("unix://")) {
-    if (dockerHost && dockerHost.startsWith("unix://")) {
-      return dockerHost.replace("unix://", "");
-    }
-    return "/var/run/docker.sock";
+  if (dockerHost?.startsWith("unix://")) {
+    return dockerHost.replace("unix://", "");
   }
 
-  return null;
+  return dockerHost ? null : "/var/run/docker.sock";
 }
 
 function delay(ms: number): Promise<void> {
@@ -31,12 +28,13 @@ function delay(ms: number): Promise<void> {
   });
 }
 
+function hasCode(error: unknown): error is { code: unknown } {
+  return error !== null && typeof error === "object" && "code" in error;
+}
+
 function isRetryableDockerError(error: unknown): boolean {
-  if (error && typeof error === "object" && "code" in error) {
-    const code = (error as { code?: unknown }).code;
-    if (code === "ENOENT") {
-      return false;
-    }
+  if (hasCode(error) && error.code === "ENOENT") {
+    return false;
   }
 
   const message = describeExecError(error);
@@ -52,38 +50,45 @@ function isRetryableDockerError(error: unknown): boolean {
   );
 }
 
+function hasStderr(error: unknown): error is { stderr: unknown } {
+  return error !== null && typeof error === "object" && "stderr" in error;
+}
+
+function hasMessage(error: unknown): error is { message: unknown } {
+  return error !== null && typeof error === "object" && "message" in error;
+}
+
 function describeExecError(error: unknown): string {
   if (!error) {
     return "Unknown error";
   }
 
-  if (error instanceof Error) {
-    const stderr = (error as Error & { stderr?: unknown }).stderr;
-    if (typeof stderr === "string" && stderr.trim().length > 0) {
-      return stderr.trim();
-    }
-    if (stderr instanceof Buffer && stderr.toString().trim().length > 0) {
-      return stderr.toString().trim();
-    }
-    return error.message;
+  if (typeof error === "string") {
+    return error;
   }
 
-  if (typeof error === "object") {
-    const stderr = (error as { stderr?: unknown }).stderr;
-    if (typeof stderr === "string" && stderr.trim().length > 0) {
+  if (hasStderr(error)) {
+    const { stderr } = error;
+    if (typeof stderr === "string" && stderr.trim()) {
       return stderr.trim();
     }
-    if (stderr instanceof Buffer && stderr.toString().trim().length > 0) {
-      return stderr.toString().trim();
+    if (stderr instanceof Buffer) {
+      const text = stderr.toString().trim();
+      if (text) {
+        return text;
+      }
     }
-    const message = (error as { message?: unknown }).message;
-    if (typeof message === "string" && message.trim().length > 0) {
+  }
+
+  if (hasMessage(error)) {
+    const { message } = error;
+    if (typeof message === "string" && message.trim()) {
       return message.trim();
     }
   }
 
-  if (typeof error === "string") {
-    return error;
+  if (error instanceof Error) {
+    return error.message;
   }
 
   return "Unknown error";
@@ -259,7 +264,7 @@ export async function checkDockerStatus(): Promise<{
 
   if (imageName) {
     try {
-      await execAsync(`docker image inspect ${imageName}`);
+      await execAsync(`docker image inspect "${imageName.replace(/"/g, '\\"')}"`);
       result.workerImage = {
         name: imageName,
         isAvailable: true,
@@ -277,7 +282,7 @@ export async function checkDockerStatus(): Promise<{
           const { stdout } = await execAsync(
             "docker ps -a --format '{{.Command}}'"
           );
-          const isPulling = stdout.includes(`pull ${imageName}`);
+          const isPulling = stdout.includes("pull ") && stdout.includes(imageName);
 
           result.workerImage = {
             name: imageName,
