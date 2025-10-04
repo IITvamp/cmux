@@ -413,11 +413,15 @@ export function TaskDetailHeader({
             in
           </span>
 
-          {task?.projectFullName && (
+          {selectedRun?.environment ? (
+            <span className="font-mono text-neutral-600 dark:text-neutral-300 truncate min-w-0 max-w-[40%] whitespace-nowrap select-none text-[11px]">
+              {selectedRun.environment.name}
+            </span>
+          ) : task?.projectFullName ? (
             <span className="font-mono text-neutral-600 dark:text-neutral-300 truncate min-w-0 max-w-[40%] whitespace-nowrap select-none text-[11px]">
               {task.projectFullName}
             </span>
-          )}
+          ) : null}
 
           {taskRuns && taskRuns.length > 0 && (
             <>
