@@ -19,6 +19,7 @@ import {
 import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { createFakeConvexId } from "@/lib/fakeConvexId";
+import { selectedProjectStorageKey } from "@/lib/storageKeys";
 import { branchesQueryOptions } from "@/queries/branches";
 import { api } from "@cmux/convex/api";
 import type { Doc, Id } from "@cmux/convex/dataModel";
@@ -45,10 +46,11 @@ function DashboardComponent() {
   const { theme } = useTheme();
   const { addTaskToExpand } = useExpandTasks();
 
-  const [selectedProject, setSelectedProject] = useState<string[]>(() => {
-    const stored = localStorage.getItem("selectedProject");
-    return stored ? JSON.parse(stored) : [];
-  });
+  const projectStorageKey = selectedProjectStorageKey(teamSlugOrId);
+
+  const [selectedProject, setSelectedProject] = useState<string[]>(() =>
+    getStoredSelectedProjects(projectStorageKey)
+  );
   const [selectedBranch, setSelectedBranch] = useState<string[]>([]);
 
   const [selectedAgents, setSelectedAgents] = useState<string[]>(() => {
@@ -70,17 +72,27 @@ function DashboardComponent() {
 
   // Ref to access editor API
   const editorApiRef = useRef<EditorApi | null>(null);
+  const previousTeamSlugOrIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (previousTeamSlugOrIdRef.current === teamSlugOrId) return;
+    previousTeamSlugOrIdRef.current = teamSlugOrId;
+
+    const storedProjects = getStoredSelectedProjects(projectStorageKey);
+    setSelectedProject(storedProjects);
+    setSelectedBranch([]);
+  }, [projectStorageKey, teamSlugOrId]);
 
   // Preselect environment if provided in URL search params
   useEffect(() => {
     if (searchParams?.environmentId) {
       const val = `env:${searchParams.environmentId}`;
       setSelectedProject([val]);
-      localStorage.setItem("selectedProject", JSON.stringify([val]));
+      localStorage.setItem(projectStorageKey, JSON.stringify([val]));
       setIsCloudMode(true);
       localStorage.setItem("isCloudMode", JSON.stringify(true));
     }
-  }, [searchParams?.environmentId]);
+  }, [projectStorageKey, searchParams?.environmentId]);
 
   // Callback for task description changes
   const handleTaskDescriptionChange = useCallback((value: string) => {
@@ -108,7 +120,7 @@ function DashboardComponent() {
   const handleProjectChange = useCallback(
     (newProjects: string[]) => {
       setSelectedProject(newProjects);
-      localStorage.setItem("selectedProject", JSON.stringify(newProjects));
+      localStorage.setItem(projectStorageKey, JSON.stringify(newProjects));
       if (newProjects[0] !== selectedProject[0]) {
         setSelectedBranch([]);
       }
@@ -118,7 +130,7 @@ function DashboardComponent() {
         localStorage.setItem("isCloudMode", JSON.stringify(true));
       }
     },
-    [selectedProject]
+    [projectStorageKey, selectedProject]
   );
 
   // Callback for branch selection changes
@@ -537,7 +549,7 @@ function DashboardComponent() {
       // This ensures CLI-provided repos take precedence
       setSelectedProject([data.repoFullName]);
       localStorage.setItem(
-        "selectedProject",
+        projectStorageKey,
         JSON.stringify([data.repoFullName])
       );
 
@@ -552,7 +564,7 @@ function DashboardComponent() {
     return () => {
       socket.off("default-repo", handleDefaultRepo);
     };
-  }, [socket]);
+  }, [projectStorageKey, socket]);
 
   // Global keydown handler for autofocus
   useEffect(() => {
@@ -703,6 +715,19 @@ function DashboardComponent() {
       </div>
     </FloatingPane>
   );
+}
+
+function getStoredSelectedProjects(storageKey: string): string[] {
+  try {
+    if (typeof window === "undefined") return [];
+    const stored = window.localStorage.getItem(storageKey);
+    if (!stored) return [];
+    const parsed = JSON.parse(stored);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((value): value is string => typeof value === "string");
+  } catch {
+    return [];
+  }
 }
 
 type DashboardMainCardProps = {

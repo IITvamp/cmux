@@ -5,6 +5,7 @@ import {
   type SelectOption,
 } from "@/components/ui/searchable-select";
 import { useSocket } from "@/contexts/socket/use-socket";
+import { selectedProjectStorageKey } from "@/lib/storageKeys";
 import { branchesQueryOptions } from "@/queries/branches";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
@@ -12,7 +13,7 @@ import { convexQuery } from "@convex-dev/react-query";
 import { useQuery as useRQ } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { ArrowLeftRight, GitBranch } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId/diff")({
@@ -30,15 +31,12 @@ function DashboardDiffPage() {
   const router = useRouter();
   const { socket } = useSocket();
 
-  const [selectedProject, setSelectedProject] = useState<string | null>(() => {
-    try {
-      const stored = localStorage.getItem("selectedProject");
-      const parsed = stored ? (JSON.parse(stored) as string[]) : [];
-      return parsed[0] || null;
-    } catch {
-      return null;
-    }
-  });
+  const projectStorageKey = selectedProjectStorageKey(teamSlugOrId);
+
+  const [selectedProject, setSelectedProject] = useState<string | null>(() =>
+    getStoredSelectedProject(projectStorageKey)
+  );
+  const previousTeamSlugOrIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (selectedProject) return;
@@ -47,7 +45,7 @@ function DashboardDiffPage() {
       if (!data || typeof data.repoFullName !== "string") return;
       setSelectedProject(data.repoFullName);
       localStorage.setItem(
-        "selectedProject",
+        projectStorageKey,
         JSON.stringify([data.repoFullName])
       );
     };
@@ -65,7 +63,7 @@ function DashboardDiffPage() {
       };
     }
     return () => {};
-  }, [selectedProject]);
+  }, [projectStorageKey, selectedProject]);
 
   const isEnvironmentProject =
     !!selectedProject && selectedProject.startsWith("env:");
@@ -135,6 +133,20 @@ function DashboardDiffPage() {
     [router, teamSlugOrId, search.ref1, search.ref2]
   );
 
+  useEffect(() => {
+    if (previousTeamSlugOrIdRef.current === teamSlugOrId) return;
+
+    const hasSeenTeam = previousTeamSlugOrIdRef.current !== null;
+    previousTeamSlugOrIdRef.current = teamSlugOrId;
+
+    const storedProject = getStoredSelectedProject(projectStorageKey);
+    setSelectedProject(storedProject);
+
+    if (hasSeenTeam) {
+      setSearch({ ref1: undefined, ref2: undefined });
+    }
+  }, [projectStorageKey, setSearch, teamSlugOrId]);
+
   const onChangeRef1 = useCallback(
     (vals: string[]) => {
       setSearch({ ref1: vals[0] });
@@ -188,7 +200,7 @@ function DashboardDiffPage() {
             const v = vals[0];
             setSelectedProject(v ?? null);
             localStorage.setItem(
-              "selectedProject",
+              projectStorageKey,
               JSON.stringify(v ? [v] : [])
             );
             // Clear refs when repo changes
@@ -244,4 +256,18 @@ function DashboardDiffPage() {
       </div>
     </div>
   );
+}
+
+function getStoredSelectedProject(storageKey: string): string | null {
+  try {
+    if (typeof window === "undefined") return null;
+    const stored = window.localStorage.getItem(storageKey);
+    if (!stored) return null;
+    const parsed = JSON.parse(stored);
+    if (!Array.isArray(parsed)) return null;
+    const firstValue = parsed[0];
+    return typeof firstValue === "string" ? firstValue : null;
+  } catch {
+    return null;
+  }
 }
