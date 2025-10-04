@@ -1,15 +1,21 @@
 import { OpenWithDropdown } from "@/components/OpenWithDropdown";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useArchiveTask } from "@/hooks/useArchiveTask";
 import { isFakeConvexId } from "@/lib/fakeConvexId";
 import { ContextMenu } from "@base-ui-components/react/context-menu";
 import { api } from "@cmux/convex/api";
-import type { Doc } from "@cmux/convex/dataModel";
+import { type Doc } from "@cmux/convex/dataModel";
 import type { RunEnvironmentSummary } from "@/types/task";
 import { useClipboard } from "@mantine/hooks";
 import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useQuery as useConvexQuery, useMutation } from "convex/react";
+import { useQuery } from "@tanstack/react-query";
+import { convexQuery } from "@convex-dev/react-query";
 // Read team slug from path to avoid route type coupling
 import { Archive, ArchiveRestore, Check, Copy, Pin } from "lucide-react";
 import { memo, useCallback, useMemo } from "react";
@@ -30,7 +36,18 @@ export const TaskItem = memo(function TaskItem({
   // Query for task runs to find VSCode instances
   const taskRunsQuery = useConvexQuery(
     api.taskRuns.getByTask,
-    isFakeConvexId(task._id) ? "skip" : { teamSlugOrId, taskId: task._id }
+    isFakeConvexId(task._id) ? "skip" : { teamSlugOrId, taskId: task._id },
+  );
+
+  // Query for environment if this is an environment task
+  const environmentQuery = useQuery(
+    convexQuery(api.environments.get, {
+      teamSlugOrId,
+      id: task.environmentId!,
+    }),
+    {
+      enabled: !!task.environmentId,
+    },
   );
 
   // Mutation for toggling keep-alive status
@@ -63,7 +80,7 @@ export const TaskItem = memo(function TaskItem({
       .filter(
         (run) =>
           run.vscode &&
-          (run.vscode.status === "running" || run.vscode.status === "starting")
+          (run.vscode.status === "running" || run.vscode.status === "starting"),
       )
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
 
@@ -72,7 +89,7 @@ export const TaskItem = memo(function TaskItem({
 
   const runWithVSCode = useMemo(
     () => getLatestVSCodeInstance(),
-    [getLatestVSCodeInstance]
+    [getLatestVSCodeInstance],
   );
   const hasActiveVSCode = runWithVSCode?.vscode?.status === "running";
 
@@ -97,7 +114,7 @@ export const TaskItem = memo(function TaskItem({
       e.stopPropagation();
       clipboard.copy(task.text);
     },
-    [clipboard, task.text]
+    [clipboard, task.text],
   );
 
   const handleCopyFromMenu = useCallback(() => {
@@ -115,7 +132,7 @@ export const TaskItem = memo(function TaskItem({
         });
       }
     },
-    [runWithVSCode, teamSlugOrId, toggleKeepAlive]
+    [runWithVSCode, teamSlugOrId, toggleKeepAlive],
   );
 
   const handleArchive = useCallback(
@@ -123,7 +140,7 @@ export const TaskItem = memo(function TaskItem({
       e.stopPropagation();
       archiveWithUndo(task);
     },
-    [archiveWithUndo, task]
+    [archiveWithUndo, task],
   );
 
   const handleArchiveFromMenu = useCallback(() => {
@@ -139,7 +156,7 @@ export const TaskItem = memo(function TaskItem({
       e.stopPropagation();
       unarchive(task._id);
     },
-    [unarchive, task._id]
+    [unarchive, task._id],
   );
 
   const isOptimisticUpdate = task._id.includes("-") && task._id.length === 36;
@@ -153,7 +170,7 @@ export const TaskItem = memo(function TaskItem({
               "relative flex items-center gap-2.5 px-3 py-2 border rounded-lg transition-all cursor-default select-none",
               isOptimisticUpdate
                 ? "bg-white/50 dark:bg-neutral-700/30 border-neutral-200 dark:border-neutral-500/15 animate-pulse"
-                : "bg-white dark:bg-neutral-700/50 border-neutral-200 dark:border-neutral-500/15 hover:border-neutral-300 dark:hover:border-neutral-500/30"
+                : "bg-white dark:bg-neutral-700/50 border-neutral-200 dark:border-neutral-500/15 hover:border-neutral-300 dark:hover:border-neutral-500/30",
             )}
             onClick={handleClick}
           >
@@ -164,18 +181,35 @@ export const TaskItem = memo(function TaskItem({
                   ? "bg-green-500"
                   : isOptimisticUpdate
                     ? "bg-yellow-500"
-                    : "bg-blue-500 animate-pulse"
+                    : "bg-blue-500 animate-pulse",
               )}
             />
             <div className="flex-1 min-w-0 flex items-center gap-2">
               <span className="text-[14px] truncate min-w-0">{task.text}</span>
               {(task.projectFullName ||
+                task.environmentId ||
                 (task.baseBranch && task.baseBranch !== "main")) && (
                 <span className="text-[11px] text-neutral-400 dark:text-neutral-500 flex-shrink-0 ml-auto mr-0">
                   {task.projectFullName && (
                     <span>{task.projectFullName.split("/")[1]}</span>
                   )}
-                  {task.projectFullName &&
+                  {task.environmentId && environmentQuery?.data?.name && (
+                    <span>{environmentQuery.data.name}</span>
+                  )}
+                  {(task.projectFullName || task.environmentId) &&
+                    task.baseBranch &&
+                    task.baseBranch !== "main" &&
+                    "/"}
+                  {task.baseBranch && task.baseBranch !== "main" && (
+                    <span>{task.baseBranch}</span>
+                  )}
+                </span>
+              )}
+                  {task.environmentId && environmentQuery?.data?.name && (
+                    <span>{environmentQuery.data.name}</span>
+                  )}
+                  {(task.projectFullName ||
+                    (task.environmentId && environmentQuery?.data)) &&
                     task.baseBranch &&
                     task.baseBranch !== "main" &&
                     "/"}
@@ -238,7 +272,7 @@ export const TaskItem = memo(function TaskItem({
                   "bg-neutral-100 dark:bg-neutral-700",
                   "text-neutral-600 dark:text-neutral-400",
                   "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-                  "group-hover:opacity-100 opacity-0"
+                  "group-hover:opacity-100 opacity-0",
                 )}
                 title="Copy task description"
               >
@@ -276,7 +310,7 @@ export const TaskItem = memo(function TaskItem({
                       : "text-neutral-600 dark:text-neutral-400",
                     "hover:bg-neutral-200 dark:hover:bg-neutral-600",
                     "group-hover:opacity-100 opacity-0",
-                    "hidden" // TODO: show this button
+                    "hidden", // TODO: show this button
                   )}
                 >
                   <Pin className="w-3.5 h-3.5" />
@@ -301,7 +335,7 @@ export const TaskItem = memo(function TaskItem({
                     "bg-neutral-100 dark:bg-neutral-700",
                     "text-neutral-600 dark:text-neutral-400",
                     "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-                    "group-hover:opacity-100 opacity-0"
+                    "group-hover:opacity-100 opacity-0",
                   )}
                   title="Unarchive task"
                 >
@@ -315,7 +349,7 @@ export const TaskItem = memo(function TaskItem({
                     "bg-neutral-100 dark:bg-neutral-700",
                     "text-neutral-600 dark:text-neutral-400",
                     "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-                    "group-hover:opacity-100 opacity-0"
+                    "group-hover:opacity-100 opacity-0",
                   )}
                   title="Archive task"
                 >
