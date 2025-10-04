@@ -819,6 +819,22 @@ function EnvironmentDetailsPage() {
                           </p>
                           <p>Created by {version.createdByUserId}</p>
                           {version.label && <p>Label: {version.label}</p>}
+                          {version.devScript && (
+                            <div className="mt-2">
+                              <p className="font-medium">Dev script:</p>
+                              <code className="text-[10px] text-green-600 dark:text-green-400 font-mono block mt-1 p-1 rounded bg-neutral-100 dark:bg-neutral-900">
+                                {version.devScript}
+                              </code>
+                            </div>
+                          )}
+                          {version.maintenanceScript && (
+                            <div className="mt-2">
+                              <p className="font-medium">Maintenance script:</p>
+                              <code className="text-[10px] text-green-600 dark:text-green-400 font-mono block mt-1 p-1 rounded bg-neutral-100 dark:bg-neutral-900">
+                                {version.maintenanceScript}
+                              </code>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))

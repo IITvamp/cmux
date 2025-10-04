@@ -69,6 +69,8 @@ export const create = authMutation({
         createdAt,
         createdByUserId: userId,
         label: args.label,
+        maintenanceScript: environment.maintenanceScript,
+        devScript: environment.devScript,
       }
     );
 

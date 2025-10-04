@@ -44,12 +44,29 @@ export const get = authQuery({
   handler: async (ctx, args) => {
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
     const environment = await ctx.db.get(args.id);
-    
+
     if (!environment || environment.teamId !== teamId) {
       return null;
     }
-    
-    return environment;
+
+    // Find the active snapshot version (matching morphSnapshotId)
+    let activeSnapshot = null;
+    if (environment.morphSnapshotId) {
+      activeSnapshot = await ctx.db
+        .query("environmentSnapshotVersions")
+        .withIndex("by_environment_version", (q) =>
+          q.eq("environmentId", args.id)
+        )
+        .filter((q) => q.eq(q.field("morphSnapshotId"), environment.morphSnapshotId))
+        .first();
+    }
+
+    // Return environment with scripts from active snapshot if available
+    return {
+      ...environment,
+      devScript: activeSnapshot?.devScript ?? environment.devScript,
+      maintenanceScript: activeSnapshot?.maintenanceScript ?? environment.maintenanceScript,
+    };
   },
 });
 
@@ -97,6 +114,8 @@ export const create = authMutation({
       version: 1,
       createdAt,
       createdByUserId: userId,
+      maintenanceScript: args.maintenanceScript,
+      devScript: args.devScript,
     });
 
     return environmentId;
