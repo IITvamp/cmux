@@ -1056,19 +1056,56 @@ function SettingsComponent() {
         </div>
       </div>
 
-      {/* Footer Save bar */}
+      {/* Footer Save bar with enhanced visibility */}
+      {hasChanges() && (
+        <div className="border-t-2 border-orange-400 dark:border-orange-500 bg-orange-50 dark:bg-orange-950/30">
+          <div className="max-w-3xl mx-auto px-6 py-2">
+            <div className="flex items-center gap-2 text-sm text-orange-800 dark:text-orange-200">
+              <svg
+                className="w-5 h-5 flex-shrink-0"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                />
+              </svg>
+              <span className="font-medium">You have unsaved changes</span>
+            </div>
+          </div>
+        </div>
+      )}
       <div
         ref={saveButtonRef}
-        className="border-t border-neutral-200 dark:border-neutral-800 bg-white/80 dark:bg-neutral-900/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 supports-[backdrop-filter]:dark:bg-neutral-900/60"
+        className={`border-t border-neutral-200 dark:border-neutral-800 transition-all ${
+          hasChanges()
+            ? "bg-orange-50/80 dark:bg-orange-950/20 backdrop-blur"
+            : "bg-white/80 dark:bg-neutral-900/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 supports-[backdrop-filter]:dark:bg-neutral-900/60"
+        }`}
       >
-        <div className="max-w-3xl mx-auto px-6 py-3 flex items-center justify-end gap-3">
+        <div className="max-w-3xl mx-auto px-6 py-3 flex items-center justify-between gap-3">
+          <div className="text-sm text-neutral-600 dark:text-neutral-400">
+            {hasChanges() && (
+              <span className="flex items-center gap-2">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
+                </span>
+                Unsaved changes
+              </span>
+            )}
+          </div>
           <button
             onClick={saveApiKeys}
             disabled={!hasChanges() || isSaving}
-            className={`px-4 py-2 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900 transition-all ${
+            className={`px-6 py-2.5 text-sm font-semibold rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-neutral-900 transition-all shadow-sm ${
               !hasChanges() || isSaving
                 ? "bg-neutral-200 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 cursor-not-allowed opacity-50"
-                : "bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600"
+                : "bg-orange-600 dark:bg-orange-500 text-white hover:bg-orange-700 dark:hover:bg-orange-600 focus:ring-orange-500 shadow-orange-200 dark:shadow-orange-900/50 ring-2 ring-orange-400 dark:ring-orange-500 ring-offset-1"
             }`}
           >
             {isSaving ? "Saving..." : "Save Changes"}
