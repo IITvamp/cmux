@@ -28,7 +28,6 @@ import {
   Suspense,
   memo,
   useCallback,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -68,20 +67,18 @@ const AVAILABLE_AGENT_NAMES = new Set(AGENT_CONFIGS.map((agent) => agent.name));
 
 interface RestartTaskFormProps {
   task: Doc<"tasks"> | null | undefined;
-  taskId: Id<"tasks">;
-  runId: Id<"taskRuns">;
   teamSlugOrId: string;
   restartAgents: string[];
   restartIsCloudMode: boolean;
+  persistenceKey: string;
 }
 
 const RestartTaskForm = memo(function RestartTaskForm({
   task,
-  taskId,
-  runId,
   teamSlugOrId,
   restartAgents,
   restartIsCloudMode,
+  persistenceKey,
 }: RestartTaskFormProps) {
   const { socket } = useSocket();
   const { theme } = useTheme();
@@ -91,17 +88,6 @@ const RestartTaskForm = memo(function RestartTaskForm({
   const [followUpText, setFollowUpText] = useState("");
   const [isRestartingTask, setIsRestartingTask] = useState(false);
   const [overridePrompt, setOverridePrompt] = useState(false);
-  const persistenceKey = useMemo(
-    () => `restart-task-${taskId}-${runId}`,
-    [runId, taskId],
-  );
-
-  useEffect(() => {
-    editorApiRef.current = null;
-    setFollowUpText("");
-    setOverridePrompt(false);
-    setIsRestartingTask(false);
-  }, [persistenceKey]);
 
   const handleRestartTask = useCallback(async () => {
     if (!task) {
@@ -631,6 +617,7 @@ function RunDiffPage() {
   }, [selectedRun?.agentName, taskRuns]);
 
   const taskRunId = selectedRun?._id ?? runId;
+  const restartTaskPersistenceKey = `restart-task-${taskId}-${runId}`;
 
   // 404 if selected run is missing
   if (!selectedRun) {
@@ -698,12 +685,12 @@ function RunDiffPage() {
               )}
             </Suspense>
             <RestartTaskForm
+              key={restartTaskPersistenceKey}
               task={task}
-              taskId={taskId}
-              runId={runId}
               teamSlugOrId={teamSlugOrId}
               restartAgents={restartAgents}
               restartIsCloudMode={restartIsCloudMode}
+              persistenceKey={restartTaskPersistenceKey}
             />
           </div>
         </div>
