@@ -2,6 +2,13 @@
 
 set -e
 
+# Resolve script location before changing directories
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+APP_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Explicitly run from the workspace root as requested
+cd /root/workspace
+
 export CONVEX_PORT=9777
 
 if [ -f .env ]; then
@@ -19,15 +26,10 @@ fi
 IS_DEVCONTAINER=false
 if [ -n "$REMOTE_CONTAINERS" ] || [ -n "$CODESPACES" ]; then
     IS_DEVCONTAINER=true
-    # Set workspace directory for devcontainer - use current working directory's parent
-    # Get the directory where this script is located
-    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-    APP_DIR="$(dirname "$SCRIPT_DIR")"
-else
-    # Get the directory where this script is located
-    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-    APP_DIR="$(dirname "$SCRIPT_DIR")"
 fi
+
+# Change to app directory so subsequent relative paths match repository root
+cd "$APP_DIR"
 
 echo "IS_DEVCONTAINER: $IS_DEVCONTAINER"
 
@@ -123,9 +125,6 @@ export CYAN='\033[0;36m'
 export NC='\033[0m' # No Color
 
 echo -e "${BLUE}Starting Terminal App Development Environment...${NC}"
-
-# Change to app directory
-cd "$APP_DIR"
 
 # Function to cleanup on exit
 cleanup() {
