@@ -361,6 +361,8 @@ export type UpdateEnvironmentBody = {
     teamSlugOrId: string;
     name?: string;
     description?: string;
+    maintenanceScript?: string;
+    devScript?: string;
 };
 
 export type ExposedService = {

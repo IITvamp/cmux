@@ -1,4 +1,6 @@
 import { GitHubIcon } from "@/components/icons/github";
+import { ScriptTextareaField } from "@/components/ScriptTextareaField";
+import { SCRIPT_COPY } from "@/components/scriptCopy";
 import { ResizableColumns } from "@/components/ResizableColumns";
 import { parseEnvBlock } from "@/lib/parseEnvBlock";
 import { formatEnvVarsContent } from "@cmux/shared/utils/format-env-vars-content";
@@ -206,6 +208,15 @@ export function EnvironmentConfiguration({
         .map((r) => ({ name: r.name, value: r.value })),
     );
 
+    const normalizedMaintenanceScript = maintenanceScript.trim();
+    const normalizedDevScript = devScript.trim();
+    const requestMaintenanceScript =
+      normalizedMaintenanceScript.length > 0
+        ? normalizedMaintenanceScript
+        : undefined;
+    const requestDevScript =
+      normalizedDevScript.length > 0 ? normalizedDevScript : undefined;
+
     const parsedPorts = exposedPorts
       .split(",")
       .map((p) => Number.parseInt(p.trim(), 10))
@@ -236,8 +247,8 @@ export function EnvironmentConfiguration({
             morphInstanceId: localInstanceId,
             label: envName.trim(),
             activate: true,
-            maintenanceScript: maintenanceScript.trim() || undefined,
-            devScript: devScript.trim() || undefined,
+            maintenanceScript: requestMaintenanceScript,
+            devScript: requestDevScript,
           },
         },
         {
@@ -272,8 +283,8 @@ export function EnvironmentConfiguration({
             morphInstanceId: localInstanceId,
             envVarsContent,
             selectedRepos,
-            maintenanceScript: maintenanceScript.trim() || undefined,
-            devScript: devScript.trim() || undefined,
+            maintenanceScript: requestMaintenanceScript,
+            devScript: requestDevScript,
             exposedPorts: ports.length > 0 ? ports : undefined,
             description: undefined,
           },
@@ -586,31 +597,15 @@ export function EnvironmentConfiguration({
             aria-label="Maintenance script"
             title="Maintenance script"
           >
-            <div className="space-y-2 pb-4">
-              <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-3">
-                Script that runs after git pull in case new dependencies were
-                added.
-              </p>
-              <p className="text-xs text-neutral-500 dark:text-neutral-500">
-                We execute this from{" "}
-                <code className="text-11px">/root/workspace</code>, where your
-                repositories are cloned. For example,{" "}
-                <code className="text-11px">cd my-repo && npm install</code>{" "}
-                installs dependencies inside{" "}
-                <code className="text-11px">/root/workspace/my-repo</code>.
-              </p>
-              <TextareaAutosize
+            <div className="pb-4">
+              <ScriptTextareaField
+                description={SCRIPT_COPY.maintenance.description}
+                subtitle={SCRIPT_COPY.maintenance.subtitle}
                 value={maintenanceScript}
-                onChange={(e) => setMaintenanceScript(e.target.value)}
-                placeholder={`# e.g.
-bun install
-npm install
-uv sync
-pip install -r requirements.txt
-etc.`}
-                minRows={3}
-                maxRows={15}
-                className="w-full rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-xs font-mono text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700 resize-none"
+                onChange={(next) => setMaintenanceScript(next)}
+                placeholder={SCRIPT_COPY.maintenance.placeholder}
+                descriptionClassName="mb-3"
+                minHeightClassName="min-h-[114px]"
               />
             </div>
           </AccordionItem>
@@ -621,30 +616,14 @@ etc.`}
             title="Dev script"
           >
             <div className="space-y-4 pb-4">
-              <div className="space-y-2">
-                <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                  Script that starts the development server.
-                </p>
-                <p className="text-xs text-neutral-500 dark:text-neutral-500">
-                  Runs from <code className="text-11px">/root/workspace</code>{" "}
-                  as well, so reference repos with relative paths—e.g.{" "}
-                  <code className="text-11px">cd web && npm run dev</code>.
-                </p>
-                <TextareaAutosize
-                  value={devScript}
-                  onChange={(e) => setDevScript(e.target.value)}
-                  placeholder={`# e.g.
-npm run dev
-bun dev
-python manage.py runserver
-rails server
-cargo run
-etc.`}
-                  minRows={3}
-                  maxRows={15}
-                  className="w-full rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-xs font-mono text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700 resize-none"
-                />
-              </div>
+              <ScriptTextareaField
+                description={SCRIPT_COPY.dev.description}
+                subtitle={SCRIPT_COPY.dev.subtitle}
+                value={devScript}
+                onChange={(next) => setDevScript(next)}
+                placeholder={SCRIPT_COPY.dev.placeholder}
+                minHeightClassName="min-h-[130px]"
+              />
 
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-neutral-800 dark:text-neutral-200">

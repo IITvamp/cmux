@@ -83,9 +83,15 @@ const UpdateEnvironmentBody = z
     teamSlugOrId: z.string(),
     name: z.string().trim().min(1).optional(),
     description: z.string().optional(),
+    maintenanceScript: z.string().optional(),
+    devScript: z.string().optional(),
   })
   .refine(
-    (value) => value.name !== undefined || value.description !== undefined,
+    (value) =>
+      value.name !== undefined ||
+      value.description !== undefined ||
+      value.maintenanceScript !== undefined ||
+      value.devScript !== undefined,
     "At least one field must be provided",
   )
   .openapi("UpdateEnvironmentBody");
@@ -532,6 +538,8 @@ environmentsRouter.openapi(
         id: environmentId,
         name: body.name,
         description: body.description,
+        maintenanceScript: body.maintenanceScript,
+        devScript: body.devScript,
       });
 
       const updated = await convexClient.query(api.environments.get, {
