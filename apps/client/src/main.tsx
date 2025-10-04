@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 import { App } from "./app";
+import { isElectron } from "./lib/electron";
 
 import "./antd-overrides.css";
 import "./index.css";
@@ -15,6 +16,22 @@ if (typeof window !== "undefined") {
   window.addEventListener("unhandledrejection", (event) => {
     console.error("[UnhandledRejection]", event.reason ?? "Unknown rejection");
   });
+
+  // Add electron class to body for conditional styling
+  if (isElectron) {
+    document.body.classList.add("is-electron");
+
+    // Prevent dragging on all links in Electron
+    document.addEventListener(
+      "dragstart",
+      (event) => {
+        if (event.target instanceof HTMLAnchorElement) {
+          event.preventDefault();
+        }
+      },
+      true,
+    );
+  }
 }
 
 const rootElement = document.getElementById("root")!;
@@ -23,6 +40,6 @@ if (!rootElement.innerHTML) {
   root.render(
     <StrictMode>
       <App />
-    </StrictMode>
+    </StrictMode>,
   );
 }

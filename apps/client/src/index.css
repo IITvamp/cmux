@@ -316,6 +316,11 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Prevent dragging on links in Electron */
+  .is-electron a {
+    -webkit-user-drag: none;
+  }
 }
 
 /* JetBrains Mono utility classes */
