@@ -166,11 +166,29 @@ export function setupSocketHandlers(
       // Start Docker container state sync after first authenticated connection
       if (!dockerEventsStarted) {
         dockerEventsStarted = true;
-        runWithAuth(initialToken, initialAuthJson, () => {
-          serverLogger.info(
-            "Starting Docker container state sync after authenticated connect",
-          );
-          DockerVSCodeInstance.startContainerStateSync();
+        runWithAuth(initialToken, initialAuthJson, async () => {
+          // Check if Docker is available before starting event sync
+          try {
+            const { checkDockerStatus } = await import("@cmux/shared");
+            const dockerStatus = await checkDockerStatus();
+
+            if (!dockerStatus.isRunning) {
+              serverLogger.info(
+                `Docker not available, skipping container state sync: ${dockerStatus.error || "unknown reason"}`,
+              );
+              return;
+            }
+
+            serverLogger.info(
+              "Docker is available - starting container state sync after authenticated connect",
+            );
+            DockerVSCodeInstance.startContainerStateSync();
+          } catch (error) {
+            serverLogger.error(
+              "Failed to check Docker status before starting container sync:",
+              error,
+            );
+          }
         });
       }
     } else if (!initialToken) {

@@ -1111,8 +1111,21 @@ export class DockerVSCodeInstance extends VSCodeInstance {
   }
 
   // Try to stream events using the Docker socket (no CLI dependency)
-  private static startDockerodeEventStream() {
+  private static async startDockerodeEventStream() {
     try {
+      // First verify Docker is available before attempting to connect
+      const { checkDockerStatus } = await import("@cmux/shared");
+      const dockerStatus = await checkDockerStatus();
+
+      if (!dockerStatus.isRunning) {
+        dockerLogger.warn(
+          `[docker events] Docker not available, skipping event stream setup: ${dockerStatus.error || "unknown reason"}`
+        );
+        return;
+      }
+
+      dockerLogger.info("[docker events] Docker is available, starting event stream");
+
       const docker = DockerVSCodeInstance.getDocker();
       docker.getEvents({}, (err, stream) => {
         if (err) {
@@ -1150,10 +1163,13 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
         stream.on("error", (e) => {
           dockerLogger.error("[docker events] Socket stream error:", e);
+          // Clean up on error
+          DockerVSCodeInstance.stopContainerStateSync();
         });
 
         stream.on("close", () => {
           dockerLogger.info("docker socket events stream closed");
+          DockerVSCodeInstance.eventsStream = null;
         });
       });
     } catch (e) {

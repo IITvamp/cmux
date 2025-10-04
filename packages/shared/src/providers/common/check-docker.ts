@@ -10,9 +10,35 @@ export async function checkDockerStatus(): Promise<{
 }> {
   const { exec } = await import("node:child_process");
   const { promisify } = await import("node:util");
+  const { access, constants } = await import("node:fs/promises");
   const execAsync = promisify(exec);
 
   try {
+    // First, check if Docker socket exists and is accessible
+    try {
+      await access("/var/run/docker.sock", constants.F_OK);
+    } catch {
+      return {
+        isRunning: false,
+        error: "Docker socket not found at /var/run/docker.sock",
+      };
+    }
+
+    // Check if Docker daemon is responsive with a simple ping
+    try {
+      await execAsync("docker info --format '{{.ServerVersion}}'", {
+        timeout: 3000,
+      });
+    } catch (error) {
+      return {
+        isRunning: false,
+        error:
+          error instanceof Error
+            ? `Docker daemon not responding: ${error.message}`
+            : "Docker daemon not responding",
+      };
+    }
+
     // Check if Docker is running
     const { stdout: versionOutput } = await execAsync(
       "docker version --format '{{.Server.Version}}'"
