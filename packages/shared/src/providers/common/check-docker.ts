@@ -203,12 +203,34 @@ export async function checkDockerStatus(): Promise<{
   try {
     await execAsync("docker ps");
   } catch (error) {
-    return {
-      isRunning: false,
-      error:
-        describeExecError(error) ||
-        "Docker daemon is not responding to commands",
-    };
+    if (!isRetryableDockerError(error)) {
+      return {
+        isRunning: false,
+        error:
+          describeExecError(error) ||
+          "Docker daemon is not responding to commands",
+      };
+    }
+
+    const retry = await ensureDockerDaemonReady({ attempts: 3, delayMs: 500 });
+    if (!retry.ready) {
+      return {
+        isRunning: false,
+        error:
+          retry.error || "Docker daemon is not responding to commands",
+      };
+    }
+
+    try {
+      await execAsync("docker ps");
+    } catch (retryError) {
+      return {
+        isRunning: false,
+        error:
+          describeExecError(retryError) ||
+          "Docker daemon is not responding to commands",
+      };
+    }
   }
 
   const result: {

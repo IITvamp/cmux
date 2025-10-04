@@ -2,7 +2,7 @@ import type { MorphInstance } from "./git";
 import { maskSensitive, singleQuote } from "./shell";
 
 const WORKSPACE_ROOT = "/root/workspace";
-const CMUX_RUNTIME_DIR = "/var/tmp/cmux-scripts";
+const CMUX_RUNTIME_DIR = `${WORKSPACE_ROOT}/.cmux`;
 const LOG_DIR = "/var/log/cmux";
 
 const previewOutput = (
@@ -38,14 +38,20 @@ if [ -f ${pidFile} ]; then
     EXISTING_PID=$(cat ${pidFile} 2>/dev/null || true)
     if [ -n "\${EXISTING_PID}" ] && kill -0 \${EXISTING_PID} 2>/dev/null; then
       if kill \${EXISTING_PID} 2>/dev/null; then
-        sleep 0.2
+        # Wait up to 2 seconds for graceful shutdown
+        for i in 1 2 3 4 5 6 7 8 9 10; do
+          if ! kill -0 \${EXISTING_PID} 2>/dev/null; then
+            break
+          fi
+          sleep 0.2
+        done
       elif kill -0 \${EXISTING_PID} 2>/dev/null; then
         echo "Unable to terminate process \${EXISTING_PID}" >&2
         exit 1
       fi
 
       if kill -0 \${EXISTING_PID} 2>/dev/null; then
-        echo "Process \${EXISTING_PID} still running after SIGTERM" >&2
+        echo "Process \${EXISTING_PID} still running after SIGTERM (waited 2s)" >&2
         exit 1
       fi
     fi
@@ -63,7 +69,6 @@ export async function runMaintenanceScript({
   const maintenanceScriptPath = `${CMUX_RUNTIME_DIR}/maintenance-script.sh`;
   const command = `
 set -euo pipefail
-trap 'rm -f ${maintenanceScriptPath}' EXIT
 ${buildScriptFileCommand(maintenanceScriptPath, script)}
 cd ${WORKSPACE_ROOT}
 bash -eu -o pipefail ${maintenanceScriptPath}
@@ -103,7 +108,6 @@ export async function startDevScript({
 
   const command = `
 set -euo pipefail
-trap 'rm -f ${devScriptPath}' EXIT
 mkdir -p ${LOG_DIR}
 ${ensurePidStoppedCommand(pidFile)}
 ${buildScriptFileCommand(devScriptPath, script)}

@@ -590,12 +590,10 @@ export function EnvironmentConfiguration({
                 added.
               </p>
               <p className="text-xs text-neutral-500 dark:text-neutral-500">
-                We execute this from{" "}
-                <code className="text-11px">/root/workspace</code>, where your
+                We execute this from <code>/root/workspace</code>, where your
                 repositories are cloned. For example,{" "}
-                <code className="text-11px">cd my-repo && npm install</code>{" "}
-                installs dependencies inside{" "}
-                <code className="text-11px">/root/workspace/my-repo</code>.
+                <code>cd my-repo && npm install</code> installs dependencies inside{" "}
+                <code>/root/workspace/my-repo</code>.
               </p>
               <TextareaAutosize
                 value={maintenanceScript}
@@ -624,9 +622,9 @@ etc.`}
                   Script that starts the development server.
                 </p>
                 <p className="text-xs text-neutral-500 dark:text-neutral-500">
-                  Runs from <code className="text-11px">/root/workspace</code>{" "}
-                  as well, so reference repos with relative paths—e.g.{" "}
-                  <code className="text-11px">cd web && npm run dev</code>.
+                  Runs from <code>/root/workspace</code> as well, so reference
+                  repos with relative paths—e.g.{" "}
+                  <code>cd web && npm run dev</code>.
                 </p>
                 <TextareaAutosize
                   value={devScript}
