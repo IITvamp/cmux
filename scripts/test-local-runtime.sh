@@ -5,9 +5,13 @@ IMAGE_BASENAME="${1:-cmux-local-sanity}"
 OPENVSCODE_URL="http://localhost:39378/?folder=/root/workspace"
 FORCE_DIND=${FORCE_DIND:-0}
 
-ACTIVE_CONTAINERS=()
+declare -a ACTIVE_CONTAINERS=()
 
 cleanup_containers() {
+  if [[ -z "${ACTIVE_CONTAINERS+x}" ]]; then
+    return
+  fi
+
   for container in "${ACTIVE_CONTAINERS[@]}"; do
     if docker ps -a --format '{{.Names}}' | grep -Fxq "$container"; then
       docker rm -f "$container" >/dev/null 2>&1 || true
@@ -129,6 +133,11 @@ run_checks_for_platform() {
 
   echo "[sanity][$platform] Building local runtime image ($image_name)..."
   docker build --platform "$platform" -t "$image_name" .
+
+  if [[ -n "$HOST_PLATFORM" && "$platform" != "$HOST_PLATFORM" && "${FORCE_CROSS_RUN:-0}" != "1" ]]; then
+    echo "[sanity][$platform] Skipping runtime checks on host arch $HOST_ARCH (set FORCE_CROSS_RUN=1 to force)." >&2
+    return
+  fi
 
   remove_active_container "$container_name"
   cleanup_container "$container_name"

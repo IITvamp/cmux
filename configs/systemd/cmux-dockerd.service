@@ -7,7 +7,7 @@ ConditionPathExists=/usr/local/lib/cmux/dockerd.flag
 [Service]
 Type=simple
 EnvironmentFile=-/opt/app/app.env
-Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 LogsDirectory=cmux
 ExecStartPre=/bin/mkdir -p /var/log/cmux
 ExecStart=/usr/local/lib/cmux/cmux-rootfs-exec /bin/bash -lc 'exec /usr/local/bin/dockerd'
