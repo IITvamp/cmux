@@ -531,7 +531,13 @@ export function CmuxComments({ teamSlugOrId }: { teamSlugOrId: string }) {
       // Regular C to enter comment mode
       else if (e.key === "c" && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const target = e.target as HTMLElement;
-        if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") {
+        const isEditableElement = Boolean(
+          target &&
+          (target.tagName === "INPUT" ||
+            target.tagName === "TEXTAREA" ||
+            target.isContentEditable)
+        );
+        if (!isEditableElement) {
           e.preventDefault();
           setIsCommenting(true);
         }
@@ -893,11 +899,10 @@ export function CmuxComments({ teamSlugOrId }: { teamSlugOrId: string }) {
       <div
         ref={widgetRef}
         data-cmux-comment-widget="true"
-        className={`fixed z-[var(--z-floating-high)] rounded-2xl shadow-2xl backdrop-blur-md ${
-          isOpen
-            ? "opacity-100 scale-100"
-            : "opacity-0 scale-95 pointer-events-none"
-        }`}
+        className={`fixed z-[var(--z-floating-high)] rounded-2xl shadow-2xl backdrop-blur-md ${isOpen
+          ? "opacity-100 scale-100"
+          : "opacity-0 scale-95 pointer-events-none"
+          }`}
         style={{
           left: 0,
           top: 0,
