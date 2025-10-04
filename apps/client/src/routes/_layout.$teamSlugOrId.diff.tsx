@@ -30,9 +30,11 @@ function DashboardDiffPage() {
   const router = useRouter();
   const { socket } = useSocket();
 
+  const selectedProjectKey = `selectedProject-${teamSlugOrId}`;
+
   const [selectedProject, setSelectedProject] = useState<string | null>(() => {
     try {
-      const stored = localStorage.getItem("selectedProject");
+      const stored = localStorage.getItem(selectedProjectKey);
       const parsed = stored ? (JSON.parse(stored) as string[]) : [];
       return parsed[0] || null;
     } catch {
@@ -47,7 +49,7 @@ function DashboardDiffPage() {
       if (!data || typeof data.repoFullName !== "string") return;
       setSelectedProject(data.repoFullName);
       localStorage.setItem(
-        "selectedProject",
+        selectedProjectKey,
         JSON.stringify([data.repoFullName])
       );
     };
@@ -65,7 +67,7 @@ function DashboardDiffPage() {
       };
     }
     return () => {};
-  }, [selectedProject]);
+  }, [selectedProject, selectedProjectKey]);
 
   const isEnvironmentProject =
     !!selectedProject && selectedProject.startsWith("env:");
@@ -188,7 +190,7 @@ function DashboardDiffPage() {
             const v = vals[0];
             setSelectedProject(v ?? null);
             localStorage.setItem(
-              "selectedProject",
+              selectedProjectKey,
               JSON.stringify(v ? [v] : [])
             );
             // Clear refs when repo changes

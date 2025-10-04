@@ -45,8 +45,10 @@ function DashboardComponent() {
   const { theme } = useTheme();
   const { addTaskToExpand } = useExpandTasks();
 
+  const selectedProjectKey = `selectedProject-${teamSlugOrId}`;
+
   const [selectedProject, setSelectedProject] = useState<string[]>(() => {
-    const stored = localStorage.getItem("selectedProject");
+    const stored = localStorage.getItem(selectedProjectKey);
     return stored ? JSON.parse(stored) : [];
   });
   const [selectedBranch, setSelectedBranch] = useState<string[]>([]);
@@ -76,11 +78,11 @@ function DashboardComponent() {
     if (searchParams?.environmentId) {
       const val = `env:${searchParams.environmentId}`;
       setSelectedProject([val]);
-      localStorage.setItem("selectedProject", JSON.stringify([val]));
+      localStorage.setItem(selectedProjectKey, JSON.stringify([val]));
       setIsCloudMode(true);
       localStorage.setItem("isCloudMode", JSON.stringify(true));
     }
-  }, [searchParams?.environmentId]);
+  }, [searchParams?.environmentId, selectedProjectKey]);
 
   // Callback for task description changes
   const handleTaskDescriptionChange = useCallback((value: string) => {
@@ -108,7 +110,7 @@ function DashboardComponent() {
   const handleProjectChange = useCallback(
     (newProjects: string[]) => {
       setSelectedProject(newProjects);
-      localStorage.setItem("selectedProject", JSON.stringify(newProjects));
+      localStorage.setItem(selectedProjectKey, JSON.stringify(newProjects));
       if (newProjects[0] !== selectedProject[0]) {
         setSelectedBranch([]);
       }
@@ -118,7 +120,7 @@ function DashboardComponent() {
         localStorage.setItem("isCloudMode", JSON.stringify(true));
       }
     },
-    [selectedProject]
+    [selectedProject, selectedProjectKey]
   );
 
   // Callback for branch selection changes
@@ -537,7 +539,7 @@ function DashboardComponent() {
       // This ensures CLI-provided repos take precedence
       setSelectedProject([data.repoFullName]);
       localStorage.setItem(
-        "selectedProject",
+        selectedProjectKey,
         JSON.stringify([data.repoFullName])
       );
 
@@ -552,7 +554,7 @@ function DashboardComponent() {
     return () => {
       socket.off("default-repo", handleDefaultRepo);
     };
-  }, [socket]);
+  }, [socket, selectedProjectKey]);
 
   // Global keydown handler for autofocus
   useEffect(() => {
