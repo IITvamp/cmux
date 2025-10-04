@@ -434,6 +434,33 @@ function DashboardComponent() {
     };
   }, [checkProviderStatus]);
 
+  useEffect(() => {
+    if (!providerStatus?.providers?.length) {
+      return;
+    }
+    const unavailableAgents = new Set(
+      providerStatus.providers
+        .filter((provider) => !provider.isAvailable)
+        .map((provider) => provider.name)
+    );
+    if (unavailableAgents.size === 0) {
+      return;
+    }
+    let didFilter = false;
+    const filteredAgents = selectedAgents.filter((agent) => {
+      if (unavailableAgents.has(agent)) {
+        didFilter = true;
+        return false;
+      }
+      return true;
+    });
+    if (!didFilter) {
+      return;
+    }
+    // Drop agents that cannot run until credentials are configured
+    handleAgentChange(filteredAgents);
+  }, [handleAgentChange, providerStatus, selectedAgents]);
+
   // Format repos for multiselect
   // Fetch environments
   const environmentsQuery = useQuery(
