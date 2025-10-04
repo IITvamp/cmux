@@ -30,7 +30,7 @@ import {
   useMemo,
   useState,
   type FormEvent,
-  type KeyboardEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import TextareaAutosize from "react-textarea-autosize";
 import { toast } from "sonner";
@@ -351,11 +351,13 @@ function RunDiffPage() {
     try {
       const imagesPayload =
         task.images && task.images.length > 0
-          ? task.images.map((image) => ({
-              storageId: image.storageId,
-              fileName: image.fileName,
-              altText: image.altText,
-            }))
+          ? task.images
+              .filter((image): image is Extract<typeof image, { storageId: unknown }> => "storageId" in image)
+              .map((image) => ({
+                storageId: image.storageId,
+                fileName: image.fileName,
+                altText: image.altText,
+              }))
           : undefined;
 
       const newTaskId = await createTask({
@@ -457,7 +459,7 @@ function RunDiffPage() {
   }, [isRestartingTask, overridePrompt, socket, task, trimmedFollowUp]);
 
   const handleFollowUpKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
       if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
         if (!isRestartDisabled) {
