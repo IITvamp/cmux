@@ -1,4 +1,5 @@
 import { DiffEditor, type DiffOnMount } from "@monaco-editor/react";
+import * as monaco from "monaco-editor";
 import type { editor } from "monaco-editor";
 import { memo, use, useEffect, useMemo, useRef, useState } from "react";
 
@@ -838,6 +839,85 @@ function createDiffEditorMount({
   };
 }
 
+function applyHeatmapDecorations(
+  diffEditor: editor.IDiffEditor,
+  heatmapData: {
+    fileName: string;
+    lines: Array<{
+      line: number;
+      shouldBeReviewedScore?: number;
+      shouldReviewWhy?: string;
+      mostImportantCharacterIndex: number;
+    }>;
+  }
+) {
+  const modifiedEditor = diffEditor.getModifiedEditor();
+  const originalEditor = diffEditor.getOriginalEditor();
+
+  // Create decorations for modified editor
+  const modifiedDecorations = heatmapData.lines
+    .filter(line => line.shouldBeReviewedScore !== undefined && line.shouldBeReviewedScore! > 0)
+    .map(line => {
+      const score = line.shouldBeReviewedScore!;
+      // Map score to opacity (0.3 to 0.9 for better visibility)
+      const opacity = Math.max(0.3, Math.min(0.9, score));
+      // Use red background for heatmap
+      const backgroundColor = `rgba(239, 68, 68, ${opacity})`; // red-500 with opacity
+
+      return {
+        range: new monaco.Range(line.line, 1, line.line, 1),
+        options: {
+          className: undefined,
+          inlineClassName: undefined,
+          stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+          backgroundColor,
+          overviewRuler: {
+            color: `rgba(239, 68, 68, ${opacity})`,
+            position: monaco.editor.OverviewRulerLane.Full
+          },
+          // Add a border for better visibility
+          border: `1px solid rgba(239, 68, 68, ${Math.min(1, opacity + 0.2)})`,
+          borderRadius: '2px'
+        }
+      };
+    });
+
+  // Create decorations for original editor (same as modified for now)
+  const originalDecorations = heatmapData.lines
+    .filter(line => line.shouldBeReviewedScore !== undefined && line.shouldBeReviewedScore! > 0)
+    .map(line => {
+      const score = line.shouldBeReviewedScore!;
+      const opacity = Math.max(0.3, Math.min(0.9, score));
+      const backgroundColor = `rgba(239, 68, 68, ${opacity})`;
+
+      return {
+        range: new monaco.Range(line.line, 1, line.line, 1),
+        options: {
+          className: undefined,
+          inlineClassName: undefined,
+          stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+          backgroundColor,
+          overviewRuler: {
+            color: `rgba(239, 68, 68, ${opacity})`,
+            position: monaco.editor.OverviewRulerLane.Full
+          },
+          // Add a border for better visibility
+          border: `1px solid rgba(239, 68, 68, ${Math.min(1, opacity + 0.2)})`,
+          borderRadius: '2px'
+        }
+      };
+    });
+
+  console.log('Applying heatmap decorations:', {
+    modifiedDecorations: modifiedDecorations.length,
+    originalDecorations: originalDecorations.length,
+    heatmapData
+  });
+
+  modifiedEditor.deltaDecorations([], modifiedDecorations);
+  originalEditor.deltaDecorations([], originalDecorations);
+}
+
 interface MonacoFileDiffRowProps {
   file: MonacoFileGroup;
   isExpanded: boolean;
@@ -845,6 +925,15 @@ interface MonacoFileDiffRowProps {
   editorTheme: string;
   diffOptions: editor.IDiffEditorConstructionOptions;
   classNames?: FileDiffRowClassNames;
+  heatmapData?: Array<{
+    fileName: string;
+    lines: Array<{
+      line: number;
+      shouldBeReviewedScore?: number;
+      shouldReviewWhy?: string;
+      mostImportantCharacterIndex: number;
+    }>;
+  }>;
 }
 
 function MonacoFileDiffRow({
@@ -854,6 +943,7 @@ function MonacoFileDiffRow({
   editorTheme,
   diffOptions,
   classNames,
+  heatmapData,
 }: MonacoFileDiffRowProps) {
   const canRenderEditor =
     !file.isBinary &&
@@ -884,13 +974,24 @@ function MonacoFileDiffRow({
       createDiffEditorMount({
         editorMinHeight,
         getVisibilityTarget: () => rowContainerRef.current,
-        onReady: ({ controls }) => {
+        onReady: ({ diffEditor, controls }) => {
           diffControlsRef.current = controls;
           controls.updateTargetMinHeight(editorMinHeight);
           controls.updateCollapsedState(!isExpandedRef.current);
+
+          // Apply heatmap decorations if data is available
+          if (heatmapData && heatmapData.length > 0) {
+            const applyDecorations = () => applyHeatmapDecorations(diffEditor, heatmapData[0]);
+
+            // Apply after a short delay to ensure models are loaded
+            setTimeout(applyDecorations, 100);
+
+            // Reapply when diff updates
+            diffEditor.onDidUpdateDiff(applyDecorations);
+          }
         },
       }),
-    [editorMinHeight],
+    [editorMinHeight, heatmapData],
   );
 
   return (
@@ -982,8 +1083,11 @@ export function MonacoGitDiffViewer({
   onControlsChange,
   classNames,
   onFileToggle,
+  heatmapData,
 }: GitDiffViewerProps) {
   const { theme } = useTheme();
+
+  console.log('MonacoGitDiffViewer received heatmapData:', heatmapData);
 
   const kitty = useMemo(() => {
     return kitties[Math.floor(Math.random() * kitties.length)];
@@ -1119,17 +1223,21 @@ export function MonacoGitDiffViewer({
   return (
     <div className="grow bg-white dark:bg-neutral-900">
       <div className="flex flex-col -space-y-[2px]">
-        {fileGroups.map((file) => (
-          <MemoMonacoFileDiffRow
-            key={`monaco:${file.filePath}`}
-            file={file}
-            isExpanded={expandedFiles.has(file.filePath)}
-            onToggle={() => toggleFile(file.filePath)}
-            editorTheme={editorTheme}
-            diffOptions={diffOptions}
-            classNames={classNames?.fileDiffRow}
-          />
-        ))}
+        {fileGroups.map((file) => {
+          const fileHeatmapData = heatmapData?.find(h => h.fileName === file.filePath);
+          return (
+            <MemoMonacoFileDiffRow
+              key={`monaco:${file.filePath}`}
+              file={file}
+              isExpanded={expandedFiles.has(file.filePath)}
+              onToggle={() => toggleFile(file.filePath)}
+              editorTheme={editorTheme}
+              diffOptions={diffOptions}
+              classNames={classNames?.fileDiffRow}
+              heatmapData={fileHeatmapData ? [fileHeatmapData] : undefined}
+            />
+          );
+        })}
         <hr className="border-neutral-200 dark:border-neutral-800" />
         <div className="px-3 py-6 text-center">
           <span className="select-none text-xs text-neutral-500 dark:text-neutral-400">

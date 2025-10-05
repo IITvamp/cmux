@@ -15,6 +15,7 @@ import { Route as ElectronWebContentsRouteImport } from './routes/electron-web-c
 import { Route as DebugWebcontentsRouteImport } from './routes/debug-webcontents'
 import { Route as DebugMonacoRouteImport } from './routes/debug-monaco'
 import { Route as DebugIconRouteImport } from './routes/debug-icon'
+import { Route as DebugHeatmapRouteImport } from './routes/debug-heatmap'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as HandlerSplatRouteImport } from './routes/handler.$'
@@ -72,6 +73,11 @@ const DebugMonacoRoute = DebugMonacoRouteImport.update({
 const DebugIconRoute = DebugIconRouteImport.update({
   id: '/debug-icon',
   path: '/debug-icon',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DebugHeatmapRoute = DebugHeatmapRouteImport.update({
+  id: '/debug-heatmap',
+  path: '/debug-heatmap',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LayoutRoute = LayoutRouteImport.update({
@@ -234,6 +240,7 @@ const LayoutTeamSlugOrIdTaskTaskIdRunRunIdPreviewPortRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/debug-heatmap': typeof DebugHeatmapRoute
   '/debug-icon': typeof DebugIconRoute
   '/debug-monaco': typeof DebugMonacoRoute
   '/debug-webcontents': typeof DebugWebcontentsRoute
@@ -269,6 +276,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/debug-heatmap': typeof DebugHeatmapRoute
   '/debug-icon': typeof DebugIconRoute
   '/debug-monaco': typeof DebugMonacoRoute
   '/debug-webcontents': typeof DebugWebcontentsRoute
@@ -304,6 +312,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_layout': typeof LayoutRouteWithChildren
+  '/debug-heatmap': typeof DebugHeatmapRoute
   '/debug-icon': typeof DebugIconRoute
   '/debug-monaco': typeof DebugMonacoRoute
   '/debug-webcontents': typeof DebugWebcontentsRoute
@@ -341,6 +350,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/debug-heatmap'
     | '/debug-icon'
     | '/debug-monaco'
     | '/debug-webcontents'
@@ -376,6 +386,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/debug-heatmap'
     | '/debug-icon'
     | '/debug-monaco'
     | '/debug-webcontents'
@@ -410,6 +421,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_layout'
+    | '/debug-heatmap'
     | '/debug-icon'
     | '/debug-monaco'
     | '/debug-webcontents'
@@ -447,6 +459,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LayoutRoute: typeof LayoutRouteWithChildren
+  DebugHeatmapRoute: typeof DebugHeatmapRoute
   DebugIconRoute: typeof DebugIconRoute
   DebugMonacoRoute: typeof DebugMonacoRoute
   DebugWebcontentsRoute: typeof DebugWebcontentsRoute
@@ -498,6 +511,13 @@ declare module '@tanstack/react-router' {
       path: '/debug-icon'
       fullPath: '/debug-icon'
       preLoaderRoute: typeof DebugIconRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/debug-heatmap': {
+      id: '/debug-heatmap'
+      path: '/debug-heatmap'
+      fullPath: '/debug-heatmap'
+      preLoaderRoute: typeof DebugHeatmapRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_layout': {
@@ -820,6 +840,7 @@ const LayoutRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LayoutRoute: LayoutRouteWithChildren,
+  DebugHeatmapRoute: DebugHeatmapRoute,
   DebugIconRoute: DebugIconRoute,
   DebugMonacoRoute: DebugMonacoRoute,
   DebugWebcontentsRoute: DebugWebcontentsRoute,

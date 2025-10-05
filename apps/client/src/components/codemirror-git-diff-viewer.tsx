@@ -33,6 +33,15 @@ export interface GitDiffViewerProps {
   }) => void;
   classNames?: GitDiffViewerClassNames;
   onFileToggle?: (filePath: string, isExpanded: boolean) => void;
+  heatmapData?: Array<{
+    fileName: string;
+    lines: Array<{
+      line: number;
+      shouldBeReviewedScore?: number;
+      shouldReviewWhy?: string;
+      mostImportantCharacterIndex: number;
+    }>;
+  }>;
 }
 
 type FileGroup = {
