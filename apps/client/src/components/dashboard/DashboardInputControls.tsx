@@ -89,13 +89,10 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       if (lower.startsWith("codex/")) return "openai";
       if (lower.startsWith("claude/")) return "claude";
       if (lower.startsWith("gemini/")) return "gemini";
-      if (lower.includes("kimi")) return "kimi";
-      if (lower.includes("glm")) return "glm";
-      if (lower.includes("grok")) return "grok";
-      if (lower.includes("qwen")) return "qwen";
+      if (lower.startsWith("opencode/")) return "opencode";
+      if (lower.startsWith("qwen/")) return "qwen";
       if (lower.startsWith("cursor/")) return "cursor";
       if (lower.startsWith("amp")) return "amp";
-      if (lower.startsWith("opencode/")) return "opencode";
       return "other";
     };
     const shortName = (label: string): string => {
@@ -115,28 +112,28 @@ export const DashboardInputControls = memo(function DashboardInputControls({
         isUnavailable: !isAvailable,
         warning: !isAvailable
           ? {
-              tooltip: (
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-red-500">
-                    Setup required
-                  </p>
-                  <p className="text-xs text-neutral-300">
-                    Add credentials for this agent in Settings.
-                  </p>
-                  {missingRequirements.length > 0 ? (
-                    <ul className="list-disc pl-4 text-xs text-neutral-400">
-                      {missingRequirements.map((req) => (
-                        <li key={req}>{req}</li>
-                      ))}
-                    </ul>
-                  ) : null}
-                  <p className="text-[10px] tracking-wide text-neutral-500 pt-1 border-t border-neutral-700">
-                    Click to open settings
-                  </p>
-                </div>
-              ),
-              onClick: handleOpenSettings,
-            }
+            tooltip: (
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-red-500">
+                  Setup required
+                </p>
+                <p className="text-xs text-neutral-300">
+                  Add credentials for this agent in Settings.
+                </p>
+                {missingRequirements.length > 0 ? (
+                  <ul className="list-disc pl-4 text-xs text-neutral-400">
+                    {missingRequirements.map((req) => (
+                      <li key={req}>{req}</li>
+                    ))}
+                  </ul>
+                ) : null}
+                <p className="text-[10px] tracking-wide text-neutral-500 pt-1 border-t border-neutral-700">
+                  Click to open settings
+                </p>
+              </div>
+            ),
+            onClick: handleOpenSettings,
+          }
           : undefined,
       } satisfies AgentOption;
     });
