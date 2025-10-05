@@ -342,7 +342,7 @@ jobs:
     name: Linux x64
     needs: prepare-release
     environment: electron
-    runs-on: ${{ (vars.USE_LARGE_RUNNERS == 'true' && 'ubuntu-latest-8-cores') || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
