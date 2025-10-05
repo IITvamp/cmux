@@ -64,7 +64,7 @@ export const WorkerCreateTerminalSchema = z.object({
   rows: z.number().int().positive().default(24),
   cwd: z.string().optional(),
   env: z.record(z.string(), z.string()).optional(),
-  taskRunContext: WorkerTaskRunContextSchema.optional(),
+  taskRunContext: WorkerTaskRunContextSchema,
   command: z.string().optional(),
   args: z.array(z.string()).optional(),
   taskId: typedZid("tasks").optional(),

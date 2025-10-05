@@ -148,6 +148,9 @@ try {
     console.log("Connected to worker management port");
   });
 
+  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL || "http://localhost:9777";
+  const prompt = "Run Daytona snapshot smoke test";
+
   managementSocket.on("worker:register", (data) => {
     console.log("Worker registered:", data);
 
@@ -159,6 +162,11 @@ try {
         cols: 80,
         rows: 24,
         cwd: "/",
+        taskRunContext: {
+          taskRunToken: "daytona-snapshot-token",
+          prompt: prompt,
+          convexUrl,
+        },
       },
       (err) => {
         if (err) {

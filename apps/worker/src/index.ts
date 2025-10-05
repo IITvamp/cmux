@@ -843,8 +843,8 @@ async function createTerminal(
     taskRunId?: Id<"taskRuns">;
     agentModel?: string;
     startupCommands?: string[];
-    taskRunContext?: WorkerTaskRunContext;
-  } = {},
+    taskRunContext: WorkerTaskRunContext;
+  },
 ): Promise<void> {
   const {
     cols = SERVER_TERMINAL_CONFIG.cols,
@@ -857,11 +857,23 @@ async function createTerminal(
     taskRunContext,
   } = options;
 
-  const envRecord = env;
-  const taskRunToken = taskRunContext?.taskRunToken ?? envRecord.CMUX_TASK_RUN_JWT;
-  const convexUrl = taskRunContext?.convexUrl;
-  const promptValue =
-    taskRunContext?.prompt ?? envRecord["CMUX_PROMPT"] ?? envRecord["PROMPT"] ?? "";
+  const taskRunToken = taskRunContext.taskRunToken;
+  const convexUrl = taskRunContext.convexUrl;
+  const promptValue = taskRunContext.prompt;
+
+  if (!taskRunToken) {
+    log("ERROR", "[createTerminal] Missing CMUX task run token in context", {
+      terminalId,
+      taskRunId: options.taskRunId,
+    });
+  }
+
+  if (!convexUrl) {
+    log("ERROR", "[createTerminal] Missing Convex URL in task run context", {
+      terminalId,
+      taskRunId: options.taskRunId,
+    });
+  }
 
   const shell = command || (platform() === "win32" ? "powershell.exe" : "bash");
 
@@ -873,29 +885,7 @@ async function createTerminal(
     args,
     envKeys: Object.keys(env),
     shell,
-    hasTaskRunContext: Boolean(taskRunContext),
   });
-
-  if (!taskRunContext) {
-    log("WARN", "[createTerminal] Missing task run context payload", {
-      terminalId,
-      taskRunId: options.taskRunId,
-    });
-  }
-
-  if (!taskRunToken) {
-    log("WARN", "[createTerminal] Missing CMUX task run token", {
-      terminalId,
-      taskRunId: options.taskRunId,
-    });
-  }
-
-  if (taskRunContext && !convexUrl) {
-    log("WARN", "[createTerminal] Missing Convex URL in task run context", {
-      terminalId,
-      taskRunId: options.taskRunId,
-    });
-  }
 
   // Prepare the spawn command and args
   let spawnCommand: string;
