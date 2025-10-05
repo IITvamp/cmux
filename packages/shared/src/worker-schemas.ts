@@ -51,6 +51,12 @@ export const WorkerStatusSchema = z.object({
   lastSeen: z.number(),
 });
 
+export const WorkerTaskRunContextSchema = z.object({
+  taskRunToken: z.string(),
+  prompt: z.string(),
+  convexUrl: z.string(),
+});
+
 // Terminal operation schemas for server<>worker communication
 export const WorkerCreateTerminalSchema = z.object({
   terminalId: z.string(),
@@ -58,6 +64,7 @@ export const WorkerCreateTerminalSchema = z.object({
   rows: z.number().int().positive().default(24),
   cwd: z.string().optional(),
   env: z.record(z.string(), z.string()).optional(),
+  taskRunContext: WorkerTaskRunContextSchema.optional(),
   command: z.string().optional(),
   args: z.array(z.string()).optional(),
   taskId: typedZid("tasks").optional(),
@@ -187,6 +194,7 @@ export type WorkerRegister = z.infer<typeof WorkerRegisterSchema>;
 export type WorkerHeartbeat = z.infer<typeof WorkerHeartbeatSchema>;
 export type TerminalAssignment = z.infer<typeof TerminalAssignmentSchema>;
 export type WorkerStatus = z.infer<typeof WorkerStatusSchema>;
+export type WorkerTaskRunContext = z.infer<typeof WorkerTaskRunContextSchema>;
 export type ServerToWorkerCommand = z.infer<typeof ServerToWorkerCommandSchema>;
 export type WorkerCreateTerminal = z.infer<typeof WorkerCreateTerminalSchema>;
 export type WorkerTerminalInput = z.infer<typeof WorkerTerminalInputSchema>;

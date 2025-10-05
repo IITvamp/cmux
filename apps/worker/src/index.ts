@@ -10,6 +10,7 @@ import {
   type SocketData,
   type WorkerHeartbeat,
   type WorkerRegister,
+  type WorkerTaskRunContext,
   type WorkerToServerEventNames,
   type WorkerToServerEvents,
 } from "@cmux/shared";
@@ -408,6 +409,7 @@ managementIO.on("connection", (socket) => {
         taskRunId: validated.taskRunId,
         agentModel: validated.agentModel,
         startupCommands: validated.startupCommands,
+        taskRunContext: validated.taskRunContext,
       });
 
       callback({
@@ -841,6 +843,7 @@ async function createTerminal(
     taskRunId?: Id<"taskRuns">;
     agentModel?: string;
     startupCommands?: string[];
+    taskRunContext?: WorkerTaskRunContext;
   } = {},
 ): Promise<void> {
   const {
@@ -851,12 +854,14 @@ async function createTerminal(
     command,
     args = [],
     startupCommands = [],
+    taskRunContext,
   } = options;
 
   const envRecord = env;
-  const taskRunToken = envRecord.CMUX_TASK_RUN_JWT;
-  const convexUrl = envRecord.NEXT_PUBLIC_CONVEX_URL;
-  const promptValue = envRecord["CMUX_PROMPT"] ?? envRecord["PROMPT"] ?? "";
+  const taskRunToken = taskRunContext?.taskRunToken ?? envRecord.CMUX_TASK_RUN_JWT;
+  const convexUrl = taskRunContext?.convexUrl;
+  const promptValue =
+    taskRunContext?.prompt ?? envRecord["CMUX_PROMPT"] ?? envRecord["PROMPT"] ?? "";
 
   const shell = command || (platform() === "win32" ? "powershell.exe" : "bash");
 
@@ -868,7 +873,29 @@ async function createTerminal(
     args,
     envKeys: Object.keys(env),
     shell,
+    hasTaskRunContext: Boolean(taskRunContext),
   });
+
+  if (!taskRunContext) {
+    log("WARN", "[createTerminal] Missing task run context payload", {
+      terminalId,
+      taskRunId: options.taskRunId,
+    });
+  }
+
+  if (!taskRunToken) {
+    log("WARN", "[createTerminal] Missing CMUX task run token", {
+      terminalId,
+      taskRunId: options.taskRunId,
+    });
+  }
+
+  if (taskRunContext && !convexUrl) {
+    log("WARN", "[createTerminal] Missing Convex URL in task run context", {
+      terminalId,
+      taskRunId: options.taskRunId,
+    });
+  }
 
   // Prepare the spawn command and args
   let spawnCommand: string;
@@ -1086,7 +1113,7 @@ async function createTerminal(
               taskRunId: options.taskRunId,
               token: taskRunToken,
               prompt: promptValue,
-              convexUrl,
+              convexUrl: convexUrl ?? undefined,
               agentModel: options.agentModel,
               elapsedMs: Date.now() - processStartTime,
             });
