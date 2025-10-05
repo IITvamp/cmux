@@ -13,6 +13,10 @@ import { kitties } from "../kitties";
 import type { GitDiffViewerProps } from "../codemirror-git-diff-viewer";
 export type { GitDiffViewerProps } from "../codemirror-git-diff-viewer";
 
+export interface MonacoGitDiffViewerProps extends GitDiffViewerProps {
+  heatmap?: MonacoHeatmapFileHighlights[];
+}
+
 void loaderInitPromise;
 
 type FileDiffRowClassNames = GitDiffViewerProps["classNames"] extends {
@@ -25,6 +29,70 @@ type DiffEditorControls = {
   updateCollapsedState: (collapsed: boolean) => void;
   updateTargetMinHeight: (minHeight: number) => void;
 };
+
+export type MonacoHeatmapLineHighlight = {
+  line: number;
+  shouldBeReviewedScore?: number;
+  shouldReviewWhy?: string;
+  mostImportantCharacterIndex: number;
+};
+
+export type MonacoHeatmapFileHighlights = {
+  fileName: string;
+  lines: MonacoHeatmapLineHighlight[];
+};
+
+const HEATMAP_LEVEL_THRESHOLDS = [0.25, 0.45, 0.65, 0.85] as const;
+const DEFAULT_HEATMAP_LEVEL = 1;
+const MINIMUM_INLINE_SPAN = 2;
+
+function clampScore(score?: number): number | undefined {
+  if (typeof score !== "number" || Number.isNaN(score)) {
+    return undefined;
+  }
+  if (score < 0) {
+    return 0;
+  }
+  if (score > 1) {
+    return 1;
+  }
+  return score;
+}
+
+function scoreToHeatmapLevel(score?: number): number {
+  const normalized = clampScore(score);
+  if (normalized === undefined) {
+    return DEFAULT_HEATMAP_LEVEL;
+  }
+
+  for (let index = HEATMAP_LEVEL_THRESHOLDS.length - 1; index >= 0; index -= 1) {
+    const threshold = HEATMAP_LEVEL_THRESHOLDS[index];
+    if (normalized >= threshold) {
+      return index + 1;
+    }
+  }
+
+  return 0;
+}
+
+function createHeatmapHoverText(highlight: MonacoHeatmapLineHighlight): string {
+  const parts: string[] = [];
+  const normalizedScore = clampScore(highlight.shouldBeReviewedScore);
+
+  if (normalizedScore !== undefined) {
+    parts.push(`**Review score:** ${(normalizedScore * 100).toFixed(0)}%`);
+  }
+
+  if (highlight.shouldReviewWhy) {
+    parts.push(highlight.shouldReviewWhy);
+  }
+
+  if (parts.length === 0) {
+    parts.push("Flagged for review");
+  }
+
+  return parts.join("\n\n");
+}
 
 const DEFAULT_MONACO_LINE_HEIGHT = 20;
 const MONACO_VERTICAL_PADDING = 0;
@@ -845,6 +913,7 @@ interface MonacoFileDiffRowProps {
   editorTheme: string;
   diffOptions: editor.IDiffEditorConstructionOptions;
   classNames?: FileDiffRowClassNames;
+  heatmap?: MonacoHeatmapLineHighlight[];
 }
 
 function MonacoFileDiffRow({
@@ -854,6 +923,7 @@ function MonacoFileDiffRow({
   editorTheme,
   diffOptions,
   classNames,
+  heatmap,
 }: MonacoFileDiffRowProps) {
   const canRenderEditor =
     !file.isBinary &&
@@ -867,6 +937,8 @@ function MonacoFileDiffRow({
   );
 
   const diffControlsRef = useRef<DiffEditorControls | null>(null);
+  const diffEditorRef = useRef<editor.IStandaloneDiffEditor | null>(null);
+  const heatmapDecorationIdsRef = useRef<string[]>([]);
   const isExpandedRef = useRef(isExpanded);
   const rowContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -884,14 +956,99 @@ function MonacoFileDiffRow({
       createDiffEditorMount({
         editorMinHeight,
         getVisibilityTarget: () => rowContainerRef.current,
-        onReady: ({ controls }) => {
+        onReady: ({ diffEditor, controls }) => {
           diffControlsRef.current = controls;
+          diffEditorRef.current = diffEditor;
+          heatmapDecorationIdsRef.current = [];
           controls.updateTargetMinHeight(editorMinHeight);
           controls.updateCollapsedState(!isExpandedRef.current);
+          diffEditor.onDidDispose(() => {
+            if (diffEditorRef.current === diffEditor) {
+              diffEditorRef.current = null;
+              heatmapDecorationIdsRef.current = [];
+            }
+          });
         },
       }),
     [editorMinHeight],
   );
+
+  useEffect(() => {
+    const diffEditor = diffEditorRef.current;
+    if (!diffEditor) {
+      return;
+    }
+
+    const modifiedEditor = diffEditor.getModifiedEditor();
+    const model = modifiedEditor.getModel();
+    if (!model) {
+      return;
+    }
+
+    const highlights = heatmap ?? [];
+    const newDecorations: editor.IModelDeltaDecoration[] = [];
+
+    for (const highlight of highlights) {
+      const lineNumber = Math.trunc(highlight.line);
+      if (!Number.isFinite(lineNumber) || lineNumber < 1 || lineNumber > model.getLineCount()) {
+        continue;
+      }
+
+      const level = scoreToHeatmapLevel(highlight.shouldBeReviewedScore);
+      const hoverText = createHeatmapHoverText(highlight);
+      const hoverPayload = hoverText ? [{ value: hoverText }] : undefined;
+
+      if (level > 0) {
+        newDecorations.push({
+          range: {
+            startLineNumber: lineNumber,
+            startColumn: 1,
+            endLineNumber: lineNumber,
+            endColumn: model.getLineMaxColumn(lineNumber),
+          },
+          options: {
+            isWholeLine: true,
+            className: `monaco-heatmap-line-level-${level}`,
+            hoverMessage: hoverPayload,
+          },
+        });
+      }
+
+      const maxColumn = model.getLineMaxColumn(lineNumber);
+      const startColumn = Math.min(
+        Math.max(1, Math.floor(highlight.mostImportantCharacterIndex ?? 0) + 1),
+        maxColumn,
+      );
+      const endColumn = Math.min(maxColumn, startColumn + MINIMUM_INLINE_SPAN);
+
+      newDecorations.push({
+        range: {
+          startLineNumber: lineNumber,
+          startColumn,
+          endLineNumber: lineNumber,
+          endColumn: Math.max(startColumn + 1, endColumn),
+        },
+        options: {
+          inlineClassName: `monaco-heatmap-inline-level-${Math.max(level, 1)}`,
+          hoverMessage: hoverPayload,
+        },
+      });
+    }
+
+    heatmapDecorationIdsRef.current = modifiedEditor.deltaDecorations(
+      heatmapDecorationIdsRef.current,
+      newDecorations,
+    );
+
+    return () => {
+      if (diffEditorRef.current === diffEditor) {
+        heatmapDecorationIdsRef.current = modifiedEditor.deltaDecorations(
+          heatmapDecorationIdsRef.current,
+          [],
+        );
+      }
+    };
+  }, [heatmap, file.filePath, file.newContent]);
 
   return (
     <div
@@ -973,7 +1130,8 @@ const MemoMonacoFileDiffRow = memo(MonacoFileDiffRow, (prev, next) => {
     a.contentOmitted === b.contentOmitted &&
     a.language === b.language &&
     a.oldContent === b.oldContent &&
-    a.newContent === b.newContent
+    a.newContent === b.newContent &&
+    prev.heatmap === next.heatmap
   );
 });
 
@@ -982,7 +1140,8 @@ export function MonacoGitDiffViewer({
   onControlsChange,
   classNames,
   onFileToggle,
-}: GitDiffViewerProps) {
+  heatmap,
+}: MonacoGitDiffViewerProps) {
   const { theme } = useTheme();
 
   const kitty = useMemo(() => {
@@ -1025,6 +1184,16 @@ export function MonacoGitDiffViewer({
       }),
     [diffs],
   );
+
+  const heatmapByFile = useMemo(() => {
+    if (!heatmap || heatmap.length === 0) {
+      return new Map<string, MonacoHeatmapLineHighlight[]>();
+    }
+
+    return new Map<string, MonacoHeatmapLineHighlight[]>(
+      heatmap.map(({ fileName, lines }) => [fileName, lines]),
+    );
+  }, [heatmap]);
 
   const expandAll = () => {
     debugGitDiffViewerLog("expandAll invoked", {
@@ -1128,6 +1297,7 @@ export function MonacoGitDiffViewer({
             editorTheme={editorTheme}
             diffOptions={diffOptions}
             classNames={classNames?.fileDiffRow}
+            heatmap={heatmapByFile.get(file.filePath)}
           />
         ))}
         <hr className="border-neutral-200 dark:border-neutral-800" />
