@@ -25,6 +25,15 @@ type GitDiffViewerClassNames = {
 
 export interface GitDiffViewerProps {
   diffs: ReplaceDiffEntry[];
+  heatmapData?: Array<{
+    fileName: string;
+    lines: Array<{
+      line: number;
+      shouldBeReviewedScore?: number;
+      shouldReviewWhy?: string;
+      mostImportantCharacterIndex: number;
+    }>;
+  }>;
   onControlsChange?: (controls: {
     expandAll: () => void;
     collapseAll: () => void;

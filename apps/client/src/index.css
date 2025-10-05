@@ -524,3 +524,30 @@ pre,
   -webkit-user-drag: none;
   user-drag: none;
 }
+
+/* Heatmap decorations */
+.heatmap-high {
+  background-color: rgba(239, 68, 68, 0.3); /* red-500 with opacity */
+  border-left: 3px solid #ef4444;
+}
+
+.heatmap-medium {
+  background-color: rgba(245, 158, 11, 0.3); /* amber-500 with opacity */
+  border-left: 3px solid #f59e0b;
+}
+
+.heatmap-low {
+  background-color: rgba(34, 197, 94, 0.3); /* green-500 with opacity */
+  border-left: 3px solid #22c55e;
+}
+
+.heatmap-none {
+  background-color: rgba(156, 163, 175, 0.2); /* gray-400 with low opacity */
+  border-left: 2px solid #9ca3af;
+}
+
+.heatmap-glyph {
+  background-color: rgba(59, 130, 246, 0.5); /* blue-500 with opacity */
+  width: 4px !important;
+  margin-left: 2px;
+}

@@ -1,5 +1,5 @@
 import { DiffEditor, type DiffOnMount } from "@monaco-editor/react";
-import type { editor } from "monaco-editor";
+import * as monaco from "monaco-editor";
 import { memo, use, useEffect, useMemo, useRef, useState } from "react";
 
 import { useTheme } from "@/components/theme/use-theme";
@@ -455,11 +455,58 @@ const LANGUAGE_BY_EXTENSION: Record<string, string> = {
 
 function guessMonacoLanguage(filePath: string): string {
   const lastDot = filePath.lastIndexOf(".");
-  if (lastDot === -1 || lastDot === filePath.length - 1) {
+  if (lastDot === -1) {
     return "plaintext";
   }
   const ext = filePath.slice(lastDot + 1).toLowerCase();
   return LANGUAGE_BY_EXTENSION[ext] ?? "plaintext";
+}
+
+function applyHeatmapDecorations(
+  diffEditor: monaco.editor.IStandaloneDiffEditor,
+  heatmapData: Array<{
+    line: number;
+    shouldBeReviewedScore?: number;
+    shouldReviewWhy?: string;
+    mostImportantCharacterIndex: number;
+  }>,
+) {
+  const originalEditor = diffEditor.getOriginalEditor();
+  const modifiedEditor = diffEditor.getModifiedEditor();
+
+  // Create decorations for original editor
+  const originalDecorations = heatmapData.map((item) => ({
+    range: new monaco.Range(item.line, 1, item.line, 1),
+    options: {
+      className: getHeatmapClassName(item.shouldBeReviewedScore),
+      glyphMarginClassName: 'heatmap-glyph',
+      hoverMessage: item.shouldReviewWhy ? { value: item.shouldReviewWhy } : undefined,
+      stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+    },
+  }));
+
+  // Create decorations for modified editor
+  const modifiedDecorations = heatmapData.map((item) => ({
+    range: new monaco.Range(item.line, 1, item.line, 1),
+    options: {
+      className: getHeatmapClassName(item.shouldBeReviewedScore),
+      glyphMarginClassName: 'heatmap-glyph',
+      hoverMessage: item.shouldReviewWhy ? { value: item.shouldReviewWhy } : undefined,
+      stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+    },
+  }));
+
+  originalEditor.deltaDecorations([], originalDecorations);
+  modifiedEditor.deltaDecorations([], modifiedDecorations);
+}
+
+function getHeatmapClassName(score?: number): string {
+  if (!score) return '';
+
+  if (score >= 0.8) return 'heatmap-high';
+  if (score >= 0.6) return 'heatmap-medium';
+  if (score >= 0.4) return 'heatmap-low';
+  return 'heatmap-none';
 }
 
 function createDiffEditorMount({
@@ -470,7 +517,7 @@ function createDiffEditorMount({
   editorMinHeight: number;
   getVisibilityTarget?: () => Element | null;
   onReady?: (args: {
-    diffEditor: editor.IStandaloneDiffEditor;
+    diffEditor: monaco.editor.IStandaloneDiffEditor;
     container: HTMLElement;
     applyLayout: () => void;
     controls: DiffEditorControls;
@@ -517,7 +564,7 @@ function createDiffEditorMount({
       });
     }
 
-    const computeHeight = (targetEditor: editor.IStandaloneCodeEditor) => {
+    const computeHeight = (targetEditor: monaco.editor.IStandaloneCodeEditor) => {
       const contentHeight = targetEditor.getContentHeight();
       if (contentHeight > 0) {
         return contentHeight;
@@ -843,8 +890,14 @@ interface MonacoFileDiffRowProps {
   isExpanded: boolean;
   onToggle: () => void;
   editorTheme: string;
-  diffOptions: editor.IDiffEditorConstructionOptions;
+  diffOptions: monaco.editor.IDiffEditorConstructionOptions;
   classNames?: FileDiffRowClassNames;
+  heatmapData?: Array<{
+    line: number;
+    shouldBeReviewedScore?: number;
+    shouldReviewWhy?: string;
+    mostImportantCharacterIndex: number;
+  }>;
 }
 
 function MonacoFileDiffRow({
@@ -854,6 +907,7 @@ function MonacoFileDiffRow({
   editorTheme,
   diffOptions,
   classNames,
+  heatmapData,
 }: MonacoFileDiffRowProps) {
   const canRenderEditor =
     !file.isBinary &&
@@ -884,13 +938,18 @@ function MonacoFileDiffRow({
       createDiffEditorMount({
         editorMinHeight,
         getVisibilityTarget: () => rowContainerRef.current,
-        onReady: ({ controls }) => {
+        onReady: ({ diffEditor, controls }) => {
           diffControlsRef.current = controls;
           controls.updateTargetMinHeight(editorMinHeight);
           controls.updateCollapsedState(!isExpandedRef.current);
+
+          // Apply heatmap decorations
+          if (heatmapData) {
+            applyHeatmapDecorations(diffEditor, heatmapData);
+          }
         },
       }),
-    [editorMinHeight],
+    [editorMinHeight, heatmapData],
   );
 
   return (
@@ -973,12 +1032,14 @@ const MemoMonacoFileDiffRow = memo(MonacoFileDiffRow, (prev, next) => {
     a.contentOmitted === b.contentOmitted &&
     a.language === b.language &&
     a.oldContent === b.oldContent &&
-    a.newContent === b.newContent
+    a.newContent === b.newContent &&
+    JSON.stringify(prev.heatmapData) === JSON.stringify(next.heatmapData)
   );
 });
 
 export function MonacoGitDiffViewer({
   diffs,
+  heatmapData,
   onControlsChange,
   classNames,
   onFileToggle,
@@ -1088,7 +1149,7 @@ export function MonacoGitDiffViewer({
 
   const editorTheme = theme === "dark" ? "cmux-dark" : "cmux-light";
 
-  const diffOptions = useMemo<editor.IDiffEditorConstructionOptions>(
+  const diffOptions = useMemo<monaco.editor.IDiffEditorConstructionOptions>(
     () => ({
       renderSideBySide: true,
       enableSplitViewResizing: true,
@@ -1119,17 +1180,21 @@ export function MonacoGitDiffViewer({
   return (
     <div className="grow bg-white dark:bg-neutral-900">
       <div className="flex flex-col -space-y-[2px]">
-        {fileGroups.map((file) => (
-          <MemoMonacoFileDiffRow
-            key={`monaco:${file.filePath}`}
-            file={file}
-            isExpanded={expandedFiles.has(file.filePath)}
-            onToggle={() => toggleFile(file.filePath)}
-            editorTheme={editorTheme}
-            diffOptions={diffOptions}
-            classNames={classNames?.fileDiffRow}
-          />
-        ))}
+        {fileGroups.map((file) => {
+          const fileHeatmapData = heatmapData?.find(h => h.fileName === file.filePath)?.lines;
+          return (
+            <MemoMonacoFileDiffRow
+              key={`monaco:${file.filePath}`}
+              file={file}
+              isExpanded={expandedFiles.has(file.filePath)}
+              onToggle={() => toggleFile(file.filePath)}
+              editorTheme={editorTheme}
+              diffOptions={diffOptions}
+              classNames={classNames?.fileDiffRow}
+              heatmapData={fileHeatmapData}
+            />
+          );
+        })}
         <hr className="border-neutral-200 dark:border-neutral-800" />
         <div className="px-3 py-6 text-center">
           <span className="select-none text-xs text-neutral-500 dark:text-neutral-400">
