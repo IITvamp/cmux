@@ -45,15 +45,15 @@ ensure_native_core_built() {
   echo "Found native binary: ${linux_nodes[0]##*/}"
 }
 
-ensure_native_core_built
-
-echo "Generating icons..."
-node ./scripts/generate-icons.mjs
-
 if [ ! -d "node_modules" ]; then
   echo "Installing dependencies with Bun..."
   bun install --frozen-lockfile
 fi
+
+ensure_native_core_built
+
+echo "Generating icons..."
+node ./scripts/generate-icons.mjs
 
 echo "Building renderer with electron-vite..."
 bunx electron-vite build -c electron.vite.config.ts

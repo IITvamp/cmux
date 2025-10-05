@@ -336,7 +336,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PUBLISH_FLAG: ${{ github.event_name == 'release' && 'always' || 'never' }}
         working-directory: apps/client
-        run: bunx electron-vite build -c electron.vite.config.ts && bunx electron-builder --config electron-builder.json --win --x64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
+        run: bunx electron-vite build -c electron.vite.config.ts && bunx electron-builder --config electron-builder.json --win --x64 --publish "$env:PUBLISH_FLAG" --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
 
   linux-x64:
     name: Linux x64
@@ -360,8 +360,32 @@ jobs:
           toolchain: stable
           profile: minimal
           targets: x86_64-unknown-linux-gnu
+      - name: Install system dependencies for AppImage
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2
       - name: Install dependencies (bun)
         run: bun install --frozen-lockfile
+      - name: Install app deps in apps/client (bun)
+        working-directory: apps/client
+        run: bun install --frozen-lockfile
+      - name: Ensure local production node_modules (apps/client)
+        working-directory: apps/client
+        run: |
+          set -euo pipefail
+          echo "Ensuring local node_modules in $(pwd)..."
+          # First try a local bun install to materialize node_modules
+          bun install --frozen-lockfile || true
+          if [ ! -d node_modules ]; then
+            echo "Local node_modules missing; copying from workspace root..."
+            # Copy the hoisted workspace root node_modules into the app package
+            # -L to dereference any symlinks so the packaged app has real files
+            rsync -aL --delete ../../node_modules/ node_modules/ || true
+          fi
+          if [ ! -d node_modules ]; then
+            echo "ERROR: apps/client/node_modules still missing after attempts." >&2
+            exit 1
+          fi
       - name: Write .env for build
         shell: bash
         run: |
@@ -384,4 +408,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PUBLISH_FLAG: ${{ github.event_name == 'release' && 'always' || 'never' }}
         working-directory: apps/client
-        run: bunx electron-vite build -c electron.vite.config.ts && bunx electron-builder --config electron-builder.json --linux AppImage --x64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
+        run: bunx electron-vite build -c electron.vite.config.ts && bunx electron-builder --config electron-builder.json --linux AppImage --x64 --publish "$PUBLISH_FLAG" --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
