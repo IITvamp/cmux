@@ -507,39 +507,8 @@ export function endTimer(label: string) {
   },
 ];
 
-const DUPLICATION_FACTOR = 10;
+const MAX_DEBUG_MONACO_SAMPLES = 2;
 
-const appendSuffixToFilePath = (filePath: string, suffix: string): string => {
-  const lastSlashIndex = filePath.lastIndexOf("/");
-  const directory = lastSlashIndex >= 0 ? filePath.slice(0, lastSlashIndex + 1) : "";
-  const fileName = lastSlashIndex >= 0 ? filePath.slice(lastSlashIndex + 1) : filePath;
-  const lastDotIndex = fileName.lastIndexOf(".");
-
-  if (lastDotIndex <= 0) {
-    return `${directory}${fileName}${suffix}`;
-  }
-
-  const name = fileName.slice(0, lastDotIndex);
-  const extension = fileName.slice(lastDotIndex);
-
-  return `${directory}${name}${suffix}${extension}`;
-};
-
-const duplicateSample = (sample: DiffSample, copyIndex: number): DiffSample => {
-  if (copyIndex === 0) {
-    return { ...sample };
-  }
-
-  const suffix = `-copy-${String(copyIndex).padStart(2, "0")}`;
-
-  return {
-    ...sample,
-    id: `${sample.id}${suffix}`,
-    filePath: appendSuffixToFilePath(sample.filePath, suffix),
-  };
-};
-
-export const debugMonacoDiffSamples: DiffSample[] = Array.from(
-  { length: DUPLICATION_FACTOR },
-  (_, copyIndex) => baseDebugMonacoDiffSamples.map((sample) => duplicateSample(sample, copyIndex)),
-).flat();
+export const debugMonacoDiffSamples: DiffSample[] = baseDebugMonacoDiffSamples
+  .slice(0, MAX_DEBUG_MONACO_SAMPLES)
+  .map((sample) => ({ ...sample }));

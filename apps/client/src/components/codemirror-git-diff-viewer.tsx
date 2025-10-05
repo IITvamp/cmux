@@ -3,6 +3,7 @@ import { isElectron } from "@/lib/electron";
 import { cn } from "@/lib/utils";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
+import type { DiffHeatmapEntry } from "./diff-heatmap-types";
 import {
   createMergeBaseExtensions,
   getLanguageExtensions,
@@ -33,6 +34,7 @@ export interface GitDiffViewerProps {
   }) => void;
   classNames?: GitDiffViewerClassNames;
   onFileToggle?: (filePath: string, isExpanded: boolean) => void;
+  heatmap?: DiffHeatmapEntry[];
 }
 
 type FileGroup = {

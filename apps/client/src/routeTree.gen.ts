@@ -14,6 +14,7 @@ import { Route as MonacoSingleBufferRouteImport } from './routes/monaco-single-b
 import { Route as ElectronWebContentsRouteImport } from './routes/electron-web-contents'
 import { Route as DebugWebcontentsRouteImport } from './routes/debug-webcontents'
 import { Route as DebugMonacoRouteImport } from './routes/debug-monaco'
+import { Route as DebugHeatmapRouteImport } from './routes/debug-heatmap'
 import { Route as DebugIconRouteImport } from './routes/debug-icon'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as IndexRouteImport } from './routes/index'
@@ -67,6 +68,11 @@ const DebugWebcontentsRoute = DebugWebcontentsRouteImport.update({
 const DebugMonacoRoute = DebugMonacoRouteImport.update({
   id: '/debug-monaco',
   path: '/debug-monaco',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DebugHeatmapRoute = DebugHeatmapRouteImport.update({
+  id: '/debug-heatmap',
+  path: '/debug-heatmap',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DebugIconRoute = DebugIconRouteImport.update({
@@ -236,6 +242,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/debug-icon': typeof DebugIconRoute
   '/debug-monaco': typeof DebugMonacoRoute
+  '/debug-heatmap': typeof DebugHeatmapRoute
   '/debug-webcontents': typeof DebugWebcontentsRoute
   '/electron-web-contents': typeof ElectronWebContentsRoute
   '/monaco-single-buffer': typeof MonacoSingleBufferRoute
@@ -271,6 +278,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/debug-icon': typeof DebugIconRoute
   '/debug-monaco': typeof DebugMonacoRoute
+  '/debug-heatmap': typeof DebugHeatmapRoute
   '/debug-webcontents': typeof DebugWebcontentsRoute
   '/electron-web-contents': typeof ElectronWebContentsRoute
   '/monaco-single-buffer': typeof MonacoSingleBufferRoute
@@ -306,6 +314,7 @@ export interface FileRoutesById {
   '/_layout': typeof LayoutRouteWithChildren
   '/debug-icon': typeof DebugIconRoute
   '/debug-monaco': typeof DebugMonacoRoute
+  '/debug-heatmap': typeof DebugHeatmapRoute
   '/debug-webcontents': typeof DebugWebcontentsRoute
   '/electron-web-contents': typeof ElectronWebContentsRoute
   '/monaco-single-buffer': typeof MonacoSingleBufferRoute
@@ -343,6 +352,7 @@ export interface FileRouteTypes {
     | '/'
     | '/debug-icon'
     | '/debug-monaco'
+    | '/debug-heatmap'
     | '/debug-webcontents'
     | '/electron-web-contents'
     | '/monaco-single-buffer'
@@ -378,6 +388,7 @@ export interface FileRouteTypes {
     | '/'
     | '/debug-icon'
     | '/debug-monaco'
+    | '/debug-heatmap'
     | '/debug-webcontents'
     | '/electron-web-contents'
     | '/monaco-single-buffer'
@@ -412,6 +423,7 @@ export interface FileRouteTypes {
     | '/_layout'
     | '/debug-icon'
     | '/debug-monaco'
+    | '/debug-heatmap'
     | '/debug-webcontents'
     | '/electron-web-contents'
     | '/monaco-single-buffer'
@@ -449,6 +461,7 @@ export interface RootRouteChildren {
   LayoutRoute: typeof LayoutRouteWithChildren
   DebugIconRoute: typeof DebugIconRoute
   DebugMonacoRoute: typeof DebugMonacoRoute
+  DebugHeatmapRoute: typeof DebugHeatmapRoute
   DebugWebcontentsRoute: typeof DebugWebcontentsRoute
   ElectronWebContentsRoute: typeof ElectronWebContentsRoute
   MonacoSingleBufferRoute: typeof MonacoSingleBufferRoute
@@ -491,6 +504,13 @@ declare module '@tanstack/react-router' {
       path: '/debug-monaco'
       fullPath: '/debug-monaco'
       preLoaderRoute: typeof DebugMonacoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/debug-heatmap': {
+      id: '/debug-heatmap'
+      path: '/debug-heatmap'
+      fullPath: '/debug-heatmap'
+      preLoaderRoute: typeof DebugHeatmapRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/debug-icon': {
@@ -822,6 +842,7 @@ const rootRouteChildren: RootRouteChildren = {
   LayoutRoute: LayoutRouteWithChildren,
   DebugIconRoute: DebugIconRoute,
   DebugMonacoRoute: DebugMonacoRoute,
+  DebugHeatmapRoute: DebugHeatmapRoute,
   DebugWebcontentsRoute: DebugWebcontentsRoute,
   ElectronWebContentsRoute: ElectronWebContentsRoute,
   MonacoSingleBufferRoute: MonacoSingleBufferRoute,

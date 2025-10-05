@@ -1,6 +1,8 @@
 import { DiffEditor, type DiffOnMount } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
 import { memo, use, useEffect, useMemo, useRef, useState } from "react";
+import type { DiffHeatmapEntry } from "../diff-heatmap-types";
+import "./monaco-heatmap.css";
 
 import { useTheme } from "@/components/theme/use-theme";
 import { loaderInitPromise } from "@/lib/monaco-environment";
@@ -25,6 +27,120 @@ type DiffEditorControls = {
   updateCollapsedState: (collapsed: boolean) => void;
   updateTargetMinHeight: (minHeight: number) => void;
 };
+
+type MonacoNamespace = typeof import("monaco-editor");
+
+type HeatmapIntensity = "low" | "medium" | "high" | "critical";
+
+const HEATMAP_CLASS_BY_INTENSITY: Record<HeatmapIntensity, {
+  inline: string;
+  gutter: string;
+}> = {
+  low: {
+    inline: "cmux-heatmap-inline-low",
+    gutter: "cmux-heatmap-gutter-low",
+  },
+  medium: {
+    inline: "cmux-heatmap-inline-medium",
+    gutter: "cmux-heatmap-gutter-medium",
+  },
+  high: {
+    inline: "cmux-heatmap-inline-high",
+    gutter: "cmux-heatmap-gutter-high",
+  },
+  critical: {
+    inline: "cmux-heatmap-inline-critical",
+    gutter: "cmux-heatmap-gutter-critical",
+  },
+};
+
+function pickHeatmapIntensity(score?: number): HeatmapIntensity {
+  if (typeof score !== "number" || Number.isNaN(score)) {
+    return "low";
+  }
+
+  const normalized = Math.min(Math.max(score, 0), 1);
+
+  if (normalized >= 0.85) {
+    return "critical";
+  }
+
+  if (normalized >= 0.6) {
+    return "high";
+  }
+
+  if (normalized >= 0.35) {
+    return "medium";
+  }
+
+  return "low";
+}
+
+function buildHeatmapDecorations({
+  monaco,
+  model,
+  heatmap,
+}: {
+  monaco: MonacoNamespace;
+  model: editor.ITextModel;
+  heatmap: DiffHeatmapEntry;
+}): editor.IModelDeltaDecoration[] {
+  const decorations: editor.IModelDeltaDecoration[] = [];
+  const lineCount = model.getLineCount();
+
+  for (const lineHighlight of heatmap.lines) {
+    if (!Number.isFinite(lineHighlight.line)) {
+      continue;
+    }
+
+    const lineNumber = Math.trunc(lineHighlight.line);
+    if (lineNumber < 1 || lineNumber > lineCount) {
+      continue;
+    }
+
+    const lineLength = model.getLineLength(lineNumber);
+    const maxColumn = Math.max(lineLength + 1, 1);
+    const startColumn = Math.min(
+      Math.max(lineHighlight.mostImportantCharacterIndex + 1, 1),
+      maxColumn,
+    );
+
+    const intensityKey = pickHeatmapIntensity(
+      lineHighlight.shouldBeReviewedScore,
+    );
+    const classes = HEATMAP_CLASS_BY_INTENSITY[intensityKey];
+
+    const hoverParts: string[] = [];
+
+    if (typeof lineHighlight.shouldBeReviewedScore === "number") {
+      const percentage = Math.round(
+        Math.min(Math.max(lineHighlight.shouldBeReviewedScore, 0), 1) * 100,
+      );
+      hoverParts.push(`**Review score:** ${percentage}%`);
+    }
+
+    if (lineHighlight.shouldReviewWhy) {
+      hoverParts.push(lineHighlight.shouldReviewWhy);
+    }
+
+    decorations.push({
+      range: new monaco.Range(lineNumber, startColumn, lineNumber, maxColumn),
+      options: {
+        inlineClassName: classes.inline,
+        className: classes.inline,
+        linesDecorationsClassName: classes.gutter,
+        stickiness:
+          monaco.editor.TrackedRangeStickiness.AlwaysGrowsWhenTypingAtEdges,
+        hoverMessage:
+          hoverParts.length > 0
+            ? [{ value: hoverParts.join("\n\n") }]
+            : undefined,
+      },
+    });
+  }
+
+  return decorations;
+}
 
 const DEFAULT_MONACO_LINE_HEIGHT = 20;
 const MONACO_VERTICAL_PADDING = 0;
@@ -474,7 +590,8 @@ function createDiffEditorMount({
     container: HTMLElement;
     applyLayout: () => void;
     controls: DiffEditorControls;
-  }) => void;
+    monaco: MonacoNamespace;
+  }) => void | (() => void);
 }): DiffOnMount {
   return (diffEditor, monacoInstance) => {
     const originalEditor = diffEditor.getOriginalEditor();
@@ -826,7 +943,7 @@ function createDiffEditorMount({
 
     applyLayout();
 
-    onReady?.({
+    const readyCleanup = onReady?.({
       diffEditor,
       container,
       applyLayout,
@@ -834,7 +951,12 @@ function createDiffEditorMount({
         updateCollapsedState,
         updateTargetMinHeight,
       },
+      monaco: monacoInstance,
     });
+
+    if (typeof readyCleanup === "function") {
+      disposables.push({ dispose: readyCleanup });
+    }
   };
 }
 
@@ -845,6 +967,7 @@ interface MonacoFileDiffRowProps {
   editorTheme: string;
   diffOptions: editor.IDiffEditorConstructionOptions;
   classNames?: FileDiffRowClassNames;
+  heatmap?: DiffHeatmapEntry;
 }
 
 function MonacoFileDiffRow({
@@ -854,6 +977,7 @@ function MonacoFileDiffRow({
   editorTheme,
   diffOptions,
   classNames,
+  heatmap,
 }: MonacoFileDiffRowProps) {
   const canRenderEditor =
     !file.isBinary &&
@@ -869,6 +993,10 @@ function MonacoFileDiffRow({
   const diffControlsRef = useRef<DiffEditorControls | null>(null);
   const isExpandedRef = useRef(isExpanded);
   const rowContainerRef = useRef<HTMLDivElement | null>(null);
+  const diffEditorRef = useRef<editor.IStandaloneDiffEditor | null>(null);
+  const monacoRef = useRef<MonacoNamespace | null>(null);
+  const heatmapDecorationsRef = useRef<editor.IEditorDecorationsCollection | null>(null);
+  const [editorReadyToken, setEditorReadyToken] = useState(0);
 
   useEffect(() => {
     isExpandedRef.current = isExpanded;
@@ -884,14 +1012,62 @@ function MonacoFileDiffRow({
       createDiffEditorMount({
         editorMinHeight,
         getVisibilityTarget: () => rowContainerRef.current,
-        onReady: ({ controls }) => {
+        onReady: ({ controls, diffEditor, monaco }) => {
           diffControlsRef.current = controls;
+          diffEditorRef.current = diffEditor;
+          monacoRef.current = monaco;
           controls.updateTargetMinHeight(editorMinHeight);
           controls.updateCollapsedState(!isExpandedRef.current);
+          setEditorReadyToken((token) => token + 1);
+
+          return () => {
+            diffEditorRef.current = null;
+            monacoRef.current = null;
+            heatmapDecorationsRef.current?.clear();
+            heatmapDecorationsRef.current = null;
+          };
         },
       }),
     [editorMinHeight],
   );
+
+  useEffect(() => {
+    const diffEditor = diffEditorRef.current;
+    const monaco = monacoRef.current;
+
+    if (!diffEditor || !monaco) {
+      if (!heatmap) {
+        heatmapDecorationsRef.current = null;
+      }
+      return;
+    }
+
+    const modifiedEditor = diffEditor.getModifiedEditor();
+    const model = modifiedEditor.getModel();
+
+    if (!model) {
+      return;
+    }
+
+    if (!heatmap || heatmap.lines.length === 0) {
+      heatmapDecorationsRef.current?.clear();
+      heatmapDecorationsRef.current = null;
+      return;
+    }
+
+    const newDecorations = buildHeatmapDecorations({
+      monaco,
+      model,
+      heatmap,
+    });
+
+    const collection =
+      heatmapDecorationsRef.current ??
+      modifiedEditor.createDecorationsCollection([]);
+
+    collection.set(newDecorations);
+    heatmapDecorationsRef.current = collection;
+  }, [heatmap, editorReadyToken]);
 
   return (
     <div
@@ -964,6 +1140,7 @@ const MemoMonacoFileDiffRow = memo(MonacoFileDiffRow, (prev, next) => {
   return (
     prev.isExpanded === next.isExpanded &&
     prev.editorTheme === next.editorTheme &&
+    prev.heatmap === next.heatmap &&
     a.filePath === b.filePath &&
     a.oldPath === b.oldPath &&
     a.status === b.status &&
@@ -982,6 +1159,7 @@ export function MonacoGitDiffViewer({
   onControlsChange,
   classNames,
   onFileToggle,
+  heatmap,
 }: GitDiffViewerProps) {
   const { theme } = useTheme();
 
@@ -992,6 +1170,14 @@ export function MonacoGitDiffViewer({
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(
     () => new Set(diffs.map((diff) => diff.filePath)),
   );
+
+  const heatmapByFile = useMemo(() => {
+    if (!heatmap || heatmap.length === 0) {
+      return new Map<string, DiffHeatmapEntry>();
+    }
+
+    return new Map(heatmap.map((entry) => [entry.fileName, entry]));
+  }, [heatmap]);
 
   const fileGroups: MonacoFileGroup[] = useMemo(
     () =>
@@ -1126,6 +1312,7 @@ export function MonacoGitDiffViewer({
             isExpanded={expandedFiles.has(file.filePath)}
             onToggle={() => toggleFile(file.filePath)}
             editorTheme={editorTheme}
+            heatmap={heatmapByFile.get(file.filePath)}
             diffOptions={diffOptions}
             classNames={classNames?.fileDiffRow}
           />

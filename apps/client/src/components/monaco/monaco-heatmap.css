@@ -1,0 +1,35 @@
+.monaco-editor .cmux-heatmap-inline-low {
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.12), rgba(245, 158, 11, 0.18));
+  border-radius: 2px;
+}
+
+.monaco-editor .cmux-heatmap-inline-medium {
+  background: linear-gradient(90deg, rgba(249, 115, 22, 0.16), rgba(249, 115, 22, 0.26));
+  border-radius: 2px;
+}
+
+.monaco-editor .cmux-heatmap-inline-high {
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.18), rgba(239, 68, 68, 0.32));
+  border-radius: 2px;
+}
+
+.monaco-editor .cmux-heatmap-inline-critical {
+  background: linear-gradient(90deg, rgba(220, 38, 38, 0.22), rgba(220, 38, 38, 0.4));
+  border-radius: 2px;
+}
+
+.monaco-editor .cmux-heatmap-gutter-low {
+  border-left: 3px solid rgba(245, 158, 11, 0.5);
+}
+
+.monaco-editor .cmux-heatmap-gutter-medium {
+  border-left: 3px solid rgba(249, 115, 22, 0.6);
+}
+
+.monaco-editor .cmux-heatmap-gutter-high {
+  border-left: 3px solid rgba(239, 68, 68, 0.7);
+}
+
+.monaco-editor .cmux-heatmap-gutter-critical {
+  border-left: 3px solid rgba(220, 38, 38, 0.85);
+}
