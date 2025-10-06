@@ -933,7 +933,7 @@ function EnvironmentDetailsPage() {
                   <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
                     Snapshot Versions
                   </h3>
-                  <Tooltip>
+                  <Tooltip delayDuration={0}>
                     <TooltipTrigger asChild>
                       <button
                         type="button"
