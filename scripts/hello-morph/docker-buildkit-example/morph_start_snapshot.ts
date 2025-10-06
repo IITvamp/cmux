@@ -28,6 +28,7 @@ clientSocket.on("connect", () => {
   console.log("Connected to worker");
   // clientSocket.emit("get-active-terminals");
   // dispatch a tack
+  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL || "http://localhost:9777";
   clientSocket.emit(
     "worker:create-terminal",
     {
@@ -36,6 +37,11 @@ clientSocket.on("connect", () => {
       rows: 24,
       cwd: "/root/workspace",
       command: "bun x opencode-ai 'whats the time'",
+      taskRunContext: {
+        taskRunToken: "morph-start-snapshot-token",
+        prompt: "what's the time",
+        convexUrl,
+      },
     },
     () => {
       console.log("Terminal created");

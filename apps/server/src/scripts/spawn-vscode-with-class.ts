@@ -79,6 +79,8 @@ async function main() {
     );
 
     // Send terminal creation request
+    const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL || "http://localhost:9777";
+
     await new Promise((resolve, reject) => {
       workerSocket.emit(
         "worker:create-terminal",
@@ -95,6 +97,11 @@ async function main() {
               destinationPath: "/root/.claude.json",
             },
           ],
+          taskRunContext: {
+            taskRunToken: "spawn-vscode-with-class-token",
+            prompt,
+            convexUrl,
+          },
         },
         (result) => {
           if (result.error) {
