@@ -179,28 +179,54 @@ function sanitizeRewrittenResponseHeaders(source: Headers): Headers {
   return headers;
 }
 
-// HTMLRewriter to replace location in inline script tags
+// Strip CSP headers that might block proxied content
+function stripCSPHeaders(source: Headers): Headers {
+  const headers = new Headers(source);
+  headers.delete("content-security-policy");
+  headers.delete("content-security-policy-report-only");
+  return headers;
+}
+
+// Add permissive CORS headers
+function addPermissiveCORS(headers: Headers): Headers {
+  headers.set("access-control-allow-origin", "*");
+  headers.set("access-control-allow-methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD");
+  headers.set("access-control-allow-headers", "*");
+  headers.set("access-control-expose-headers", "*");
+  headers.set("access-control-allow-credentials", "true");
+  headers.set("access-control-max-age", "86400");
+  return headers;
+}
+
+// HTMLRewriter for script tags (currently unused, but kept for potential future use)
+// Note: We don't rewrite inline scripts because HTMLRewriter can cause encoding issues
+// with special characters. Instead, we rely on our injected scripts to handle location
+// interception at runtime.
 class ScriptRewriter {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   element(element: any) {
-    // Check if this is our injected script (has data-cmux-injected attribute)
-    if (element.getAttribute("data-cmux-injected")) {
-      return; // Skip our own scripts
-    }
+    // Currently no-op
   }
+}
 
+// HTMLRewriter to remove CSP meta tags
+class MetaCSPRewriter {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  text(text: any) {
-    if (text.text) {
-      const modified = rewriteJavaScript(text.text, false); // inline scripts
-      if (modified !== text.text) {
-        text.replace(modified, { html: false });
-      }
+  element(element: any) {
+    const httpEquiv = element.getAttribute("http-equiv");
+    if (httpEquiv?.toLowerCase() === "content-security-policy") {
+      element.remove();
     }
   }
 }
 
 class HeadRewriter {
+  private skipServiceWorker: boolean;
+
+  constructor(skipServiceWorker: boolean = false) {
+    this.skipServiceWorker = skipServiceWorker;
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   element(element: any) {
     // Config script with localhost interceptors
@@ -525,16 +551,18 @@ startMutationObserver();
       { html: true }
     );
 
-    // Service worker registration script
-    element.prepend(
-      `<script data-cmux-injected="true">
+    // Service worker registration script (conditional)
+    if (!this.skipServiceWorker) {
+      element.prepend(
+        `<script data-cmux-injected="true">
 // __CMUX_NO_REWRITE__ - This marker prevents this script from being rewritten
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/proxy-sw.js', { scope: '/' }).catch(console.error);
 }
 </script>`,
-      { html: true }
-    );
+        { html: true }
+      );
+    }
   }
 }
 
@@ -632,6 +660,14 @@ export default {
 
       // Check if subdomain starts with "port-" (hacky heuristic for Morph routing)
       if (sub.startsWith("port-")) {
+        // Handle OPTIONS preflight for port-39378
+        if (sub.startsWith("port-39378") && request.method === "OPTIONS") {
+          return new Response(null, {
+            status: 204,
+            headers: addPermissiveCORS(new Headers()),
+          });
+        }
+
         // Prevent infinite loops - check if we're already proxying
         const isAlreadyProxied =
           request.headers.get("X-Cmux-Proxied") === "true";
@@ -662,7 +698,14 @@ export default {
             redirect: "manual",
           });
 
+          // WebSocket upgrades must be returned directly without modification
+          const upgradeHeader = request.headers.get("Upgrade");
+          if (upgradeHeader?.toLowerCase() === "websocket") {
+            return fetch(outbound);
+          }
+
           let response = await fetch(outbound);
+
           response = rewriteLoopbackRedirect(response, (redirectPort) => {
             if (!redirectPort || !/^\d+$/.test(redirectPort)) {
               return null;
@@ -671,13 +714,30 @@ export default {
           });
 
           const contentType = response.headers.get("content-type") || "";
+          const skipServiceWorker = sub.startsWith("port-39378");
 
           // Apply HTMLRewriter to HTML responses
           if (contentType.includes("text/html")) {
-            return new HTMLRewriter()
-              .on("head", new HeadRewriter())
-              .on("script", new ScriptRewriter())
-              .transform(response);
+            let responseHeaders = stripCSPHeaders(response.headers);
+            if (skipServiceWorker) {
+              responseHeaders = addPermissiveCORS(responseHeaders);
+            }
+            const rewriter = new HTMLRewriter()
+              .on("head", new HeadRewriter(skipServiceWorker))
+              .on("script", new ScriptRewriter());
+
+            // Remove CSP meta tags for port-39378
+            if (skipServiceWorker) {
+              rewriter.on("meta", new MetaCSPRewriter());
+            }
+
+            return rewriter.transform(
+              new Response(response.body, {
+                status: response.status,
+                statusText: response.statusText,
+                headers: responseHeaders,
+              })
+            );
           }
 
           // Rewrite JavaScript files
@@ -687,14 +747,27 @@ export default {
           ) {
             const text = await response.text();
             const rewritten = rewriteJavaScript(text, true); // external files
+            let sanitizedHeaders = sanitizeRewrittenResponseHeaders(response.headers);
+            sanitizedHeaders = stripCSPHeaders(sanitizedHeaders);
+            if (skipServiceWorker) {
+              sanitizedHeaders = addPermissiveCORS(sanitizedHeaders);
+            }
             return new Response(rewritten, {
               status: response.status,
               statusText: response.statusText,
-              headers: sanitizeRewrittenResponseHeaders(response.headers),
+              headers: sanitizedHeaders,
             });
           }
 
-          return response;
+          let responseHeaders = stripCSPHeaders(response.headers);
+          if (skipServiceWorker) {
+            responseHeaders = addPermissiveCORS(responseHeaders);
+          }
+          return new Response(response.body, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: responseHeaders,
+          });
         }
       }
 
@@ -742,7 +815,14 @@ export default {
         redirect: "manual",
       });
 
+      // WebSocket upgrades must be returned directly without modification
+      const upgradeHeader = request.headers.get("Upgrade");
+      if (upgradeHeader?.toLowerCase() === "websocket") {
+        return fetch(outbound);
+      }
+
       let response = await fetch(outbound);
+
       response = rewriteLoopbackRedirect(response, (redirectPort) => {
         if (!redirectPort || !/^\d+$/.test(redirectPort)) {
           return null;
@@ -752,27 +832,57 @@ export default {
       });
 
       const contentType = response.headers.get("content-type") || "";
+      const skipServiceWorker = sub.startsWith("port-39378");
 
       // Apply HTMLRewriter to HTML responses
       if (contentType.includes("text/html")) {
-        return new HTMLRewriter()
-          .on("head", new HeadRewriter())
-          .on("script", new ScriptRewriter())
-          .transform(response);
+        let responseHeaders = stripCSPHeaders(response.headers);
+        if (skipServiceWorker) {
+          responseHeaders = addPermissiveCORS(responseHeaders);
+        }
+        const rewriter = new HTMLRewriter()
+          .on("head", new HeadRewriter(skipServiceWorker))
+          .on("script", new ScriptRewriter());
+
+        // Remove CSP meta tags for port-39378
+        if (skipServiceWorker) {
+          rewriter.on("meta", new MetaCSPRewriter());
+        }
+
+        return rewriter.transform(
+          new Response(response.body, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: responseHeaders,
+          })
+        );
       }
 
       // Rewrite JavaScript files
       if (contentType.includes("javascript") || url.pathname.endsWith(".js")) {
         const text = await response.text();
         const rewritten = rewriteJavaScript(text, true); // external files
+        let sanitizedHeaders = sanitizeRewrittenResponseHeaders(response.headers);
+        sanitizedHeaders = stripCSPHeaders(sanitizedHeaders);
+        if (skipServiceWorker) {
+          sanitizedHeaders = addPermissiveCORS(sanitizedHeaders);
+        }
         return new Response(rewritten, {
           status: response.status,
           statusText: response.statusText,
-          headers: sanitizeRewrittenResponseHeaders(response.headers),
+          headers: sanitizedHeaders,
         });
       }
 
-      return response;
+      let responseHeaders = stripCSPHeaders(response.headers);
+      if (skipServiceWorker) {
+        responseHeaders = addPermissiveCORS(responseHeaders);
+      }
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders,
+      });
     }
 
     // Not our domain — pass-through or block; pass-through by default
