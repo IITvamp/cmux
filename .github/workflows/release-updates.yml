@@ -381,10 +381,10 @@ jobs:
           toolchain: stable
           profile: minimal
           targets: x86_64-unknown-linux-gnu
-      - name: Install system dependencies for AppImage
+      - name: Install system dependencies for AppImage and deb
         run: |
           sudo apt-get update
-          sudo apt-get install -y libfuse2
+          sudo apt-get install -y libfuse2 fakeroot dpkg
       - name: Install dependencies (bun)
         run: bun install --frozen-lockfile
       - name: Ensure local production node_modules (apps/client)
@@ -453,10 +453,10 @@ jobs:
           toolchain: stable
           profile: minimal
           targets: aarch64-unknown-linux-gnu
-      - name: Install system dependencies for AppImage and cross-compilation
+      - name: Install system dependencies for AppImage, deb, and cross-compilation
         run: |
           sudo apt-get update
-          sudo apt-get install -y libfuse2 gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          sudo apt-get install -y libfuse2 fakeroot dpkg gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
       - name: Install dependencies (bun)
         run: bun install --frozen-lockfile
       - name: Ensure local production node_modules (apps/client)
