@@ -854,6 +854,7 @@ def main():
         current_instance.expose_http_service("openvscode", 39378)
         current_instance.expose_http_service("worker", 39377)
         current_instance.expose_http_service("proxy", 39379)
+        current_instance.expose_http_service("vnc", 39380)
 
         print("\n--- Ensuring services are running ---")
         run_ssh_command(
@@ -919,6 +920,9 @@ def main():
         for service in current_instance.networking.http_services:
             if service.name == "openvscode":
                 print(f"- OpenVSCode: {service.url}/?folder=/root/workspace")
+                continue
+            if service.name == "vnc":
+                print(f"- VNC: {service.url}/vnc.html")
                 continue
             print(f"- {service.name}: {service.url}")
 

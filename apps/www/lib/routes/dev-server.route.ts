@@ -76,6 +76,9 @@ const DevServerResponseSchema = z
     workerUrl: z.string().openapi({
       example: "https://instance.morph.cloud:39377",
     }),
+    vncUrl: z.string().openapi({
+      example: "https://instance.morph.cloud:39380/vnc.html",
+    }),
     status: z.string().openapi({
       example: "running",
     }),
@@ -172,15 +175,17 @@ devServerRouter.openapi(startDevServerRoute, async (c) => {
     const workerService = exposedServices.find(
       (service) => service.port === 39377
     );
+    const vncService = exposedServices.find((service) => service.port === 39380);
 
-    if (!vscodeService || !workerService) {
+    if (!vscodeService || !workerService || !vncService) {
       // Stop the instance if services are not available
       await instance.stop();
-      throw new Error("VSCode or worker service not found");
+      throw new Error("VSCode, worker, or VNC service not found");
     }
 
     const vscodeUrl = `${vscodeService.url}/?folder=/root/workspace`;
     console.log(`VSCode URL: ${vscodeUrl}`);
+    const vncUrl = `${vncService.url}/vnc.html`;
 
     // Connect to the worker management namespace
     const clientSocket: Socket<WorkerToServerEvents, ServerToWorkerEvents> =
@@ -259,6 +264,7 @@ devServerRouter.openapi(startDevServerRoute, async (c) => {
         instanceId: instance.id,
         vscodeUrl,
         workerUrl: workerService.url,
+        vncUrl,
         status: "running",
         taskId: body.taskId,
         terminalCreated,

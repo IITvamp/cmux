@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# Sets up a lightweight graphical session exposed over websockify.
+set -euo pipefail
+
+export DISPLAY=:1
+LOG_DIR=/var/log/cmux
+XVFB_LOG_FILE="${LOG_DIR}/xvfb.log"
+FLUXBOX_LOG_FILE="${LOG_DIR}/fluxbox.log"
+X11VNC_LOG_FILE="${LOG_DIR}/x11vnc.log"
+WEBSOCKIFY_LOG_FILE="${LOG_DIR}/websockify.log"
+CHROME_LOG_FILE="${LOG_DIR}/chrome.log"
+
+mkdir -p "${LOG_DIR}"
+
+start_process() {
+  local log_file="$1"
+  shift
+  "$@" >>"${log_file}" 2>&1 &
+  echo $!
+}
+
+cleanup() {
+  local status=$?
+  for pid in ${WEBSOCKIFY_PID:-} ${CHROME_PID:-} ${X11VNC_PID:-} ${FLUXBOX_PID:-} ${XVFB_PID:-}; do
+    if [[ -n "${pid:-}" ]] && kill -0 "$pid" >/dev/null 2>&1; then
+      kill "$pid" >/dev/null 2>&1 || true
+      wait "$pid" >/dev/null 2>&1 || true
+    fi
+  done
+  exit "$status"
+}
+trap cleanup EXIT INT TERM
+
+XVFB_PID=$(start_process "${XVFB_LOG_FILE}" /usr/bin/Xvfb :1 -screen 0 1920x1080x24 -nolisten tcp -noreset)
+
+for _ in {1..30}; do
+  if [[ -S /tmp/.X11-unix/X1 ]]; then
+    break
+  fi
+  sleep 1
+done
+
+if [[ ! -S /tmp/.X11-unix/X1 ]]; then
+  echo "Failed to start Xvfb display :1" >>"${XVFB_LOG_FILE}"
+  exit 1
+fi
+
+FLUXBOX_PID=$(start_process "${FLUXBOX_LOG_FILE}" env DISPLAY=:1 TERM=xterm-256color /usr/bin/fluxbox)
+X11VNC_PID=$(start_process "${X11VNC_LOG_FILE}" env DISPLAY=:1 /usr/bin/x11vnc -display :1 -forever -shared -rfbport 5901 -localhost -nopw -quiet)
+
+CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser || command -v chrome || true)"
+if [[ -n "${CHROME_BIN}" ]]; then
+  CHROME_FLAGS=(
+    --no-sandbox
+    --disable-dev-shm-usage
+    --no-first-run
+    --disable-background-networking
+    --disable-default-apps
+    --disable-gpu
+    --disable-software-rasterizer
+    --start-maximized
+    about:blank
+  )
+  CHROME_PID=$(start_process "${CHROME_LOG_FILE}" env DISPLAY=:1 HOME=/root "${CHROME_BIN}" "${CHROME_FLAGS[@]}")
+else
+  echo "Chrome binary not found; skipping browser autostart" >>"${CHROME_LOG_FILE}"
+fi
+
+/usr/bin/websockify --web=/usr/share/novnc 0.0.0.0:39380 127.0.0.1:5901 >>"${WEBSOCKIFY_LOG_FILE}" 2>&1 &
+WEBSOCKIFY_PID=$!
+wait "$WEBSOCKIFY_PID"

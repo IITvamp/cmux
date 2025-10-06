@@ -298,7 +298,7 @@ def enable_cmux_units(snapshot: Snapshot) -> Snapshot:
 def run_sanity_checks(snapshot: Snapshot, timings: TimingsCollector) -> Snapshot:
     """Run a battery of chroot sanity checks to verify runtime tooling."""
 
-    console.info("Running chroot sanity checks (forkpty, docker, envctl, dev server)...")
+    console.info("Running chroot sanity checks (forkpty, docker, envctl)...")
 
     script = textwrap.dedent(
         """
@@ -410,66 +410,9 @@ BASH
             fi
         }
 
-
-        dev_server_check() {
-            local log="$log_dir/dev.log"
-            if run_chroot /bin/bash >"$log" 2>&1 <<'BASH'
-set -euo pipefail
-if [ ! -d /root/workspace ]; then
-    echo "/root/workspace missing" >&2
-    exit 1
-fi
-
-cd /root/workspace
-export SKIP_DOCKER_BUILD=true
-export SKIP_CONVEX=true
-
-tmp_log=$(mktemp)
-cleanup() {
-    if [ -n "${pid:-}" ] && kill -0 "$pid" 2>/dev/null; then
-        kill "$pid" 2>/dev/null || true
-        wait "$pid" 2>/dev/null || true
-    fi
-    rm -f "$tmp_log"
-}
-trap cleanup EXIT
-
-if command -v stdbuf >/dev/null 2>&1; then
-    stdbuf -oL -eL ./scripts/dev.sh --skip-convex true >"$tmp_log" 2>&1 &
-else
-    ./scripts/dev.sh --skip-convex true >"$tmp_log" 2>&1 &
-fi
-pid=$!
-
-ready_regex='Starting Terminal App Development Environment'
-for _ in $(seq 1 60); do
-    if grep -q "$ready_regex" "$tmp_log"; then
-        exit 0
-    fi
-    if ! kill -0 "$pid" 2>/dev/null; then
-        cat "$tmp_log" >&2 || true
-        exit 1
-    fi
-    sleep 2
-done
-
-cat "$tmp_log" >&2 || true
-echo "dev server did not reach ready message" >&2
-exit 1
-BASH
-            then
-                echo "[sanity] dev server bootstrap ok"
-            else
-                echo "[sanity] dev server bootstrap failed" >&2
-                cat "$log" >&2 || true
-                return 1
-            fi
-        }
-
         forkpty_check
         docker_check
         envctl_check
-        dev_server_check
 
         rm -rf "$log_dir"
         echo "[sanity] all checks passed"
@@ -708,19 +651,18 @@ def build_snapshot(
             ),
         )
 
-        console.info("Hydrating workspace with repository contents...")
+        console.info("Preparing empty workspace directory...")
         snapshot = timings.time(
-            "build_snapshot:hydrate_workspace",
+            "build_snapshot:prepare_workspace",
             lambda: run_snapshot_bash(
                 snapshot,
                 textwrap.dedent(
-                    f"""
+                    """
                     set -euo pipefail
                     workspace_dir=/opt/app/rootfs/root/workspace
                     mkdir -p "$workspace_dir"
-                    tar -C {shlex.quote(remote_repo_root)} -cf - . | \
-                        tar -C "$workspace_dir" -xf -
-                    ls -A "$workspace_dir" | head -n 5
+                    find "$workspace_dir" -mindepth 1 -maxdepth 1 -exec rm -rf '{}' +
+                    ls -A "$workspace_dir" | head -n 5 || true
                     """
                 ).strip(),
             ),
@@ -729,9 +671,20 @@ def build_snapshot(
         console.info("Cleaning up build workspace...")
         snapshot = snapshot.exec(f"rm -rf {shlex.quote(remote_repo_root)}")
 
-        console.info("Removing temporary Docker image from snapshot...")
-        snapshot = snapshot.exec(
-            f"docker image rm {shlex.quote(built_image)} >/dev/null 2>&1 || true"
+        console.info("Removing temporary Docker artifacts from snapshot...")
+        snapshot = timings.time(
+            "build_snapshot:cleanup_docker",
+            lambda: run_snapshot_bash(
+                snapshot,
+                textwrap.dedent(
+                    f"""
+                    set -euo pipefail
+                    docker image rm {shlex.quote(built_image)} >/dev/null 2>&1 || true
+                    docker builder prune -af >/dev/null 2>&1 || true
+                    docker system prune -af >/dev/null 2>&1 || true
+                    """
+                ).strip(),
+            ),
         )
 
         console.info("Preparing overlay directories...")
@@ -843,7 +796,7 @@ def main() -> None:
 
         console.always(f"Instance ID: {instance.id}")
 
-        expose_ports = [39376, 39377, 39378, 39379]
+        expose_ports = [39376, 39377, 39378, 39379, 39380]
         with timings.section("main:expose_http_services"):
             for port in expose_ports:
                 instance.expose_http_service(port=port, name=f"port-{port}")
@@ -877,7 +830,10 @@ def main() -> None:
                         "ps aux | grep -E 'openvscode-server|node /builtins/build/index.js' | grep -v grep || true",
                         "ss -lntp | grep ':39378' || true",
                         "ss -lntp | grep ':39379' || true",
+                        "ss -lntp | grep ':39380' || true",
                         "tail -n 80 /var/log/cmux/openvscode.log || true",
+                        "tail -n 80 /var/log/cmux/websockify.log || true",
+                        "tail -n 80 /var/log/cmux/x11vnc.log || true",
                     ]
                     for cmd in diag_cmds:
                         console.info(f"\n$ {cmd}")
@@ -900,6 +856,7 @@ def main() -> None:
 
                 vscode_service = None
                 proxy_service = None
+                vnc_service = None
                 for svc in services or []:
                     port = _get(svc, "port")
                     name = _get(svc, "name")
@@ -907,6 +864,8 @@ def main() -> None:
                         vscode_service = svc
                     elif port == 39379 or name == "port-39379":
                         proxy_service = svc
+                    elif port == 39380 or name == "port-39380":
+                        vnc_service = svc
 
                 url = (
                     _get(vscode_service, "url") if vscode_service is not None else None
@@ -949,8 +908,31 @@ def main() -> None:
                     console.always(f"Proxy URL: {proxy_url}")
                 else:
                     console.always("No exposed HTTP service found for port 39379")
+
+                vnc_url = _get(vnc_service, "url") if vnc_service is not None else None
+                if vnc_url:
+                    novnc_url = f"{vnc_url.rstrip('/')}/vnc.html"
+                    ok = False
+                    for _ in range(30):
+                        log = console.always if console.quiet else console.info
+                        try:
+                            with urllib_request.urlopen(novnc_url, timeout=5) as resp:
+                                code = getattr(resp, "status", getattr(resp, "code", None))
+                                if code == 200:
+                                    log(f"Port 39380 check: HTTP {code}")
+                                    ok = True
+                                    break
+                                log(f"Port 39380 not ready yet, HTTP {code}; retrying...")
+                        except (HTTPError, URLError, socket.timeout, TimeoutError) as e:
+                            log(f"Port 39380 not ready yet ({e}); retrying...")
+                        time.sleep(2)
+                    if not ok:
+                        console.always("Port 39380 did not return HTTP 200 within timeout")
+                    console.always(f"VNC URL: {novnc_url}")
+                else:
+                    console.always("No exposed HTTP service found for port 39380")
         except Exception as e:  # noqa: BLE001
-            console.always(f"Error checking port 39378: {e}")
+            console.always(f"Error checking exposed services: {e}")
 
         print_timing_summary(timings)
 

@@ -41,7 +41,7 @@ process.on("SIGINT", async () => {
 
 console.log(`Created instance: ${instance.id}`);
 
-const portsToExpose = [5173, 9777, 9778, 6791, 39378, 39377, 39379];
+const portsToExpose = [5173, 9777, 9778, 6791, 39378, 39377, 39379, 39380];
 console.log("Exposing ports", portsToExpose);
 await Promise.all(
   portsToExpose.map((port) => instance.exposeHttpService(`port-${port}`, port))
@@ -53,12 +53,14 @@ console.log(exposedServices);
 const vscodeService = exposedServices.find((service) => service.port === 39378);
 const workerService = exposedServices.find((service) => service.port === 39377);
 const proxyService = exposedServices.find((service) => service.port === 39379);
-if (!vscodeService || !workerService || !proxyService) {
-  throw new Error("VSCode, worker, or proxy service not found");
+const vncService = exposedServices.find((service) => service.port === 39380);
+if (!vscodeService || !workerService || !proxyService || !vncService) {
+  throw new Error("VSCode, worker, proxy, or VNC service not found");
 }
 
 console.log(`VSCode: ${vscodeService.url}/?folder=/root/workspace`);
 console.log(`Proxy: ${proxyService.url}`);
+console.log(`VNC: ${vncService.url}/vnc.html`);
 
 console.log("Connecting to worker...");
 

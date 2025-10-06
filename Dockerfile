@@ -51,7 +51,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     bash \
     unzip \
     xz-utils \
-    gnupg
+    gnupg \
+    ruby-full \
+    perl
 
 # Install Rust toolchain with x86_64 cross-compilation support
 RUN <<'EOF'
@@ -251,12 +253,85 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     jq \
     systemd \
     dbus \
-    util-linux
+    util-linux \
+    xvfb \
+    x11vnc \
+    fluxbox \
+    websockify \
+    novnc \
+    xauth \
+    fonts-liberation \
+    libasound2t64 \
+    libatk-bridge2.0-0 \
+    libatspi2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libgbm1 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libpango-1.0-0 \
+    libx11-xcb1 \
+    libxcomposite1 \
+    libxcursor1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxi6 \
+    libxkbcommon0 \
+    libxrandr2 \
+    libxrender1 \
+    libxshmfence1 \
+    libxss1 \
+    libxtst6
 
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     NVM_DIR=/root/.nvm \
     PATH="/root/.local/bin:/usr/local/cargo/bin:/usr/local/bin:${PATH}"
+
+# Install Chrome (amd64) or Chromium snapshot (arm64) so that VNC sessions have a browser available
+RUN <<'EOF'
+set -eux
+arch="$(dpkg --print-architecture)"
+tmp_dir="$(mktemp -d)"
+cleanup() {
+  rm -rf "${tmp_dir}"
+}
+trap cleanup EXIT
+
+case "${arch}" in
+  amd64)
+    cd "${tmp_dir}"
+    curl -fsSLo chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+    apt-get install -y --no-install-recommends ./chrome.deb || true
+    apt-get install -y --no-install-recommends -f
+    ln -sf /usr/bin/google-chrome-stable /usr/local/bin/google-chrome
+    ln -sf /usr/bin/google-chrome-stable /usr/local/bin/chromium-browser
+    ln -sf /usr/bin/google-chrome-stable /usr/local/bin/chrome
+    ;;
+  arm64)
+    cd "${tmp_dir}"
+    revision="$(curl -fsSL https://raw.githubusercontent.com/microsoft/playwright/main/packages/playwright-core/browsers.json \
+      | jq -r '.browsers[] | select(.name == "chromium") | .revision')"
+    if [ -z "${revision}" ] || [ "${revision}" = "null" ]; then
+      echo "Failed to determine Playwright Chromium revision for arm64" >&2
+      exit 1
+    fi
+    curl -fsSLo chrome.zip "https://playwright.azureedge.net/builds/chromium/${revision}/chromium-linux-arm64.zip"
+    unzip -q chrome.zip
+    install_dir=/opt/chromium-linux-arm64
+    rm -rf "${install_dir}"
+    mv chrome-linux "${install_dir}"
+    ln -sf "${install_dir}/chrome" /usr/local/bin/chromium-browser
+    ln -sf "${install_dir}/chrome" /usr/local/bin/google-chrome
+    ln -sf "${install_dir}/chrome" /usr/local/bin/chrome
+    ;;
+  *)
+    echo "Unsupported architecture for Chrome installation: ${arch}" >&2
+    exit 1
+    ;;
+esac
+EOF
 
 # Install uv-managed Python runtime (latest by default) and keep pip pinned
 RUN <<'EOF'
@@ -454,9 +529,11 @@ COPY configs/systemd/cmux.target /usr/lib/systemd/system/cmux.target
 COPY configs/systemd/cmux-openvscode.service /usr/lib/systemd/system/cmux-openvscode.service
 COPY configs/systemd/cmux-worker.service /usr/lib/systemd/system/cmux-worker.service
 COPY configs/systemd/cmux-dockerd.service /usr/lib/systemd/system/cmux-dockerd.service
+COPY configs/systemd/cmux-vnc.service /usr/lib/systemd/system/cmux-vnc.service
 COPY configs/systemd/bin/configure-openvscode /usr/local/lib/cmux/configure-openvscode
 COPY configs/systemd/bin/cmux-rootfs-exec /usr/local/lib/cmux/cmux-rootfs-exec
-RUN chmod +x /usr/local/lib/cmux/configure-openvscode /usr/local/lib/cmux/cmux-rootfs-exec && \
+COPY configs/systemd/bin/cmux-start-vnc /usr/local/lib/cmux/cmux-start-vnc
+RUN chmod +x /usr/local/lib/cmux/configure-openvscode /usr/local/lib/cmux/cmux-rootfs-exec /usr/local/lib/cmux/cmux-start-vnc && \
     touch /usr/local/lib/cmux/dockerd.flag && \
     mkdir -p /var/log/cmux && \
     mkdir -p /etc/systemd/system/multi-user.target.wants && \
@@ -465,6 +542,7 @@ RUN chmod +x /usr/local/lib/cmux/configure-openvscode /usr/local/lib/cmux/cmux-r
     ln -sf /usr/lib/systemd/system/cmux-openvscode.service /etc/systemd/system/cmux.target.wants/cmux-openvscode.service && \
     ln -sf /usr/lib/systemd/system/cmux-worker.service /etc/systemd/system/cmux.target.wants/cmux-worker.service && \
     ln -sf /usr/lib/systemd/system/cmux-dockerd.service /etc/systemd/system/cmux.target.wants/cmux-dockerd.service && \
+    ln -sf /usr/lib/systemd/system/cmux-vnc.service /etc/systemd/system/cmux.target.wants/cmux-vnc.service && \
     mkdir -p /opt/app/overlay/upper /opt/app/overlay/work && \
     printf 'CMUX_ROOTFS=/\nCMUX_RUNTIME_ROOT=/\nCMUX_OVERLAY_UPPER=/opt/app/overlay/upper\nCMUX_OVERLAY_WORK=/opt/app/overlay/work\n' > /opt/app/app.env
 
@@ -481,7 +559,8 @@ RUN mkdir -p /root/.openvscode-server/data/User && \
 # 39377: Worker service
 # 39378: OpenVSCode server
 # 39379: cmux-proxy
-EXPOSE 39376 39377 39378 39379
+# 39380: VNC over Websockify (noVNC)
+EXPOSE 39376 39377 39378 39379 39380
 
 ENV container=docker
 STOPSIGNAL SIGRTMIN+3

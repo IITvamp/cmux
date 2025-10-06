@@ -1,0 +1,14 @@
+[Unit]
+Description=Cmux VNC and websockify service
+After=network.target
+Requires=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/lib/cmux/cmux-start-vnc
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=cmux.target

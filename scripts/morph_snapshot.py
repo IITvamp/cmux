@@ -708,7 +708,7 @@ def main() -> None:
 
         print(f"Instance ID: {instance.id}")
         # expose the ports
-        expose_ports = [39376, 39377, 39378, 39379]
+        expose_ports = [39376, 39377, 39378, 39379, 39380]
         for port in expose_ports:
             instance.expose_http_service(port=port, name=f"port-{port}")
         instance.wait_until_ready()
@@ -732,8 +732,11 @@ def main() -> None:
                 "ps aux | rg -n 'openvscode-server|node /builtins/build/index.js' -N || true",
                 "ss -lntp | rg -n ':39378' -N || true",
                 "ss -lntp | rg -n ':39379' -N || true",
+                "ss -lntp | rg -n ':39380' -N || true",
                 "tail -n 80 /var/log/cmux/cmux.service.log || true",
                 "tail -n 80 /var/log/cmux/server.log || true",
+                "tail -n 80 /var/log/cmux/websockify.log || true",
+                "tail -n 80 /var/log/cmux/x11vnc.log || true",
             ]
             for cmd in diag_cmds:
                 print(f"\n$ {cmd}")
@@ -757,6 +760,7 @@ def main() -> None:
 
             vscode_service = None
             proxy_service = None
+            vnc_service = None
             for svc in services or []:
                 port = _get(svc, "port")
                 name = _get(svc, "name")
@@ -764,6 +768,8 @@ def main() -> None:
                     vscode_service = svc
                 elif port == 39379 or name == "port-39379":
                     proxy_service = svc
+                elif port == 39380 or name == "port-39380":
+                    vnc_service = svc
 
             url = _get(vscode_service, "url") if vscode_service is not None else None
             if not url:
@@ -794,8 +800,30 @@ def main() -> None:
                 print(f"Proxy URL: {proxy_url}")
             else:
                 print("No exposed HTTP service found for port 39379")
+
+            vnc_url = _get(vnc_service, "url") if vnc_service is not None else None
+            if vnc_url:
+                novnc_url = f"{vnc_url.rstrip('/')}/vnc.html"
+                ok = False
+                for _ in range(30):
+                    try:
+                        with urllib_request.urlopen(novnc_url, timeout=5) as resp:
+                            code = getattr(resp, "status", getattr(resp, "code", None))
+                            if code == 200:
+                                print(f"Port 39380 check: HTTP {code}")
+                                ok = True
+                                break
+                            print(f"Port 39380 not ready yet, HTTP {code}; retrying...")
+                    except (HTTPError, URLError) as e:
+                        print(f"Port 39380 not ready yet ({e}); retrying...")
+                    time.sleep(2)
+                if not ok:
+                    print("Port 39380 did not return HTTP 200 within timeout")
+                print(f"VNC URL: {novnc_url}")
+            else:
+                print("No exposed HTTP service found for port 39380")
         except Exception as e:
-            print(f"Error checking port 39378: {e}")
+            print(f"Error checking exposed services: {e}")
 
         # print the vscode url
         if url:

@@ -39,6 +39,7 @@ async function spawnVSCodeContainer(docker: Docker): Promise<ContainerInfo> {
         "39377/tcp": [{ HostPort: "0" }],
         "39376/tcp": [{ HostPort: "0" }],
         "39379/tcp": [{ HostPort: "0" }],
+        "39380/tcp": [{ HostPort: "0" }],
       },
     },
     ExposedPorts: {
@@ -46,6 +47,7 @@ async function spawnVSCodeContainer(docker: Docker): Promise<ContainerInfo> {
       "39377/tcp": {},
       "39376/tcp": {},
       "39379/tcp": {},
+      "39380/tcp": {},
     },
   });
 
@@ -60,10 +62,13 @@ async function spawnVSCodeContainer(docker: Docker): Promise<ContainerInfo> {
   const vscodePort = ports["39378/tcp"]?.[0]?.HostPort;
   const workerPort = ports["39377/tcp"]?.[0]?.HostPort;
   const proxyPort = ports["39379/tcp"]?.[0]?.HostPort;
+  const vncPort = ports["39380/tcp"]?.[0]?.HostPort;
 
-  if (!vscodePort || !workerPort || !proxyPort) {
+  if (!vscodePort || !workerPort || !proxyPort || !vncPort) {
     throw new Error("Failed to get port mappings");
   }
+
+  console.log(`noVNC will be available at http://localhost:${vncPort}/vnc.html`);
 
   // Wait for worker to be ready by polling
   console.log(`Waiting for worker to be ready on port ${workerPort}...`);
