@@ -304,9 +304,21 @@ function createIPCRealtimeServer(): RealtimeServer {
         };
 
         // Safety timeout so invoke doesn't hang forever if ack is never called
-        const timeoutMs = 30_000;
+        const defaultTimeoutMs = 30_000;
+        const timeoutOverrides: Record<string, number> = {
+          "start-task": 120_000,
+          "spawn-from-comment": 120_000,
+        };
+        const timeoutMs = timeoutOverrides[eventName] ?? defaultTimeoutMs;
         const timer = setTimeout(() => {
-          rejectOnce(new Error(`RPC '${eventName}' timed out waiting for ack`));
+          const baseMessage = `RPC '${eventName}' did not acknowledge within ${Math.round(timeoutMs / 1000)}s`;
+          const hint =
+            eventName === "start-task"
+              ? "Agent sandboxes are still provisioning (image pulls or devcontainers can take time). Check server logs to monitor progress."
+              : eventName === "spawn-from-comment"
+                ? "Agents spawned from the comment are still booting; watch the worker logs for updates."
+                : "Handler may still be running—see the server logs for details.";
+          rejectOnce(new Error(`${baseMessage}. ${hint}`));
         }, timeoutMs);
 
         try {

@@ -1,4 +1,5 @@
 import { api } from "@cmux/convex/api";
+import type { Id } from "@cmux/convex/dataModel";
 import {
   ArchiveTaskSchema,
   GitFullDiffRequestSchema,
@@ -26,7 +27,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import z from "zod";
-import { spawnAllAgents } from "./agentSpawner";
+import { spawnAllAgents, type AgentSpawnResult } from "./agentSpawner";
 import { stopContainersForRuns } from "./archiveTask";
 import { execWithEnv } from "./execWithEnv";
 import { getGitDiff } from "./diffs/gitDiff";
@@ -306,6 +307,29 @@ export function setupSocketHandlers(
       const taskData = taskDataParseResult.data;
       serverLogger.info("starting task!", taskData);
       const taskId = taskData.taskId;
+      let ackSent = false;
+      const sendAck = (payload: unknown) => {
+        if (ackSent) {
+          serverLogger.warn(
+            `[Server] Duplicate start-task ack ignored for ${taskId}`,
+            payload,
+          );
+          return;
+        }
+        ackSent = true;
+        callback(payload);
+      };
+
+      let primaryAgent: AgentSpawnResult | null = null;
+      const handleFirstSuccess = (result: AgentSpawnResult) => {
+        primaryAgent = result;
+        sendAck({
+          taskId,
+          worktreePath: result.worktreePath,
+          terminalId: result.terminalId,
+        });
+      };
+
       try {
         // For local mode, ensure Docker is running before attempting to spawn
         if (!taskData.isCloudMode) {
@@ -313,7 +337,7 @@ export function setupSocketHandlers(
             const { checkDockerStatus } = await import("@cmux/shared");
             const docker = await checkDockerStatus();
             if (!docker.isRunning) {
-              callback({
+              sendAck({
                 taskId,
                 error:
                   "Docker is not running. Please start Docker Desktop or switch to Cloud mode.",
@@ -325,7 +349,7 @@ export function setupSocketHandlers(
               "Failed to verify Docker status before start-task",
               e,
             );
-            callback({
+            sendAck({
               taskId,
               error:
                 "Unable to verify Docker status. Ensure Docker is running or switch to Cloud mode.",
@@ -368,6 +392,7 @@ export function setupSocketHandlers(
             images: taskData.images,
             theme: taskData.theme,
             environmentId: taskData.environmentId,
+            onFirstSuccess: handleFirstSuccess,
           },
           safeTeam,
         );
@@ -381,11 +406,15 @@ export function setupSocketHandlers(
             .filter((r) => !r.success)
             .map((r) => `${r.agentName}: ${r.error || "Unknown error"}`)
             .join("; ");
-          callback({
+          sendAck({
             taskId,
             error: errors || "Failed to spawn any agents",
           });
           return;
+        }
+
+        if (!primaryAgent) {
+          primaryAgent = successfulAgents[0];
         }
 
         // Log results for debugging
@@ -407,7 +436,16 @@ export function setupSocketHandlers(
         });
 
         // Return the first successful agent's info (you might want to modify this to return all)
-        const primaryAgent = successfulAgents[0];
+        if (!primaryAgent) {
+          serverLogger.error(
+            `[Server] Unable to resolve primary agent for task ${taskId} despite successful spawn`,
+          );
+          sendAck({
+            taskId,
+            error: "Failed to determine primary agent",
+          });
+          return;
+        }
 
         // Emit VSCode URL if available
         if (primaryAgent.vscodeUrl) {
@@ -438,17 +476,21 @@ export function setupSocketHandlers(
           // Continue without file watching
         }
 
-        callback({
-          taskId,
-          worktreePath: primaryAgent.worktreePath,
-          terminalId: primaryAgent.terminalId,
-        });
+        if (!ackSent) {
+          sendAck({
+            taskId,
+            worktreePath: primaryAgent.worktreePath,
+            terminalId: primaryAgent.terminalId,
+          });
+        }
       } catch (error) {
         serverLogger.error("Error in start-task:", error);
-        callback({
-          taskId,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
+        if (!ackSent) {
+          sendAck({
+            taskId,
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
+        }
       }
     });
 
@@ -1100,6 +1142,23 @@ export function setupSocketHandlers(
     });
 
     socket.on("spawn-from-comment", async (data, callback) => {
+      let ackSent = false;
+      let taskId: Id<"tasks"> | null = null;
+      let primaryAgent: AgentSpawnResult | null = null;
+
+      const sendAck = (payload: unknown) => {
+        if (ackSent) {
+          const suffix = taskId ? ` for ${taskId}` : "";
+          serverLogger.warn(
+            `[Server] Duplicate spawn-from-comment ack ignored${suffix}`,
+            payload,
+          );
+          return;
+        }
+        ackSent = true;
+        callback(payload);
+      };
+
       try {
         const {
           url,
@@ -1128,11 +1187,31 @@ Context:
 Please address the issue mentioned in the comment above.`;
 
         // Create a new task in Convex
-        const taskId = await getConvex().mutation(api.tasks.create, {
+        taskId = await getConvex().mutation(api.tasks.create, {
           teamSlugOrId: safeTeam,
           text: formattedPrompt,
           projectFullName: "manaflow-ai/cmux",
         });
+        if (!taskId) {
+          throw new Error("Failed to create task from comment");
+        }
+        const handleFirstSuccess = (result: AgentSpawnResult) => {
+          if (!taskId) {
+            serverLogger.error(
+              "[Server] Task ID missing while handling spawn-from-comment success",
+            );
+            return;
+          }
+          primaryAgent = result;
+          sendAck({
+            success: true,
+            taskId,
+            taskRunId: result.taskRunId,
+            worktreePath: result.worktreePath,
+            terminalId: result.terminalId,
+            vscodeUrl: result.vscodeUrl,
+          });
+        };
         // Create a comment reply with link to the task
         try {
           await getConvex().mutation(api.comments.addReply, {
@@ -1165,6 +1244,7 @@ Please address the issue mentioned in the comment above.`;
               "claude/sonnet-4",
               "codex/gpt-5",
             ],
+            onFirstSuccess: handleFirstSuccess,
           },
           safeTeam,
         );
@@ -1179,14 +1259,27 @@ Please address the issue mentioned in the comment above.`;
             .filter((r) => !r.success)
             .map((r) => `${r.agentName}: ${r.error || "Unknown error"}`)
             .join("; ");
-          callback({
+          sendAck({
             success: false,
             error: errors || "Failed to spawn any agents",
           });
           return;
         }
 
-        const primaryAgent = successfulAgents[0];
+        if (!primaryAgent) {
+          primaryAgent = successfulAgents[0];
+        }
+
+        if (!primaryAgent) {
+          serverLogger.error(
+            `[Server] Unable to resolve primary agent for spawn-from-comment task ${taskId}`,
+          );
+          sendAck({
+            success: false,
+            error: "Failed to determine primary agent",
+          });
+          return;
+        }
 
         // Emit VSCode URL if available
         if (primaryAgent.vscodeUrl) {
@@ -1198,20 +1291,24 @@ Please address the issue mentioned in the comment above.`;
           });
         }
 
-        callback({
-          success: true,
-          taskId,
-          taskRunId: primaryAgent.taskRunId,
-          worktreePath: primaryAgent.worktreePath,
-          terminalId: primaryAgent.terminalId,
-          vscodeUrl: primaryAgent.vscodeUrl,
-        });
+        if (!ackSent) {
+          sendAck({
+            success: true,
+            taskId,
+            taskRunId: primaryAgent.taskRunId,
+            worktreePath: primaryAgent.worktreePath,
+            terminalId: primaryAgent.terminalId,
+            vscodeUrl: primaryAgent.vscodeUrl,
+          });
+        }
       } catch (error) {
         serverLogger.error("Error spawning from comment:", error);
-        callback({
-          success: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
+        if (!ackSent) {
+          sendAck({
+            success: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
+        }
       }
     });
 

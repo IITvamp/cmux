@@ -906,25 +906,33 @@ export async function spawnAllAgents(
       altText: string;
     }>;
     theme?: "dark" | "light" | "system";
+    onFirstSuccess?: (result: AgentSpawnResult) => void;
   },
   teamSlugOrId: string,
 ): Promise<AgentSpawnResult[]> {
+  const {
+    onFirstSuccess,
+    selectedAgents,
+    prTitle,
+    ...spawnOptions
+  } = options;
+
   // If selectedAgents is provided, map each entry to an AgentConfig to preserve duplicates
-  const agentsToSpawn = options.selectedAgents
-    ? options.selectedAgents
+  const agentsToSpawn = selectedAgents
+    ? selectedAgents
       .map((name) => AGENT_CONFIGS.find((agent) => agent.name === name))
       .filter((a): a is AgentConfig => Boolean(a))
     : AGENT_CONFIGS;
 
   // Generate unique branch names for all agents at once to ensure no collisions
-  const branchNames = options.prTitle
+  const branchNames = prTitle
     ? await generateUniqueBranchNamesFromTitle(
-        options.prTitle!,
+        prTitle!,
         agentsToSpawn.length,
         teamSlugOrId,
       )
     : await generateUniqueBranchNames(
-      options.taskDescription,
+      spawnOptions.taskDescription,
       agentsToSpawn.length,
       teamSlugOrId,
     );
@@ -934,19 +942,50 @@ export async function spawnAllAgents(
   );
 
   // Spawn all agents in parallel with their pre-generated branch names
-  const results = await Promise.all(
-    agentsToSpawn.map((agent, index) =>
-      spawnAgent(
-        agent,
-        taskId,
-        {
-          ...options,
-          newBranch: branchNames[index],
-        },
-        teamSlugOrId,
-      ),
+  const spawnPromises = agentsToSpawn.map((agent, index) =>
+    spawnAgent(
+      agent,
+      taskId,
+      {
+        ...spawnOptions,
+        newBranch: branchNames[index],
+      },
+      teamSlugOrId,
     ),
   );
 
-  return results;
+  if (onFirstSuccess) {
+    void (async () => {
+      try {
+        const firstSuccess = await Promise.any(
+          spawnPromises.map(async (promise) => {
+            const result = await promise;
+            if (!result.success) {
+              throw new Error(
+                result.error
+                  ? `${result.agentName} failed: ${result.error}`
+                  : `${result.agentName} failed with unknown error`,
+              );
+            }
+            return result;
+          }),
+        );
+        onFirstSuccess(firstSuccess);
+      } catch (error) {
+        if (error instanceof AggregateError) {
+          serverLogger.warn(
+            "[AgentSpawner] All agents failed before reporting first success",
+            error,
+          );
+        } else {
+          serverLogger.error(
+            "[AgentSpawner] Unexpected error while waiting for first success",
+            error,
+          );
+        }
+      }
+    })();
+  }
+
+  return await Promise.all(spawnPromises);
 }
