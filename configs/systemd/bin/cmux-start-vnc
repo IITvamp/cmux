@@ -2,6 +2,9 @@
 # Sets up a lightweight graphical session exposed over websockify.
 set -euo pipefail
 
+PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
+export PATH
+
 export DISPLAY=:1
 LOG_DIR=/var/log/cmux
 XVFB_LOG_FILE="${LOG_DIR}/xvfb.log"
@@ -51,8 +54,14 @@ fi
 FLUXBOX_PID=$(start_process "${FLUXBOX_LOG_FILE}" env DISPLAY=:1 TERM=xterm-256color /usr/bin/fluxbox)
 X11VNC_PID=$(start_process "${X11VNC_LOG_FILE}" env DISPLAY=:1 /usr/bin/x11vnc -display :1 -forever -shared -rfbport 5901 -localhost -nopw -quiet)
 
-CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser || command -v chrome || true)"
-if [[ -n "${CHROME_BIN}" ]]; then
+CHROME_BIN="${CHROME_BIN:-/usr/bin/google-chrome-stable}"
+if [[ ! -x "${CHROME_BIN}" ]]; then
+  CHROME_BIN="$(command -v google-chrome-stable 2>/dev/null || true)"
+fi
+if [[ -z "${CHROME_BIN}" ]]; then
+  CHROME_BIN="$(command -v chromium-browser 2>/dev/null || true)"
+fi
+if [[ -n "${CHROME_BIN}" && -x "${CHROME_BIN}" ]]; then
   export GOOGLE_API_KEY="cmux-local"
   export GOOGLE_DEFAULT_CLIENT_ID="cmux-local"
   export GOOGLE_DEFAULT_CLIENT_SECRET="cmux-local"
@@ -60,6 +69,8 @@ if [[ -n "${CHROME_BIN}" ]]; then
   CHROME_FLAGS=(
     --no-sandbox
     --disable-dev-shm-usage
+    --disable-gpu
+    --disable-software-rasterizer
     --no-first-run
     --no-default-browser-check
     --disable-default-apps
@@ -76,7 +87,13 @@ if [[ -n "${CHROME_BIN}" ]]; then
     --start-maximized
     about:blank
   )
+  printf 'Launching Chrome via %s\n' "${CHROME_BIN}" >>"${CHROME_LOG_FILE}"
   CHROME_PID=$(start_process "${CHROME_LOG_FILE}" env DISPLAY=:1 HOME=/root "${CHROME_BIN}" "${CHROME_FLAGS[@]}")
+  sleep 5
+  if ! kill -0 "${CHROME_PID}" >/dev/null 2>&1; then
+    printf 'Chrome process exited early\n' >>"${CHROME_LOG_FILE}"
+    CHROME_PID=""
+  fi
   if command -v socat >/dev/null 2>&1; then
     SOCAT_PID=$(start_process "${CDP_PROXY_LOG_FILE}" /usr/bin/socat "TCP-LISTEN:${CDP_PUBLIC_PORT},fork,reuseaddr" "TCP:127.0.0.1:${CDP_INTERNAL_PORT}")
   else

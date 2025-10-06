@@ -260,6 +260,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     websockify \
     novnc \
     xauth \
+    xdg-utils \
     socat \
     fonts-liberation \
     libasound2t64 \
@@ -304,8 +305,10 @@ case "${arch}" in
   amd64)
     cd "${tmp_dir}"
     curl -fsSLo chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-    apt-get install -y --no-install-recommends ./chrome.deb || true
-    apt-get install -y --no-install-recommends -f
+    if ! apt-get install -y --no-install-recommends ./chrome.deb; then
+      apt-get install -y --no-install-recommends -f
+      apt-get install -y --no-install-recommends ./chrome.deb
+    fi
     ln -sf /usr/bin/google-chrome-stable /usr/local/bin/google-chrome
     ln -sf /usr/bin/google-chrome-stable /usr/local/bin/chromium-browser
     ln -sf /usr/bin/google-chrome-stable /usr/local/bin/chrome
