@@ -306,8 +306,8 @@ function createIPCRealtimeServer(): RealtimeServer {
         // Safety timeout so invoke doesn't hang forever if ack is never called
         const defaultTimeoutMs = 30_000;
         const timeoutOverrides: Record<string, number> = {
-          "start-task": 120_000,
-          "spawn-from-comment": 120_000,
+          "start-task": 300_000,
+          "spawn-from-comment": 300_000,
         };
         const timeoutMs = timeoutOverrides[eventName] ?? defaultTimeoutMs;
         const timer = setTimeout(() => {

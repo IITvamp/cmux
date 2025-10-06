@@ -308,8 +308,7 @@ export function setupSocketHandlers(
       serverLogger.info("starting task!", taskData);
       const taskId = taskData.taskId;
       let ackSent = false;
-      type StartTaskAck = Parameters<typeof callback>[0];
-      const sendAck = (payload: StartTaskAck) => {
+      const sendAck = (payload: Parameters<typeof callback>[0]) => {
         if (ackSent) {
           serverLogger.warn(
             `[Server] Duplicate start-task ack ignored for ${taskId}`,
@@ -1152,8 +1151,7 @@ export function setupSocketHandlers(
       let taskId: Id<"tasks"> | null = null;
       let primaryAgent: AgentSpawnResult | null = null;
 
-      type SpawnFromCommentAck = Parameters<typeof callback>[0];
-      const sendAck = (payload: SpawnFromCommentAck) => {
+      const sendAck = (payload: Parameters<typeof callback>[0]) => {
         if (ackSent) {
           const suffix = taskId ? ` for ${taskId}` : "";
           serverLogger.warn(
