@@ -26,4 +26,3 @@ export async function verifyTaskRunToken(
 
   return parsed.data;
 }
-
