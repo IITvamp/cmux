@@ -5,7 +5,8 @@ Requires=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/lib/cmux/cmux-start-vnc
+EnvironmentFile=-/opt/app/app.env
+ExecStart=/usr/local/lib/cmux/cmux-rootfs-exec /usr/local/lib/cmux/cmux-start-vnc
 Restart=always
 RestartSec=5
 TimeoutStopSec=30

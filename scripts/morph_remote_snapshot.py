@@ -260,6 +260,7 @@ def enable_cmux_units(snapshot: Snapshot) -> Snapshot:
         "cmux-openvscode.service",
         "cmux-worker.service",
         "cmux-dockerd.service",
+        "cmux-vnc.service",
     ]
     quoted_units = " ".join(shlex.quote(unit) for unit in units)
 
@@ -279,7 +280,7 @@ def enable_cmux_units(snapshot: Snapshot) -> Snapshot:
             cp -a /opt/app/rootfs/usr/local/lib/cmux/. /usr/local/lib/cmux/
         fi
 
-        for tool in cmux-rootfs-exec configure-openvscode; do
+        for tool in cmux-rootfs-exec configure-openvscode cmux-start-vnc; do
             path="/usr/local/lib/cmux/$tool"
             if [ -f "$path" ]; then
                 chmod +x "$path"
