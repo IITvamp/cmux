@@ -292,6 +292,58 @@ export function ElectronPreviewBrowser({
       });
   }, [viewHandle]);
 
+  const reloadCurrentView = useCallback(() => {
+    if (viewHandle) {
+      void window.cmux?.webContentsView
+        ?.reload(viewHandle.id)
+        .catch((error: unknown) => {
+          console.warn("Failed to reload WebContentsView", error);
+        });
+      return;
+    }
+
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const escapedKey =
+      typeof CSS !== "undefined" && typeof CSS.escape === "function"
+        ? CSS.escape(persistKey)
+        : persistKey.replace(/"/g, '\\"');
+    const iframe = document.querySelector<HTMLIFrameElement>(
+      `[data-iframe-key="${escapedKey}"] iframe`,
+    );
+    if (!iframe?.contentWindow) {
+      return;
+    }
+    try {
+      iframe.contentWindow.location.reload();
+    } catch (error) {
+      console.warn("Failed to reload iframe view", error);
+    }
+  }, [persistKey, viewHandle]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        !event.altKey &&
+        !event.shiftKey &&
+        key === "r"
+      ) {
+        event.preventDefault();
+        if (event.repeat) return;
+        reloadCurrentView();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, { capture: true });
+    };
+  }, [reloadCurrentView]);
+
   const devtoolsTooltipLabel = devtoolsOpen
     ? "Close DevTools"
     : "Open DevTools";
