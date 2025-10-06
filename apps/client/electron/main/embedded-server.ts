@@ -304,9 +304,15 @@ function createIPCRealtimeServer(): RealtimeServer {
         };
 
         // Safety timeout so invoke doesn't hang forever if ack is never called
-        const timeoutMs = 30_000;
+        // start-task can take 2-3 minutes due to AI title generation and container provisioning
+        const timeoutMs = eventName === "start-task" ? 180_000 : 30_000;
         const timer = setTimeout(() => {
-          rejectOnce(new Error(`RPC '${eventName}' timed out waiting for ack`));
+          rejectOnce(
+            new Error(
+              `RPC '${eventName}' timed out after ${timeoutMs / 1000}s waiting for acknowledgment. ` +
+                `The operation may still be running in the background - check your task status.`,
+            ),
+          );
         }, timeoutMs);
 
         try {
