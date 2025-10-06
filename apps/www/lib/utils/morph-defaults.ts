@@ -5,4 +5,4 @@
 // export const DEFAULT_MORPH_SNAPSHOT_ID = "snapshot_x4zc18s4";
 // export const DEFAULT_MORPH_SNAPSHOT_ID = "snapshot_3w6tkrw5";
 // export const DEFAULT_MORPH_SNAPSHOT_ID = "snapshot_bp1tdp4o";
-export const DEFAULT_MORPH_SNAPSHOT_ID = "snapshot_qtid11oa";
+export const DEFAULT_MORPH_SNAPSHOT_ID = "snapshot_c4ozcr88";
