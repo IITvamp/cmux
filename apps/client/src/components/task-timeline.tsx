@@ -189,6 +189,7 @@ export function TaskTimeline({
               teamSlugOrId: params.teamSlugOrId,
               taskId: params.taskId,
               runId: event.runId,
+              taskRunId: event.runId,
             }}
             className="hover:underline inline"
           >
@@ -237,6 +238,7 @@ export function TaskTimeline({
                   teamSlugOrId: params.teamSlugOrId,
                   taskId: params.taskId,
                   runId: event.runId,
+                  taskRunId: event.runId,
                 }}
                 className="hover:underline inline"
               >
@@ -296,6 +298,7 @@ export function TaskTimeline({
                   teamSlugOrId: params.teamSlugOrId,
                   taskId: params.taskId,
                   runId: event.runId,
+                  taskRunId: event.runId,
                 }}
                 className="hover:underline inline"
               >
@@ -347,6 +350,7 @@ export function TaskTimeline({
                   teamSlugOrId: params.teamSlugOrId,
                   taskId: params.taskId,
                   runId: event.runId,
+                  taskRunId: event.runId,
                 }}
                 className="hover:underline inline"
               >

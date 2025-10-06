@@ -8,23 +8,13 @@ import { useCallback } from "react";
 import z from "zod";
 import { PersistentWebView } from "@/components/persistent-webview";
 import { getTaskRunPersistKey } from "@/lib/persistent-webview-keys";
+import { toProxyWorkspaceUrl } from "@/lib/toProxyWorkspaceUrl";
 import { preloadTaskRunIframes } from "../lib/preloadTaskRunIframes";
 
 const paramsSchema = z.object({
   taskId: typedZid("tasks"),
   runId: typedZid("taskRuns"),
 });
-
-function toProxyWorkspaceUrl(workspaceUrl: string) {
-  if (workspaceUrl.includes("morph.so")) {
-    // convert https://port-39378-morphvm-zqcjcumw.http.cloud.morph.so/?folder=/root/workspace
-    // to https://port-39378-zqcjcumw.cmux.sh/?folder=/root/workspace
-    return workspaceUrl
-      .replace(/morphvm-/g, "")
-      .replace(/\.http\.cloud\.morph\.so/g, ".cmux.sh");
-  }
-  return workspaceUrl;
-}
 
 export const Route = createFileRoute(
   "/_layout/$teamSlugOrId/task/$taskId/run/$runId/vscode",
@@ -47,9 +37,10 @@ export const Route = createFileRoute(
       }),
     );
     if (result) {
+      const workspaceUrl = result.vscode?.workspaceUrl;
       void preloadTaskRunIframes([
         {
-          url: result.vscode?.workspaceUrl || "",
+          url: workspaceUrl ? toProxyWorkspaceUrl(workspaceUrl) : "",
           taskRunId: opts.params.runId,
         },
       ]);
