@@ -530,6 +530,8 @@ export interface ServerToClientEvents {
   "vscode-spawned": (data: VSCodeSpawned) => void;
   "default-repo": (data: DefaultRepo) => void;
   "available-editors": (data: AvailableEditors) => void;
+  "task-started": (data: TaskStarted) => void;
+  "task-failed": (data: TaskError) => void;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type

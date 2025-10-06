@@ -334,7 +334,6 @@ export function setupSocketHandlers(
           }
         }
 
-        // callback for ack start-task
         callback({
           taskId,
         });
@@ -394,6 +393,10 @@ export function setupSocketHandlers(
                 `Failed to spawn any agents for task ${taskId}:`,
                 errors,
               );
+              rt.emit("task-failed", {
+                taskId,
+                error: errors || "Failed to spawn any agents",
+              });
               return;
             }
 
@@ -417,6 +420,13 @@ export function setupSocketHandlers(
 
             // Return the first successful agent's info (you might want to modify this to return all)
             const primaryAgent = successfulAgents[0];
+
+            // Emit task-started event with full data
+            rt.emit("task-started", {
+              taskId,
+              worktreePath: primaryAgent.worktreePath,
+              terminalId: primaryAgent.terminalId,
+            });
 
             // Emit VSCode URL if available
             if (primaryAgent.vscodeUrl) {
@@ -452,6 +462,10 @@ export function setupSocketHandlers(
 
           } catch (error) {
             serverLogger.error("Error spawning agents for task:", error);
+            rt.emit("task-failed", {
+              taskId,
+              error: error instanceof Error ? error.message : "Unknown error",
+            });
           }
         })();
       } catch (error) {
