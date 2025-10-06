@@ -164,10 +164,12 @@ export default async function LandingPage() {
                   </li>
                   <li>
                     <a
-                      href={macDownloadUrl}
-                      className="inline-flex h-8 items-center bg-blue-500 px-3 text-sm font-semibold text-white hover:bg-blue-400 transition"
+                      href="https://cal.com/team/manaflow/meeting"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-semibold text-white hover:text-blue-400 transition"
                     >
-                      Download
+                      Contact
                     </a>
                   </li>
                   <li className="text-neutral-700 px-1" role="presentation">
@@ -175,12 +177,10 @@ export default async function LandingPage() {
                   </li>
                   <li>
                     <a
-                      href="https://cal.com/team/manaflow/meeting"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex h-8 items-center px-3 text-sm font-semibold text-white border border-neutral-700 hover:bg-neutral-900 transition"
+                      href={macDownloadUrl}
+                      className="inline-flex h-8 items-center bg-blue-500 px-3 text-base font-semibold text-white hover:bg-blue-400 transition"
                     >
-                      Contact
+                      Download
                     </a>
                   </li>
                 </ul>
@@ -242,7 +242,7 @@ export default async function LandingPage() {
                   href={macDownloadUrl}
                   title={
                     latestVersion
-                      ? `Download cmux v${latestVersion} for macOS arm64`
+                      ? "Download cmux for macOS arm64"
                       : "Requires macOS"
                   }
                   className="inline-flex h-12 items-center gap-2 text-base font-medium text-black bg-white hover:bg-neutral-50 border border-neutral-800 rounded-lg px-4 transition-all whitespace-nowrap"
@@ -260,7 +260,6 @@ export default async function LandingPage() {
                     ></path>
                   </svg>
                   Download for Mac
-                  {latestVersion ? ` (v${latestVersion})` : null}
                 </a>
                 <a
                   href="https://github.com/manaflow-ai/cmux"
