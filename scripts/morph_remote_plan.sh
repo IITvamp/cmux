@@ -71,7 +71,16 @@ step_ensure_tooling() {
     procps util-linux coreutils tar python3
   rm -rf /var/lib/apt/lists/*
   mkdir -p /opt/app/rootfs /opt/app/workdir
-  bash "$ENSURE_DOCKER_SCRIPT_PATH"
+  if ! bash "$ENSURE_DOCKER_SCRIPT_PATH"; then
+    log "ensure docker script failed" >&2
+    return 1
+  fi
+  if [ -n "${ENSURE_DOCKER_CLI_SCRIPT_PATH:-}" ] && [ -f "$ENSURE_DOCKER_CLI_SCRIPT_PATH" ]; then
+    if ! bash "$ENSURE_DOCKER_CLI_SCRIPT_PATH"; then
+      log "ensure docker cli script failed" >&2
+      return 1
+    fi
+  fi
   if [ -x /usr/bin/docker ]; then
     log "docker binary present at /usr/bin/docker"
   fi

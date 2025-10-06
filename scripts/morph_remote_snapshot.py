@@ -38,7 +38,11 @@ from urllib.error import HTTPError, URLError
 
 import dotenv
 from morphcloud.api import Instance, MorphCloudClient, Snapshot
-from morph_common import write_remote_file
+from morph_common import (
+    ensure_docker,
+    ensure_docker_cli_plugins,
+    write_remote_file,
+)
 
 dotenv.load_dotenv()
 
@@ -325,7 +329,7 @@ def build_snapshot(
     remote_build_log_path = "/opt/app/docker-build.log"
     remote_image_config_path = f"/opt/app/docker-image-config-{run_id}.json"
     remote_rootfs_tar_path = f"/opt/app/rootfs-{run_id}.tar"
-    remote_env_path = f"/opt/app/app-{run_id}.env"
+    remote_env_path = "/opt/app/app.env"
 
     mode = "image" if image_name else "build"
     built_image: str
@@ -351,44 +355,29 @@ def build_snapshot(
                 recursive=False,
             ),
         )
-        snapshot = timings.time(
-            "build_snapshot:chmod_plan_script",
-            lambda: snapshot.exec(f"chmod +x {shlex.quote(remote_plan_path)}"),
-        )
 
         ensure_docker_script_remote = f"/opt/app/cmux-ensure-docker-{run_id}.sh"
-        ensure_docker_script_lines = [
-            "#!/usr/bin/env bash",
-            "set -Eeuo pipefail",
-            "install -m 0755 -d /etc/apt/keyrings",
-            "if [ ! -f /etc/apt/keyrings/docker.gpg ]; then",
-            "  curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --batch --yes --dearmor -o /etc/apt/keyrings/docker.gpg",
-            "fi",
-            "chmod a+r /etc/apt/keyrings/docker.gpg",
-            "ARCH=$(dpkg --print-architecture)",
-            "DISTRO=$( . /etc/os-release && echo ${ID:-debian} )",
-            "CODENAME=$( . /etc/os-release && echo ${VERSION_CODENAME:-${UBUNTU_CODENAME:-stable}} )",
-            "printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/%s %s stable\\n' \"${ARCH}\" \"${DISTRO}\" \"${CODENAME}\" > /etc/apt/sources.list.d/docker.list",
-            "DEBIAN_FRONTEND=noninteractive apt-get update",
-            "DEBIAN_FRONTEND=noninteractive apt-get install -y \\",
-            "  docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin python3-docker git",
-            "systemctl enable docker",
-            "systemctl restart docker",
-            "for i in {1..30}; do",
-            "  if docker info >/dev/null 2>&1; then",
-            "    echo 'Docker ready'",
-            "    break",
-            "  fi",
-            "  if [ \"$i\" -eq 30 ]; then",
-            "    echo 'Docker failed to start after 30 attempts' >&2",
-            "    exit 1",
-            "  fi",
-            "  sleep 2",
-            "done",
-            "docker --version",
-            "docker compose version",
-            "",
-        ]
+        ensure_docker_script_content = "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -Eeuo pipefail",
+                "set -x",
+                ensure_docker(),
+                "",
+            ]
+        )
+
+        ensure_docker_cli_script_remote = (
+            f"/opt/app/cmux-ensure-docker-cli-{run_id}.sh"
+        )
+        ensure_docker_cli_script_content = "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -Eeuo pipefail",
+                ensure_docker_cli_plugins(),
+                "",
+            ]
+        )
 
         console.info("Writing remote ensure-docker script...")
         snapshot = timings.time(
@@ -396,7 +385,18 @@ def build_snapshot(
             lambda: write_remote_file(
                 snapshot,
                 remote_path=ensure_docker_script_remote,
-                content="\n".join(ensure_docker_script_lines),
+                content=ensure_docker_script_content,
+                executable=True,
+            ),
+        )
+
+        console.info("Writing remote ensure-docker-cli script...")
+        snapshot = timings.time(
+            "build_snapshot:write_ensure_docker_cli_script",
+            lambda: write_remote_file(
+                snapshot,
+                remote_path=ensure_docker_cli_script_remote,
+                content=ensure_docker_cli_script_content,
                 executable=True,
             ),
         )
@@ -459,6 +459,7 @@ def build_snapshot(
             "IMAGE_CONFIG_OUTPUT_PATH": remote_image_config_path,
             "ENV_FILE_PATH": remote_env_path,
             "ENSURE_DOCKER_SCRIPT_PATH": ensure_docker_script_remote,
+            "ENSURE_DOCKER_CLI_SCRIPT_PATH": ensure_docker_cli_script_remote,
         }
 
         with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as config_file:

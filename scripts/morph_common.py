@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import base64
+import os
 import shlex
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -14,11 +15,6 @@ DOCKER_COMPOSE_VERSION = "v2.39.4"
 DOCKER_BUILDX_VERSION = "v0.29.0"
 
 
-def _run_remote(snapshot: "Snapshot", command: str) -> "Snapshot":
-    """Execute a command on the snapshot and return the resulting snapshot."""
-    return snapshot.exec(command)
-
-
 def write_remote_file(
     snapshot: "Snapshot",
     *,
@@ -26,15 +22,23 @@ def write_remote_file(
     content: str,
     executable: bool = False,
 ) -> "Snapshot":
-    """Write text content to `remote_path` on the snapshot, optionally chmod +x."""
-    payload = base64.b64encode(content.encode("utf-8")).decode("ascii")
-    snapshot = _run_remote(
-        snapshot,
-        f"printf %s {shlex.quote(payload)} | base64 -d > {shlex.quote(remote_path)}",
-    )
-    if executable:
-        snapshot = _run_remote(snapshot, f"chmod +x {shlex.quote(remote_path)}")
-    return snapshot
+    """Write text content to `remote_path` on the snapshot without remote exec."""
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as tmp:
+            tmp.write(content)
+            tmp.flush()
+            tmp_path = Path(tmp.name)
+        mode = 0o755 if executable else 0o644
+        os.chmod(tmp_path, mode)
+        return snapshot.upload(
+            str(tmp_path),
+            remote_path,
+            recursive=False,
+        )
+    finally:
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
 
 
 def write_remote_file_from_path(
@@ -113,32 +117,91 @@ def ensure_docker() -> str:
         ]
     )
 
-    commands = [
-        "DEBIAN_FRONTEND=noninteractive apt-get update",
-        "DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl gnupg lsb-release",
-        ". /etc/os-release && export distro=${ID:-debian} && export codename=${VERSION_CODENAME:-${UBUNTU_CODENAME:-stable}}",
-        "case \"$distro\" in ubuntu|debian) ;; *) distro='debian';; esac",
-        "install -m 0755 -d /etc/apt/keyrings",
-        "curl -fsSL https://download.docker.com/linux/${distro}/gpg | gpg --batch --yes --dearmor -o /etc/apt/keyrings/docker.gpg",
-        "chmod a+r /etc/apt/keyrings/docker.gpg",
-        "printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/%s %s stable\\n' \"$(dpkg --print-architecture)\" \"$distro\" \"$codename\" > /etc/apt/sources.list.d/docker.list",
-        "DEBIAN_FRONTEND=noninteractive apt-get update",
+    script_lines = [
         f"export DOCKER_VERSION={shlex.quote(DOCKER_ENGINE_VERSION)}",
-        "target_version=$(apt-cache madison docker-ce | awk -v ver=\"$DOCKER_VERSION\" '$3 ~ ver {print $3; exit}')",
-        "if [ -n \"$target_version\" ]; then version_args=\"docker-ce=$target_version docker-ce-cli=$target_version\"; else echo \"Desired Docker Engine $DOCKER_VERSION not found in apt repo; installing latest available.\" >&2; version_args=\"docker-ce docker-ce-cli\"; fi",
-        "DEBIAN_FRONTEND=noninteractive apt-get install -y $version_args containerd.io docker-buildx-plugin docker-compose-plugin python3-docker git",
-        "rm -rf /var/lib/apt/lists/*",
+        "need_install=1",
+        "if command -v docker >/dev/null 2>&1; then",
+        "  installed_version=$(docker --version | awk '{print $3}' | tr -d ',')",
+        "  echo \"Docker version detected: $installed_version\"",
+        "  if dpkg --compare-versions \"$installed_version\" ge \"$DOCKER_VERSION\"; then",
+        "    need_install=0",
+        "    echo \"Docker already meets minimum version $DOCKER_VERSION; skipping install\"",
+        "  else",
+        "    echo \"Docker $installed_version older than required $DOCKER_VERSION; reinstalling\"",
+        "  fi",
+        "fi",
+        "if [ \"$need_install\" -eq 1 ]; then",
+        "  DEBIAN_FRONTEND=noninteractive apt-get update",
+        "  DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl gnupg lsb-release",
+        "  . /etc/os-release && export distro=${ID:-debian} && export codename=${VERSION_CODENAME:-${UBUNTU_CODENAME:-stable}}",
+        "  case \"$distro\" in ubuntu|debian) ;; *) distro='debian';; esac",
+        "  install -m 0755 -d /etc/apt/keyrings",
+        "  curl -fsSL https://download.docker.com/linux/${distro}/gpg | gpg --batch --yes --dearmor -o /etc/apt/keyrings/docker.gpg",
+        "  chmod a+r /etc/apt/keyrings/docker.gpg",
+        "  printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/%s %s stable\\n' \"$(dpkg --print-architecture)\" \"$distro\" \"$codename\" > /etc/apt/sources.list.d/docker.list",
+        "  DEBIAN_FRONTEND=noninteractive apt-get update",
+        "  set +e",
+        "  target_version=$(apt-cache madison docker-ce | awk -v ver=\"$DOCKER_VERSION\" '$3 ~ ver {print $3; exit}')",
+        "  target_status=$?",
+        "  set -e",
+        "  if [ \"$target_status\" -ne 0 ]; then",
+        "    echo 'Failed to determine exact docker-ce version; falling back to latest available' >&2",
+        "    target_version=\"\"",
+        "  fi",
+        "  if [ -n \"$target_version\" ]; then",
+        "    version_args=\"docker-ce=$target_version docker-ce-cli=$target_version\"",
+        "  else",
+        "    echo \"Desired Docker Engine $DOCKER_VERSION not found in apt repo; installing latest available.\" >&2",
+        "    version_args=\"docker-ce docker-ce-cli\"",
+        "  fi",
+        "  echo \"Docker install candidates: $version_args\"",
+        "  if ! DEBIAN_FRONTEND=noninteractive apt-get install -y $version_args containerd.io docker-buildx-plugin docker-compose-plugin python3-docker git; then",
+        "    echo 'Docker CE installation failed; attempting docker.io fallback' >&2",
+        "    DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io docker-buildx-plugin docker-compose-plugin python3-docker git",
+        "  fi",
+        "  rm -rf /var/lib/apt/lists/*",
+        "fi",
+        "if ! command -v docker >/dev/null 2>&1; then",
+        "  echo 'Docker CLI missing after installation attempts' >&2",
+        "  exit 1",
+        "fi",
         "mkdir -p /etc/docker",
         f"echo {shlex.quote(daemon_config)} > /etc/docker/daemon.json",
         "echo 'DOCKER_BUILDKIT=1' >> /etc/environment",
-        "systemctl restart docker",
-        docker_ready_loop,
-        "installed_version=$(docker --version | awk '{print $3}' | tr -d ',')",
-        "echo \"Docker version: $installed_version\"",
-        "if ! dpkg --compare-versions \"$installed_version\" ge \"$DOCKER_VERSION\"; then echo \"Docker version $installed_version is older than required $DOCKER_VERSION\" >&2; exit 1; fi",
-        "docker compose version",
-        "docker buildx version",
-        "echo 'Docker commands verified'",
-        "echo '::1       localhost' >> /etc/hosts",
+        "if command -v systemctl >/dev/null 2>&1; then",
+        "  systemctl enable docker >/dev/null 2>&1 || true",
+        "  systemctl restart docker",
+        "else",
+        "  if ! command -v dockerd >/dev/null 2>&1; then",
+        "    echo 'dockerd binary missing; cannot start Docker daemon' >&2",
+        "    exit 1",
+        "  fi",
+        "  echo 'systemctl unavailable; starting dockerd manually' >&2",
+        "  pkill -f '^dockerd' >/dev/null 2>&1 || true",
+        "  nohup dockerd >/var/log/dockerd.log 2>&1 &",
+        "  sleep 3",
+        "fi",
     ]
-    return " && ".join(commands)
+    script_lines.extend(docker_ready_loop.splitlines())
+    script_lines.extend(
+        [
+            "installed_version=$(docker --version | awk '{print $3}' | tr -d \",\")",
+            "echo \"Docker version: $installed_version\"",
+            "if ! dpkg --compare-versions \"$installed_version\" ge \"$DOCKER_VERSION\"; then",
+            "  echo \"Docker version $installed_version is older than required $DOCKER_VERSION\" >&2",
+            "  exit 1",
+            "fi",
+            "if docker compose version >/dev/null 2>&1; then",
+            "  docker compose version",
+            "elif command -v docker-compose >/dev/null 2>&1; then",
+            "  docker-compose --version",
+            "else",
+            "  echo 'Docker compose CLI not available after installation' >&2",
+            "  exit 1",
+            "fi",
+            "docker buildx version",
+            "echo 'Docker commands verified'",
+            "echo '::1       localhost' >> /etc/hosts",
+        ]
+    )
+    return "\n".join(script_lines)
