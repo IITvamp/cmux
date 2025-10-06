@@ -70,9 +70,16 @@
     "icon": "build/icon.png",
     "category": "Development",
     "executableName": "cmux",
+    "artifactName": "${name}-${version}-${arch}.${ext}",
     "target": [
-      "AppImage",
-      "deb"
+      {
+        "target": "AppImage",
+        "arch": ["x64", "arm64"]
+      },
+      {
+        "target": "deb",
+        "arch": ["x64", "arm64"]
+      }
     ],
     "desktop": {
       "entry": {
