@@ -6,7 +6,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import type { CSSProperties } from "react";
-import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { PersistentWebView } from "@/components/persistent-webview";
 import { Button } from "@/components/ui/button";
