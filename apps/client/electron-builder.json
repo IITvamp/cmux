@@ -74,11 +74,13 @@
       "deb"
     ],
     "desktop": {
-      "Name": "cmux",
-      "StartupWMClass": "cmux",
-      "Terminal": false,
-      "Type": "Application",
-      "Categories": "Development;"
+      "entry": {
+        "Name": "cmux",
+        "StartupWMClass": "cmux",
+        "Terminal": "false",
+        "Type": "Application",
+        "Categories": "Development;"
+      }
     },
     "maintainer": "cmux <hello@cmux.dev>"
   },
