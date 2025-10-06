@@ -435,7 +435,7 @@ export interface ClientToServerEvents {
   // Terminal operations
   "start-task": (
     data: StartTask,
-    callback: (response: TaskAcknowledged | TaskError) => void
+    callback: (response: TaskAcknowledged | TaskStarted | TaskError) => void
   ) => void;
   "git-status": (data: GitStatusRequest) => void;
   "git-diff": (
