@@ -69,6 +69,7 @@
   "linux": {
     "icon": "build/icon.png",
     "category": "Development",
+    "executableName": "cmux",
     "target": [
       "AppImage",
       "deb"
