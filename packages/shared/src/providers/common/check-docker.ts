@@ -73,43 +73,6 @@ export function getDockerSocketCandidates(): DockerSocketCandidates {
   };
 }
 
-function getDockerSocketPath(): string | null {
-  const { remoteHost, candidates } = getDockerSocketCandidates();
-  if (remoteHost) {
-    return null;
-  }
-
-  return candidates[0] ?? null;
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
-function hasCode(error: unknown): error is { code: unknown } {
-  return error !== null && typeof error === "object" && "code" in error;
-}
-
-function isRetryableDockerError(error: unknown): boolean {
-  if (hasCode(error) && error.code === "ENOENT") {
-    return false;
-  }
-
-  const message = describeExecError(error);
-  const lower = message.toLowerCase();
-  return (
-    lower.includes("cannot connect to the docker daemon") ||
-    lower.includes("is the docker daemon running") ||
-    lower.includes("connection refused") ||
-    lower.includes("bad file descriptor") ||
-    lower.includes("dial unix") ||
-    lower.includes("context deadline exceeded") ||
-    lower.includes("no such host")
-  );
-}
-
 function hasStderr(error: unknown): error is { stderr: unknown } {
   return error !== null && typeof error === "object" && "stderr" in error;
 }
@@ -198,10 +161,7 @@ async function dockerSocketExists(): Promise<{
   return { accessible: false, candidates, remoteHost: false };
 }
 
-export async function ensureDockerDaemonReady(options?: {
-  attempts?: number;
-  delayMs?: number;
-}): Promise<{
+export async function ensureDockerDaemonReady(): Promise<{
   ready: boolean;
   version?: string;
   error?: string;
@@ -234,9 +194,7 @@ export async function checkDockerStatus(): Promise<{
   } catch (error) {
     return {
       isRunning: false,
-      error:
-        describeExecError(error) ||
-        "Docker is not installed or not available in PATH",
+      error: describeExecError(error),
     };
   }
 
@@ -258,105 +216,80 @@ export async function checkDockerStatus(): Promise<{
   if (!readiness.ready) {
     return {
       isRunning: false,
-      error:
-        readiness.error || "Docker daemon is not running or not accessible",
+      error: readiness.error ?? "Docker daemon is not running or not accessible",
     };
   }
 
   try {
     await execAsync("docker ps");
   } catch (error) {
-    if (!isRetryableDockerError(error)) {
-      return {
-        isRunning: false,
-        error:
-          describeExecError(error) ||
-          "Docker daemon is not responding to commands",
-      };
-    }
-
-    const retry = await ensureDockerDaemonReady({ attempts: 3, delayMs: 500 });
-    if (!retry.ready) {
-      return {
-        isRunning: false,
-        error:
-          retry.error || "Docker daemon is not responding to commands",
-      };
-    }
-
-    try {
-      await execAsync("docker ps");
-    } catch (retryError) {
-      return {
-        isRunning: false,
-        error:
-          describeExecError(retryError) ||
-          "Docker daemon is not responding to commands",
-      };
-    }
+    return {
+      isRunning: false,
+      error: describeExecError(error),
+    };
   }
 
-  const result: {
-    isRunning: boolean;
-    version?: string;
-    workerImage?: {
-      name: string;
-      isAvailable: boolean;
-      isPulling?: boolean;
-    };
-  } = {
-    isRunning: true,
-    version: readiness.version,
-  };
-
-  if (!result.version) {
+  let version = readiness.version;
+  if (!version) {
     try {
       const { stdout } = await execAsync(DOCKER_VERSION_COMMAND);
-      result.version = parseVersion(stdout);
+      version = parseVersion(stdout);
     } catch {
       // Ignore failure to parse version
     }
   }
 
-  const imageName = process.env.WORKER_IMAGE_NAME || "cmux-worker:0.0.1";
+  const imageName = process.env.WORKER_IMAGE_NAME ?? "cmux-worker:0.0.1";
 
-  if (imageName) {
-    try {
-      await execAsync(`docker image inspect "${imageName.replace(/"/g, '\\"')}"`);
-      result.workerImage = {
+  try {
+    await execAsync(`docker image inspect "${imageName.replace(/"/g, '\\"')}"`);
+    return {
+      isRunning: true,
+      version,
+      workerImage: {
         name: imageName,
         isAvailable: true,
-      };
-    } catch (error) {
-      const errorMessage = describeExecError(error);
-      if (errorMessage.toLowerCase().includes("no such image")) {
-        result.workerImage = {
+      },
+    };
+  } catch (error) {
+    const errorMessage = describeExecError(error);
+    if (errorMessage.toLowerCase().includes("no such image")) {
+      return {
+        isRunning: true,
+        version,
+        workerImage: {
           name: imageName,
           isAvailable: false,
           isPulling: false,
-        };
-      } else {
-        try {
-          const { stdout } = await execAsync(
-            "docker ps -a --format '{{.Command}}'"
-          );
-          const isPulling = stdout.includes("pull ") && stdout.includes(imageName);
+        },
+      };
+    }
 
-          result.workerImage = {
-            name: imageName,
-            isAvailable: false,
-            isPulling,
-          };
-        } catch {
-          result.workerImage = {
-            name: imageName,
-            isAvailable: false,
-            isPulling: false,
-          };
-        }
-      }
+    try {
+      const { stdout } = await execAsync(
+        "docker ps -a --format '{{.Command}}'"
+      );
+      const isPulling = stdout.includes("pull ") && stdout.includes(imageName);
+
+      return {
+        isRunning: true,
+        version,
+        workerImage: {
+          name: imageName,
+          isAvailable: false,
+          isPulling,
+        },
+      };
+    } catch {
+      return {
+        isRunning: true,
+        version,
+        workerImage: {
+          name: imageName,
+          isAvailable: false,
+          isPulling: false,
+        },
+      };
     }
   }
-
-  return result;
 }
