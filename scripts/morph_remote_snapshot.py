@@ -28,7 +28,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-import textwrap
+import uuid
 import time
 import typing as t
 from contextlib import contextmanager
@@ -38,7 +38,7 @@ from urllib.error import HTTPError, URLError
 
 import dotenv
 from morphcloud.api import Instance, MorphCloudClient, Snapshot
-from morph_common import ensure_docker, ensure_docker_cli_plugins, write_remote_file
+from morph_common import write_remote_file
 
 dotenv.load_dotenv()
 
@@ -85,6 +85,9 @@ class TimingsCollector:
     def time(self, label: str, func: t.Callable[[], T]) -> T:
         with self.section(label):
             return func()
+
+    def add(self, label: str, duration: float) -> None:
+        self._sections.append((label, duration))
 
     def summary_lines(self) -> list[str]:
         if not self._sections:
@@ -171,39 +174,109 @@ class DockerImageConfig(t.TypedDict):
     user: str
 
 
-def run_snapshot_bash(snapshot: Snapshot, script: str) -> Snapshot:
-    """Execute a bash script on the snapshot."""
-    return snapshot.exec(f"bash -lc {shlex.quote(script)}")
+def parse_image_config(raw: t.Any) -> DockerImageConfig:
+    """Validate and normalize the docker image config payload."""
+    if not isinstance(raw, dict):
+        raise ValueError("image config payload must be a mapping")
+
+    def _list(value: t.Any) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return [str(item) for item in value]
+
+    return {
+        "entrypoint": _list(raw.get("entrypoint")),
+        "cmd": _list(raw.get("cmd")),
+        "env": _list(raw.get("env")),
+        "workdir": str(raw.get("workdir") or "/"),
+        "user": str(raw.get("user") or "root"),
+    }
+
+
+def _git_candidates() -> list[str]:
+    """Return viable git binary paths preferring homebrew installations."""
+    hints = [
+        os.environ.get("CMUX_GIT_PATH"),
+        os.environ.get("GIT_BINARY"),
+        "/opt/homebrew/bin/git",
+        "/usr/local/bin/git",
+    ]
+
+    which_git = shutil.which("git")
+    if which_git:
+        hints.append(which_git)
+
+    hints.append("git")
+
+    seen: set[str] = set()
+    candidates: list[str] = []
+    for hint in hints:
+        if not hint:
+            continue
+        resolved = shutil.which(hint) if os.path.basename(hint) == hint else hint
+        if not resolved:
+            continue
+        full_path = str(Path(resolved).resolve())
+        if full_path in seen:
+            continue
+        if os.access(full_path, os.X_OK):
+            seen.add(full_path)
+            candidates.append(full_path)
+    return candidates
+
+
+def _run_git_command(repo_root: Path, args: list[str]) -> subprocess.CompletedProcess[str] | None:
+    """Attempt git command with multiple candidates; returns first success."""
+    errors: list[str] = []
+    for git_bin in _git_candidates():
+        result = subprocess.run(
+            [git_bin, "-C", str(repo_root), *args],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            return result
+        error_excerpt = result.stderr.strip() or f"exit code {result.returncode}"
+        errors.append(f"{git_bin}: {error_excerpt}")
+
+    if errors:
+        joined = "; ".join(errors)
+        console.always(f"Failed to run git command {args}: {joined}")
+    else:
+        console.always(f"No git executable found to run command {args}")
+    return None
 
 
 def list_repo_files(repo_root: Path) -> list[Path]:
     """Return repository files respecting gitignore rules via git ls-files."""
-    result = subprocess.run(
-        ["git", "-C", str(repo_root), "rev-parse", "--is-inside-work-tree"],
-        capture_output=True,
-        text=True,
-        check=False,
+    rev_parse = _run_git_command(
+        repo_root,
+        ["rev-parse", "--is-inside-work-tree"],
     )
-    if result.returncode != 0 or result.stdout.strip() != "true":
-        raise RuntimeError(f"{repo_root} is not inside a git work tree")
+    if rev_parse and rev_parse.stdout.strip() == "true":
+        files_result = _run_git_command(
+            repo_root,
+            [
+                "ls-files",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+                "-z",
+            ],
+        )
+        if files_result:
+            entries = [entry for entry in files_result.stdout.split("\0") if entry]
+            return [Path(entry) for entry in entries]
 
-    files_result = subprocess.run(
-        [
-            "git",
-            "-C",
-            str(repo_root),
-            "ls-files",
-            "--cached",
-            "--others",
-            "--exclude-standard",
-            "-z",
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
+    console.always(
+        "Falling back to filesystem walk for repository packaging; .gitignore will not be applied."
     )
-    entries = [entry for entry in files_result.stdout.split("\0") if entry]
-    return [Path(entry) for entry in entries]
+    files: list[Path] = []
+    for path in repo_root.rglob("*"):
+        if path.is_file() and ".git" not in path.parts:
+            files.append(path.relative_to(repo_root))
+    return files
 
 
 def create_repo_archive(repo_root: Path) -> str:
@@ -220,211 +293,6 @@ def create_repo_archive(repo_root: Path) -> str:
     return archive_path
 
 
-def parse_image_config(data: list[t.Any]) -> DockerImageConfig:
-    """Extract runtime configuration from docker image inspect output."""
-    if not data:
-        raise ValueError("docker image inspect returned no data")
-    config = data[0]["Config"]
-    return {
-        "entrypoint": config.get("Entrypoint") or [],
-        "cmd": config.get("Cmd") or [],
-        "env": config.get("Env") or [],
-        "workdir": config.get("WorkingDir") or "/",
-        "user": config.get("User") or "root",
-    }
-
-
-def ensure_remote_tooling(snapshot: Snapshot) -> Snapshot:
-    """Install base utilities and Docker tooling on the snapshot."""
-    console.info("Ensuring Docker tooling...")
-    docker_command = " && ".join([ensure_docker(), ensure_docker_cli_plugins()])
-
-    console.info("Installing base utilities and preparing directories...")
-    return snapshot.exec(
-        f"""
-        DEBIAN_FRONTEND=noninteractive apt-get update &&
-        DEBIAN_FRONTEND=noninteractive apt-get install -y curl procps util-linux coreutils tar &&
-        rm -rf /var/lib/apt/lists/* &&
-        mkdir -p /opt/app/rootfs /opt/app/workdir &&
-        {docker_command}
-        """
-    )
-
-
-def enable_cmux_units(snapshot: Snapshot) -> Snapshot:
-    """Copy and enable cmux systemd units that ship inside the rootfs."""
-    console.info("Enabling cmux systemd units...")
-
-    units = [
-        "cmux.target",
-        "cmux-openvscode.service",
-        "cmux-worker.service",
-        "cmux-dockerd.service",
-        "cmux-vnc.service",
-    ]
-    quoted_units = " ".join(shlex.quote(unit) for unit in units)
-
-    script = textwrap.dedent(
-        f"""
-        set -euo pipefail
-        for unit in {quoted_units}; do
-            src="/opt/app/rootfs/usr/lib/systemd/system/$unit"
-            dest="/etc/systemd/system/$unit"
-            if [ -f "$src" ]; then
-                cp "$src" "$dest"
-            fi
-        done
-
-        mkdir -p /usr/local/lib/cmux
-        if [ -d /opt/app/rootfs/usr/local/lib/cmux ]; then
-            cp -a /opt/app/rootfs/usr/local/lib/cmux/. /usr/local/lib/cmux/
-        fi
-
-        for tool in cmux-rootfs-exec configure-openvscode cmux-start-vnc; do
-            path="/usr/local/lib/cmux/$tool"
-            if [ -f "$path" ]; then
-                chmod +x "$path"
-            fi
-        done
-
-        mkdir -p /var/log/cmux
-        systemctl daemon-reload
-        systemctl enable cmux.target
-        """
-    ).strip()
-
-    return run_snapshot_bash(snapshot, script)
-
-
-def run_sanity_checks(snapshot: Snapshot, timings: TimingsCollector) -> Snapshot:
-    """Run a battery of chroot sanity checks to verify runtime tooling."""
-
-    console.info("Running chroot sanity checks (forkpty, docker, envctl)...")
-
-    script = textwrap.dedent(
-        """
-        set -euo pipefail
-
-        if [ ! -f /opt/app/app.env ]; then
-            echo "cmux sanity: missing /opt/app/app.env" >&2
-            exit 1
-        fi
-
-        set -a
-        # shellcheck disable=SC1091
-        . /opt/app/app.env
-        set +a
-
-        run_chroot() {
-            CMUX_ROOTFS="$CMUX_ROOTFS" \
-            CMUX_RUNTIME_ROOT="$CMUX_RUNTIME_ROOT" \
-            CMUX_OVERLAY_UPPER="${CMUX_OVERLAY_UPPER:-}" \
-            CMUX_OVERLAY_WORK="${CMUX_OVERLAY_WORK:-}" \
-            /usr/local/lib/cmux/cmux-rootfs-exec "$@"
-        }
-
-        log_dir=/tmp/cmux-sanity
-        rm -rf "$log_dir"
-        mkdir -p "$log_dir"
-        export CMUX_DEBUG=1
-
-        forkpty_check() {
-            local log="$log_dir/forkpty.log"
-            if run_chroot /bin/bash >"$log" 2>&1 <<'BASH'
-set -euo pipefail
-if command -v script >/dev/null 2>&1; then
-    if script -qfec "echo forkpty-ok" /dev/null >/dev/null; then
-        exit 0
-    fi
-fi
-
-if ! command -v python3 >/dev/null 2>&1; then
-    echo "python3 not available for forkpty fallback" >&2
-    exit 1
-fi
-
-python3 - <<'PY'
-import os
-import pty
-import sys
-
-pid, fd = pty.fork()
-if pid == 0:
-    os.execlp("sh", "sh", "-c", "echo forkpty-python")
-
-data = os.read(fd, 1024)
-if b"forkpty-python" not in data:
-    raise SystemExit("forkpty output missing")
-PY
-BASH
-            then
-                echo "[sanity] forkpty ok"
-            else
-                echo "[sanity] forkpty failed" >&2
-                cat "$log" >&2 || true
-                return 1
-            fi
-        }
-
-        docker_check() {
-            local log="$log_dir/docker.log"
-            if run_chroot /bin/bash >"$log" 2>&1 <<'BASH'
-set -euo pipefail
-docker run --pull=missing --rm hello-world >/dev/null
-docker image rm hello-world >/dev/null 2>&1 || true
-BASH
-            then
-                echo "[sanity] docker run ok"
-            else
-                echo "[sanity] docker run failed" >&2
-                cat "$log" >&2 || true
-                return 1
-            fi
-        }
-
-        envctl_check() {
-            local log="$log_dir/envctl.log"
-            if run_chroot /bin/bash >"$log" 2>&1 <<'BASH'
-set -euo pipefail
-var_name=MY_ENV_VAR_SANITY
-var_value=envctl-ok
-
-envctl set "${var_name}=${var_value}"
-actual=$(envctl get "${var_name}" || true)
-if [[ "${actual}" != "${var_value}" ]]; then
-    echo "expected ${var_value}, got '${actual}'" >&2
-    exit 1
-fi
-
-envctl unset "${var_name}"
-if envctl get "${var_name}" | grep -q .; then
-    echo "envctl value persisted after unset" >&2
-    exit 1
-fi
-BASH
-            then
-                echo "[sanity] envctl propagation ok"
-            else
-                echo "[sanity] envctl propagation failed" >&2
-                cat "$log" >&2 || true
-                return 1
-            fi
-        }
-
-        forkpty_check
-        docker_check
-        envctl_check
-
-        rm -rf "$log_dir"
-        echo "[sanity] all checks passed"
-        """
-    ).strip()
-
-    return timings.time(
-        "build_snapshot:sanity_checks",
-        lambda: run_snapshot_bash(snapshot, script),
-    )
-
 def build_snapshot(
     dockerfile_path: str | None,
     image_name: str | None,
@@ -436,9 +304,30 @@ def build_snapshot(
 
     repo_root = Path.cwd()
     archive_path: str | None = None
-    remote_archive_path = "/opt/app/repo.tar.gz"
+    local_config_path: str | None = None
+    local_result_path: str | None = None
+
+    plan_script_source = Path(__file__).with_name("morph_remote_plan.sh")
+    if not plan_script_source.exists():
+        raise FileNotFoundError(
+            f"Remote plan script not found: {plan_script_source}"  # pragma: no cover - defensive
+        )
+
+    run_id = uuid.uuid4().hex
+    remote_archive_path = f"/opt/app/repo-{run_id}.tar.gz"
     remote_repo_root = "/opt/app/workdir/repo"
-    build_log_remote = "/opt/app/docker-build.log"
+    remote_context_dir = ""
+    remote_dockerfile_path = ""
+    remote_plan_path = f"/opt/app/cmux-build-plan-{run_id}.sh"
+    remote_config_path = f"/opt/app/cmux-build-config-{run_id}.sh"
+    remote_result_path = f"/opt/app/cmux-build-result-{run_id}.json"
+    remote_plan_log_path = f"/opt/app/cmux-build-{run_id}.log"
+    remote_build_log_path = "/opt/app/docker-build.log"
+    remote_image_config_path = f"/opt/app/docker-image-config-{run_id}.json"
+    remote_rootfs_tar_path = f"/opt/app/rootfs-{run_id}.tar"
+    remote_env_path = f"/opt/app/app-{run_id}.env"
+
+    mode = "image" if image_name else "build"
     built_image: str
 
     try:
@@ -453,23 +342,66 @@ def build_snapshot(
             ),
         )
 
+        console.info("Uploading remote build plan script...")
         snapshot = timings.time(
-            "build_snapshot:ensure_tooling",
-            lambda: ensure_remote_tooling(snapshot),
+            "build_snapshot:upload_plan_script",
+            lambda: snapshot.upload(
+                str(plan_script_source),
+                remote_plan_path,
+                recursive=False,
+            ),
+        )
+        snapshot = timings.time(
+            "build_snapshot:chmod_plan_script",
+            lambda: snapshot.exec(f"chmod +x {shlex.quote(remote_plan_path)}"),
         )
 
-        if image_name:
-            console.info(
-                f"Pulling Docker image on snapshot: {image_name} (platform: {platform})"
-            )
-            snapshot = timings.time(
-                "build_snapshot:remote_pull_image",
-                lambda: snapshot.exec(
-                    f"docker pull --platform {shlex.quote(platform)} {shlex.quote(image_name)}"
-                ),
-            )
-            built_image = image_name
-        else:
+        ensure_docker_script_remote = f"/opt/app/cmux-ensure-docker-{run_id}.sh"
+        ensure_docker_script_lines = [
+            "#!/usr/bin/env bash",
+            "set -Eeuo pipefail",
+            "install -m 0755 -d /etc/apt/keyrings",
+            "if [ ! -f /etc/apt/keyrings/docker.gpg ]; then",
+            "  curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --batch --yes --dearmor -o /etc/apt/keyrings/docker.gpg",
+            "fi",
+            "chmod a+r /etc/apt/keyrings/docker.gpg",
+            "ARCH=$(dpkg --print-architecture)",
+            "DISTRO=$( . /etc/os-release && echo ${ID:-debian} )",
+            "CODENAME=$( . /etc/os-release && echo ${VERSION_CODENAME:-${UBUNTU_CODENAME:-stable}} )",
+            "printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/%s %s stable\\n' \"${ARCH}\" \"${DISTRO}\" \"${CODENAME}\" > /etc/apt/sources.list.d/docker.list",
+            "DEBIAN_FRONTEND=noninteractive apt-get update",
+            "DEBIAN_FRONTEND=noninteractive apt-get install -y \\",
+            "  docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin python3-docker git",
+            "systemctl enable docker",
+            "systemctl restart docker",
+            "for i in {1..30}; do",
+            "  if docker info >/dev/null 2>&1; then",
+            "    echo 'Docker ready'",
+            "    break",
+            "  fi",
+            "  if [ \"$i\" -eq 30 ]; then",
+            "    echo 'Docker failed to start after 30 attempts' >&2",
+            "    exit 1",
+            "  fi",
+            "  sleep 2",
+            "done",
+            "docker --version",
+            "docker compose version",
+            "",
+        ]
+
+        console.info("Writing remote ensure-docker script...")
+        snapshot = timings.time(
+            "build_snapshot:write_ensure_docker_script",
+            lambda: write_remote_file(
+                snapshot,
+                remote_path=ensure_docker_script_remote,
+                content="\n".join(ensure_docker_script_lines),
+                executable=True,
+            ),
+        )
+
+        if mode == "build":
             dockerfile_local = dockerfile_path or "Dockerfile"
             dockerfile_abs = (repo_root / dockerfile_local).resolve()
             try:
@@ -481,6 +413,15 @@ def build_snapshot(
 
             if not dockerfile_abs.exists():
                 raise FileNotFoundError(f"Dockerfile not found: {dockerfile_abs}")
+
+            context_rel = dockerfile_rel.parent
+            remote_context_dir = (
+                remote_repo_root
+                if context_rel.as_posix() == "."
+                else f"{remote_repo_root}/{context_rel.as_posix()}"
+            )
+            remote_dockerfile_path = f"{remote_repo_root}/{dockerfile_rel.as_posix()}"
+            built_image = f"cmux-morph-temp:{os.getpid()}"
 
             console.info("Packaging repository for remote build...")
             archive_path = timings.time(
@@ -497,278 +438,147 @@ def build_snapshot(
                     recursive=False,
                 ),
             )
+        else:
+            assert image_name is not None  # for type checking
+            built_image = image_name
 
-            console.info("Extracting repository archive on snapshot...")
-            snapshot = timings.time(
-                "build_snapshot:extract_repo_archive",
-                lambda: run_snapshot_bash(
-                    snapshot,
-                    textwrap.dedent(
-                        f"""
-                        set -euo pipefail
-                        mkdir -p {shlex.quote(remote_repo_root)}
-                        tar -xzf {shlex.quote(remote_archive_path)} -C {shlex.quote(remote_repo_root)}
-                        rm {shlex.quote(remote_archive_path)}
-                        """
-                    ).strip(),
-                ),
-            )
+        config_entries = {
+            "MODE": mode,
+            "PLATFORM": platform,
+            "REMOTE_ARCHIVE_PATH": remote_archive_path,
+            "REMOTE_REPO_ROOT": remote_repo_root,
+            "REMOTE_CONTEXT_DIR": remote_context_dir,
+            "REMOTE_DOCKERFILE_PATH": remote_dockerfile_path,
+            "DOCKER_BUILD_TARGET": target or "",
+            "BUILD_LOG_PATH": remote_build_log_path,
+            "BUILT_IMAGE": built_image,
+            "SOURCE_IMAGE": image_name or "",
+            "ROOTFS_TAR_PATH": remote_rootfs_tar_path,
+            "RESULT_PATH": remote_result_path,
+            "PLAN_LOG_PATH": remote_plan_log_path,
+            "IMAGE_CONFIG_OUTPUT_PATH": remote_image_config_path,
+            "ENV_FILE_PATH": remote_env_path,
+            "ENSURE_DOCKER_SCRIPT_PATH": ensure_docker_script_remote,
+        }
 
-            context_rel = dockerfile_rel.parent
-            context_rel_posix = context_rel.as_posix()
-            remote_context_dir = (
-                remote_repo_root
-                if context_rel_posix == "."
-                else f"{remote_repo_root}/{context_rel_posix}"
-            )
-            remote_dockerfile_path = (
-                f"{remote_repo_root}/{dockerfile_rel.as_posix()}"
-            )
+        with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as config_file:
+            for key, value in config_entries.items():
+                quoted = shlex.quote(str(value))
+                config_file.write(f"export {key}={quoted}\n")
+            local_config_path = config_file.name
 
-            build_tag = f"cmux-morph-temp:{os.getpid()}"
-            build_parts = [
-                "docker buildx build",
-                "--progress=plain",
-                f"--platform {shlex.quote(platform)}",
-                f"-t {shlex.quote(build_tag)}",
-                f"-f {shlex.quote(remote_dockerfile_path)}",
-                "--load",
-                ".",
-            ]
-            if target:
-                build_parts.insert(4, f"--target {shlex.quote(target)}")
-            build_command = " ".join(build_parts)
-
-            build_script = textwrap.dedent(
-                f"""
-                set -euo pipefail
-                logfile={shlex.quote(build_log_remote)}
-                rm -f "$logfile"
-                cd {shlex.quote(remote_context_dir)}
-                {build_command} |& tee "$logfile"
-                """
-            ).strip()
-
-            console.info("Building Docker image on snapshot...")
-            try:
-                snapshot = timings.time(
-                    "build_snapshot:remote_build_image",
-                    lambda: run_snapshot_bash(snapshot, build_script),
-                )
-            except RuntimeError as build_err:
-                console.always(
-                    f"Remote docker build failed; attempting to download log from {build_log_remote}"
-                )
-                local_fd, local_log_path = tempfile.mkstemp(
-                    prefix="cmux-docker-build-",
-                    suffix=".log",
-                )
-                os.close(local_fd)
-                try:
-                    snapshot = snapshot.download(
-                        build_log_remote,
-                        local_log_path,
-                        recursive=False,
-                    )
-                    console.always(
-                        f"Remote docker build log saved to {local_log_path}"
-                    )
-                    try:
-                        log_tail = Path(local_log_path).read_text().splitlines()[-200:]
-                        if log_tail:
-                            console.always("--- docker build log tail ---")
-                            console.always("\n".join(log_tail))
-                    except Exception as read_err:  # noqa: BLE001
-                        console.always(
-                            f"Failed to read docker build log tail: {read_err}"
-                        )
-                except Exception as log_err:  # noqa: BLE001
-                    console.always(
-                        f"Failed to download docker build log: {log_err}"
-                    )
-                raise
-
-            built_image = build_tag
-
-        inspect_remote_path = "/opt/app/docker-image-config.json"
-        console.info("Recording Docker image configuration...")
+        console.info("Uploading remote build plan configuration...")
         snapshot = timings.time(
-            "build_snapshot:inspect_image",
-            lambda: snapshot.exec(
-                f"docker image inspect {shlex.quote(built_image)} > {shlex.quote(inspect_remote_path)}"
-            ),
-        )
-
-        with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-            local_inspect_path = tmp_file.name
-
-        snapshot = timings.time(
-            "build_snapshot:download_image_config",
-            lambda: snapshot.download(
-                inspect_remote_path,
-                local_inspect_path,
+            "build_snapshot:upload_plan_config",
+            lambda: snapshot.upload(
+                local_config_path,
+                remote_config_path,
                 recursive=False,
             ),
         )
-        inspect_data = json.loads(Path(local_inspect_path).read_text())
-        os.unlink(local_inspect_path)
-        snapshot = snapshot.exec(f"rm {shlex.quote(inspect_remote_path)}")
 
-        config = parse_image_config(inspect_data)
-        console.info(
-            f"Image config: entrypoint={config['entrypoint']}, cmd={config['cmd']}, "
-            f"workdir={config['workdir']}, user={config['user']}"
-        )
+        def collect_plan_logs(current_snapshot: Snapshot) -> Snapshot:
+            updated_snapshot = current_snapshot
 
-        rootfs_tar_remote = "/opt/app/rootfs.tar"
-        console.info("Exporting Docker image to rootfs tarball...")
-        snapshot = timings.time(
-            "build_snapshot:export_rootfs",
-            lambda: run_snapshot_bash(
-                snapshot,
-                textwrap.dedent(
-                    f"""
-                    set -euo pipefail
-                    cid=$(docker create --platform {shlex.quote(platform)} {shlex.quote(built_image)})
-                    cleanup() {{
-                        docker rm -f "$cid" >/dev/null 2>&1 || true
-                    }}
-                    trap cleanup EXIT
-                    docker export "$cid" -o {shlex.quote(rootfs_tar_remote)}
-                    cleanup
-                    trap - EXIT
-                    """
-                ).strip(),
-            ),
-        )
-
-        console.info("Extracting rootfs on snapshot...")
-        snapshot = timings.time(
-            "build_snapshot:extract_rootfs",
-            lambda: snapshot.exec(
-                "tar -xf {tar_path} -C /opt/app/rootfs && rm {tar_path}".format(
-                    tar_path=shlex.quote(rootfs_tar_remote)
+            def _download(remote_path: str, label: str) -> None:
+                nonlocal updated_snapshot
+                fd, local_path = tempfile.mkstemp(
+                    prefix=f"cmux-{label}-",
+                    suffix=".log",
                 )
-            ),
+                os.close(fd)
+                try:
+                    updated_snapshot = updated_snapshot.download(
+                        remote_path,
+                        local_path,
+                        recursive=False,
+                    )
+                    console.always(f"{label.replace('_', ' ')} saved to {local_path}")
+                    try:
+                        tail_lines = (
+                            Path(local_path)
+                            .read_text(encoding="utf-8", errors="ignore")
+                            .splitlines()[-200:]
+                        )
+                        if tail_lines:
+                            console.always(f"--- {label.replace('_', ' ')} tail ---")
+                            console.always(os.linesep.join(tail_lines))
+                    except Exception as read_err:  # noqa: BLE001
+                        console.always(
+                            f"Failed to read {label} tail: {read_err}",
+                        )
+                except Exception as download_err:  # noqa: BLE001
+                    console.always(
+                        f"Failed to download {label}: {download_err}",
+                    )
+
+            _download(remote_plan_log_path, "plan_log")
+            if mode == "build":
+                _download(remote_build_log_path, "build_log")
+
+            return updated_snapshot
+
+        console.info("Executing remote build plan...")
+        try:
+            snapshot = timings.time(
+                "build_snapshot:execute_plan",
+                lambda: snapshot.exec(
+                    f"bash {shlex.quote(remote_plan_path)} {shlex.quote(remote_config_path)}"
+                ),
+            )
+        except RuntimeError as plan_error:
+            console.always(
+                "Remote build plan failed; attempting to collect remote logs",
+            )
+            snapshot = collect_plan_logs(snapshot)
+            raise plan_error
+
+        with tempfile.NamedTemporaryFile(delete=False) as result_file:
+            local_result_path = result_file.name
+
+        try:
+            snapshot = timings.time(
+                "build_snapshot:download_plan_result",
+                lambda: snapshot.download(
+                    remote_result_path,
+                    local_result_path,
+                    recursive=False,
+                ),
+            )
+        except FileNotFoundError as download_error:
+            snapshot = collect_plan_logs(snapshot)
+            raise RuntimeError(
+                f"Remote build plan did not produce result file at {remote_result_path}"
+            ) from download_error
+
+        result_data = json.loads(Path(local_result_path).read_text(encoding="utf-8"))
+
+        timings_payload = result_data.get("timings", {})
+        if not isinstance(timings_payload, dict):
+            raise ValueError("Remote plan timings payload malformed")
+
+        for label, value in timings_payload.items():
+            try:
+                timings.add(str(label), float(value))
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"Invalid timing entry {label!r}: {value!r}"
+                ) from exc
+
+        config = parse_image_config(result_data.get("image_config"))
+        console.info(
+            f"Image config: entrypoint={config['entrypoint']}, "
+            f"cmd={config['cmd']}, workdir={config['workdir']}, user={config['user']}"
         )
-
-        console.info("Synchronizing rootfs DNS configuration...")
-        snapshot = timings.time(
-            "build_snapshot:sync_resolv_conf",
-            lambda: run_snapshot_bash(
-                snapshot,
-                textwrap.dedent(
-                    """
-                    set -euo pipefail
-
-                    dest=/opt/app/rootfs/etc/resolv.conf
-                    mkdir -p /opt/app/rootfs/etc
-                    rm -f "$dest"
-
-                    source_resolv=""
-                    if [ -f /run/systemd/resolve/resolv.conf ]; then
-                        source_resolv=/run/systemd/resolve/resolv.conf
-                    elif [ -f /etc/resolv.conf ]; then
-                        source_resolv=/etc/resolv.conf
-                    fi
-
-                    if [ -n "$source_resolv" ]; then
-                        cp -L "$source_resolv" "$dest"
-                        sed -i '/^[[:space:]]*nameserver[[:space:]]*127\./d' "$dest" || true
-                        sed -i '/^[[:space:]]*nameserver[[:space:]]*::1/d' "$dest" || true
-                    fi
-
-                    if ! grep -Eq '^[[:space:]]*nameserver[[:space:]]+' "$dest" 2>/dev/null; then
-                        cat <<'EOF' >"$dest"
-nameserver 1.1.1.1
-nameserver 1.0.0.1
-nameserver 2606:4700:4700::1111
-nameserver 2606:4700:4700::1001
-EOF
-                    fi
-
-                    chmod 0644 "$dest"
-                    """
-                ).strip(),
-            ),
-        )
-
-        console.info("Preparing empty workspace directory...")
-        snapshot = timings.time(
-            "build_snapshot:prepare_workspace",
-            lambda: run_snapshot_bash(
-                snapshot,
-                textwrap.dedent(
-                    """
-                    set -euo pipefail
-                    workspace_dir=/opt/app/rootfs/root/workspace
-                    mkdir -p "$workspace_dir"
-                    find "$workspace_dir" -mindepth 1 -maxdepth 1 -exec rm -rf '{}' +
-                    ls -A "$workspace_dir" | head -n 5 || true
-                    """
-                ).strip(),
-            ),
-        )
-
-        console.info("Cleaning up build workspace...")
-        snapshot = snapshot.exec(f"rm -rf {shlex.quote(remote_repo_root)}")
-
-        console.info("Removing temporary Docker artifacts from snapshot...")
-        snapshot = timings.time(
-            "build_snapshot:cleanup_docker",
-            lambda: run_snapshot_bash(
-                snapshot,
-                textwrap.dedent(
-                    f"""
-                    set -euo pipefail
-                    docker image rm {shlex.quote(built_image)} >/dev/null 2>&1 || true
-                    docker builder prune -af >/dev/null 2>&1 || true
-                    docker system prune -af >/dev/null 2>&1 || true
-                    """
-                ).strip(),
-            ),
-        )
-
-        console.info("Preparing overlay directories...")
-        snapshot = timings.time(
-            "build_snapshot:prepare_overlay",
-            lambda: snapshot.exec(
-                "mkdir -p /opt/app/runtime /opt/app/overlay/upper /opt/app/overlay/work"
-            ),
-        )
-
-        console.info("Writing environment file...")
-        env_lines = list(config.get("env", []))
-        env_lines.extend(
-            [
-                "CMUX_ROOTFS=/opt/app/rootfs",
-                "CMUX_RUNTIME_ROOT=/opt/app/runtime",
-                "CMUX_OVERLAY_UPPER=/opt/app/overlay/upper",
-                "CMUX_OVERLAY_WORK=/opt/app/overlay/work",
-            ]
-        )
-        env_content = "\n".join(env_lines) + "\n"
-        snapshot = timings.time(
-            "build_snapshot:write_env_file",
-            lambda: write_remote_file(
-                snapshot,
-                remote_path="/opt/app/app.env",
-                content=env_content,
-            ),
-        )
-
-        snapshot = timings.time(
-            "build_snapshot:enable_cmux_units",
-            lambda: enable_cmux_units(snapshot),
-        )
-
-        snapshot = run_sanity_checks(snapshot, timings)
 
         return snapshot
     finally:
         if archive_path and os.path.exists(archive_path):
             os.unlink(archive_path)
-
+        if local_config_path and os.path.exists(local_config_path):
+            os.unlink(local_config_path)
+        if local_result_path and os.path.exists(local_result_path):
+            os.unlink(local_result_path)
 
 def main() -> None:
     ap = argparse.ArgumentParser(
