@@ -1,5 +1,3 @@
-import { isElectron } from "./electron";
-
 // Extend the Element interface to include moveBefore
 declare global {
   interface Element {
@@ -171,10 +169,7 @@ class PersistentIframeManager {
     wrapper.setAttribute("data-iframe-key", key);
 
     // Create iframe
-    // const iframe = document.createElement("iframe");
-    const iframe = isElectron
-      ? (document.createElement("webview") as unknown as HTMLIFrameElement)
-      : document.createElement("iframe");
+    const iframe = document.createElement("iframe");
     iframe.style.cssText = `
       width: 100%;
       height: 100%;

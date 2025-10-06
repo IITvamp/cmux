@@ -15,6 +15,17 @@ const paramsSchema = z.object({
   runId: typedZid("taskRuns"),
 });
 
+function toProxyWorkspaceUrl(workspaceUrl: string) {
+  if (workspaceUrl.includes("morph.so")) {
+    // convert https://port-39378-morphvm-zqcjcumw.http.cloud.morph.so/?folder=/root/workspace
+    // to https://port-39378-zqcjcumw.cmux.sh/?folder=/root/workspace
+    return workspaceUrl
+      .replace(/morphvm-/g, "")
+      .replace(/\.http\.cloud\.morph\.so/g, ".cmux.sh");
+  }
+  return workspaceUrl;
+}
+
 export const Route = createFileRoute(
   "/_layout/$teamSlugOrId/task/$taskId/run/$runId/vscode",
 )({
@@ -55,7 +66,9 @@ function VSCodeComponent() {
     }),
   );
 
-  const workspaceUrl = taskRun?.data?.vscode?.workspaceUrl ?? null;
+  const workspaceUrl = taskRun?.data?.vscode?.workspaceUrl
+    ? toProxyWorkspaceUrl(taskRun.data.vscode.workspaceUrl)
+    : null;
   const persistKey = getTaskRunPersistKey(taskRunId);
   const hasWorkspace = workspaceUrl !== null;
 
