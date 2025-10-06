@@ -4,15 +4,35 @@ import { access } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import type { DockerStatus } from "../../socket-schemas";
 
 const execAsync = promisify(childProcessExec);
 
 const DOCKER_INFO_COMMAND = "docker info --format '{{json .ServerVersion}}'";
 const DOCKER_VERSION_COMMAND = "docker version --format '{{.Server.Version}}'";
 
+interface ExecError extends Error {
+  code?: string | number;
+  stderr?: string | Buffer;
+  stdout?: string | Buffer;
+}
+
 export interface DockerSocketCandidates {
   remoteHost: boolean;
   candidates: string[];
+}
+
+interface DockerSocketStatus {
+  accessible: boolean;
+  path?: string;
+  candidates: string[];
+  remoteHost: boolean;
+}
+
+export interface DockerDaemonReadiness {
+  ready: boolean;
+  version?: string;
+  error?: string;
 }
 
 function collectDefaultSocketCandidates(): string[] {
@@ -73,12 +93,8 @@ export function getDockerSocketCandidates(): DockerSocketCandidates {
   };
 }
 
-function hasStderr(error: unknown): error is { stderr: unknown } {
-  return error !== null && typeof error === "object" && "stderr" in error;
-}
-
-function hasMessage(error: unknown): error is { message: unknown } {
-  return error !== null && typeof error === "object" && "message" in error;
+function isExecError(error: unknown): error is ExecError {
+  return error instanceof Error;
 }
 
 function describeExecError(error: unknown): string {
@@ -90,31 +106,22 @@ function describeExecError(error: unknown): string {
     return error;
   }
 
-  if (hasStderr(error)) {
-    const { stderr } = error;
-    if (typeof stderr === "string" && stderr.trim()) {
-      return stderr.trim();
-    }
-    if (stderr instanceof Buffer) {
-      const text = stderr.toString().trim();
-      if (text) {
-        return text;
-      }
-    }
+  if (!isExecError(error)) {
+    return "Unknown error";
   }
 
-  if (hasMessage(error)) {
-    const { message } = error;
-    if (typeof message === "string" && message.trim()) {
-      return message.trim();
+  const { stderr, message } = error;
+
+  if (stderr) {
+    const text = typeof stderr === "string"
+      ? stderr.trim()
+      : stderr.toString().trim();
+    if (text) {
+      return text;
     }
   }
 
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return "Unknown error";
+  return message.trim() || "Unknown error";
 }
 
 function parseVersion(output: string): string | undefined {
@@ -133,12 +140,7 @@ function parseVersion(output: string): string | undefined {
   return trimmed;
 }
 
-async function dockerSocketExists(): Promise<{
-  accessible: boolean;
-  path?: string;
-  candidates: string[];
-  remoteHost: boolean;
-}> {
+async function dockerSocketExists(): Promise<DockerSocketStatus> {
   const { remoteHost, candidates } = getDockerSocketCandidates();
   if (remoteHost) {
     return { accessible: true, remoteHost, candidates };
@@ -161,11 +163,7 @@ async function dockerSocketExists(): Promise<{
   return { accessible: false, candidates, remoteHost: false };
 }
 
-export async function ensureDockerDaemonReady(): Promise<{
-  ready: boolean;
-  version?: string;
-  error?: string;
-}> {
+export async function ensureDockerDaemonReady(): Promise<DockerDaemonReadiness> {
   try {
     const { stdout } = await execAsync(DOCKER_INFO_COMMAND);
     const version = parseVersion(stdout);
@@ -178,16 +176,7 @@ export async function ensureDockerDaemonReady(): Promise<{
   }
 }
 
-export async function checkDockerStatus(): Promise<{
-  isRunning: boolean;
-  version?: string;
-  error?: string;
-  workerImage?: {
-    name: string;
-    isAvailable: boolean;
-    isPulling?: boolean;
-  };
-}> {
+export async function checkDockerStatus(): Promise<DockerStatus> {
   try {
     // Ensure Docker CLI is installed
     await execAsync("docker --version");

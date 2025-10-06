@@ -1184,8 +1184,11 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
   private static logEventStreamError(message: string, error: unknown): void {
     const code =
-      error && typeof error === "object" && "code" in error
-        ? (error as { code?: unknown }).code
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (typeof error.code === "string" || typeof error.code === "number")
+        ? error.code
         : undefined;
     const isConnectionReset =
       code === "ECONNRESET" ||
