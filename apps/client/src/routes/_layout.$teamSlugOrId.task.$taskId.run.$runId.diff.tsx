@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
 import type { Doc, Id } from "@cmux/convex/dataModel";
-import type { TaskAcknowledged, TaskError } from "@cmux/shared";
+import type { TaskAcknowledged, TaskStarted, TaskError } from "@cmux/shared";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
@@ -179,7 +179,7 @@ const RestartTaskForm = memo(function RestartTaskForm({
         ? `https://github.com/${projectFullNameForSocket}.git`
         : undefined;
 
-      const handleRestartAck = (response: TaskAcknowledged | TaskError) => {
+      const handleRestartAck = (response: TaskAcknowledged | TaskStarted | TaskError) => {
         if ("error" in response) {
           toast.error(`Task restart error: ${response.error}`);
           return;

@@ -22,7 +22,7 @@ import { createFakeConvexId } from "@/lib/fakeConvexId";
 import { branchesQueryOptions } from "@/queries/branches";
 import { api } from "@cmux/convex/api";
 import type { Doc, Id } from "@cmux/convex/dataModel";
-import type { ProviderStatusResponse, TaskAcknowledged, TaskError } from "@cmux/shared";
+import type { ProviderStatusResponse, TaskAcknowledged, TaskStarted, TaskError } from "@cmux/shared";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -364,7 +364,7 @@ function DashboardComponent() {
         : `https://github.com/${projectFullName}.git`;
 
       // For socket.io, we need to send the content text (which includes image references) and the images
-      const handleStartTaskAck = (response: TaskAcknowledged | TaskError) => {
+      const handleStartTaskAck = (response: TaskAcknowledged | TaskStarted | TaskError) => {
         if ("error" in response) {
           console.error("Task start error:", response.error);
           toast.error(`Task start error: ${JSON.stringify(response.error)}`);
