@@ -9,6 +9,7 @@ import {
   dialog,
   ipcMain,
   Menu,
+  MenuItem,
   nativeImage,
   net,
   session,
@@ -60,10 +61,6 @@ function resolveMaxSuspendedWebContents(): number | undefined {
   return parsed;
 }
 
-let rendererLoaded = false;
-let pendingProtocolUrl: string | null = null;
-let mainWindow: BrowserWindow | null = null;
-
 type AutoUpdateToastPayload = {
   version: string | null;
 };
@@ -79,6 +76,12 @@ const LOG_ROTATION: LogRotationOptions = {
   maxBytes: 5 * 1024 * 1024,
   maxBackups: 3,
 };
+
+let rendererLoaded = false;
+let pendingProtocolUrl: string | null = null;
+let mainWindow: BrowserWindow | null = null;
+let previewReloadMenuItem: MenuItem | null = null;
+let previewReloadMenuVisible = false;
 
 function getTimestamp(): string {
   return new Date().toISOString();
@@ -206,6 +209,42 @@ export function mainError(...args: unknown[]) {
   console.error("[MAIN]", line);
   emitToRenderer("error", `[MAIN] ${line}`);
 }
+
+function sendShortcutToFocusedWindow(
+  eventName: string,
+  payload?: unknown
+): boolean {
+  try {
+    const target =
+      BrowserWindow.getFocusedWindow() ??
+      mainWindow ??
+      BrowserWindow.getAllWindows()[0] ??
+      null;
+    if (!target || target.isDestroyed()) {
+      return false;
+    }
+    target.webContents.send(`cmux:event:shortcut:${eventName}`, payload);
+    return true;
+  } catch (error) {
+    mainWarn("Failed to dispatch shortcut event", { eventName, error });
+    return false;
+  }
+}
+
+function setPreviewReloadMenuVisibility(visible: boolean): void {
+  previewReloadMenuVisible = visible;
+  if (previewReloadMenuItem) {
+    previewReloadMenuItem.visible = visible;
+  }
+}
+
+ipcMain.handle(
+  "cmux:ui:set-preview-reload-visible",
+  async (_event, visible: unknown) => {
+    setPreviewReloadMenuVisibility(Boolean(visible));
+    return { ok: true };
+  }
+);
 
 function emitAutoUpdateToastIfPossible(): void {
   if (!queuedAutoUpdateToast) return;
@@ -722,6 +761,42 @@ app.whenReady().then(async () => {
     } else {
       template.push({ label: "File", submenu: [{ role: "quit" }] });
     }
+    const resolveTargetWindow = () =>
+      BrowserWindow.getFocusedWindow() ??
+      mainWindow ??
+      BrowserWindow.getAllWindows()[0] ??
+      null;
+    const viewMenu: MenuItemConstructorOptions = {
+      label: "View",
+      submenu: [
+        {
+          id: "cmux-preview-reload",
+          visible: previewReloadMenuVisible,
+          label: "Reload Preview",
+          accelerator: "CommandOrControl+R",
+          click: () => {
+            const dispatched = sendShortcutToFocusedWindow("preview-reload");
+            if (!dispatched) {
+              mainWarn("Reload Preview shortcut triggered with no active renderer");
+            }
+          },
+        },
+        {
+          label: "Reload Application",
+          click: () => {
+            const target = resolveTargetWindow();
+            target?.webContents.reload();
+          },
+        },
+        { type: "separator" },
+        { role: "resetZoom" },
+        { role: "zoomIn" },
+        { role: "zoomOut" },
+        { type: "separator" },
+        { role: "togglefullscreen" },
+        { role: "toggleDevTools" },
+      ],
+    };
     template.push(
       { role: "editMenu" },
       {
@@ -732,11 +807,7 @@ app.whenReady().then(async () => {
             accelerator: "CommandOrControl+K",
             click: () => {
               try {
-                const target =
-                  BrowserWindow.getFocusedWindow() ??
-                  mainWindow ??
-                  BrowserWindow.getAllWindows()[0] ??
-                  null;
+                const target = resolveTargetWindow();
                 keyDebug("menu-accelerator-cmdk", {
                   to: target?.webContents.id,
                 });
@@ -751,7 +822,7 @@ app.whenReady().then(async () => {
           },
         ],
       },
-      { role: "viewMenu" },
+      viewMenu,
       { role: "windowMenu" }
     );
     template.push({
@@ -795,6 +866,8 @@ app.whenReady().then(async () => {
       ],
     });
     const menu = Menu.buildFromTemplate(template);
+    previewReloadMenuItem = menu.getMenuItemById("cmux-preview-reload") ?? null;
+    setPreviewReloadMenuVisibility(previewReloadMenuVisible);
     Menu.setApplicationMenu(menu);
   } catch (e) {
     mainWarn("Failed to set application menu", e);

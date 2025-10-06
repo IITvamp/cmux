@@ -69,7 +69,7 @@ function useLoadingProgress(isLoading: boolean) {
       timeout = setTimeout(() => {
         setVisible(false);
         setProgress(0);
-      }, 260);
+      }, 300);
     }
 
     return () => {
@@ -344,6 +344,34 @@ export function ElectronPreviewBrowser({
     };
   }, [reloadCurrentView]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const off = window.cmux?.on?.("shortcut:preview-reload", () => {
+      reloadCurrentView();
+    });
+    return () => {
+      off?.();
+    };
+  }, [reloadCurrentView]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const show = window.cmux?.ui?.setPreviewReloadVisible;
+    if (show) {
+      void show(true).catch((error: unknown) => {
+        console.warn("Failed to show preview reload menu item", error);
+      });
+    }
+    return () => {
+      const hide = window.cmux?.ui?.setPreviewReloadVisible;
+      if (hide) {
+        void hide(false).catch((error: unknown) => {
+          console.warn("Failed to hide preview reload menu item", error);
+        });
+      }
+    };
+  }, []);
+
   const devtoolsTooltipLabel = devtoolsOpen
     ? "Close DevTools"
     : "Open DevTools";
@@ -472,7 +500,7 @@ export function ElectronPreviewBrowser({
               style={{ opacity: visible ? 1 : 0 }}
             >
               <div
-                className="h-full rounded-full bg-primary transition-[opacity,width]"
+                className="h-full rounded-full bg-primary transition-[width] duration-200"
                 style={progressStyles}
               />
             </div>

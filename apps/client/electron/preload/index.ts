@@ -115,6 +115,12 @@ const cmuxAPI = {
         Boolean(open)
       ) as Promise<{ ok: boolean }>;
     },
+    setPreviewReloadVisible: (visible: boolean) => {
+      return ipcRenderer.invoke(
+        "cmux:ui:set-preview-reload-visible",
+        Boolean(visible)
+      ) as Promise<{ ok: boolean }>;
+    },
     restoreLastFocus: () => {
       return ipcRenderer.invoke("cmux:ui:restore-last-focus") as Promise<{
         ok: boolean;
