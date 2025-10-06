@@ -652,6 +652,47 @@ def build_snapshot(
             ),
         )
 
+        console.info("Synchronizing rootfs DNS configuration...")
+        snapshot = timings.time(
+            "build_snapshot:sync_resolv_conf",
+            lambda: run_snapshot_bash(
+                snapshot,
+                textwrap.dedent(
+                    """
+                    set -euo pipefail
+
+                    dest=/opt/app/rootfs/etc/resolv.conf
+                    mkdir -p /opt/app/rootfs/etc
+                    rm -f "$dest"
+
+                    source_resolv=""
+                    if [ -f /run/systemd/resolve/resolv.conf ]; then
+                        source_resolv=/run/systemd/resolve/resolv.conf
+                    elif [ -f /etc/resolv.conf ]; then
+                        source_resolv=/etc/resolv.conf
+                    fi
+
+                    if [ -n "$source_resolv" ]; then
+                        cp -L "$source_resolv" "$dest"
+                        sed -i '/^[[:space:]]*nameserver[[:space:]]*127\./d' "$dest" || true
+                        sed -i '/^[[:space:]]*nameserver[[:space:]]*::1/d' "$dest" || true
+                    fi
+
+                    if ! grep -Eq '^[[:space:]]*nameserver[[:space:]]+' "$dest" 2>/dev/null; then
+                        cat <<'EOF' >"$dest"
+nameserver 1.1.1.1
+nameserver 1.0.0.1
+nameserver 2606:4700:4700::1111
+nameserver 2606:4700:4700::1001
+EOF
+                    fi
+
+                    chmod 0644 "$dest"
+                    """
+                ).strip(),
+            ),
+        )
+
         console.info("Preparing empty workspace directory...")
         snapshot = timings.time(
             "build_snapshot:prepare_workspace",
