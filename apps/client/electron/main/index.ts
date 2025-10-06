@@ -1,3 +1,4 @@
+import { exec } from "node:child_process";
 import path, { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -43,6 +44,8 @@ const { autoUpdater } = electronUpdater;
 import util from "node:util";
 import { initCmdK, keyDebug } from "./cmdk";
 import { env } from "./electron-main-env";
+
+const execAsync = util.promisify(exec);
 
 // Use a cookieable HTTPS origin intercepted locally instead of a custom scheme.
 const PARTITION = "persist:cmux";
@@ -591,39 +594,39 @@ function createWindow(): void {
   mainWindow.webContents.setWindowOpenHandler((details) => {
     // On Linux, xdg-open can be misconfigured. Try common browsers explicitly for HTTP(S) URLs
     if (process.platform === "linux" && /^https?:\/\//i.test(details.url)) {
-      const { execSync } = require("node:child_process");
-      const browsers = [
-        "google-chrome",
-        "chromium-browser",
-        "chromium",
-        "firefox",
-        "microsoft-edge",
-        "xdg-open",
-      ];
+      void (async () => {
+        const browsers = [
+          "google-chrome",
+          "chromium-browser",
+          "chromium",
+          "firefox",
+          "microsoft-edge",
+          "xdg-open",
+        ];
 
-      let opened = false;
-      for (const browser of browsers) {
-        try {
-          // Check if browser exists
-          execSync(`command -v ${browser}`, { stdio: "ignore" });
-          // If we get here, browser exists - open URL
-          execSync(`${browser} "${details.url}" &`, {
-            stdio: "ignore",
-            shell: true,
-          });
-          opened = true;
-          break;
-        } catch {
-          // Browser not found, try next
+        let opened = false;
+        for (const browser of browsers) {
+          try {
+            // Check if browser exists
+            await execAsync(`command -v ${browser}`);
+            // If we get here, browser exists - open URL
+            await execAsync(`${browser} "${details.url}" &`, {
+              shell: true,
+            });
+            opened = true;
+            break;
+          } catch {
+            // Browser not found, try next
+          }
         }
-      }
 
-      if (!opened) {
-        // Fallback to shell.openExternal
-        shell.openExternal(details.url);
-      }
+        if (!opened) {
+          // Fallback to shell.openExternal
+          await shell.openExternal(details.url);
+        }
+      })();
     } else {
-      shell.openExternal(details.url);
+      void shell.openExternal(details.url);
     }
     return { action: "deny" };
   });
