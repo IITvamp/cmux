@@ -4,6 +4,17 @@ set -euo pipefail
 
 IMAGE_NAME="cmux-shell"
 CONTAINER_NAME="cmux-shell"
+container_started=false
+
+cleanup() {
+  if [ "$container_started" = true ]; then
+    echo "Stopping container..."
+    docker stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
+    container_started=false
+  fi
+}
+
+trap cleanup EXIT INT TERM
 
 # Build the Docker image
 echo "Building Docker image..."
@@ -28,8 +39,10 @@ docker run -d \
   -p 39378:39378 \
   -p 39379:39379 \
   -p 39380:39380 \
+  -p 39381:39381 \
   --name "$CONTAINER_NAME" \
   "$IMAGE_NAME"
+container_started=true
 
 # Give systemd a moment to start up
 sleep 3
@@ -42,6 +55,7 @@ echo "  - Worker: http://localhost:39377"
 echo "  - VS Code: http://localhost:39378"
 echo "  - cmux-proxy: http://localhost:39379"
 echo "  - noVNC: http://localhost:39380/vnc.html"
+echo "  - DevTools: http://localhost:39381/json/version"
 echo "========================================="
 echo ""
 

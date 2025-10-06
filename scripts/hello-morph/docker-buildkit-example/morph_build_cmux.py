@@ -855,6 +855,7 @@ def main():
         current_instance.expose_http_service("worker", 39377)
         current_instance.expose_http_service("proxy", 39379)
         current_instance.expose_http_service("vnc", 39380)
+        current_instance.expose_http_service("cdp", 39381)
 
         print("\n--- Ensuring services are running ---")
         run_ssh_command(
@@ -923,6 +924,9 @@ def main():
                 continue
             if service.name == "vnc":
                 print(f"- VNC: {service.url}/vnc.html")
+                continue
+            if service.name == "cdp":
+                print(f"- DevTools: {service.url}/json/version")
                 continue
             print(f"- {service.name}: {service.url}")
 

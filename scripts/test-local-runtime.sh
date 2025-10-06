@@ -4,6 +4,7 @@ set -euo pipefail
 IMAGE_BASENAME="${1:-cmux-local-sanity}"
 OPENVSCODE_URL="http://localhost:39378/?folder=/root/workspace"
 NOVNC_URL="http://localhost:39380/vnc.html"
+CDP_PORT=39381
 FORCE_DIND=${FORCE_DIND:-0}
 
 declare -a ACTIVE_CONTAINERS=()
@@ -88,6 +89,22 @@ wait_for_novnc() {
 
   echo "[sanity][$platform] ERROR: noVNC did not become ready within 60s" >&2
   docker logs "$container" || true
+  exit 1
+}
+
+wait_for_cdp() {
+  local port="$1"
+  local platform="$2"
+  local url="http://127.0.0.1:${port}/json/version"
+  echo "[sanity][$platform] Waiting for Chrome DevTools at ${url}..."
+  for _ in {1..60}; do
+    if curl -fsS "$url" >/dev/null 2>&1; then
+      echo "[sanity][$platform] DevTools reachable at $url"
+      return
+    fi
+    sleep 1
+  done
+  echo "[sanity][$platform] ERROR: DevTools endpoint did not become ready within 60s" >&2
   exit 1
 }
 
@@ -191,6 +208,7 @@ run_checks_for_platform() {
     -p 39378:39378 \
     -p 39379:39379 \
     -p 39380:39380 \
+    -p 39381:39381 \
     --name "$container_name" \
     "$image_name" >/dev/null
 
@@ -198,6 +216,7 @@ run_checks_for_platform() {
 
   wait_for_openvscode "$container_name" "$OPENVSCODE_URL" "$platform"
   wait_for_novnc "$container_name" "$NOVNC_URL" "$platform"
+  wait_for_cdp "$CDP_PORT" "$platform"
 
   check_unit "$container_name" cmux-openvscode.service
   check_unit "$container_name" cmux-worker.service

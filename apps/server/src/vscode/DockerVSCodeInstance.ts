@@ -186,6 +186,9 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       if (ports["39380/tcp"]?.[0]?.HostPort) {
         portMapping["39380"] = ports["39380/tcp"][0].HostPort;
       }
+      if (ports["39381/tcp"]?.[0]?.HostPort) {
+        portMapping["39381"] = ports["39381/tcp"][0].HostPort;
+      }
 
       // Update cache
       this.portCache = {
@@ -262,6 +265,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
           "39376/tcp": [{ HostPort: "0" }], // Extension socket port
           "39379/tcp": [{ HostPort: "0" }], // cmux-proxy port
           "39380/tcp": [{ HostPort: "0" }], // VNC websockify port
+          "39381/tcp": [{ HostPort: "0" }], // Chrome DevTools port
         },
       },
       ExposedPorts: {
@@ -270,6 +274,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         "39376/tcp": {},
         "39379/tcp": {},
         "39380/tcp": {},
+        "39381/tcp": {},
       },
     };
     dockerLogger.info(

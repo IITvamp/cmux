@@ -15,14 +15,15 @@ import {
 } from "@cmux/shared/pull-request-state";
 
 function rewriteMorphUrl(url: string): string {
-  // do not rewrite ports 39376 39377 39378 39379 39380
+  // do not rewrite ports 39376 39377 39378 39379 39380 39381
   if (
     url.includes("http.cloud.morph.so") &&
     (url.startsWith("https://port-39376-") ||
       url.startsWith("https://port-39377-") ||
       url.startsWith("https://port-39378-") ||
       url.startsWith("https://port-39379-") ||
-      url.startsWith("https://port-39380-"))
+      url.startsWith("https://port-39380-") ||
+      url.startsWith("https://port-39381-"))
   ) {
     return url;
   }

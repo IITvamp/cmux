@@ -9,6 +9,9 @@ FLUXBOX_LOG_FILE="${LOG_DIR}/fluxbox.log"
 X11VNC_LOG_FILE="${LOG_DIR}/x11vnc.log"
 WEBSOCKIFY_LOG_FILE="${LOG_DIR}/websockify.log"
 CHROME_LOG_FILE="${LOG_DIR}/chrome.log"
+CDP_PROXY_LOG_FILE="${LOG_DIR}/cdp-proxy.log"
+CDP_PUBLIC_PORT=39381
+CDP_INTERNAL_PORT=39382
 
 mkdir -p "${LOG_DIR}"
 
@@ -21,7 +24,7 @@ start_process() {
 
 cleanup() {
   local status=$?
-  for pid in ${WEBSOCKIFY_PID:-} ${CHROME_PID:-} ${X11VNC_PID:-} ${FLUXBOX_PID:-} ${XVFB_PID:-}; do
+  for pid in ${WEBSOCKIFY_PID:-} ${SOCAT_PID:-} ${CHROME_PID:-} ${X11VNC_PID:-} ${FLUXBOX_PID:-} ${XVFB_PID:-}; do
     if [[ -n "${pid:-}" ]] && kill -0 "$pid" >/dev/null 2>&1; then
       kill "$pid" >/dev/null 2>&1 || true
       wait "$pid" >/dev/null 2>&1 || true
@@ -50,18 +53,35 @@ X11VNC_PID=$(start_process "${X11VNC_LOG_FILE}" env DISPLAY=:1 /usr/bin/x11vnc -
 
 CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser || command -v chrome || true)"
 if [[ -n "${CHROME_BIN}" ]]; then
+  export GOOGLE_API_KEY="cmux-local"
+  export GOOGLE_DEFAULT_CLIENT_ID="cmux-local"
+  export GOOGLE_DEFAULT_CLIENT_SECRET="cmux-local"
+  mkdir -p /root/.config/chrome
   CHROME_FLAGS=(
     --no-sandbox
     --disable-dev-shm-usage
     --no-first-run
-    --disable-background-networking
+    --no-default-browser-check
     --disable-default-apps
-    --disable-gpu
-    --disable-software-rasterizer
+    --disable-sync
+    --disable-translate
+    --disable-infobars
+    --disable-features=ChromeWhatsNewUI,AutofillServerCommunication,AutomationControlled
+    --remote-debugging-address=127.0.0.1
+    --remote-debugging-port=${CDP_INTERNAL_PORT}
+    --remote-allow-origins=*
+    --test-type
+    --user-data-dir=/root/.config/chrome
+    --password-store=basic
     --start-maximized
     about:blank
   )
   CHROME_PID=$(start_process "${CHROME_LOG_FILE}" env DISPLAY=:1 HOME=/root "${CHROME_BIN}" "${CHROME_FLAGS[@]}")
+  if command -v socat >/dev/null 2>&1; then
+    SOCAT_PID=$(start_process "${CDP_PROXY_LOG_FILE}" /usr/bin/socat "TCP-LISTEN:${CDP_PUBLIC_PORT},fork,reuseaddr" "TCP:127.0.0.1:${CDP_INTERNAL_PORT}")
+  else
+    echo "socat not found; DevTools port ${CDP_PUBLIC_PORT} will be loopback-only" >>"${CDP_PROXY_LOG_FILE}"
+  fi
 else
   echo "Chrome binary not found; skipping browser autostart" >>"${CHROME_LOG_FILE}"
 fi

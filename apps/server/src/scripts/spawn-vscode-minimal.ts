@@ -8,6 +8,7 @@ interface ContainerInfo {
   vscodePort: string;
   workerPort: string;
   proxyPort: string;
+  cdpPort: string;
   vscodeUrl: string;
 }
 
@@ -40,6 +41,7 @@ async function spawnVSCodeContainer(docker: Docker): Promise<ContainerInfo> {
         "39376/tcp": [{ HostPort: "0" }],
         "39379/tcp": [{ HostPort: "0" }],
         "39380/tcp": [{ HostPort: "0" }],
+        "39381/tcp": [{ HostPort: "0" }],
       },
     },
     ExposedPorts: {
@@ -48,6 +50,7 @@ async function spawnVSCodeContainer(docker: Docker): Promise<ContainerInfo> {
       "39376/tcp": {},
       "39379/tcp": {},
       "39380/tcp": {},
+      "39381/tcp": {},
     },
   });
 
@@ -63,12 +66,14 @@ async function spawnVSCodeContainer(docker: Docker): Promise<ContainerInfo> {
   const workerPort = ports["39377/tcp"]?.[0]?.HostPort;
   const proxyPort = ports["39379/tcp"]?.[0]?.HostPort;
   const vncPort = ports["39380/tcp"]?.[0]?.HostPort;
+  const cdpPort = ports["39381/tcp"]?.[0]?.HostPort;
 
-  if (!vscodePort || !workerPort || !proxyPort || !vncPort) {
+  if (!vscodePort || !workerPort || !proxyPort || !vncPort || !cdpPort) {
     throw new Error("Failed to get port mappings");
   }
 
   console.log(`noVNC will be available at http://localhost:${vncPort}/vnc.html`);
+  console.log(`DevTools will be available at http://localhost:${cdpPort}/json/version`);
 
   // Wait for worker to be ready by polling
   console.log(`Waiting for worker to be ready on port ${workerPort}...`);
@@ -103,6 +108,7 @@ async function spawnVSCodeContainer(docker: Docker): Promise<ContainerInfo> {
     vscodePort,
     workerPort,
     proxyPort,
+    cdpPort,
     vscodeUrl,
   };
 }
@@ -202,6 +208,7 @@ async function main() {
     console.log(`  URL: ${containerInfo.vscodeUrl}`);
     console.log(`  Container: ${containerInfo.containerName}`);
     console.log(`  Proxy: http://localhost:${containerInfo.proxyPort}`);
+    console.log(`  DevTools: http://localhost:${containerInfo.cdpPort}/json/version`);
 
     // Create terminal with prompt
     await createTerminalWithPrompt(containerInfo.workerPort, prompt);

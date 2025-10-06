@@ -708,7 +708,7 @@ def main() -> None:
 
         print(f"Instance ID: {instance.id}")
         # expose the ports
-        expose_ports = [39376, 39377, 39378, 39379, 39380]
+        expose_ports = [39376, 39377, 39378, 39379, 39380, 39381]
         for port in expose_ports:
             instance.expose_http_service(port=port, name=f"port-{port}")
         instance.wait_until_ready()
@@ -733,6 +733,7 @@ def main() -> None:
                 "ss -lntp | rg -n ':39378' -N || true",
                 "ss -lntp | rg -n ':39379' -N || true",
                 "ss -lntp | rg -n ':39380' -N || true",
+                "ss -lntp | rg -n ':39381' -N || true",
                 "tail -n 80 /var/log/cmux/cmux.service.log || true",
                 "tail -n 80 /var/log/cmux/server.log || true",
                 "tail -n 80 /var/log/cmux/websockify.log || true",
@@ -761,6 +762,7 @@ def main() -> None:
             vscode_service = None
             proxy_service = None
             vnc_service = None
+            cdp_service = None
             for svc in services or []:
                 port = _get(svc, "port")
                 name = _get(svc, "name")
@@ -770,6 +772,8 @@ def main() -> None:
                     proxy_service = svc
                 elif port == 39380 or name == "port-39380":
                     vnc_service = svc
+                elif port == 39381 or name == "port-39381":
+                    cdp_service = svc
 
             url = _get(vscode_service, "url") if vscode_service is not None else None
             if not url:
@@ -822,6 +826,12 @@ def main() -> None:
                 print(f"VNC URL: {novnc_url}")
             else:
                 print("No exposed HTTP service found for port 39380")
+
+            cdp_url = _get(cdp_service, "url") if cdp_service is not None else None
+            if cdp_url:
+                print(f"DevTools endpoint: {cdp_url}/json/version")
+            else:
+                print("No exposed DevTools service found for port 39381")
         except Exception as e:
             print(f"Error checking exposed services: {e}")
 

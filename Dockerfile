@@ -260,6 +260,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     websockify \
     novnc \
     xauth \
+    socat \
     fonts-liberation \
     libasound2t64 \
     libatk-bridge2.0-0 \
@@ -332,6 +333,7 @@ case "${arch}" in
     ;;
 esac
 EOF
+
 
 # Install uv-managed Python runtime (latest by default) and keep pip pinned
 RUN <<'EOF'
@@ -560,7 +562,8 @@ RUN mkdir -p /root/.openvscode-server/data/User && \
 # 39378: OpenVSCode server
 # 39379: cmux-proxy
 # 39380: VNC over Websockify (noVNC)
-EXPOSE 39376 39377 39378 39379 39380
+# 39381: Chrome DevTools (CDP)
+EXPOSE 39376 39377 39378 39379 39380 39381
 
 ENV container=docker
 STOPSIGNAL SIGRTMIN+3

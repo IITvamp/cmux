@@ -14,13 +14,15 @@ const vscodeService = exposedServices.find((service) => service.port === 39378);
 const workerService = exposedServices.find((service) => service.port === 39377);
 const proxyService = exposedServices.find((service) => service.port === 39379);
 const vncService = exposedServices.find((service) => service.port === 39380);
-if (!vscodeService || !workerService || !proxyService || !vncService) {
-  throw new Error("VSCode, worker, proxy, or VNC service not found");
+const cdpService = exposedServices.find((service) => service.port === 39381);
+if (!vscodeService || !workerService || !proxyService || !vncService || !cdpService) {
+  throw new Error("VSCode, worker, proxy, VNC, or DevTools service not found");
 }
 
 console.log(`VSCode: ${vscodeService.url}/?folder=/root/workspace`);
 console.log(`Proxy: ${proxyService.url}`);
 console.log(`VNC: ${vncService.url}/vnc.html`);
+console.log(`DevTools: ${cdpService.url}/json/version`);
 
 // connect to the worker management namespace with socketio
 const clientSocket = io(workerService.url + "/management", {

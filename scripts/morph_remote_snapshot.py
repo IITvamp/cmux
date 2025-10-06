@@ -796,7 +796,7 @@ def main() -> None:
 
         console.always(f"Instance ID: {instance.id}")
 
-        expose_ports = [39376, 39377, 39378, 39379, 39380]
+        expose_ports = [39376, 39377, 39378, 39379, 39380, 39381]
         with timings.section("main:expose_http_services"):
             for port in expose_ports:
                 instance.expose_http_service(port=port, name=f"port-{port}")
@@ -831,6 +831,7 @@ def main() -> None:
                         "ss -lntp | grep ':39378' || true",
                         "ss -lntp | grep ':39379' || true",
                         "ss -lntp | grep ':39380' || true",
+                        "ss -lntp | grep ':39381' || true",
                         "tail -n 80 /var/log/cmux/openvscode.log || true",
                         "tail -n 80 /var/log/cmux/websockify.log || true",
                         "tail -n 80 /var/log/cmux/x11vnc.log || true",
@@ -857,6 +858,7 @@ def main() -> None:
                 vscode_service = None
                 proxy_service = None
                 vnc_service = None
+                cdp_service = None
                 for svc in services or []:
                     port = _get(svc, "port")
                     name = _get(svc, "name")
@@ -866,6 +868,8 @@ def main() -> None:
                         proxy_service = svc
                     elif port == 39380 or name == "port-39380":
                         vnc_service = svc
+                    elif port == 39381 or name == "port-39381":
+                        cdp_service = svc
 
                 url = (
                     _get(vscode_service, "url") if vscode_service is not None else None
@@ -931,6 +935,12 @@ def main() -> None:
                     console.always(f"VNC URL: {novnc_url}")
                 else:
                     console.always("No exposed HTTP service found for port 39380")
+
+                cdp_url = _get(cdp_service, "url") if cdp_service is not None else None
+                if cdp_url:
+                    console.always(f"DevTools endpoint: {cdp_url}/json/version")
+                else:
+                    console.always("No exposed DevTools service found for port 39381")
         except Exception as e:  # noqa: BLE001
             console.always(f"Error checking exposed services: {e}")
 

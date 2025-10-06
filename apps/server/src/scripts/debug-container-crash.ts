@@ -19,6 +19,7 @@ async function main() {
         "39377/tcp": [{ HostPort: "0" }],
         "39379/tcp": [{ HostPort: "0" }],
         "39380/tcp": [{ HostPort: "0" }],
+        "39381/tcp": [{ HostPort: "0" }],
       },
     },
     ExposedPorts: {
@@ -26,6 +27,7 @@ async function main() {
       "39377/tcp": {},
       "39379/tcp": {},
       "39380/tcp": {},
+      "39381/tcp": {},
     },
   });
 
