@@ -10,6 +10,7 @@ import {
   type SocketData,
   type WorkerHeartbeat,
   type WorkerRegister,
+  type WorkerTaskRunContext,
   type WorkerToServerEventNames,
   type WorkerToServerEvents,
 } from "@cmux/shared";
@@ -408,6 +409,7 @@ managementIO.on("connection", (socket) => {
         taskRunId: validated.taskRunId,
         agentModel: validated.agentModel,
         startupCommands: validated.startupCommands,
+        taskRunContext: validated.taskRunContext,
       });
 
       callback({
@@ -841,7 +843,8 @@ async function createTerminal(
     taskRunId?: Id<"taskRuns">;
     agentModel?: string;
     startupCommands?: string[];
-  } = {},
+    taskRunContext: WorkerTaskRunContext;
+  },
 ): Promise<void> {
   const {
     cols = SERVER_TERMINAL_CONFIG.cols,
@@ -851,12 +854,26 @@ async function createTerminal(
     command,
     args = [],
     startupCommands = [],
+    taskRunContext,
   } = options;
 
-  const envRecord = env;
-  const taskRunToken = envRecord.CMUX_TASK_RUN_JWT;
-  const convexUrl = envRecord.NEXT_PUBLIC_CONVEX_URL;
-  const promptValue = envRecord["CMUX_PROMPT"] ?? envRecord["PROMPT"] ?? "";
+  const taskRunToken = taskRunContext.taskRunToken;
+  const convexUrl = taskRunContext.convexUrl;
+  const promptValue = taskRunContext.prompt;
+
+  if (!taskRunToken) {
+    log("ERROR", "[createTerminal] Missing CMUX task run token in context", {
+      terminalId,
+      taskRunId: options.taskRunId,
+    });
+  }
+
+  if (!convexUrl) {
+    log("ERROR", "[createTerminal] Missing Convex URL in task run context", {
+      terminalId,
+      taskRunId: options.taskRunId,
+    });
+  }
 
   const shell = command || (platform() === "win32" ? "powershell.exe" : "bash");
 
@@ -1086,7 +1103,7 @@ async function createTerminal(
               taskRunId: options.taskRunId,
               token: taskRunToken,
               prompt: promptValue,
-              convexUrl,
+              convexUrl: convexUrl ?? undefined,
               agentModel: options.agentModel,
               elapsedMs: Date.now() - processStartTime,
             });

@@ -1,6 +1,7 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { MorphCloudClient } from "morphcloud";
 import { DEFAULT_MORPH_SNAPSHOT_ID } from "@/lib/utils/morph-defaults";
+import { env } from "@/lib/utils/www-env";
 import { connectToWorkerManagement, type Socket } from "@cmux/shared/socket";
 import type { WorkerToServerEvents, ServerToWorkerEvents } from "@cmux/shared";
 
@@ -233,6 +234,11 @@ devServerRouter.openapi(startDevServerRoute, async (c) => {
             rows: 24,
             cwd: "/root/workspace",
             command,
+            taskRunContext: {
+              taskRunToken: "dev-server-placeholder-token",
+              prompt: body.taskDescription,
+              convexUrl: env.NEXT_PUBLIC_CONVEX_URL,
+            },
           },
           () => {
             console.log("Terminal created with command:", command);
