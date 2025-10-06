@@ -53,11 +53,17 @@ function useLoadingProgress(isLoading: boolean) {
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | null = null;
-    let timeout: ReturnType<typeof setTimeout> | null = null;
+    let hideTimeout: ReturnType<typeof setTimeout> | null = null;
+    let resetTimeout: ReturnType<typeof setTimeout> | null = null;
 
     if (isLoading) {
       setVisible(true);
-      setProgress((prev) => (prev <= 0 ? 0.08 : prev));
+      setProgress((prev) => {
+        if (prev <= 0 || prev >= 1) {
+          return 0.08;
+        }
+        return prev;
+      });
       interval = setInterval(() => {
         setProgress((prev) => {
           const next = prev + (1 - prev) * 0.18;
@@ -66,15 +72,18 @@ function useLoadingProgress(isLoading: boolean) {
       }, 120);
     } else {
       setProgress((prev) => (prev === 0 ? 0 : 1));
-      timeout = setTimeout(() => {
+      hideTimeout = setTimeout(() => {
         setVisible(false);
-        setProgress(0);
+        resetTimeout = setTimeout(() => {
+          setProgress(0);
+        }, 500);
       }, 300);
     }
 
     return () => {
       if (interval) clearInterval(interval);
-      if (timeout) clearTimeout(timeout);
+      if (hideTimeout) clearTimeout(hideTimeout);
+      if (resetTimeout) clearTimeout(resetTimeout);
     };
   }, [isLoading]);
 
@@ -379,9 +388,8 @@ export function ElectronPreviewBrowser({
   const progressStyles = useMemo(() => {
     return {
       width: `${Math.min(1, Math.max(progress, 0)) * 100}%`,
-      opacity: visible ? 1 : 0,
     } satisfies CSSProperties;
-  }, [progress, visible]);
+  }, [progress]);
 
   return (
     <div className="flex h-full flex-col">
@@ -496,11 +504,11 @@ export function ElectronPreviewBrowser({
               </Tooltip>
             </div>
             <div
-              className="pointer-events-none absolute inset-x-0 -top-px h-[2px] overflow-hidden bg-neutral-200/70 transition-opacity duration-500 dark:bg-neutral-800/80"
+              className="pointer-events-none absolute inset-x-0 -top-px h-[1.5px] overflow-hidden transition-opacity duration-300"
               style={{ opacity: visible ? 1 : 0 }}
             >
               <div
-                className="h-full rounded-full bg-primary transition-[width] duration-200"
+                className="h-full rounded-full bg-neutral-900/80 dark:bg-neutral-300 transition-[width] duration-200"
                 style={progressStyles}
               />
             </div>
