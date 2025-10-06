@@ -38,7 +38,11 @@ from urllib.error import HTTPError, URLError
 
 import dotenv
 from morphcloud.api import Instance, MorphCloudClient, Snapshot
-from morph_common import ensure_docker, ensure_docker_cli_plugins, write_remote_file
+from morph_common import (
+    ensure_docker,
+    ensure_docker_cli_plugins,
+    write_remote_file_from_path,
+)
 
 dotenv.load_dotenv()
 
@@ -85,6 +89,9 @@ class TimingsCollector:
     def time(self, label: str, func: t.Callable[[], T]) -> T:
         with self.section(label):
             return func()
+
+    def record(self, label: str, duration: float) -> None:
+        self._sections.append((label, duration))
 
     def summary_lines(self) -> list[str]:
         if not self._sections:
@@ -220,17 +227,19 @@ def create_repo_archive(repo_root: Path) -> str:
     return archive_path
 
 
-def parse_image_config(data: list[t.Any]) -> DockerImageConfig:
-    """Extract runtime configuration from docker image inspect output."""
-    if not data:
-        raise ValueError("docker image inspect returned no data")
-    config = data[0]["Config"]
+def parse_config_summary(data: dict[str, t.Any]) -> DockerImageConfig:
+    """Parse configuration details produced by the remote build script."""
+    entrypoint = data.get("entrypoint") or []
+    cmd = data.get("cmd") or []
+    env = data.get("env") or []
+    workdir = data.get("workdir") or "/"
+    user = data.get("user") or "root"
     return {
-        "entrypoint": config.get("Entrypoint") or [],
-        "cmd": config.get("Cmd") or [],
-        "env": config.get("Env") or [],
-        "workdir": config.get("WorkingDir") or "/",
-        "user": config.get("User") or "root",
+        "entrypoint": [str(item) for item in entrypoint],
+        "cmd": [str(item) for item in cmd],
+        "env": [str(item) for item in env],
+        "workdir": str(workdir),
+        "user": str(user),
     }
 
 
@@ -439,7 +448,6 @@ def build_snapshot(
     remote_archive_path = "/opt/app/repo.tar.gz"
     remote_repo_root = "/opt/app/workdir/repo"
     build_log_remote = "/opt/app/docker-build.log"
-    built_image: str
 
     try:
         console.info("Creating Morph snapshot...")
@@ -458,17 +466,35 @@ def build_snapshot(
             lambda: ensure_remote_tooling(snapshot),
         )
 
+        remote_script_local = Path(__file__).with_name("morph_remote_snapshot_remote.sh")
+        remote_script_path = "/tmp/morph_remote_snapshot_remote.sh"
+        summary_remote_path = "/opt/app/build-summary.json"
+        inspect_remote_path = "/opt/app/docker-image-config.json"
+        rootfs_tar_remote = "/opt/app/rootfs.tar"
+        workspace_dir_remote = "/opt/app/rootfs/root/workspace"
+        workdir_base_remote = "/opt/app/workdir"
+        runtime_root_remote = "/opt/app/runtime"
+        overlay_upper_remote = "/opt/app/overlay/upper"
+        overlay_work_remote = "/opt/app/overlay/work"
+        app_env_remote = "/opt/app/app.env"
+
+        console.info("Uploading remote build helper script...")
+        snapshot = timings.time(
+            "build_snapshot:upload_remote_builder",
+            lambda: write_remote_file_from_path(
+                snapshot,
+                remote_path=remote_script_path,
+                local_path=remote_script_local,
+                executable=True,
+            ),
+        )
+
         if image_name:
             console.info(
-                f"Pulling Docker image on snapshot: {image_name} (platform: {platform})"
+                f"Preparing to pull Docker image on snapshot: {image_name} (platform: {platform})"
             )
-            snapshot = timings.time(
-                "build_snapshot:remote_pull_image",
-                lambda: snapshot.exec(
-                    f"docker pull --platform {shlex.quote(platform)} {shlex.quote(image_name)}"
-                ),
-            )
-            built_image = image_name
+            mode = "pull"
+            build_tag: str | None = None
         else:
             dockerfile_local = dockerfile_path or "Dockerfile"
             dockerfile_abs = (repo_root / dockerfile_local).resolve()
@@ -498,22 +524,6 @@ def build_snapshot(
                 ),
             )
 
-            console.info("Extracting repository archive on snapshot...")
-            snapshot = timings.time(
-                "build_snapshot:extract_repo_archive",
-                lambda: run_snapshot_bash(
-                    snapshot,
-                    textwrap.dedent(
-                        f"""
-                        set -euo pipefail
-                        mkdir -p {shlex.quote(remote_repo_root)}
-                        tar -xzf {shlex.quote(remote_archive_path)} -C {shlex.quote(remote_repo_root)}
-                        rm {shlex.quote(remote_archive_path)}
-                        """
-                    ).strip(),
-                ),
-            )
-
             context_rel = dockerfile_rel.parent
             context_rel_posix = context_rel.as_posix()
             remote_context_dir = (
@@ -524,40 +534,50 @@ def build_snapshot(
             remote_dockerfile_path = (
                 f"{remote_repo_root}/{dockerfile_rel.as_posix()}"
             )
-
             build_tag = f"cmux-morph-temp:{os.getpid()}"
-            build_parts = [
-                "docker buildx build",
-                "--progress=plain",
-                f"--platform {shlex.quote(platform)}",
-                f"-t {shlex.quote(build_tag)}",
-                f"-f {shlex.quote(remote_dockerfile_path)}",
-                "--load",
-                ".",
-            ]
+            mode = "build"
+
+        command_parts = [
+            "bash",
+            remote_script_path,
+            f"--mode={mode}",
+            f"--platform={platform}",
+            f"--inspect-path={inspect_remote_path}",
+            f"--summary-path={summary_remote_path}",
+            f"--app-env-path={app_env_remote}",
+            f"--rootfs-dir=/opt/app/rootfs",
+            f"--workdir-base={workdir_base_remote}",
+            f"--workspace-dir={workspace_dir_remote}",
+            f"--runtime-root={runtime_root_remote}",
+            f"--overlay-upper={overlay_upper_remote}",
+            f"--overlay-work={overlay_work_remote}",
+            f"--rootfs-tar={rootfs_tar_remote}",
+        ]
+
+        if image_name:
+            command_parts.append(f"--image-name={image_name}")
+        else:
+            command_parts.extend(
+                [
+                    f"--remote-archive={remote_archive_path}",
+                    f"--remote-repo-root={remote_repo_root}",
+                    f"--remote-context={remote_context_dir}",
+                    f"--remote-dockerfile={remote_dockerfile_path}",
+                    f"--build-log={build_log_remote}",
+                    f"--build-tag={build_tag}",
+                ]
+            )
             if target:
-                build_parts.insert(4, f"--target {shlex.quote(target)}")
-            build_command = " ".join(build_parts)
+                command_parts.append(f"--build-target={target}")
 
-            build_script = textwrap.dedent(
-                f"""
-                set -euo pipefail
-                logfile={shlex.quote(build_log_remote)}
-                rm -f "$logfile"
-                cd {shlex.quote(remote_context_dir)}
-                {build_command} |& tee "$logfile"
-                """
-            ).strip()
-
-            console.info("Building Docker image on snapshot...")
-            try:
-                snapshot = timings.time(
-                    "build_snapshot:remote_build_image",
-                    lambda: run_snapshot_bash(snapshot, build_script),
-                )
-            except RuntimeError as build_err:
+        command = " ".join(shlex.quote(part) for part in command_parts)
+        console.info("Running remote snapshot orchestration script...")
+        try:
+            snapshot = snapshot.exec(command)
+        except RuntimeError as build_err:
+            if image_name is None:
                 console.always(
-                    f"Remote docker build failed; attempting to download log from {build_log_remote}"
+                    f"Remote build script failed; attempting to download log from {build_log_remote}"
                 )
                 local_fd, local_log_path = tempfile.mkstemp(
                     prefix="cmux-docker-build-",
@@ -586,175 +606,36 @@ def build_snapshot(
                     console.always(
                         f"Failed to download docker build log: {log_err}"
                     )
-                raise
+            raise
 
-            built_image = build_tag
-
-        inspect_remote_path = "/opt/app/docker-image-config.json"
-        console.info("Recording Docker image configuration...")
-        snapshot = timings.time(
-            "build_snapshot:inspect_image",
-            lambda: snapshot.exec(
-                f"docker image inspect {shlex.quote(built_image)} > {shlex.quote(inspect_remote_path)}"
-            ),
-        )
-
-        with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-            local_inspect_path = tmp_file.name
+        with tempfile.NamedTemporaryFile(delete=False) as tmp_summary:
+            local_summary_path = Path(tmp_summary.name)
 
         snapshot = timings.time(
-            "build_snapshot:download_image_config",
+            "build_snapshot:download_summary",
             lambda: snapshot.download(
-                inspect_remote_path,
-                local_inspect_path,
+                summary_remote_path,
+                local_summary_path,
                 recursive=False,
             ),
         )
-        inspect_data = json.loads(Path(local_inspect_path).read_text())
-        os.unlink(local_inspect_path)
-        snapshot = snapshot.exec(f"rm {shlex.quote(inspect_remote_path)}")
+        try:
+            summary_data = json.loads(local_summary_path.read_text())
+        finally:
+            os.unlink(local_summary_path)
 
-        config = parse_image_config(inspect_data)
+        timings_entries = summary_data.get("timings", [])
+        for entry in timings_entries:
+            label = entry.get("label")
+            duration = entry.get("duration")
+            if isinstance(label, str) and isinstance(duration, (int, float)):
+                timings.record(label, float(duration))
+
+        config_summary = summary_data.get("config") or {}
+        config = parse_config_summary(t.cast(dict[str, t.Any], config_summary))
         console.info(
             f"Image config: entrypoint={config['entrypoint']}, cmd={config['cmd']}, "
             f"workdir={config['workdir']}, user={config['user']}"
-        )
-
-        rootfs_tar_remote = "/opt/app/rootfs.tar"
-        console.info("Exporting Docker image to rootfs tarball...")
-        snapshot = timings.time(
-            "build_snapshot:export_rootfs",
-            lambda: run_snapshot_bash(
-                snapshot,
-                textwrap.dedent(
-                    f"""
-                    set -euo pipefail
-                    cid=$(docker create --platform {shlex.quote(platform)} {shlex.quote(built_image)})
-                    cleanup() {{
-                        docker rm -f "$cid" >/dev/null 2>&1 || true
-                    }}
-                    trap cleanup EXIT
-                    docker export "$cid" -o {shlex.quote(rootfs_tar_remote)}
-                    cleanup
-                    trap - EXIT
-                    """
-                ).strip(),
-            ),
-        )
-
-        console.info("Extracting rootfs on snapshot...")
-        snapshot = timings.time(
-            "build_snapshot:extract_rootfs",
-            lambda: snapshot.exec(
-                "tar -xf {tar_path} -C /opt/app/rootfs && rm {tar_path}".format(
-                    tar_path=shlex.quote(rootfs_tar_remote)
-                )
-            ),
-        )
-
-        console.info("Synchronizing rootfs DNS configuration...")
-        snapshot = timings.time(
-            "build_snapshot:sync_resolv_conf",
-            lambda: run_snapshot_bash(
-                snapshot,
-                textwrap.dedent(
-                    """
-                    set -euo pipefail
-
-                    dest=/opt/app/rootfs/etc/resolv.conf
-                    mkdir -p /opt/app/rootfs/etc
-                    rm -f "$dest"
-
-                    source_resolv=""
-                    if [ -f /run/systemd/resolve/resolv.conf ]; then
-                        source_resolv=/run/systemd/resolve/resolv.conf
-                    elif [ -f /etc/resolv.conf ]; then
-                        source_resolv=/etc/resolv.conf
-                    fi
-
-                    if [ -n "$source_resolv" ]; then
-                        cp -L "$source_resolv" "$dest"
-                        sed -i '/^[[:space:]]*nameserver[[:space:]]*127\./d' "$dest" || true
-                        sed -i '/^[[:space:]]*nameserver[[:space:]]*::1/d' "$dest" || true
-                    fi
-
-                    if ! grep -Eq '^[[:space:]]*nameserver[[:space:]]+' "$dest" 2>/dev/null; then
-                        cat <<'EOF' >"$dest"
-nameserver 1.1.1.1
-nameserver 1.0.0.1
-nameserver 2606:4700:4700::1111
-nameserver 2606:4700:4700::1001
-EOF
-                    fi
-
-                    chmod 0644 "$dest"
-                    """
-                ).strip(),
-            ),
-        )
-
-        console.info("Preparing empty workspace directory...")
-        snapshot = timings.time(
-            "build_snapshot:prepare_workspace",
-            lambda: run_snapshot_bash(
-                snapshot,
-                textwrap.dedent(
-                    """
-                    set -euo pipefail
-                    workspace_dir=/opt/app/rootfs/root/workspace
-                    mkdir -p "$workspace_dir"
-                    find "$workspace_dir" -mindepth 1 -maxdepth 1 -exec rm -rf '{}' +
-                    ls -A "$workspace_dir" | head -n 5 || true
-                    """
-                ).strip(),
-            ),
-        )
-
-        console.info("Cleaning up build workspace...")
-        snapshot = snapshot.exec(f"rm -rf {shlex.quote(remote_repo_root)}")
-
-        console.info("Removing temporary Docker artifacts from snapshot...")
-        snapshot = timings.time(
-            "build_snapshot:cleanup_docker",
-            lambda: run_snapshot_bash(
-                snapshot,
-                textwrap.dedent(
-                    f"""
-                    set -euo pipefail
-                    docker image rm {shlex.quote(built_image)} >/dev/null 2>&1 || true
-                    docker builder prune -af >/dev/null 2>&1 || true
-                    docker system prune -af >/dev/null 2>&1 || true
-                    """
-                ).strip(),
-            ),
-        )
-
-        console.info("Preparing overlay directories...")
-        snapshot = timings.time(
-            "build_snapshot:prepare_overlay",
-            lambda: snapshot.exec(
-                "mkdir -p /opt/app/runtime /opt/app/overlay/upper /opt/app/overlay/work"
-            ),
-        )
-
-        console.info("Writing environment file...")
-        env_lines = list(config.get("env", []))
-        env_lines.extend(
-            [
-                "CMUX_ROOTFS=/opt/app/rootfs",
-                "CMUX_RUNTIME_ROOT=/opt/app/runtime",
-                "CMUX_OVERLAY_UPPER=/opt/app/overlay/upper",
-                "CMUX_OVERLAY_WORK=/opt/app/overlay/work",
-            ]
-        )
-        env_content = "\n".join(env_lines) + "\n"
-        snapshot = timings.time(
-            "build_snapshot:write_env_file",
-            lambda: write_remote_file(
-                snapshot,
-                remote_path="/opt/app/app.env",
-                content=env_content,
-            ),
         )
 
         snapshot = timings.time(
