@@ -538,7 +538,12 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
           if (runId) {
             navigate({
               to: "/$teamSlugOrId/task/$taskId/run/$runId/vscode",
-              params: { teamSlugOrId, taskId, runId },
+              params: {
+                teamSlugOrId,
+                taskId,
+                runId,
+                taskRunId: runId,
+              },
             });
           } else {
             navigate({
@@ -551,7 +556,12 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
           if (runId) {
             navigate({
               to: "/$teamSlugOrId/task/$taskId/run/$runId/diff",
-              params: { teamSlugOrId, taskId, runId },
+              params: {
+                teamSlugOrId,
+                taskId,
+                runId,
+                taskRunId: runId,
+              },
             });
           } else {
             navigate({
