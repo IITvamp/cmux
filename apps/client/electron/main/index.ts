@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import path, { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -31,7 +32,7 @@ import {
   jwtVerify,
   type JWTPayload,
 } from "jose";
-import { promises as fs } from "node:fs";
+import { existsSync, promises as fs } from "node:fs";
 import { collectAllLogs } from "./log-management/collect-logs";
 import { ensureLogDirectory } from "./log-management/log-paths";
 import {
@@ -43,6 +44,125 @@ const { autoUpdater } = electronUpdater;
 import util from "node:util";
 import { initCmdK, keyDebug } from "./cmdk";
 import { env } from "./electron-main-env";
+
+normalizePathForDocker();
+
+function normalizePathForDocker(): void {
+  const delimiter = process.platform === "win32" ? ";" : ":";
+
+  if (process.platform === "win32") return;
+
+  if (!app.isPackaged && process.env.CMUX_ELECTRON_FORCE_DOCKER_PATH !== "1") {
+    return;
+  }
+
+  const original = process.env.PATH ?? "";
+  const baseSegments = original.split(delimiter).filter(Boolean);
+  const seen = new Set(baseSegments);
+  const additions: string[] = [];
+
+  const addCandidate = (candidate: string | undefined | null) => {
+    const normalized = candidate?.trim();
+    if (!normalized) return;
+    if (seen.has(normalized)) return;
+    if (!existsSync(normalized)) return;
+    seen.add(normalized);
+    additions.push(normalized);
+  };
+
+  for (const entry of getLoginShellPathEntries(delimiter)) {
+    addCandidate(entry);
+  }
+
+  const dockerBinary = resolveDockerBinaryFromShell();
+  if (dockerBinary) {
+    addCandidate(path.dirname(dockerBinary));
+  }
+
+  for (const dir of gatherFallbackDirectories()) {
+    addCandidate(dir);
+  }
+
+  if (additions.length === 0) return;
+
+  const normalized = [...additions, ...baseSegments];
+  const unique = normalized.filter((entry, index) =>
+    entry ? normalized.indexOf(entry) === index : false,
+  );
+
+  process.env.PATH = unique.join(delimiter);
+  console.log("[Main] Added PATH entries for packaged app", additions);
+}
+
+function getLoginShellPathEntries(delimiter: string): string[] {
+  const output = runInLoginShell(
+    "printf '__CMUX_PATH__%s__CMUX_END__' \"$PATH\"",
+  );
+  const extracted = extractBetweenMarkers(output, "__CMUX_PATH__", "__CMUX_END__");
+  if (!extracted) return [];
+  return extracted.split(delimiter).filter(Boolean);
+}
+
+function resolveDockerBinaryFromShell(): string | null {
+  const output = runInLoginShell(
+    "command -v docker >/dev/null 2>&1 && printf '__CMUX_DOCKER__%s__CMUX_END__' \"$(command -v docker)\"",
+  );
+  const extracted = extractBetweenMarkers(
+    output,
+    "__CMUX_DOCKER__",
+    "__CMUX_END__",
+  );
+  if (!extracted) return null;
+  const candidate = extracted.trim();
+  if (!candidate) return null;
+  return existsSync(candidate) ? candidate : null;
+}
+
+function runInLoginShell(command: string): string | null {
+  const shell = process.env.SHELL;
+  if (!shell) return null;
+  try {
+    const result = spawnSync(shell, ["-l", "-c", command], {
+      encoding: "utf8",
+      timeout: 2000,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    if (result.status !== 0) return null;
+    return result.stdout ?? "";
+  } catch {
+    return null;
+  }
+}
+
+function extractBetweenMarkers(output: string | null, start: string, end: string): string | null {
+  if (!output) return null;
+  const startIndex = output.indexOf(start);
+  if (startIndex === -1) return null;
+  const endIndex = output.indexOf(end, startIndex + start.length);
+  if (endIndex === -1) return null;
+  return output.slice(startIndex + start.length, endIndex);
+}
+
+function gatherFallbackDirectories(): Array<string | undefined> {
+  const home = process.env.HOME;
+  return [
+    "/usr/local/bin",
+    "/usr/local/sbin",
+    "/usr/bin",
+    "/bin",
+    "/usr/sbin",
+    "/sbin",
+    "/snap/bin",
+    "/opt/homebrew/bin",
+    "/opt/homebrew/sbin",
+    "/Applications/Docker.app/Contents/Resources/bin",
+    home ? path.join(home, "bin") : undefined,
+    home ? path.join(home, ".local/bin") : undefined,
+    home ? path.join(home, ".docker/bin") : undefined,
+    home ? path.join(home, ".orbstack/bin") : undefined,
+    home ? path.join(home, ".orbstack/sbin") : undefined,
+  ];
+}
 
 // Use a cookieable HTTPS origin intercepted locally instead of a custom scheme.
 const PARTITION = "persist:cmux";
