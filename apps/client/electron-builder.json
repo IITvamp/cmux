@@ -70,7 +70,7 @@
     "icon": "build/icon.png",
     "category": "Development",
     "executableName": "cmux",
-    "artifactName": "${name}-${version}-${arch}.${ext}",
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
     "target": [
       {
         "target": "AppImage",
