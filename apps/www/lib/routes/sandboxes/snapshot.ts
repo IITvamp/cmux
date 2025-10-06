@@ -43,12 +43,24 @@ export const resolveTeamAndSnapshot = async ({
       });
     }
 
+    // Find the active snapshot version to ensure we use the correct snapshot
+    const snapshotVersions = await convex.query(api.environmentSnapshots.list, {
+      teamSlugOrId,
+      environmentId: typedZid("environments").parse(environmentId),
+    });
+
+    const activeVersion = snapshotVersions.find((version) => version.isActive);
+    const resolvedSnapshotId =
+      activeVersion?.morphSnapshotId ||
+      environmentDoc.morphSnapshotId ||
+      DEFAULT_MORPH_SNAPSHOT_ID;
+
     return {
       team,
-      resolvedSnapshotId:
-        environmentDoc.morphSnapshotId || DEFAULT_MORPH_SNAPSHOT_ID,
+      resolvedSnapshotId,
       environmentDataVaultKey: environmentDoc.dataVaultKey ?? undefined,
-      environmentMaintenanceScript: environmentDoc.maintenanceScript ?? undefined,
+      environmentMaintenanceScript:
+        environmentDoc.maintenanceScript ?? undefined,
       environmentDevScript: environmentDoc.devScript ?? undefined,
     };
   }
@@ -58,7 +70,7 @@ export const resolveTeamAndSnapshot = async ({
       teamSlugOrId,
     });
     const matchedEnvironment = environments.find(
-      (environment) => environment.morphSnapshotId === snapshotId
+      (environment) => environment.morphSnapshotId === snapshotId,
     );
 
     if (matchedEnvironment) {
@@ -71,7 +83,7 @@ export const resolveTeamAndSnapshot = async ({
 
     const snapshotVersion = await convex.query(
       api.environmentSnapshots.findBySnapshotId,
-      { teamSlugOrId, snapshotId }
+      { teamSlugOrId, snapshotId },
     );
 
     if (!snapshotVersion) {
