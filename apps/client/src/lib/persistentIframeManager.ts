@@ -1,3 +1,5 @@
+import { isElectron } from "./electron";
+
 // Extend the Element interface to include moveBefore
 declare global {
   interface Element {
@@ -129,7 +131,7 @@ class PersistentIframeManager {
   getOrCreateIframe(
     key: string,
     url: string,
-    options?: { allow?: string; sandbox?: string }
+    options?: { allow?: string; sandbox?: string },
   ): HTMLIFrameElement {
     const existing = this.iframes.get(key);
 
@@ -139,7 +141,10 @@ class PersistentIframeManager {
         existing.iframe.allow = options.allow;
         existing.allow = options.allow;
       }
-      if (options?.sandbox !== undefined && existing.sandbox !== options.sandbox) {
+      if (
+        options?.sandbox !== undefined &&
+        existing.sandbox !== options.sandbox
+      ) {
         existing.iframe.setAttribute("sandbox", options.sandbox);
         existing.sandbox = options.sandbox;
       }
@@ -166,7 +171,10 @@ class PersistentIframeManager {
     wrapper.setAttribute("data-iframe-key", key);
 
     // Create iframe
-    const iframe = document.createElement("iframe");
+    // const iframe = document.createElement("iframe");
+    const iframe = isElectron
+      ? (document.createElement("webview") as unknown as HTMLIFrameElement)
+      : document.createElement("iframe");
     iframe.style.cssText = `
       width: 100%;
       height: 100%;
@@ -215,7 +223,7 @@ class PersistentIframeManager {
   mountIframe(
     key: string,
     targetElement: HTMLElement,
-    options?: MountOptions
+    options?: MountOptions,
   ): () => void {
     if (this.debugMode) console.log(`[Mount] Starting mount for ${key}`);
 
@@ -267,7 +275,7 @@ class PersistentIframeManager {
 
           const cssKey = styleKey.replace(
             /[A-Z]/g,
-            (match) => `-${match.toLowerCase()}`
+            (match) => `-${match.toLowerCase()}`,
           );
           const cssValue =
             typeof styleValue === "number" &&
@@ -333,7 +341,7 @@ class PersistentIframeManager {
     if (!entry) return;
 
     const targetElement = document.querySelector(
-      `[data-iframe-target="${key}"]`
+      `[data-iframe-target="${key}"]`,
     );
     if (!targetElement || !(targetElement instanceof HTMLElement)) {
       this.moveIframeOffscreen(entry);
@@ -413,7 +421,7 @@ class PersistentIframeManager {
   preloadIframe(
     key: string,
     url: string,
-    options?: { allow?: string; sandbox?: string }
+    options?: { allow?: string; sandbox?: string },
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       const iframe = this.getOrCreateIframe(key, url, options);
@@ -466,7 +474,7 @@ class PersistentIframeManager {
 
     const toRemove = sorted.slice(
       0,
-      Math.max(0, this.iframes.size - this.maxIframes)
+      Math.max(0, this.iframes.size - this.maxIframes),
     );
 
     for (const [key] of toRemove) {
@@ -483,12 +491,12 @@ class PersistentIframeManager {
       url: string;
       allow?: string;
       sandbox?: string;
-    }>
+    }>,
   ): Promise<void> {
     await Promise.all(
       entries.map(({ key, url, allow, sandbox }) =>
-        this.preloadIframe(key, url, { allow, sandbox })
-      )
+        this.preloadIframe(key, url, { allow, sandbox }),
+      ),
     );
   }
 
@@ -523,12 +531,12 @@ class PersistentIframeManager {
     const viewportWidth = Math.max(
       1,
       window.innerWidth || 0,
-      document.documentElement?.clientWidth ?? 0
+      document.documentElement?.clientWidth ?? 0,
     );
     const viewportHeight = Math.max(
       1,
       window.innerHeight || 0,
-      document.documentElement?.clientHeight ?? 0
+      document.documentElement?.clientHeight ?? 0,
     );
 
     entry.wrapper.style.width = `${viewportWidth}px`;
