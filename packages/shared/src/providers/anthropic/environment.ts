@@ -205,5 +205,8 @@ echo ${ctx.taskRunJwt}`;
     "echo '[CMUX] Settings directory in ~/.claude:' && ls -la /root/.claude/",
   );
 
+  env.IS_SANDBOX = "0";
+  env.ANTHROPIC_API_KEY = "";
+
   return { files, env, startupCommands };
 }

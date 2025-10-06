@@ -87,10 +87,14 @@ describe("CmuxVSCodeInstance basic lifecycle via local API stub", () => {
         expect(info.workspaceUrl.includes("/?folder=/root/workspace")).toBe(
           true
         );
+        expect(info.workerUrl).toBe("http://127.0.0.1:39998");
+        expect(info.sandboxId).toBe("sandbox_local_1");
 
         const st = await inst.getStatus();
         expect(st.running).toBe(true);
         expect(st.info?.url).toBe("http://127.0.0.1:39999");
+        expect(st.info?.workerUrl).toBe("http://127.0.0.1:39998");
+        expect(st.info?.sandboxId).toBe("sandbox_local_1");
 
         await inst.stop();
 

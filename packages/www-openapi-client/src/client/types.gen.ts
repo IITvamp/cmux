@@ -1810,42 +1810,6 @@ export type GetApiSandboxesByIdStatusResponses = {
 
 export type GetApiSandboxesByIdStatusResponse = GetApiSandboxesByIdStatusResponses[keyof GetApiSandboxesByIdStatusResponses];
 
-export type PostApiSandboxesByIdPublishDevcontainerData = {
-    body: {
-        teamSlugOrId: string;
-        taskRunId: string;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/sandboxes/{id}/publish-devcontainer';
-};
-
-export type PostApiSandboxesByIdPublishDevcontainerErrors = {
-    /**
-     * Unauthorized
-     */
-    401: unknown;
-    /**
-     * Failed to publish devcontainer networking
-     */
-    500: unknown;
-};
-
-export type PostApiSandboxesByIdPublishDevcontainerResponses = {
-    /**
-     * Exposed ports list
-     */
-    200: Array<{
-        status?: 'running';
-        port: number;
-        url: string;
-    }>;
-};
-
-export type PostApiSandboxesByIdPublishDevcontainerResponse = PostApiSandboxesByIdPublishDevcontainerResponses[keyof PostApiSandboxesByIdPublishDevcontainerResponses];
-
 export type PostApiTeamsData = {
     body: CreateTeamRequest;
     path?: never;

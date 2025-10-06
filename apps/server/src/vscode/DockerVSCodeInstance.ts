@@ -531,6 +531,8 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       instanceId: this.instanceId,
       taskRunId: this.taskRunId,
       provider: "docker",
+      workerUrl,
+      sandboxId: this.containerName,
     };
   }
 

@@ -10,7 +10,6 @@ import type {
   WorkerTerminalFailed,
 } from "@cmux/shared/worker-schemas";
 import { parse as parseDotenv } from "dotenv";
-import { sanitizeTmuxSessionName } from "./sanitizeTmuxSessionName";
 import {
   generateNewBranchName,
   generateUniqueBranchNames,
@@ -36,6 +35,16 @@ import rawSwitchBranchScript from "../scripts/switch-branch.ts?raw";
 
 const SWITCH_BRANCH_BUN_SCRIPT = rawSwitchBranchScript;
 
+const WORKSPACE_ROOT = "/root/workspace";
+
+const deriveRepoDirectoryName = (repoUrl?: string): string | null => {
+  if (!repoUrl) return null;
+  const trimmed = repoUrl.replace(/\/+$/, "").replace(/\.git$/, "");
+  const segments = trimmed.split("/");
+  const candidate = segments[segments.length - 1];
+  return candidate || null;
+};
+
 const { getApiEnvironmentsByIdVars } = await getWwwOpenApiModule();
 
 export interface AgentSpawnResult {
@@ -44,6 +53,8 @@ export interface AgentSpawnResult {
   taskRunId: string | Id<"taskRuns">;
   worktreePath: string;
   vscodeUrl?: string;
+  workerUrl?: string;
+  sandboxId?: string;
   success: boolean;
   error?: string;
 }
@@ -77,7 +88,8 @@ export async function spawnAgent(
       options.newBranch ||
       (await generateNewBranchName(options.taskDescription, teamSlugOrId));
     serverLogger.info(
-      `[AgentSpawner] New Branch: ${newBranch}, Base Branch: ${options.branch ?? "(auto)"
+      `[AgentSpawner] New Branch: ${newBranch}, Base Branch: ${
+        options.branch ?? "(auto)"
       }`,
     );
 
@@ -303,18 +315,30 @@ export async function spawnAgent(
       }
     }
 
-    // Replace $PROMPT placeholders in args with $CMUX_PROMPT token for shell-time expansion
-    const processedArgs = agent.args.map((arg) => {
-      if (arg.includes("$PROMPT")) {
-        return arg.replace(/\$PROMPT/g, "$CMUX_PROMPT");
+    const isClaudeAgent = agent.name.startsWith("claude/");
+    if (isClaudeAgent) {
+      envVars.ANTHROPIC_API_KEY = "";
+      if (!("IS_SANDBOX" in envVars)) {
+        envVars.IS_SANDBOX = "0";
       }
-      return arg;
-    });
+    }
+
+    // Replace $PROMPT placeholders in args with $CMUX_PROMPT token for shell-time expansion
+    const processedArgs = agent.args
+      .flatMap((arg) => {
+        if (isClaudeAgent && arg === "$PROMPT") {
+          return [];
+        }
+        if (arg.includes("$PROMPT")) {
+          return [arg.replace(/\$PROMPT/g, "$CMUX_PROMPT")];
+        }
+        return [arg];
+      });
 
     const agentCommand = `${agent.command} ${processedArgs.join(" ")}`;
 
     // Build the tmux session command that will be sent via socket.io
-    const tmuxSessionName = sanitizeTmuxSessionName("cmux");
+    const tmuxSessionName = "cmux";
 
     serverLogger.info(
       `[AgentSpawner] Building command for agent ${agent.name}:`,
@@ -344,7 +368,7 @@ export async function spawnAgent(
         taskRunJwt,
       });
 
-      worktreePath = "/root/workspace";
+      worktreePath = WORKSPACE_ROOT;
     } else {
       // For Docker, set up worktree as before
       const worktreeInfo = await getWorktreePath(
@@ -389,15 +413,6 @@ export async function spawnAgent(
       });
     }
 
-    // Update the task run with the worktree path (retry on OCC)
-    await retryOnOptimisticConcurrency(() =>
-      getConvex().mutation(api.taskRuns.updateWorktreePath, {
-        teamSlugOrId,
-        id: taskRunId,
-        worktreePath: worktreePath,
-      }),
-    );
-
     // Store the VSCode instance
     // VSCodeInstance.getInstances().set(vscodeInstance.getInstanceId(), vscodeInstance);
 
@@ -410,24 +425,11 @@ export async function spawnAgent(
     serverLogger.info(
       `VSCode instance spawned for agent ${agent.name}: ${vscodeUrl}`,
     );
-
-    if (options.isCloudMode && vscodeInstance instanceof CmuxVSCodeInstance) {
-      console.log("[AgentSpawner] [isCloudMode] Setting up devcontainer");
-      void vscodeInstance
-        .setupDevcontainer()
-        .catch((err) =>
-          serverLogger.error(
-            "[AgentSpawner] setupDevcontainer encountered an error",
-            err,
-          ),
-        );
+    if (vscodeInfo.workerUrl) {
+      serverLogger.info(
+        `[AgentSpawner] Worker URL for agent ${agent.name}: ${vscodeInfo.workerUrl}`,
+      );
     }
-
-    // Start file watching for real-time diff updates
-    serverLogger.info(
-      `[AgentSpawner] Starting file watch for ${agent.name} at ${worktreePath}`,
-    );
-    vscodeInstance.startFileWatch(worktreePath);
 
     // Set up file change event handler for real-time diff updates
     vscodeInstance.on("file-changes", async (data) => {
@@ -562,6 +564,52 @@ export async function spawnAgent(
       throw new Error("Worker socket not available");
     }
 
+    const repoDirName = deriveRepoDirectoryName(options.repoUrl);
+    if (repoDirName) {
+      try {
+        const detectionCommand =
+          `if [ -d "${worktreePath}/.git" ]; then echo "${worktreePath}"; ` +
+          `elif [ -d "${WORKSPACE_ROOT}/${repoDirName}/.git" ]; then echo "${WORKSPACE_ROOT}/${repoDirName}"; ` +
+          `else echo "${worktreePath}"; fi`;
+
+        const detectionResult = await workerExec({
+          workerSocket,
+          command: "bash",
+          args: ["-lc", detectionCommand],
+          cwd: WORKSPACE_ROOT,
+          env: {},
+          timeout: 10_000,
+        });
+
+        const detectedPath =
+          detectionResult.stdout.trim().split(/\s+/)[0] || worktreePath;
+        if (detectedPath !== worktreePath) {
+          serverLogger.info(
+            `[AgentSpawner] Adjusted worktree path for ${agent.name} to ${detectedPath}`,
+          );
+          worktreePath = detectedPath;
+        }
+      } catch (error) {
+        serverLogger.warn(
+          `[AgentSpawner] Failed to detect repository path for ${agent.name}`,
+          error,
+        );
+      }
+    }
+
+    await retryOnOptimisticConcurrency(() =>
+      getConvex().mutation(api.taskRuns.updateWorktreePath, {
+        teamSlugOrId,
+        id: taskRunId,
+        worktreePath,
+      }),
+    );
+
+    serverLogger.info(
+      `[AgentSpawner] Starting file watch for ${agent.name} at ${worktreePath}`,
+    );
+    vscodeInstance.startFileWatch(worktreePath);
+
     const actualCommand = agent.command;
     const actualArgs = processedArgs;
 
@@ -591,30 +639,30 @@ export async function spawnAgent(
     // The notify command contains complex JSON that gets mangled through shell layers
     const tmuxArgs = agent.name.toLowerCase().includes("codex")
       ? [
-        "new-session",
-        "-d",
-        "-s",
-        tmuxSessionName,
-        "-c",
-        "/root/workspace",
-        actualCommand,
-        ...actualArgs.map((arg) => {
-          // Replace $CMUX_PROMPT with actual prompt value
-          if (arg === "$CMUX_PROMPT") {
-            return processedTaskDescription;
-          }
-          return arg;
-        }),
-      ]
+          "new-session",
+          "-d",
+          "-s",
+          tmuxSessionName,
+          "-c",
+          "/root/workspace",
+          actualCommand,
+          ...actualArgs.map((arg) => {
+            // Replace $CMUX_PROMPT with actual prompt value
+            if (arg === "$CMUX_PROMPT") {
+              return processedTaskDescription;
+            }
+            return arg;
+          }),
+        ]
       : [
-        "new-session",
-        "-d",
-        "-s",
-        tmuxSessionName,
-        "bash",
-        "-lc",
-        `exec ${commandString}`,
-      ];
+          "new-session",
+          "-d",
+          "-s",
+          tmuxSessionName,
+          "bash",
+          "-lc",
+          `exec ${commandString}`,
+        ];
 
     const terminalCreationCommand: WorkerCreateTerminal = {
       terminalId: tmuxSessionName,
@@ -632,7 +680,7 @@ export async function spawnAgent(
       agentModel: agent.name,
       authFiles,
       startupCommands,
-      cwd: "/root/workspace",
+      cwd: worktreePath,
     };
 
     const switchBranch = async () => {
@@ -652,7 +700,7 @@ exit $EXIT_CODE
         workerSocket,
         command: "bash",
         args: ["-lc", command],
-        cwd: "/root/workspace",
+        cwd: worktreePath,
         env: {
           CMUX_BRANCH_NAME: newBranch,
         },
@@ -678,13 +726,13 @@ exit $EXIT_CODE
         ].filter((part): part is string => part !== null);
 
         const detailText = detailParts.join(" | ");
-        const summarizedDetails = detailText.length > 600
-          ? `${detailText.slice(0, 600)}…`
-          : detailText;
+        const summarizedDetails =
+          detailText.length > 600 ? `${detailText.slice(0, 600)}…` : detailText;
 
-        const errorMessage = detailParts.length > 0
-          ? `Branch switch script failed for ${newBranch} (exit ${exitCode}): ${summarizedDetails}`
-          : `Branch switch script failed for ${newBranch} (exit ${exitCode}) with no output`;
+        const errorMessage =
+          detailParts.length > 0
+            ? `Branch switch script failed for ${newBranch} (exit ${exitCode}): ${summarizedDetails}`
+            : `Branch switch script failed for ${newBranch} (exit ${exitCode}) with no output`;
 
         throw new Error(errorMessage);
       }
@@ -839,7 +887,10 @@ exit $EXIT_CODE
     );
     serverLogger.info(`[AgentSpawner] Socket id:`, workerSocket.id);
 
-    await new Promise((resolve, reject) => {
+    const terminalCreationResult = await new Promise<{
+      workerId: string;
+      terminalId: string;
+    }>((resolve, reject) => {
       const timeout = setTimeout(() => {
         serverLogger.error(
           `[AgentSpawner] Timeout waiting for terminal creation response after 30s`,
@@ -861,7 +912,10 @@ exit $EXIT_CODE
             return;
           }
           serverLogger.info("Terminal created successfully", result);
-          resolve(result.data);
+          resolve(result.data as {
+            workerId: string;
+            terminalId: string;
+          });
         },
       );
       serverLogger.info(
@@ -869,12 +923,58 @@ exit $EXIT_CODE
       );
     });
 
+    if (isClaudeAgent && processedTaskDescription.trim().length > 0) {
+      const promptHeredoc = `CMUX_PROMPT_${Date.now()}`;
+      const promptBuffer = `cmux_prompt_${Date.now()}`;
+      const promptPath = `/tmp/${promptBuffer}.txt`;
+      const sendPromptScript = `
+set -eu
+sleep 1
+cat <<'${promptHeredoc}' > "${promptPath}"
+${processedTaskDescription}
+${promptHeredoc}
+tmux load-buffer -b ${promptBuffer} "${promptPath}"
+tmux paste-buffer -t ${tmuxSessionName}
+tmux send-keys -t ${tmuxSessionName} Enter
+rm -f "${promptPath}"
+`;
+
+      try {
+        const { exitCode, stderr } = await workerExec({
+          workerSocket,
+          command: "bash",
+          args: ["-lc", sendPromptScript],
+          cwd: worktreePath,
+          env: {},
+          timeout: 20_000,
+        });
+
+        if (exitCode !== 0) {
+          serverLogger.warn(
+            `[AgentSpawner] Failed to send initial prompt to Claude (exit ${exitCode})`,
+            stderr?.slice(0, 1000),
+          );
+        } else {
+          serverLogger.info(
+            `[AgentSpawner] Sent initial prompt to Claude session`,
+          );
+        }
+      } catch (error) {
+        serverLogger.warn(
+          `[AgentSpawner] Error sending prompt to Claude session`,
+          error,
+        );
+      }
+    }
+
     return {
       agentName: agent.name,
-      terminalId,
+      terminalId: terminalCreationResult.terminalId,
       taskRunId,
       worktreePath,
       vscodeUrl,
+      workerUrl: vscodeInfo.workerUrl,
+      sandboxId: vscodeInfo.sandboxId,
       success: true,
     };
   } catch (error) {
@@ -912,8 +1012,8 @@ export async function spawnAllAgents(
   // If selectedAgents is provided, map each entry to an AgentConfig to preserve duplicates
   const agentsToSpawn = options.selectedAgents
     ? options.selectedAgents
-      .map((name) => AGENT_CONFIGS.find((agent) => agent.name === name))
-      .filter((a): a is AgentConfig => Boolean(a))
+        .map((name) => AGENT_CONFIGS.find((agent) => agent.name === name))
+        .filter((a): a is AgentConfig => Boolean(a))
     : AGENT_CONFIGS;
 
   // Generate unique branch names for all agents at once to ensure no collisions
@@ -924,10 +1024,10 @@ export async function spawnAllAgents(
         teamSlugOrId,
       )
     : await generateUniqueBranchNames(
-      options.taskDescription,
-      agentsToSpawn.length,
-      teamSlugOrId,
-    );
+        options.taskDescription,
+        agentsToSpawn.length,
+        teamSlugOrId,
+      );
 
   serverLogger.info(
     `[AgentSpawner] Generated ${branchNames.length} unique branch names for agents`,

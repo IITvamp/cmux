@@ -27,6 +27,8 @@ export interface VSCodeInstanceInfo {
   instanceId: string;
   taskRunId: Id<"taskRuns">;
   provider: "docker" | "morph" | "daytona";
+  workerUrl?: string;
+  sandboxId?: string;
 }
 
 export abstract class VSCodeInstance extends EventEmitter {

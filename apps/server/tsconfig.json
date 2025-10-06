@@ -8,7 +8,7 @@
     "downlevelIteration": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "outDir": "./dist",
-    "rootDir": ".",
+    "rootDir": "..",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -23,9 +23,18 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     // paths
-    "baseUrl": "."
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["../www/*"],
+      "@/docs/*": ["../../docs/*"]
+    }
   },
-  "include": ["**/*.ts", "vite-env.d.ts"],
+  "include": [
+    "**/*.ts",
+    "vite-env.d.ts",
+    "../www/lib/**/*.ts",
+    "../www/lib/**/*.tsx"
+  ],
   "exclude": ["node_modules", "dist"],
   "references": []
 }

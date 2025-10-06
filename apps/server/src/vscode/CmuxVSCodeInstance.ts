@@ -9,7 +9,6 @@ import {
 
 const {
   getApiSandboxesByIdStatus,
-  postApiSandboxesByIdPublishDevcontainer,
   postApiSandboxesByIdStop,
   postApiSandboxesStart,
 } = await getWwwOpenApiModule();
@@ -102,6 +101,8 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
       instanceId: this.instanceId,
       taskRunId: this.taskRunId,
       provider: this.provider,
+      workerUrl: this.workerUrl ?? undefined,
+      sandboxId: this.sandboxId ?? undefined,
     };
   }
 
@@ -144,32 +145,14 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
             instanceId: this.instanceId,
             taskRunId: this.taskRunId,
             provider: st.provider || this.provider,
+            workerUrl: st.workerUrl ?? this.workerUrl ?? undefined,
+            sandboxId: this.sandboxId ?? undefined,
           },
         };
       }
       return { running: false };
     } catch {
       return { running: false };
-    }
-  }
-
-  // Bridge for agentSpawner to publish devcontainer networking (Morph-backed)
-  async setupDevcontainer(): Promise<void> {
-    if (!this.sandboxId) return;
-    try {
-      await postApiSandboxesByIdPublishDevcontainer({
-        client: getWwwClient(),
-        path: { id: this.sandboxId },
-        body: {
-          teamSlugOrId: this.teamSlugOrId,
-          taskRunId: this.taskRunId,
-        },
-      });
-    } catch (e) {
-      dockerLogger.warn(
-        `[CmuxVSCodeInstance] setupDevcontainer failed for sandbox ${this.sandboxId}`,
-        e
-      );
     }
   }
 

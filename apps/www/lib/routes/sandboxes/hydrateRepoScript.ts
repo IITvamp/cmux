@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { execSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 interface HydrateConfig {
@@ -93,6 +93,19 @@ function ensureWorkspace(workspacePath: string) {
   exec(`mkdir -p "${workspacePath}"`);
 }
 
+function isDirectoryEmpty(path: string): boolean {
+  try {
+    const entries = readdirSync(path, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name === "." || entry.name === "..") continue;
+      return false;
+    }
+    return true;
+  } catch {
+    return true;
+  }
+}
+
 function checkExistingRepo(workspacePath: string, owner?: string, repo?: string): {
   hasGit: boolean;
   remoteUrl?: string;
@@ -103,6 +116,11 @@ function checkExistingRepo(workspacePath: string, owner?: string, repo?: string)
 
   if (!hasGit) {
     log("No existing git repository found");
+    const empty = isDirectoryEmpty(workspacePath);
+    if (!empty) {
+      log("Workspace has files but no git repository; will clear before cloning", "debug");
+      return { hasGit: false, needsClear: true };
+    }
     return { hasGit: false, needsClear: false };
   }
 
@@ -136,13 +154,15 @@ function clearWorkspace(workspacePath: string) {
   exec(`rm -rf "${workspacePath}"/* "${workspacePath}"/.[!.]* "${workspacePath}"/..?* 2>/dev/null || true`);
 }
 
-function cloneRepository(config: HydrateConfig) {
-  const { workspacePath, cloneUrl, maskedCloneUrl, depth } = config;
+function cloneRepository(config: HydrateConfig, targetPath: string) {
+  const { cloneUrl, maskedCloneUrl, depth } = config;
 
-  log(`Cloning ${maskedCloneUrl || cloneUrl} with depth=${depth}`);
+  log(`Cloning ${maskedCloneUrl || cloneUrl} with depth=${depth} into ${targetPath}`);
+
+  exec(`mkdir -p "${targetPath}"`);
 
   const { exitCode, stderr } = exec(
-    `git clone --depth ${depth} "${cloneUrl}" "${workspacePath}"`,
+    `git clone --depth ${depth} "${cloneUrl}" "${targetPath}"`,
     { throwOnError: false }
   );
 
@@ -252,34 +272,56 @@ async function main() {
     if (config.cloneUrl) {
       log(`Hydrating single repository: ${config.maskedCloneUrl || config.cloneUrl}`);
 
+      let repoWorkspacePath = config.workspacePath;
+      if (config.repo) {
+        const candidate = join(config.workspacePath, config.repo);
+        if (existsSync(join(candidate, ".git"))) {
+          log(`Detected existing repository at ${candidate}`);
+          repoWorkspacePath = candidate;
+        } else if (!existsSync(join(config.workspacePath, ".git")) && existsSync(candidate)) {
+          log(`Found directory ${candidate} without git metadata; treating as repository root`);
+          repoWorkspacePath = candidate;
+        }
+      }
+
+      ensureWorkspace(repoWorkspacePath);
+
       // Check existing repo
       const { hasGit, needsClear } = checkExistingRepo(
-        config.workspacePath,
+        repoWorkspacePath,
         config.owner,
         config.repo
       );
 
       if (needsClear) {
-        clearWorkspace(config.workspacePath);
+        clearWorkspace(repoWorkspacePath);
       }
 
       if (!hasGit || needsClear) {
         // Clone repository
-        cloneRepository(config);
+        cloneRepository(config, repoWorkspacePath);
       } else {
         // Fetch updates
-        fetchUpdates(config.workspacePath);
+        fetchUpdates(repoWorkspacePath);
       }
 
       // Checkout branch
       if (config.baseBranch) {
-        checkoutBranch(config.workspacePath, config.baseBranch, config.newBranch);
+        checkoutBranch(repoWorkspacePath, config.baseBranch, config.newBranch);
       }
 
       // List files for verification
       log("Listing workspace contents:");
-      const { stdout } = exec(`ls -la | head -50`, { cwd: config.workspacePath });
+      const { stdout } = exec(`ls -la | head -50`, { cwd: repoWorkspacePath });
       console.log(stdout);
+
+      if (repoWorkspacePath !== config.workspacePath) {
+        log("Listing root workspace contents:");
+        const { stdout: rootListing } = exec(`ls -la | head -50`, {
+          cwd: config.workspacePath,
+        });
+        console.log(rootListing);
+      }
     } else {
       // Handle multiple repos case
       log("Hydrating multiple repositories");
