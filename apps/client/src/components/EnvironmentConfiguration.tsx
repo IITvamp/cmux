@@ -81,24 +81,24 @@ export function EnvironmentConfiguration({
   const [iframeLoaded, setIframeLoaded] = useState(false);
   const [envName, setEnvName] = useState(() => initialEnvName);
   const [envVars, setEnvVars] = useState<EnvVar[]>(() =>
-    ensureInitialEnvVars(initialEnvVars),
+    ensureInitialEnvVars(initialEnvVars)
   );
   const [maintenanceScript, setMaintenanceScript] = useState(
-    () => initialMaintenanceScript,
+    () => initialMaintenanceScript
   );
   const [devScript, setDevScript] = useState(() => initialDevScript);
   const [exposedPorts, setExposedPorts] = useState(() => initialExposedPorts);
   const [portsError, setPortsError] = useState<string | null>(null);
   const keyInputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [pendingFocusIndex, setPendingFocusIndex] = useState<number | null>(
-    null,
+    null
   );
   const lastSubmittedEnvContent = useRef<string | null>(null);
   const [localInstanceId, setLocalInstanceId] = useState<string | undefined>(
-    () => instanceId,
+    () => instanceId
   );
   const [localVscodeUrl, setLocalVscodeUrl] = useState<string | undefined>(
-    () => vscodeUrl,
+    () => vscodeUrl
   );
 
   useEffect(() => {
@@ -110,13 +110,13 @@ export function EnvironmentConfiguration({
   }, [vscodeUrl]);
 
   const createEnvironmentMutation = useRQMutation(
-    postApiEnvironmentsMutation(),
+    postApiEnvironmentsMutation()
   );
   const createSnapshotMutation = useRQMutation(
-    postApiEnvironmentsByIdSnapshotsMutation(),
+    postApiEnvironmentsByIdSnapshotsMutation()
   );
   const applySandboxEnvMutation = useRQMutation(
-    postApiSandboxesByIdEnvMutation(),
+    postApiSandboxesByIdEnvMutation()
   );
   const applySandboxEnv = applySandboxEnvMutation.mutate;
 
@@ -156,7 +156,7 @@ export function EnvironmentConfiguration({
     const envVarsContent = formatEnvVarsContent(
       envVars
         .filter((r) => r.name.trim().length > 0)
-        .map((r) => ({ name: r.name, value: r.value })),
+        .map((r) => ({ name: r.name, value: r.value }))
     );
 
     if (
@@ -183,7 +183,7 @@ export function EnvironmentConfiguration({
           onError: (error) => {
             console.error("Failed to apply sandbox environment vars", error);
           },
-        },
+        }
       );
     }, 400);
 
@@ -205,7 +205,7 @@ export function EnvironmentConfiguration({
     const envVarsContent = formatEnvVarsContent(
       envVars
         .filter((r) => r.name.trim().length > 0)
-        .map((r) => ({ name: r.name, value: r.value })),
+        .map((r) => ({ name: r.name, value: r.value }))
     );
 
     const normalizedMaintenanceScript = maintenanceScript.trim();
@@ -225,7 +225,7 @@ export function EnvironmentConfiguration({
     const validation = validateExposedPorts(parsedPorts);
     if (validation.reserved.length > 0) {
       setPortsError(
-        `Reserved ports cannot be exposed: ${validation.reserved.join(", ")}`,
+        `Reserved ports cannot be exposed: ${validation.reserved.join(", ")}`
       );
       return;
     }
@@ -271,7 +271,7 @@ export function EnvironmentConfiguration({
           onError: (err) => {
             console.error("Failed to create snapshot version:", err);
           },
-        },
+        }
       );
     } else {
       // Create a new environment
@@ -306,7 +306,7 @@ export function EnvironmentConfiguration({
           onError: (err) => {
             console.error("Failed to create environment:", err);
           },
-        },
+        }
       );
     }
   };
@@ -392,7 +392,7 @@ export function EnvironmentConfiguration({
               "w-full rounded-md border border-neutral-200 dark:border-neutral-800 px-3 py-2 text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2",
               mode === "snapshot"
                 ? "bg-neutral-100 text-neutral-600 cursor-not-allowed focus:ring-neutral-300/0 dark:bg-neutral-900 dark:text-neutral-400 dark:focus:ring-neutral-700/0"
-                : "bg-white text-neutral-900 focus:ring-neutral-300 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:ring-neutral-700",
+                : "bg-white text-neutral-900 focus:ring-neutral-300 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:ring-neutral-700"
             )}
           />
         </div>
@@ -450,9 +450,9 @@ export function EnvironmentConfiguration({
                           .filter(
                             (r) =>
                               r.name.trim().length > 0 ||
-                              r.value.trim().length > 0,
+                              r.value.trim().length > 0
                           )
-                          .map((r) => [r.name, r] as const),
+                          .map((r) => [r.name, r] as const)
                       );
                       for (const it of items) {
                         if (!it.name) continue;
@@ -706,7 +706,7 @@ export function EnvironmentConfiguration({
               "bg-white/60 dark:bg-neutral-950/60",
               iframeLoaded
                 ? "opacity-0 pointer-events-none"
-                : "opacity-100 pointer-events-auto",
+                : "opacity-100 pointer-events-auto"
             )}
           >
             <div className="text-center">
@@ -720,8 +720,8 @@ export function EnvironmentConfiguration({
             src={localVscodeUrl}
             className="w-full h-full border-0"
             title="VSCode Environment"
-            allow="clipboard-read; clipboard-write; usb; serial; hid; cross-origin-isolated; autoplay; camera; microphone; geolocation; payment; fullscreen"
-            sandbox="allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-top-navigation"
+            sandbox="allow-downloads allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation allow-top-navigation-by-user-activation"
+            allow="accelerometer; camera; encrypted-media; fullscreen; geolocation; gyroscope; magnetometer; microphone; midi; payment; usb; xr-spatial-tracking"
             onLoad={() => setIframeLoaded(true)}
           />
         </div>

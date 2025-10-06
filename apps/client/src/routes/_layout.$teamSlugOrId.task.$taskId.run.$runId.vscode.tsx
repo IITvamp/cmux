@@ -8,6 +8,7 @@ import { useCallback } from "react";
 import z from "zod";
 import { PersistentWebView } from "@/components/persistent-webview";
 import { getTaskRunPersistKey } from "@/lib/persistent-webview-keys";
+import { toProxyWorkspaceUrl } from "@/lib/toProxyWorkspaceUrl";
 import { preloadTaskRunIframes } from "../lib/preloadTaskRunIframes";
 
 const paramsSchema = z.object({
@@ -16,7 +17,7 @@ const paramsSchema = z.object({
 });
 
 export const Route = createFileRoute(
-  "/_layout/$teamSlugOrId/task/$taskId/run/$runId/vscode",
+  "/_layout/$teamSlugOrId/task/$taskId/run/$runId/vscode"
 )({
   component: VSCodeComponent,
   params: {
@@ -33,12 +34,13 @@ export const Route = createFileRoute(
       convexQuery(api.taskRuns.get, {
         teamSlugOrId: opts.params.teamSlugOrId,
         id: opts.params.runId,
-      }),
+      })
     );
     if (result) {
+      const workspaceUrl = result.vscode?.workspaceUrl;
       void preloadTaskRunIframes([
         {
-          url: result.vscode?.workspaceUrl || "",
+          url: workspaceUrl ? toProxyWorkspaceUrl(workspaceUrl) : "",
           taskRunId: opts.params.runId,
         },
       ]);
@@ -52,10 +54,12 @@ function VSCodeComponent() {
     convexQuery(api.taskRuns.get, {
       teamSlugOrId,
       id: taskRunId,
-    }),
+    })
   );
 
-  const workspaceUrl = taskRun?.data?.vscode?.workspaceUrl ?? null;
+  const workspaceUrl = taskRun?.data?.vscode?.workspaceUrl
+    ? toProxyWorkspaceUrl(taskRun.data.vscode.workspaceUrl)
+    : null;
   const persistKey = getTaskRunPersistKey(taskRunId);
   const hasWorkspace = workspaceUrl !== null;
 
@@ -67,10 +71,10 @@ function VSCodeComponent() {
     (error: Error) => {
       console.error(
         `Failed to load workspace view for task run ${taskRunId}:`,
-        error,
+        error
       );
     },
-    [taskRunId],
+    [taskRunId]
   );
 
   return (
@@ -83,8 +87,8 @@ function VSCodeComponent() {
               src={workspaceUrl}
               className="grow flex relative"
               iframeClassName="select-none"
-              allow="clipboard-read; clipboard-write; usb; serial; hid; cross-origin-isolated; autoplay; camera; microphone; geolocation; payment; fullscreen"
-              sandbox="allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-top-navigation"
+              sandbox="allow-downloads allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation allow-top-navigation-by-user-activation"
+              allow="accelerometer; camera; encrypted-media; fullscreen; geolocation; gyroscope; magnetometer; microphone; midi; payment; usb; xr-spatial-tracking"
               retainOnUnmount
               suspended={!hasWorkspace}
               onLoad={onLoad}
@@ -99,7 +103,7 @@ function VSCodeComponent() {
               {
                 "opacity-100": !hasWorkspace,
                 "opacity-0": hasWorkspace,
-              },
+              }
             )}
           >
             <div className="flex flex-col items-center gap-3">

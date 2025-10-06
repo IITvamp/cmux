@@ -220,7 +220,6 @@ export async function spawnAgent(
       CMUX_TASK_RUN_ID: taskRunId,
       CMUX_TASK_RUN_JWT: taskRunJwt,
       PROMPT: processedTaskDescription,
-      NEXT_PUBLIC_CONVEX_URL: env.NEXT_PUBLIC_CONVEX_URL,
     };
 
     if (options.environmentId) {
@@ -625,6 +624,11 @@ export async function spawnAgent(
       cols: 80,
       rows: 74,
       env: envVars,
+      taskRunContext: {
+        taskRunToken: taskRunJwt,
+        prompt: processedTaskDescription,
+        convexUrl: env.NEXT_PUBLIC_CONVEX_URL,
+      },
       taskRunId,
       agentModel: agent.name,
       authFiles,

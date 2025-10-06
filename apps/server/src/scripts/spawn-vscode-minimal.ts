@@ -139,6 +139,7 @@ async function createTerminalWithPrompt(
         "--dangerously-skip-permissions",
         prompt,
       ];
+      const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL || "http://localhost:9777";
 
       console.log(
         `Creating terminal with command: ${command} ${args.join(" ")}`
@@ -153,6 +154,11 @@ async function createTerminalWithPrompt(
           cols: 80,
           rows: 24,
           env: {},
+          taskRunContext: {
+            taskRunToken: "spawn-vscode-minimal-token",
+            prompt,
+            convexUrl,
+          },
         },
         (result) => {
           if (result.error) {
