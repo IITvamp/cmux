@@ -54,7 +54,7 @@ export function SidebarPullRequestList({
 
   if (list.length === 0) {
     return (
-      <p className="mt-1 px-3 py-2 text-xs text-neutral-500 dark:text-neutral-400 select-none">
+      <p className="mt-1 pl-2 pr-3 py-2 text-xs text-neutral-500 dark:text-neutral-400 select-none">
         No pull requests
       </p>
     );

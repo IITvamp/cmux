@@ -258,7 +258,7 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
                   />
                 ))
               ) : (
-                <p className="px-2 py-1.5 text-xs text-center text-neutral-500 dark:text-neutral-400 select-none">
+                <p className="pl-2 pr-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 select-none">
                   No recent tasks
                 </p>
               )}
