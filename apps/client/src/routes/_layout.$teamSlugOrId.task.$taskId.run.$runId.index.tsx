@@ -47,7 +47,9 @@ function TaskRunComponent() {
   );
 
   const rawWorkspaceUrl = taskRun?.data?.vscode?.workspaceUrl ?? null;
-  const workspaceUrl = rawWorkspaceUrl ? toProxyWorkspaceUrl(rawWorkspaceUrl) : null;
+  const workspaceUrl = rawWorkspaceUrl
+    ? toProxyWorkspaceUrl(rawWorkspaceUrl)
+    : null;
   const persistKey = getTaskRunPersistKey(taskRunId);
   const hasWorkspace = workspaceUrl !== null;
 
@@ -75,8 +77,8 @@ function TaskRunComponent() {
               src={workspaceUrl}
               className="grow flex relative"
               iframeClassName="select-none"
-              allow="clipboard-read; clipboard-write; usb; serial; hid; cross-origin-isolated; autoplay; camera; microphone; geolocation; payment; fullscreen"
-              sandbox="allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-top-navigation"
+              allow="*"
+              sandbox="*"
               retainOnUnmount
               suspended={!hasWorkspace}
               onLoad={onLoad}
