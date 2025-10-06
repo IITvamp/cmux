@@ -11,7 +11,7 @@ import { toProxyWorkspaceUrl } from "@/lib/toProxyWorkspaceUrl";
 import { preloadTaskRunIframes } from "../lib/preloadTaskRunIframes";
 
 export const Route = createFileRoute(
-  "/_layout/$teamSlugOrId/task/$taskId/run/$runId"
+  "/_layout/$teamSlugOrId/task/$taskId/run/$runId/"
 )({
   component: TaskRunComponent,
   parseParams: (params) => ({
