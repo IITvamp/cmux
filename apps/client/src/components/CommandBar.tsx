@@ -335,9 +335,9 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
         await preloadTeamDashboard(targetTeamSlugOrId);
       } else if (value?.startsWith("task:")) {
         const parts = value.slice(5).split(":");
-        const taskId = parts[0];
+        const taskId = parts[0] as Id<"tasks">;
         const action = parts[1];
-        const task = allTasks?.find((t) => t._id === (taskId as Id<"tasks">));
+        const task = allTasks?.find((t) => t._id === taskId);
         const runId = task?.selectedTaskRun?._id;
 
         try {
@@ -345,21 +345,23 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
             // Preload main task route
             await router.preloadRoute({
               to: "/$teamSlugOrId/task/$taskId",
-              // @ts-expect-error - taskId from string
               params: { teamSlugOrId, taskId },
               search: { runId: undefined },
             });
           } else if (action === "vs") {
             if (runId) {
               await router.preloadRoute({
-                to: "/$teamSlugOrId/task/$taskId/run/$runId/vscode",
-                // @ts-expect-error - provided from runtime lookup
-                params: { teamSlugOrId, taskId, runId },
+                to: "/$teamSlugOrId/task/$taskId/run/$runId",
+                params: {
+                  teamSlugOrId,
+                  taskId,
+                  runId,
+                  taskRunId: runId,
+                },
               });
             } else {
               await router.preloadRoute({
                 to: "/$teamSlugOrId/task/$taskId",
-                // @ts-expect-error - taskId from string
                 params: { teamSlugOrId, taskId },
                 search: { runId: undefined },
               });
@@ -368,13 +370,11 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
             if (runId) {
               await router.preloadRoute({
                 to: "/$teamSlugOrId/task/$taskId/run/$runId/diff",
-                // @ts-expect-error - provided from runtime lookup
                 params: { teamSlugOrId, taskId, runId },
               });
             } else {
               await router.preloadRoute({
                 to: "/$teamSlugOrId/task/$taskId",
-                // @ts-expect-error - taskId from string
                 params: { teamSlugOrId, taskId },
                 search: { runId: undefined },
               });
@@ -537,8 +537,13 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
         } else if (action === "vs") {
           if (runId) {
             navigate({
-              to: "/$teamSlugOrId/task/$taskId/run/$runId/vscode",
-              params: { teamSlugOrId, taskId, runId },
+              to: "/$teamSlugOrId/task/$taskId/run/$runId",
+              params: {
+                teamSlugOrId,
+                taskId,
+                runId,
+                taskRunId: runId,
+              },
             });
           } else {
             navigate({
@@ -551,7 +556,11 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
           if (runId) {
             navigate({
               to: "/$teamSlugOrId/task/$taskId/run/$runId/diff",
-              params: { teamSlugOrId, taskId, runId },
+              params: {
+                teamSlugOrId,
+                taskId,
+                runId,
+              },
             });
           } else {
             navigate({

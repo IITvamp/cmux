@@ -9,3 +9,6 @@ routes = [
   { pattern = "*.cmux.sh/*", zone_name = "cmux.sh" },
 ]
 
+
+[observability.logs]
+enabled = true
