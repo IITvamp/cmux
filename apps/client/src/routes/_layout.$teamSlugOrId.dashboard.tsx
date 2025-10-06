@@ -86,7 +86,7 @@ function DashboardComponent() {
   });
   const [selectedBranch, setSelectedBranch] = useState<string[]>([]);
 
-  const [selectedAgents, setSelectedAgents] = useState<string[]>(() => {
+  const [selectedAgents, setSelectedAgentsState] = useState<string[]>(() => {
     const storedAgents = parseStoredAgentSelection(
       localStorage.getItem("selectedAgents"),
     );
@@ -101,9 +101,11 @@ function DashboardComponent() {
   });
   const selectedAgentsRef = useRef<string[]>(selectedAgents);
 
-  useEffect(() => {
-    selectedAgentsRef.current = selectedAgents;
-  }, [selectedAgents]);
+  const setSelectedAgents = useCallback((agents: string[]) => {
+    selectedAgentsRef.current = agents;
+    setSelectedAgentsState(agents);
+  }, [setSelectedAgentsState]);
+
   const [taskDescription, setTaskDescription] = useState<string>("");
   const [isCloudMode, setIsCloudMode] = useState<boolean>(() => {
     const stored = localStorage.getItem("isCloudMode");
@@ -215,7 +217,7 @@ function DashboardComponent() {
       setSelectedAgents(normalizedAgents);
       persistAgentSelection(normalizedAgents);
     },
-    [persistAgentSelection],
+    [persistAgentSelection, setSelectedAgents],
   );
 
   // Fetch repos from Convex
