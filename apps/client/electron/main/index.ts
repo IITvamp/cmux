@@ -609,6 +609,14 @@ app.on("open-url", (_event, url) => {
   handleOrQueueProtocolUrl(url);
 });
 
+// Fix for Linux AppImage: disable setuid sandbox, use namespace sandbox instead
+// AppImages can't use setuid sandbox (chrome-sandbox) because the filesystem is read-only
+// The namespace sandbox provides similar security without requiring setuid binaries
+if (process.platform === "linux" && process.env.APPIMAGE) {
+  app.commandLine.appendSwitch("disable-setuid-sandbox");
+  // Namespace sandbox will be used automatically as fallback
+}
+
 app.whenReady().then(async () => {
   ensureLogFiles();
   setupConsoleFileMirrors();
