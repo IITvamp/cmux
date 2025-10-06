@@ -31,6 +31,7 @@ import { useMutation } from "convex/react";
 import { Server as ServerIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { z } from "zod";
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId/dashboard")({
   component: DashboardComponent,
@@ -47,6 +48,31 @@ const DEFAULT_AGENT_SELECTION = DEFAULT_AGENTS.filter((agent) =>
   KNOWN_AGENT_NAMES.has(agent),
 );
 
+const AGENT_SELECTION_SCHEMA = z.array(z.string());
+
+const filterKnownAgents = (agents: string[]): string[] =>
+  agents.filter((agent) => KNOWN_AGENT_NAMES.has(agent));
+
+const parseStoredAgentSelection = (stored: string | null): string[] => {
+  if (!stored) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(stored);
+    const result = AGENT_SELECTION_SCHEMA.safeParse(parsed);
+    if (!result.success) {
+      console.warn("Invalid stored agent selection", result.error);
+      return [];
+    }
+
+    return filterKnownAgents(result.data);
+  } catch (error) {
+    console.warn("Failed to parse stored agent selection", error);
+    return [];
+  }
+};
+
 function DashboardComponent() {
   const { teamSlugOrId } = Route.useParams();
   const searchParams = Route.useSearch() as { environmentId?: string };
@@ -60,39 +86,24 @@ function DashboardComponent() {
   });
   const [selectedBranch, setSelectedBranch] = useState<string[]>([]);
 
-  const [selectedAgentsState, setSelectedAgentsState] = useState<string[]>(() => {
-    try {
-      const stored = localStorage.getItem("selectedAgents");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          const filtered = parsed.filter((agent: unknown): agent is string => {
-            return typeof agent === "string" && KNOWN_AGENT_NAMES.has(agent);
-          });
-          if (filtered.length > 0) {
-            return filtered;
-          }
-        }
-      }
-    } catch (error) {
-      console.warn("Failed to read stored agent selection", error);
+  const [selectedAgents, setSelectedAgents] = useState<string[]>(() => {
+    const storedAgents = parseStoredAgentSelection(
+      localStorage.getItem("selectedAgents"),
+    );
+
+    if (storedAgents.length > 0) {
+      return storedAgents;
     }
+
     return DEFAULT_AGENT_SELECTION.length > 0
       ? [...DEFAULT_AGENT_SELECTION]
       : [];
   });
-  const selectedAgentsRef = useRef<string[]>(selectedAgentsState);
-  const setSelectedAgents = useCallback(
-    (value: string[] | ((prev: string[]) => string[])) => {
-      setSelectedAgentsState((prev) => {
-        const next = typeof value === "function" ? value(prev) : value;
-        selectedAgentsRef.current = next;
-        return next;
-      });
-    },
-    [],
-  );
-  const selectedAgents = selectedAgentsState;
+  const selectedAgentsRef = useRef<string[]>(selectedAgents);
+
+  useEffect(() => {
+    selectedAgentsRef.current = selectedAgents;
+  }, [selectedAgents]);
   const [taskDescription, setTaskDescription] = useState<string>("");
   const [isCloudMode, setIsCloudMode] = useState<boolean>(() => {
     const stored = localStorage.getItem("isCloudMode");
@@ -200,13 +211,11 @@ function DashboardComponent() {
   // Callback for agent selection changes
   const handleAgentChange = useCallback(
     (newAgents: string[]) => {
-      const normalizedAgents = newAgents.filter((agent) =>
-        KNOWN_AGENT_NAMES.has(agent),
-      );
+      const normalizedAgents = filterKnownAgents(newAgents);
       setSelectedAgents(normalizedAgents);
       persistAgentSelection(normalizedAgents);
     },
-    [persistAgentSelection, setSelectedAgents],
+    [persistAgentSelection],
   );
 
   // Fetch repos from Convex
@@ -244,9 +253,7 @@ function DashboardComponent() {
 
       const providers = response.providers;
       if (!providers || providers.length === 0) {
-        const normalizedOnly = currentAgents.filter((agent) =>
-          KNOWN_AGENT_NAMES.has(agent),
-        );
+        const normalizedOnly = filterKnownAgents(currentAgents);
         if (normalizedOnly.length !== currentAgents.length) {
           setSelectedAgents(normalizedOnly);
           persistAgentSelection(normalizedOnly);
@@ -260,9 +267,7 @@ function DashboardComponent() {
           .map((provider) => provider.name),
       );
 
-      const normalizedAgents = currentAgents.filter((agent) =>
-        KNOWN_AGENT_NAMES.has(agent),
-      );
+      const normalizedAgents = filterKnownAgents(currentAgents);
       const removedUnknown = normalizedAgents.length !== currentAgents.length;
 
       const filteredAgents = normalizedAgents.filter((agent) =>
