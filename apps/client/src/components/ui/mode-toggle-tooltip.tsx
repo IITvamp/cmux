@@ -1,18 +1,13 @@
 import { cn } from "@/lib/utils";
 import { Switch } from "@heroui/react";
-import { useUser } from "@stackframe/react";
-import { useLocation } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import { Cloud, HardDrive } from "lucide-react";
 import * as React from "react";
-import { useEffect, useRef } from "react";
-import { CloudModeWaitlistModal } from "./cloud-mode-waitlist-modal";
 
 interface ModeToggleTooltipProps {
   isCloudMode: boolean;
   onToggle: () => void;
   className?: string;
-  teamSlugOrId: string;
   disabled?: boolean;
 }
 
@@ -20,33 +15,10 @@ export function ModeToggleTooltip({
   isCloudMode,
   onToggle,
   className,
-  teamSlugOrId,
   disabled = false,
 }: ModeToggleTooltipProps) {
   const [showTooltip, setShowTooltip] = React.useState(false);
-  const [showWaitlistModal, setShowWaitlistModal] = React.useState(false);
   const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const user = useUser({ or: "return-null" });
-  const location = useLocation();
-  const cloudModeEnabled =
-    user?.clientReadOnlyMetadata?.["cloudModeEnabled"] === "true";
-
-  const shownWaitlistModal = useRef(false);
-  useEffect(() => {
-    if (shownWaitlistModal.current) {
-      return;
-    }
-    if (!user) {
-      return;
-    }
-    shownWaitlistModal.current = true;
-    if (user.clientMetadata?.cloudModeWaitlist) {
-      return;
-    }
-    if (location.href.includes("waitlist")) {
-      setShowWaitlistModal(true);
-    }
-  }, [location.href, user]);
 
   const handleClick = () => {
     if (disabled) return;
@@ -55,27 +27,7 @@ export function ModeToggleTooltip({
       clearTimeout(timeoutRef.current);
     }
 
-    if (!user) {
-      setShowWaitlistModal(true);
-      // modal includes login component
-      return;
-    }
-
-    if (!isCloudMode) {
-      // Check if user has cloud mode enabled or already joined waitlist
-      const alreadyJoined = user.clientMetadata?.cloudModeWaitlist === true;
-
-      if (cloudModeEnabled || alreadyJoined) {
-        // Allow toggle if cloudModeEnabled is true or user is on waitlist
-        onToggle();
-      } else {
-        // Show waitlist modal when trying to switch to cloud mode
-        setShowWaitlistModal(true);
-      }
-    } else {
-      // Allow switching back to local mode
-      onToggle();
-    }
+    onToggle();
 
     setShowTooltip(true);
 
@@ -167,12 +119,7 @@ export function ModeToggleTooltip({
                     animate={{ x: isCloudMode ? "-150%" : "0%" }}
                     transition={{ duration: 0.2, ease: "easeInOut" }}
                   >
-                    <span className="text-center">
-                      {cloudModeEnabled ||
-                      user?.clientMetadata?.cloudModeWaitlist
-                        ? "Local Mode"
-                        : "Join waitlist"}
-                    </span>
+                    <span className="text-center">Local Mode</span>
                   </motion.div>
                 </div>
               </div>
@@ -180,13 +127,6 @@ export function ModeToggleTooltip({
           </motion.div>
         )}
       </AnimatePresence>
-
-      <CloudModeWaitlistModal
-        visible={showWaitlistModal}
-        onClose={() => setShowWaitlistModal(false)}
-        defaultEmail={user?.primaryEmail || undefined}
-        teamSlugOrId={teamSlugOrId}
-      />
     </div>
   );
 }
