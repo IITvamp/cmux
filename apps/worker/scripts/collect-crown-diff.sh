@@ -54,14 +54,22 @@ cd "${repo_root}"
 
 is_ignored_path() {
   local p="$1"
+  local base="${p##*/}"
+
+  case "$base" in
+    pnpm-lock.yaml|pnpm-lock.yml|yarn.lock|package-lock.json|Pipfile.lock|poetry.lock|Gemfile.lock|composer.lock|Cargo.lock|.DS_Store)
+      return 0
+      ;;
+  esac
+
   case "$p" in
     .git/*|.git) return 0 ;;
-    node_modules/*|pnpm-lock.yaml|yarn.lock|package-lock.json|*.map|dist/*|build/*|.next/*|out/*|.turbo/*) return 0 ;;
-    venv/*|.venv/*|__pycache__/*|Pipfile.lock|poetry.lock) return 0 ;;
-    Gemfile.lock|composer.lock|vendor/*) return 0 ;;
-    target/*|Cargo.lock) return 0 ;;
+    node_modules/*|*.map|dist/*|build/*|.next/*|out/*|.turbo/*) return 0 ;;
+    venv/*|.venv/*|__pycache__/*) return 0 ;;
+    vendor/*) return 0 ;;
+    target/*) return 0 ;;
     coverage/*|.nyc_output/*) return 0 ;;
-    *.min.js|*.min.css|*.log|*.tmp|*.cache|.DS_Store) return 0 ;;
+    *.min.js|*.min.css|*.log|*.tmp|*.cache) return 0 ;;
     *.png|*.jpg|*.jpeg|*.gif|*.svg|*.ico|*.webp|*.bmp|*.pdf|*.zip|*.tar|*.tar.gz|*.tgz|*.gz|*.xz|*.bz2|*.7z|*.mp4|*.mp3|*.avi) return 0 ;;
   esac
   return 1

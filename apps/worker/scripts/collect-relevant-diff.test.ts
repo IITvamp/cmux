@@ -78,4 +78,15 @@ describe("collect-relevant-diff.sh", () => {
     expect(diff).not.toContain("dist/");
     expect(diff).not.toContain("images/test.png");
   });
+
+  it("keeps YAML workflow files that are not lockfiles", () => {
+    const workflows = join(dir, ".github", "workflows");
+    mkdirSync(workflows, { recursive: true });
+    writeFileSync(join(workflows, "release-updates.yml"), "name: release\n");
+
+    const scriptPath = join(process.cwd(), "scripts/collect-relevant-diff.sh");
+    const diff = execFileSync("bash", [scriptPath], { cwd: dir }).toString();
+
+    expect(diff).toContain(".github/workflows/release-updates.yml");
+  });
 });

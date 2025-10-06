@@ -54,6 +54,18 @@ describe("collectRelevantDiff", () => {
     expect(diff).not.toContain("image.png");
   });
 
+  it("includes non-lock YAML files in the diff", async () => {
+    const workflowsDir = path.join(repoDir, ".github", "workflows");
+    mkdirSync(workflowsDir, { recursive: true });
+
+    const workflowPath = path.join(workflowsDir, "release-updates.yml");
+    writeFileSync(workflowPath, "name: release\n");
+
+    const diff = await collectRelevantDiff({ repoPath: repoDir });
+
+    expect(diff).toContain(".github/workflows/release-updates.yml");
+  });
+
   it("diffs against the provided base ref when repository is clean", async () => {
     mkdirSync(path.join(repoDir, "src"), { recursive: true });
     writeFileSync(

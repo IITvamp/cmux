@@ -55,4 +55,15 @@ describe("collect-crown-diff.sh", () => {
     expect(diff).not.toContain("Pipfile.lock");
     expect(diff).not.toContain("target/");
   });
+
+  it("keeps workflow YAML diffs", () => {
+    const workflows = join(dir, ".github", "workflows");
+    mkdirSync(workflows, { recursive: true });
+    writeFileSync(join(workflows, "release-updates.yml"), "name: release\n");
+
+    const scriptPath = join(process.cwd(), "scripts/collect-crown-diff.sh");
+    const diff = execFileSync("bash", [scriptPath], { cwd: dir }).toString();
+
+    expect(diff).toContain(".github/workflows/release-updates.yml");
+  });
 });

@@ -88,9 +88,11 @@ const createGitEnv = (env?: GitEnv): GitEnv => ({
 const normalizePath = (input: string): string =>
   input.replace(/\\/g, "/").replace(/^\.\//, "");
 
-const EXACT_MATCHES = new Set([
-  ".git",
+const EXACT_MATCHES = new Set([".git"]);
+
+const BASENAME_MATCHES = new Set([
   "pnpm-lock.yaml",
+  "pnpm-lock.yml",
   "yarn.lock",
   "package-lock.json",
   "Pipfile.lock",
@@ -153,6 +155,9 @@ const isIgnoredPath = (rawPath: string): boolean => {
   if (!normalized) return false;
 
   if (EXACT_MATCHES.has(normalized)) return true;
+
+  const baseName = path.posix.basename(normalized);
+  if (BASENAME_MATCHES.has(baseName)) return true;
 
   for (const prefix of PREFIX_MATCHES) {
     if (normalized.startsWith(prefix)) {
