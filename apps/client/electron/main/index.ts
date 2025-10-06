@@ -589,7 +589,42 @@ function createWindow(): void {
   });
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url);
+    // On Linux, xdg-open can be misconfigured. Try common browsers explicitly for HTTP(S) URLs
+    if (process.platform === "linux" && /^https?:\/\//i.test(details.url)) {
+      const { execSync } = require("node:child_process");
+      const browsers = [
+        "google-chrome",
+        "chromium-browser",
+        "chromium",
+        "firefox",
+        "microsoft-edge",
+        "xdg-open",
+      ];
+
+      let opened = false;
+      for (const browser of browsers) {
+        try {
+          // Check if browser exists
+          execSync(`command -v ${browser}`, { stdio: "ignore" });
+          // If we get here, browser exists - open URL
+          execSync(`${browser} "${details.url}" &`, {
+            stdio: "ignore",
+            shell: true,
+          });
+          opened = true;
+          break;
+        } catch {
+          // Browser not found, try next
+        }
+      }
+
+      if (!opened) {
+        // Fallback to shell.openExternal
+        shell.openExternal(details.url);
+      }
+    } else {
+      shell.openExternal(details.url);
+    }
     return { action: "deny" };
   });
 

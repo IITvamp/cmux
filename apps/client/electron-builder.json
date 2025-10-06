@@ -68,7 +68,17 @@
   },
   "linux": {
     "icon": "build/icon.png",
-    "category": "Development"
+    "category": "Development",
+    "target": [
+      "AppImage"
+    ],
+    "desktop": {
+      "Name": "cmux",
+      "StartupWMClass": "cmux",
+      "Terminal": false,
+      "Type": "Application",
+      "Categories": "Development;"
+    }
   },
   "dmg": {
     "icon": "build/icon.icns",
