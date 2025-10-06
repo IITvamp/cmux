@@ -68,7 +68,7 @@ set -euo pipefail
 trap 'rm -f ${maintenanceScriptPath}' EXIT
 ${buildScriptFileCommand(maintenanceScriptPath, script)}
 cd ${WORKSPACE_ROOT}
-bash -eu -o pipefail ${maintenanceScriptPath}
+bash -leu -o pipefail ${maintenanceScriptPath}
 `;
 
   try {
@@ -99,21 +99,18 @@ export async function startDevScript({
   instance: MorphInstance;
   script: string;
 }): Promise<{ error: string | null }> {
-  const devScriptRunId = randomUUID().replace(/-/g, "");
-  const devScriptDir = `${CMUX_RUNTIME_DIR}/${devScriptRunId}`;
-  const devScriptPath = `${devScriptDir}/dev-script.sh`;
+  const devScriptPath = `${CMUX_RUNTIME_DIR}/dev-script.sh`;
   const pidFile = `${LOG_DIR}/dev-script.pid`;
   const logFile = `${LOG_DIR}/dev-script.log`;
 
   const command = `
 set -euo pipefail
-trap 'rm -rf ${devScriptDir}' EXIT
 mkdir -p ${LOG_DIR}
-mkdir -p ${devScriptDir}
+mkdir -p ${CMUX_RUNTIME_DIR}
 ${ensurePidStoppedCommand(pidFile)}
 ${buildScriptFileCommand(devScriptPath, script)}
 cd ${WORKSPACE_ROOT}
-nohup bash -eu -o pipefail ${devScriptPath} > ${logFile} 2>&1 &
+nohup bash -leu -o pipefail ${devScriptPath} > ${logFile} 2>&1 &
 echo $! > ${pidFile}
 `;
 
