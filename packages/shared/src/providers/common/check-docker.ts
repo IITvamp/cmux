@@ -206,35 +206,16 @@ export async function ensureDockerDaemonReady(options?: {
   version?: string;
   error?: string;
 }> {
-  const attempts = options?.attempts ?? 6;
-  const delayMs = options?.delayMs ?? 500;
-
-  let version: string | undefined;
-  let lastError: string | undefined;
-
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    try {
-      const { stdout } = await execAsync(DOCKER_INFO_COMMAND);
-      version = parseVersion(stdout);
-      return { ready: true, version };
-    } catch (error) {
-      lastError = describeExecError(error);
-      if (!isRetryableDockerError(error) || attempt === attempts - 1) {
-        return {
-          ready: false,
-          version,
-          error: lastError,
-        };
-      }
-      await delay(delayMs);
-    }
+  try {
+    const { stdout } = await execAsync(DOCKER_INFO_COMMAND);
+    const version = parseVersion(stdout);
+    return { ready: true, version };
+  } catch (error) {
+    return {
+      ready: false,
+      error: describeExecError(error),
+    };
   }
-
-  return {
-    ready: false,
-    version,
-    error: lastError,
-  };
 }
 
 export async function checkDockerStatus(): Promise<{
