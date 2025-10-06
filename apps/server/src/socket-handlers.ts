@@ -308,7 +308,8 @@ export function setupSocketHandlers(
       serverLogger.info("starting task!", taskData);
       const taskId = taskData.taskId;
       let ackSent = false;
-      const sendAck = (payload: unknown) => {
+      type StartTaskAck = Parameters<typeof callback>[0];
+      const sendAck = (payload: StartTaskAck) => {
         if (ackSent) {
           serverLogger.warn(
             `[Server] Duplicate start-task ack ignored for ${taskId}`,
@@ -435,8 +436,10 @@ export function setupSocketHandlers(
           }
         });
 
+        const confirmedPrimaryAgent = primaryAgent;
+
         // Return the first successful agent's info (you might want to modify this to return all)
-        if (!primaryAgent) {
+        if (!confirmedPrimaryAgent) {
           serverLogger.error(
             `[Server] Unable to resolve primary agent for task ${taskId} despite successful spawn`,
           );
@@ -448,11 +451,14 @@ export function setupSocketHandlers(
         }
 
         // Emit VSCode URL if available
-        if (primaryAgent.vscodeUrl) {
+        if (confirmedPrimaryAgent.vscodeUrl) {
           rt.emit("vscode-spawned", {
-            instanceId: primaryAgent.terminalId,
-            url: primaryAgent.vscodeUrl.replace("/?folder=/root/workspace", ""),
-            workspaceUrl: primaryAgent.vscodeUrl,
+            instanceId: confirmedPrimaryAgent.terminalId,
+            url: confirmedPrimaryAgent.vscodeUrl.replace(
+              "/?folder=/root/workspace",
+              "",
+            ),
+            workspaceUrl: confirmedPrimaryAgent.vscodeUrl,
             provider: taskData.isCloudMode ? "morph" : "docker",
           });
         }
@@ -460,10 +466,10 @@ export function setupSocketHandlers(
         // Set up file watching for git changes (optional - don't fail if it doesn't work)
         try {
           void gitDiffManager.watchWorkspace(
-            primaryAgent.worktreePath,
+            confirmedPrimaryAgent.worktreePath,
             (changedPath) => {
               rt.emit("git-file-changed", {
-                workspacePath: primaryAgent.worktreePath,
+                workspacePath: confirmedPrimaryAgent.worktreePath,
                 filePath: changedPath,
               });
             },
@@ -479,8 +485,8 @@ export function setupSocketHandlers(
         if (!ackSent) {
           sendAck({
             taskId,
-            worktreePath: primaryAgent.worktreePath,
-            terminalId: primaryAgent.terminalId,
+            worktreePath: confirmedPrimaryAgent.worktreePath,
+            terminalId: confirmedPrimaryAgent.terminalId,
           });
         }
       } catch (error) {
@@ -1146,7 +1152,8 @@ export function setupSocketHandlers(
       let taskId: Id<"tasks"> | null = null;
       let primaryAgent: AgentSpawnResult | null = null;
 
-      const sendAck = (payload: unknown) => {
+      type SpawnFromCommentAck = Parameters<typeof callback>[0];
+      const sendAck = (payload: SpawnFromCommentAck) => {
         if (ackSent) {
           const suffix = taskId ? ` for ${taskId}` : "";
           serverLogger.warn(
