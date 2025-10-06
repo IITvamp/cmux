@@ -1,6 +1,5 @@
-import { waitForConnectedSocket } from "@/contexts/socket/socket-boot";
+import { getGlobalRpcStub } from "@/contexts/socket/rpc-boot";
 import { normalizeGitRef } from "@/lib/refWithOrigin";
-import type { ReplaceDiffEntry } from "@cmux/shared";
 import { queryOptions } from "@tanstack/react-query";
 
 export interface GitDiffQuery {
@@ -44,36 +43,28 @@ export function gitDiffQueryOptions({
       lastKnownMergeCommitSha ?? "",
     ],
     queryFn: async () => {
-      const socket = await waitForConnectedSocket();
-      return await new Promise<ReplaceDiffEntry[]>((resolve, reject) => {
-        socket.emit(
-          "git-diff",
-          {
-            repoFullName,
-            repoUrl,
-            originPathOverride,
-            headRef: canonicalHeadRef,
-            baseRef: canonicalBaseRef || undefined,
-            includeContents,
-            maxBytes,
-            lastKnownBaseSha,
-            lastKnownMergeCommitSha,
-          },
-          (
-            resp:
-              | { ok: true; diffs: ReplaceDiffEntry[] }
-              | { ok: false; error: string; diffs?: [] }
-          ) => {
-            if (resp.ok) {
-              resolve(resp.diffs);
-            } else {
-              reject(
-                new Error(resp.error || "Failed to load repository diffs")
-              );
-            }
-          }
-        );
+      const rpcStub = getGlobalRpcStub();
+      if (!rpcStub) {
+        throw new Error("RPC stub not connected");
+      }
+
+      const resp = await rpcStub.gitDiff({
+        repoFullName,
+        repoUrl,
+        originPathOverride,
+        headRef: canonicalHeadRef,
+        baseRef: canonicalBaseRef || undefined,
+        includeContents,
+        maxBytes,
+        lastKnownBaseSha,
+        lastKnownMergeCommitSha,
       });
+
+      if (resp.ok) {
+        return resp.diffs;
+      } else {
+        throw new Error(resp.error || "Failed to load repository diffs");
+      }
     },
     staleTime: 10_000,
     enabled: Boolean(canonicalHeadRef) && Boolean(repoKey.trim()),

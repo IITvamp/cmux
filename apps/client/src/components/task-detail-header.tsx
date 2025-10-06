@@ -1,7 +1,7 @@
 import { OpenEditorSplitButton } from "@/components/OpenEditorSplitButton";
 import { Dropdown } from "@/components/ui/dropdown";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
-import { useSocketSuspense } from "@/contexts/socket/use-socket";
+import { useRpcSuspense } from "@/contexts/socket/use-rpc";
 import { isElectron } from "@/lib/electron";
 import { cn } from "@/lib/utils";
 import { normalizeGitRef } from "@/lib/refWithOrigin";
@@ -519,7 +519,7 @@ function SocketActions({
   repoDiffTargets: RepoDiffTarget[];
   teamSlugOrId: string;
 }) {
-  const { socket } = useSocketSuspense();
+  const { rpcStub } = useRpcSuspense();
   const pullRequests = useMemo(
     () => selectedRun?.pullRequests ?? [],
     [selectedRun?.pullRequests],
@@ -672,19 +672,15 @@ function SocketActions({
     void,
     ToastFeedbackContext
   >({
-    mutationFn: () => {
-      if (!socket) {
-        throw new Error("Socket unavailable");
+    mutationFn: async () => {
+      if (!rpcStub) {
+        throw new Error("RPC unavailable");
       }
-      return new Promise<PullRequestActionResponse>((resolve, reject) => {
-        socket.emit("github-create-draft-pr", { taskRunId }, (resp) => {
-          if (resp.success) {
-            resolve(resp);
-          } else {
-            reject(new SocketMutationError(resp.error ?? draftErrorLabel, resp));
-          }
-        });
-      });
+      const resp = await rpcStub.githubCreateDraftPr({ taskRunId });
+      if (!resp.success) {
+        throw new SocketMutationError(resp.error ?? draftErrorLabel, resp);
+      }
+      return resp;
     },
     onMutate: () => {
       const toastId = toast.loading(openingDraftLabel);
@@ -751,24 +747,18 @@ function SocketActions({
     void,
     ToastFeedbackContext
   >({
-    mutationFn: () => {
-      if (!socket) {
-        throw new Error("Socket unavailable");
+    mutationFn: async () => {
+      if (!rpcStub) {
+        throw new Error("RPC unavailable");
       }
-      return new Promise<MergeBranchResponse>((resolve, reject) => {
-        socket.emit("github-merge-branch", { taskRunId }, (resp) => {
-          if (resp.success) {
-            resolve(resp);
-          } else {
-            reject(
-              new SocketMutationError(
-                resp.error ?? mergeBranchErrorLabel,
-                resp,
-              ),
-            );
-          }
-        });
-      });
+      const resp = await rpcStub.githubMergeBranch({ taskRunId });
+      if (!resp.success) {
+        throw new SocketMutationError(
+          resp.error ?? mergeBranchErrorLabel,
+          resp,
+        );
+      }
+      return resp;
     },
     onMutate: () => {
       const toastId = toast.loading("Merging branch...");

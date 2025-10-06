@@ -18,7 +18,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { getIconForFile } from "vscode-icons-js";
-import { useSocket } from "../../contexts/socket/use-socket";
+import { useRpc } from "../../contexts/socket/use-rpc";
 
 const MENTION_TRIGGER = "@";
 
@@ -154,41 +154,51 @@ export function MentionPlugin({
   const [filteredFiles, setFilteredFiles] = useState<FileInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const triggerNodeRef = useRef<TextNode | null>(null);
-  const { socket } = useSocket();
+  const { rpcStub } = useRpc();
 
   // Fetch all files once when repository URL is available
   useEffect(() => {
-    if ((repoUrl || environmentId) && socket) {
-      setIsLoading(true);
-      socket.emit("list-files", {
-        ...(repoUrl ? { repoPath: repoUrl } : {}),
-        ...(environmentId ? { environmentId } : {}),
-        ...(branch ? { branch } : {}),
-      });
-
-      const handleFilesResponse = (data: {
-        files: FileInfo[];
-        error?: string;
-      }) => {
-        setIsLoading(false);
-        if (!data.error) {
-          const fileList = data.files.filter((f) => !f.isDirectory);
-          setFiles(fileList);
-        } else {
+    if ((repoUrl || environmentId) && rpcStub) {
+      let cancelled = false;
+      
+      const fetchFiles = async () => {
+        setIsLoading(true);
+        try {
+          const data = await rpcStub.listFiles({
+            ...(repoUrl ? { repoPath: repoUrl } : {}),
+            ...(environmentId ? { environmentId } : {}),
+            ...(branch ? { branch } : {}),
+          });
+          
+          if (cancelled) return;
+          
+          if (!data.error) {
+            const fileList = data.files.filter((f) => !f.isDirectory);
+            setFiles(fileList);
+          } else {
+            setFiles([]);
+          }
+        } catch (error) {
+          if (cancelled) return;
+          console.error("Failed to fetch files:", error);
           setFiles([]);
+        } finally {
+          if (!cancelled) {
+            setIsLoading(false);
+          }
         }
       };
 
-      socket.on("list-files-response", handleFilesResponse);
+      void fetchFiles();
 
       return () => {
-        socket.off("list-files-response", handleFilesResponse);
+        cancelled = true;
       };
     }
 
     setFiles([]);
     setIsLoading(false);
-  }, [repoUrl, branch, environmentId, socket]);
+  }, [repoUrl, branch, environmentId, rpcStub]);
 
   // Filter files based on search text using fuzzysort
   useEffect(() => {

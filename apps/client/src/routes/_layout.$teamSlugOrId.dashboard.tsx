@@ -17,7 +17,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
-import { useSocket } from "@/contexts/socket/use-socket";
+import { useRpc } from "@/contexts/socket/use-rpc";
 import { createFakeConvexId } from "@/lib/fakeConvexId";
 import { branchesQueryOptions } from "@/queries/branches";
 import { api } from "@cmux/convex/api";
@@ -41,7 +41,7 @@ const DEFAULT_AGENTS = ["claude/sonnet-4.5", "claude/opus-4.1", "codex/gpt-5-cod
 function DashboardComponent() {
   const { teamSlugOrId } = Route.useParams();
   const searchParams = Route.useSearch() as { environmentId?: string };
-  const { socket } = useSocket();
+  const { rpcStub } = useRpc();
   const { theme } = useTheme();
   const { addTaskToExpand } = useExpandTasks();
 
@@ -156,10 +156,11 @@ function DashboardComponent() {
   // Socket-based functions to fetch data from GitHub
   // Removed unused fetchRepos function - functionality is handled by Convex queries
 
-  const checkProviderStatus = useCallback(() => {
-    if (!socket) return;
+  const checkProviderStatus = useCallback(async () => {
+    if (!rpcStub) return;
 
-    socket.emit("check-provider-status", (response) => {
+    try {
+      const response = await rpcStub.checkProviderStatus();
       if (!response) return;
       setProviderStatus(response);
       if (response.success) {
@@ -168,8 +169,10 @@ function DashboardComponent() {
           setDockerReady(isRunning);
         }
       }
-    });
-  }, [socket]);
+    } catch (error) {
+      console.error("Failed to check provider status:", error);
+    }
+  }, [rpcStub]);
 
   // Mutation to create tasks with optimistic update
   const createTask = useMutation(api.tasks.create).withOptimisticUpdate(
@@ -235,25 +238,27 @@ function DashboardComponent() {
     // For local mode, perform a fresh docker check right before starting
     if (!isEnvSelected && !isCloudMode) {
       // Always check Docker status when in local mode, regardless of current state
-      if (socket) {
-        const ready = await new Promise<boolean>((resolve) => {
-          socket.emit("check-provider-status", (response) => {
-            const isRunning = !!response?.dockerStatus?.isRunning;
-            if (typeof isRunning === "boolean") {
-              setDockerReady(isRunning);
-            }
-            resolve(isRunning);
-          });
-        });
+      if (rpcStub) {
+        try {
+          const response = await rpcStub.checkProviderStatus();
+          const isRunning = !!response?.dockerStatus?.isRunning;
+          if (typeof isRunning === "boolean") {
+            setDockerReady(isRunning);
+          }
 
-        // Only show the alert if Docker is actually not running after checking
-        if (!ready) {
-          toast.error("Docker is not running. Start Docker Desktop.");
+          // Only show the alert if Docker is actually not running after checking
+          if (!isRunning) {
+            toast.error("Docker is not running. Start Docker Desktop.");
+            return;
+          }
+        } catch (error) {
+          console.error("Failed to check Docker status:", error);
+          toast.error("Cannot verify Docker status. Please ensure the server is running.");
           return;
         }
       } else {
-        // If socket is not connected, we can't verify Docker status
-        console.error("Cannot verify Docker status: socket not connected");
+        // If RPC stub is not connected, we can't verify Docker status
+        console.error("Cannot verify Docker status: RPC not connected");
         toast.error("Cannot verify Docker status. Please ensure the server is running.");
         return;
       }
@@ -263,8 +268,8 @@ function DashboardComponent() {
       console.error("Please select a project and enter a task description");
       return;
     }
-    if (!socket) {
-      console.error("Socket not connected");
+    if (!rpcStub) {
+      console.error("RPC not connected");
       return;
     }
 
@@ -342,31 +347,27 @@ function DashboardComponent() {
         ? undefined
         : `https://github.com/${projectFullName}.git`;
 
-      // For socket.io, we need to send the content text (which includes image references) and the images
-      socket.emit(
-        "start-task",
-        {
-          ...(repoUrl ? { repoUrl } : {}),
-          ...(envSelected ? {} : { branch }),
-          taskDescription: content?.text || taskDescription, // Use content.text which includes image references
-          projectFullName,
-          taskId,
-          selectedAgents:
-            selectedAgents.length > 0 ? selectedAgents : undefined,
-          isCloudMode: envSelected ? true : isCloudMode,
-          ...(environmentId ? { environmentId } : {}),
-          images: images.length > 0 ? images : undefined,
-          theme,
-        },
-        (response) => {
-          if ("error" in response) {
-            console.error("Task start error:", response.error);
-            toast.error(`Task start error: ${JSON.stringify(response.error)}`);
-          } else {
-            console.log("Task started:", response);
-          }
-        }
-      );
+      // Call RPC to start task
+      const response = await rpcStub.startTask({
+        ...(repoUrl ? { repoUrl } : {}),
+        ...(envSelected ? {} : { branch }),
+        taskDescription: content?.text || taskDescription, // Use content.text which includes image references
+        projectFullName,
+        taskId,
+        selectedAgents:
+          selectedAgents.length > 0 ? selectedAgents : undefined,
+        isCloudMode: envSelected ? true : isCloudMode,
+        ...(environmentId ? { environmentId } : {}),
+        images: images.length > 0 ? images : undefined,
+        theme,
+      });
+
+      if ("error" in response) {
+        console.error("Task start error:", response.error);
+        toast.error(`Task start error: ${response.error}`);
+      } else {
+        console.log("Task started:", response);
+      }
       console.log("Task created:", taskId);
     } catch (error) {
       console.error("Error starting task:", error);
@@ -374,7 +375,7 @@ function DashboardComponent() {
   }, [
     selectedProject,
     taskDescription,
-    socket,
+    rpcStub,
     effectiveSelectedBranch,
     handleTaskDescriptionChange,
     createTask,
@@ -502,57 +503,7 @@ function DashboardComponent() {
     localStorage.setItem("isCloudMode", JSON.stringify(newMode));
   }, [isCloudMode, isEnvSelected]);
 
-  // Listen for VSCode spawned events
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleVSCodeSpawned = (data: {
-      instanceId: string;
-      url: string;
-      workspaceUrl: string;
-      provider: string;
-    }) => {
-      console.log("VSCode spawned:", data);
-      // Open in new tab
-      // window.open(data.workspaceUrl, "_blank");
-    };
-
-    socket.on("vscode-spawned", handleVSCodeSpawned);
-
-    return () => {
-      socket.off("vscode-spawned", handleVSCodeSpawned);
-    };
-  }, [socket]);
-
-  // Listen for default repo from CLI
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleDefaultRepo = (data: {
-      repoFullName: string;
-      branch?: string;
-      localPath: string;
-    }) => {
-      // Always set the selected project when a default repo is provided
-      // This ensures CLI-provided repos take precedence
-      setSelectedProject([data.repoFullName]);
-      localStorage.setItem(
-        "selectedProject",
-        JSON.stringify([data.repoFullName])
-      );
-
-      // Set the selected branch
-      if (data.branch) {
-        setSelectedBranch([data.branch]);
-      }
-    };
-
-    socket.on("default-repo", handleDefaultRepo);
-
-    return () => {
-      socket.off("default-repo", handleDefaultRepo);
-    };
-  }, [socket]);
+  // Socket event listeners removed - migrated to RPC polling
 
   // Global keydown handler for autofocus
   useEffect(() => {

@@ -5,8 +5,7 @@ import { promisify } from "node:util";
 import { GitDiffManager } from "./gitDiff";
 
 import { createProxyApp, setupWebSocketProxy } from "./proxyApp";
-import { setupSocketHandlers } from "./socket-handlers";
-import { createSocketIOTransport } from "./transports/socketio-transport";
+import { setupCapnwebRpc } from "./transports/capnweb-transport";
 import { getConvex } from "./utils/convexClient";
 import { dockerLogger, serverLogger } from "./utils/fileLogger";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance";
@@ -85,11 +84,8 @@ export async function startServer({
 
   setupWebSocketProxy(httpServer);
 
-  // Create Socket.IO transport
-  const rt = createSocketIOTransport(httpServer);
-
-  // Set up all socket handlers
-  setupSocketHandlers(rt, gitDiffManager, defaultRepo);
+  // Set up capnweb RPC transport
+  const rpcTransport = setupCapnwebRpc(proxyApp, gitDiffManager);
 
   const server = httpServer.listen(port, async () => {
     serverLogger.info(`Terminal server listening on port ${port}`);
@@ -110,18 +106,11 @@ export async function startServer({
           provider: "github", // Default to github, could be enhanced to detect provider
         });
 
-        // Also emit to all connected clients
-        const defaultRepoData = {
-          repoFullName: defaultRepo.remoteName,
-          branch: defaultRepo.currentBranch || defaultRepo.defaultBranch,
-          localPath: defaultRepo.path,
-        };
-        serverLogger.info(`Emitting default-repo event:`, defaultRepoData);
-        rt.emit("default-repo", defaultRepoData);
-
         serverLogger.info(
           `Successfully set default repository: ${defaultRepo.remoteName}`,
         );
+        
+        // Note: With RPC, clients will poll for default repo info instead of receiving events
       } catch (error) {
         serverLogger.error("Error storing default repo:", error);
       }

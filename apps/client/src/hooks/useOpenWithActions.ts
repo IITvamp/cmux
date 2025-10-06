@@ -1,7 +1,7 @@
-import { useSocket } from "@/contexts/socket/use-socket";
+import { useRpc } from "@/contexts/socket/use-rpc";
 import type { Doc } from "@cmux/convex/dataModel";
 import { editorIcons, type EditorType } from "@/components/ui/dropdown-types";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { toast } from "sonner";
 
 type NetworkingInfo = Doc<"taskRuns">["networking"];
@@ -30,73 +30,53 @@ export function useOpenWithActions({
   branch,
   networking,
 }: UseOpenWithActionsArgs) {
-  const { socket, availableEditors } = useSocket();
-
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleOpenInEditorError = (data: { error: string }) => {
-      console.error("Failed to open editor:", data.error);
-    };
-
-    socket.on("open-in-editor-error", handleOpenInEditorError);
-
-    return () => {
-      socket.off("open-in-editor-error", handleOpenInEditorError);
-    };
-  }, [socket]);
+  const { rpcStub, availableEditors } = useRpc();
 
   const handleOpenInEditor = useCallback(
-    (editor: EditorType): Promise<void> => {
-      return new Promise((resolve, reject) => {
-        if (editor === "vscode-remote" && vscodeUrl) {
-          const vscodeUrlWithWorkspace = `${vscodeUrl}?folder=/root/workspace`;
-          window.open(vscodeUrlWithWorkspace, "_blank", "noopener,noreferrer");
-          resolve();
-        } else if (
-          socket &&
-          [
-            "cursor",
-            "vscode",
-            "windsurf",
-            "finder",
-            "iterm",
-            "terminal",
-            "ghostty",
-            "alacritty",
-            "xcode",
-          ].includes(editor) &&
-          worktreePath
-        ) {
-          socket.emit(
-            "open-in-editor",
-            {
-              editor: editor as
-                | "cursor"
-                | "vscode"
-                | "windsurf"
-                | "finder"
-                | "iterm"
-                | "terminal"
-                | "ghostty"
-                | "alacritty"
-                | "xcode",
-              path: worktreePath,
-            },
-            (response) => {
-              if (response.success) {
-                resolve();
-              } else {
-                reject(new Error(response.error || "Failed to open editor"));
-              }
-            }
-          );
-        } else {
-          reject(new Error("Unable to open editor"));
-        }
+    async (editor: EditorType): Promise<void> => {
+      if (editor === "vscode-remote" && vscodeUrl) {
+        const vscodeUrlWithWorkspace = `${vscodeUrl}?folder=/root/workspace`;
+        window.open(vscodeUrlWithWorkspace, "_blank", "noopener,noreferrer");
+        return;
+      }
+
+      if (
+        !rpcStub ||
+        ![
+          "cursor",
+          "vscode",
+          "windsurf",
+          "finder",
+          "iterm",
+          "terminal",
+          "ghostty",
+          "alacritty",
+          "xcode",
+        ].includes(editor) ||
+        !worktreePath
+      ) {
+        throw new Error("Unable to open editor");
+      }
+
+      const response = await rpcStub.openInEditor({
+        editor: editor as
+          | "cursor"
+          | "vscode"
+          | "windsurf"
+          | "finder"
+          | "iterm"
+          | "terminal"
+          | "ghostty"
+          | "alacritty"
+          | "xcode",
+        path: worktreePath,
       });
+
+      if (!response.success) {
+        throw new Error(response.error || "Failed to open editor");
+      }
     },
-    [socket, worktreePath, vscodeUrl]
+    [rpcStub, worktreePath, vscodeUrl]
   );
 
   const handleCopyBranch = useCallback(() => {

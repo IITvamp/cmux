@@ -1,11 +1,11 @@
-import { useSocket } from "@/contexts/socket/use-socket";
+import { useRpc } from "@/contexts/socket/use-rpc";
 import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
 import { useMutation } from "convex/react";
 import { toast } from "sonner";
 
 export function useArchiveTask(teamSlugOrId: string) {
-  const { socket } = useSocket();
+  const { rpcStub } = useRpc();
 
   type TasksGetArgs = {
     teamSlugOrId: string;
@@ -66,17 +66,18 @@ export function useArchiveTask(teamSlugOrId: string) {
   const archiveWithUndo = (task: Doc<"tasks">) => {
     archiveMutation({ teamSlugOrId, id: task._id });
 
-    // Emit socket event to stop/pause containers
-    if (socket) {
-      socket.emit(
-        "archive-task",
-        { taskId: task._id },
-        (response: { success: boolean; error?: string }) => {
+    // Call RPC to stop/pause containers
+    if (rpcStub) {
+      rpcStub
+        .archiveTask({ taskId: task._id })
+        .then((response) => {
           if (!response.success) {
             console.error("Failed to stop containers:", response.error);
           }
-        }
-      );
+        })
+        .catch((error) => {
+          console.error("Failed to archive task:", error);
+        });
     }
 
     toast("Task archived", {
@@ -93,17 +94,18 @@ export function useArchiveTask(teamSlugOrId: string) {
       id: id as Doc<"tasks">["_id"],
     });
 
-    // Emit socket event to stop/pause containers
-    if (socket) {
-      socket.emit(
-        "archive-task",
-        { taskId: id as Doc<"tasks">["_id"] },
-        (response: { success: boolean; error?: string }) => {
+    // Call RPC to stop/pause containers
+    if (rpcStub) {
+      rpcStub
+        .archiveTask({ taskId: id as Doc<"tasks">["_id"] })
+        .then((response) => {
           if (!response.success) {
             console.error("Failed to stop containers:", response.error);
           }
-        }
-      );
+        })
+        .catch((error) => {
+          console.error("Failed to archive task:", error);
+        });
     }
   };
 

@@ -1,6 +1,7 @@
 import { convexAuthReadyPromise } from "@/contexts/convex/convex-auth-ready";
 import { ConvexClientProvider } from "@/contexts/convex/convex-client-provider";
 import { RealSocketProvider } from "@/contexts/socket/real-socket-provider";
+import { RpcProvider } from "@/contexts/socket/rpc-provider";
 import { cachedGetUser } from "@/lib/cachedGetUser";
 import { stackClientApp } from "@/lib/stack";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
@@ -28,7 +29,9 @@ function Layout() {
   return (
     <ConvexClientProvider>
       <RealSocketProvider>
-        <Outlet />
+        <RpcProvider>
+          <Outlet />
+        </RpcProvider>
       </RealSocketProvider>
     </ConvexClientProvider>
   );

@@ -1,4 +1,4 @@
-import { useSocket } from "@/contexts/socket/use-socket";
+import { useRpc } from "@/contexts/socket/use-rpc";
 import { ChevronDown, ExternalLink } from "lucide-react";
 import { useEffect, useRef, useState, useMemo } from "react";
 
@@ -21,7 +21,7 @@ export function OpenInEditorButton({ workspacePath }: OpenInEditorButtonProps) {
   const [selectedEditor, setSelectedEditor] = useState<EditorType>("cursor");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const { socket, availableEditors } = useSocket();
+  const { rpcStub, availableEditors } = useRpc();
 
   const editors = useMemo(() => {
     const items: Array<{ id: EditorType; name: string }> = [];
@@ -68,35 +68,21 @@ export function OpenInEditorButton({ workspacePath }: OpenInEditorButtonProps) {
     };
   }, []);
 
-  useEffect(() => {
-    if (!socket) return;
+  // Socket event listener removed - errors now handled via RPC callback
 
-    const handleOpenInEditorError = (data: { error: string }) => {
-      console.error("Failed to open editor:", data.error);
-      // You could add a toast notification here if you have a notification system
-    };
-
-    socket.on("open-in-editor-error", handleOpenInEditorError);
-
-    return () => {
-      socket.off("open-in-editor-error", handleOpenInEditorError);
-    };
-  }, [socket]);
-
-  const handleOpenInEditor = () => {
-    if (workspacePath && socket) {
-      socket.emit(
-        "open-in-editor",
-        {
+  const handleOpenInEditor = async () => {
+    if (workspacePath && rpcStub) {
+      try {
+        const response = await rpcStub.openInEditor({
           editor: selectedEditor,
           path: workspacePath,
-        },
-        (response) => {
-          if (!response.success) {
-            console.error("Failed to open editor:", response.error);
-          }
+        });
+        if (!response.success) {
+          console.error("Failed to open editor:", response.error);
         }
-      );
+      } catch (error) {
+        console.error("Failed to open editor:", error);
+      }
     }
   };
 

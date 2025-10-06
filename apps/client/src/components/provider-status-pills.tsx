@@ -1,5 +1,5 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useSocket } from "@/contexts/socket/use-socket";
+import { useRpc } from "@/contexts/socket/use-rpc";
 import type { ProviderStatus, ProviderStatusResponse } from "@cmux/shared";
 import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
@@ -7,22 +7,25 @@ import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) {
-  const { socket } = useSocket();
+  const { rpcStub } = useRpc();
   const navigate = useNavigate();
   const [status, setStatus] = useState<ProviderStatusResponse | null>(null);
   const [isVisible, setIsVisible] = useState(false);
 
-  const checkProviderStatus = useCallback(() => {
-    if (!socket) return;
+  const checkProviderStatus = useCallback(async () => {
+    if (!rpcStub) return;
 
-    socket.emit("check-provider-status", (response) => {
+    try {
+      const response = await rpcStub.checkProviderStatus();
       if (response.success) {
         setStatus(response);
         // Delay visibility to create fade-in effect
         setTimeout(() => setIsVisible(true), 100);
       }
-    });
-  }, [socket]);
+    } catch (error) {
+      console.error("Failed to check provider status:", error);
+    }
+  }, [rpcStub]);
 
   // Check status on mount and every 5 seconds so UI updates quickly
   useEffect(() => {

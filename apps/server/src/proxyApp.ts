@@ -192,6 +192,10 @@ export function createProxyApp({
       res: express.Response,
       next: express.NextFunction
     ) => {
+      if (req.path === "/rpc") {
+        return next();
+      }
+
       const host = req.get("host");
       if (!host) {
         return res.status(400).send("Host header is required");

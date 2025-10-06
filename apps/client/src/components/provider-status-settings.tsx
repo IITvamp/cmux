@@ -1,26 +1,30 @@
-import { useSocket } from "@/contexts/socket/use-socket";
+import { useRpc } from "@/contexts/socket/use-rpc";
 import type { ProviderStatus, ProviderStatusResponse } from "@cmux/shared";
 import { AlertCircle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 export function ProviderStatusSettings() {
-  const { socket } = useSocket();
+  const { rpcStub } = useRpc();
   const [status, setStatus] = useState<ProviderStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const checkProviderStatus = useCallback(() => {
-    if (!socket) return;
+  const checkProviderStatus = useCallback(async () => {
+    if (!rpcStub) return;
 
     setLoading(true);
-    socket.emit("check-provider-status", (response) => {
+    try {
+      const response = await rpcStub.checkProviderStatus();
       setLoading(false);
       if (response.success) {
         setStatus(response);
       } else {
         console.error("Failed to check provider status:", response.error);
       }
-    });
-  }, [socket]);
+    } catch (error) {
+      setLoading(false);
+      console.error("Failed to check provider status:", error);
+    }
+  }, [rpcStub]);
 
   // Check status on mount and every 5 seconds
   useEffect(() => {

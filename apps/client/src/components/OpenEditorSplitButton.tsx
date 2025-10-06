@@ -1,5 +1,5 @@
 import { editorIcons } from "@/components/ui/dropdown-types";
-import { useSocket } from "@/contexts/socket/use-socket";
+import { useRpc } from "@/contexts/socket/use-rpc";
 import { Menu } from "@base-ui-components/react/menu";
 import clsx from "clsx";
 import { Check, ChevronDown } from "lucide-react";
@@ -29,19 +29,10 @@ export function OpenEditorSplitButton({
   classNameLeft,
   classNameRight,
 }: OpenEditorSplitButtonProps) {
-  const { socket, availableEditors } = useSocket();
+  const { rpcStub, availableEditors } = useRpc();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  useEffect(() => {
-    if (!socket) return;
-    const handleOpenInEditorError = (data: { error: string }) => {
-      console.error("Failed to open editor:", data.error);
-    };
-    socket.on("open-in-editor-error", handleOpenInEditorError);
-    return () => {
-      socket.off("open-in-editor-error", handleOpenInEditorError);
-    };
-  }, [socket]);
+  // Socket event listener removed - errors now handled via RPC callback
 
   const menuItems = useMemo(
     () =>
@@ -130,37 +121,31 @@ export function OpenEditorSplitButton({
   }, [selectedEditor]);
 
   const handleOpenInEditor = useCallback(
-    (editor: EditorType): Promise<void> => {
-      return new Promise((resolve, reject) => {
-        if (
-          socket &&
-          [
-            "cursor",
-            "vscode",
-            "windsurf",
-            "finder",
-            "iterm",
-            "terminal",
-            "ghostty",
-            "alacritty",
-            "xcode",
-          ].includes(editor) &&
-          worktreePath
-        ) {
-          socket.emit(
-            "open-in-editor",
-            { editor, path: worktreePath },
-            (response: { success: boolean; error?: string }) => {
-              if (response.success) resolve();
-              else reject(new Error(response.error || "Failed to open editor"));
-            }
-          );
-        } else {
-          reject(new Error("Unable to open editor"));
-        }
-      });
+    async (editor: EditorType): Promise<void> => {
+      if (
+        !rpcStub ||
+        ![
+          "cursor",
+          "vscode",
+          "windsurf",
+          "finder",
+          "iterm",
+          "terminal",
+          "ghostty",
+          "alacritty",
+          "xcode",
+        ].includes(editor) ||
+        !worktreePath
+      ) {
+        throw new Error("Unable to open editor");
+      }
+
+      const response = await rpcStub.openInEditor({ editor, path: worktreePath });
+      if (!response.success) {
+        throw new Error(response.error || "Failed to open editor");
+      }
     },
-    [socket, worktreePath]
+    [rpcStub, worktreePath]
   );
 
   const selected = menuItems.find((m) => m.id === selectedEditor) || null;

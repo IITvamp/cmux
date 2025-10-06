@@ -75,23 +75,8 @@ export async function getRunDiffs(
   });
   const tCompute = Date.now();
 
-  // Start watching this worktree to push reactive updates to connected clients, if available
-  let watchStarted = false;
-  if (rt) {
-    try {
-      void gitDiffManager.watchWorkspace(worktreePath, () => {
-        rt.emit("git-file-changed", {
-          workspacePath: worktreePath,
-          filePath: "",
-        });
-      });
-      watchStarted = true;
-    } catch (e) {
-      serverLogger.warn(
-        `Failed to start watcher for ${worktreePath}: ${String(e)}`
-      );
-    }
-  }
+  // File watching removed - git changes are now polled via RPC instead of socket events
+  const watchStarted = false;
   const tWatch = Date.now();
 
   if (options.perfOut) {

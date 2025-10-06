@@ -5,6 +5,7 @@ import {
   type SelectOption,
 } from "@/components/ui/searchable-select";
 import { useSocket } from "@/contexts/socket/use-socket";
+import { useRpc } from "@/contexts/socket/use-rpc";
 import { branchesQueryOptions } from "@/queries/branches";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
@@ -29,6 +30,7 @@ function DashboardDiffPage() {
   const search = Route.useSearch() as DiffSearch;
   const router = useRouter();
   const { socket } = useSocket();
+  const { rpcStub } = useRpc();
 
   const [selectedProject, setSelectedProject] = useState<string | null>(() => {
     try {
@@ -40,32 +42,29 @@ function DashboardDiffPage() {
     }
   });
 
+  // Fetch default repo using RPC instead of socket.on
+  const defaultRepoQuery = useRQ({
+    queryKey: ["defaultRepo", teamSlugOrId],
+    queryFn: async () => {
+      if (!rpcStub) return null;
+      const result = await rpcStub.getDefaultRepo();
+      return result;
+    },
+    enabled: !selectedProject && !!rpcStub,
+    staleTime: 60000, // Cache for 1 minute
+  });
+
+  // Set default repo when query succeeds
   useEffect(() => {
     if (selectedProject) return;
-    const onDefaultRepo = (payload: unknown) => {
-      const data = payload as { repoFullName: string; branch?: string };
-      if (!data || typeof data.repoFullName !== "string") return;
-      setSelectedProject(data.repoFullName);
+    if (defaultRepoQuery.data?.repoFullName) {
+      setSelectedProject(defaultRepoQuery.data.repoFullName);
       localStorage.setItem(
         "selectedProject",
-        JSON.stringify([data.repoFullName])
+        JSON.stringify([defaultRepoQuery.data.repoFullName])
       );
-    };
-    // Rely on SocketProvider attaching a socket to window if available
-    const w = window as unknown as {
-      cmuxSocket?: {
-        on: (event: string, cb: (data: unknown) => void) => void;
-        off: (event: string, cb: (data: unknown) => void) => void;
-      };
-    };
-    if (w.cmuxSocket && typeof w.cmuxSocket.on === "function") {
-      w.cmuxSocket.on("default-repo", onDefaultRepo);
-      return () => {
-        w.cmuxSocket?.off?.("default-repo", onDefaultRepo);
-      };
     }
-    return () => {};
-  }, [selectedProject]);
+  }, [defaultRepoQuery.data, selectedProject]);
 
   const isEnvironmentProject =
     !!selectedProject && selectedProject.startsWith("env:");

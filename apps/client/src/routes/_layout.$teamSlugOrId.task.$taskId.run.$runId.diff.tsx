@@ -10,7 +10,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
-import { useSocket } from "@/contexts/socket/use-socket";
+import { useRpc } from "@/contexts/socket/use-rpc";
 import { normalizeGitRef } from "@/lib/refWithOrigin";
 import { cn } from "@/lib/utils";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
@@ -202,7 +202,7 @@ export const Route = createFileRoute(
 
 function RunDiffPage() {
   const { taskId, teamSlugOrId, runId } = Route.useParams();
-  const { socket } = useSocket();
+  const { rpcStub } = useRpc();
   const { theme } = useTheme();
   const { addTaskToExpand } = useExpandTasks();
   const createTask = useMutation(api.tasks.create);
@@ -306,8 +306,8 @@ function RunDiffPage() {
       toast.error("Task data is still loading. Try again in a moment.");
       return;
     }
-    if (!socket) {
-      toast.error("Socket not connected. Refresh or try again later.");
+    if (!rpcStub) {
+      toast.error("RPC not connected. Refresh or try again later.");
       return;
     }
 
@@ -374,33 +374,26 @@ function RunDiffPage() {
         ? `https://github.com/${projectFullNameForSocket}.git`
         : undefined;
 
-      await new Promise<void>((resolve) => {
-        socket.emit(
-          "start-task",
-          {
-            ...(repoUrl ? { repoUrl } : {}),
-            ...(task.baseBranch ? { branch: task.baseBranch } : {}),
-            taskDescription: combinedPrompt,
-            projectFullName: projectFullNameForSocket,
-            taskId: newTaskId,
-            selectedAgents: [...restartAgents],
-            isCloudMode: restartIsCloudMode,
-            ...(task.environmentId
-              ? { environmentId: task.environmentId }
-              : {}),
-            theme,
-          },
-          (response) => {
-            if ("error" in response) {
-              toast.error(`Task restart error: ${response.error}`);
-            } else {
-              setFollowUpText("");
-              toast.success("Started follow-up task");
-            }
-            resolve();
-          },
-        );
+      const response = await rpcStub.startTask({
+        ...(repoUrl ? { repoUrl } : {}),
+        ...(task.baseBranch ? { branch: task.baseBranch } : {}),
+        taskDescription: combinedPrompt,
+        projectFullName: projectFullNameForSocket,
+        taskId: newTaskId,
+        selectedAgents: [...restartAgents],
+        isCloudMode: restartIsCloudMode,
+        ...(task.environmentId
+          ? { environmentId: task.environmentId }
+          : {}),
+        theme,
       });
+
+      if ("error" in response) {
+        toast.error(`Task restart error: ${response.error}`);
+      } else {
+        setFollowUpText("");
+        toast.success("Started follow-up task");
+      }
     } catch (error) {
       console.error("Failed to restart task", error);
       toast.error("Failed to start follow-up task");
@@ -412,7 +405,7 @@ function RunDiffPage() {
     createTask,
     followUpText,
     overridePrompt,
-    socket,
+    rpcStub,
     task,
     teamSlugOrId,
     theme,
@@ -432,7 +425,7 @@ function RunDiffPage() {
   const isRestartDisabled =
     isRestartingTask ||
     (overridePrompt ? !trimmedFollowUp : !trimmedFollowUp && !task?.text) ||
-    !socket ||
+    !rpcStub ||
     !task;
   const isMac =
     typeof navigator !== "undefined" &&
@@ -444,8 +437,8 @@ function RunDiffPage() {
     if (!task) {
       return "Task data loading...";
     }
-    if (!socket) {
-      return "Socket not connected";
+    if (!rpcStub) {
+      return "RPC not connected";
     }
     if (overridePrompt && !trimmedFollowUp) {
       return "Add new instructions";
@@ -454,7 +447,7 @@ function RunDiffPage() {
       return "Add follow-up context";
     }
     return undefined;
-  }, [isRestartingTask, overridePrompt, socket, task, trimmedFollowUp]);
+  }, [isRestartingTask, overridePrompt, rpcStub, task, trimmedFollowUp]);
 
   const handleFollowUpKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {

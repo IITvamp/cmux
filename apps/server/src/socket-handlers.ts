@@ -116,19 +116,8 @@ export function setupSocketHandlers(
       }
     });
 
-    // Send default repo info to newly connected client if available
-    if (defaultRepo?.remoteName) {
-      const defaultRepoData = {
-        repoFullName: defaultRepo.remoteName,
-        branch: defaultRepo.currentBranch || defaultRepo.defaultBranch,
-        localPath: defaultRepo.path,
-      };
-      serverLogger.info(
-        `Sending default-repo to new client ${socket.id}:`,
-        defaultRepoData,
-      );
-      socket.emit("default-repo", defaultRepoData);
-    }
+    // Default repo is now fetched via RPC (getDefaultRepo) instead of socket.emit
+    // Clients poll for this information using useQuery
 
     // Kick off initial GitHub data refresh only after an authenticated connection
     const qAuth = socket.handshake.query?.auth;
@@ -206,21 +195,7 @@ export function setupSocketHandlers(
           lastKnownMergeCommitSha: parsed.lastKnownMergeCommitSha,
         });
 
-        if (parsed.originPathOverride) {
-          const workspacePath = parsed.originPathOverride;
-          try {
-            void gitDiffManager.watchWorkspace(workspacePath, () => {
-              rt.emit("git-file-changed", {
-                workspacePath,
-                filePath: "",
-              });
-            });
-          } catch (e) {
-            serverLogger.warn(
-              `Failed to start watcher for ${parsed.originPathOverride}: ${String(e)}`,
-            );
-          }
-        }
+        // File watching removed - git changes are now polled via RPC instead of socket events
 
         callback?.({ ok: true, diffs });
       } catch (error) {
@@ -275,19 +250,8 @@ export function setupSocketHandlers(
         appExists("Xcode"),
       ]);
 
-      const availability: AvailableEditors = {
-        vscode: vscodeExists,
-        cursor: cursorExists,
-        windsurf: windsurfExists,
-        finder: process.platform === "darwin",
-        iterm: itermExists,
-        terminal: terminalExists,
-        ghostty: ghosttyCommand || ghosttyApp,
-        alacritty: alacrittyExists,
-        xcode: xcodeExists,
-      };
-
-      socket.emit("available-editors", availability);
+      // Available editors is now fetched via RPC (getAvailableEditors) instead of socket.emit
+      // The RPC provider polls this information periodically
     })();
 
     socket.on("start-task", async (data, callback) => {
@@ -409,34 +373,9 @@ export function setupSocketHandlers(
         // Return the first successful agent's info (you might want to modify this to return all)
         const primaryAgent = successfulAgents[0];
 
-        // Emit VSCode URL if available
-        if (primaryAgent.vscodeUrl) {
-          rt.emit("vscode-spawned", {
-            instanceId: primaryAgent.terminalId,
-            url: primaryAgent.vscodeUrl.replace("/?folder=/root/workspace", ""),
-            workspaceUrl: primaryAgent.vscodeUrl,
-            provider: taskData.isCloudMode ? "morph" : "docker",
-          });
-        }
+        // VSCode spawned events removed - no longer using socket.io push events
 
-        // Set up file watching for git changes (optional - don't fail if it doesn't work)
-        try {
-          void gitDiffManager.watchWorkspace(
-            primaryAgent.worktreePath,
-            (changedPath) => {
-              rt.emit("git-file-changed", {
-                workspacePath: primaryAgent.worktreePath,
-                filePath: changedPath,
-              });
-            },
-          );
-        } catch (error) {
-          serverLogger.warn(
-            "Could not set up file watching for workspace:",
-            error,
-          );
-          // Continue without file watching
-        }
+        // File watching removed - git changes are now polled via RPC instead of socket events
 
         callback({
           taskId,
@@ -677,27 +616,7 @@ export function setupSocketHandlers(
       }
     });
 
-    // Keep old handlers for backwards compatibility but they're not used anymore
-    socket.on("git-status", async () => {
-      socket.emit("git-status-response", {
-        files: [],
-        error: "Not implemented - use git-full-diff instead",
-      });
-    });
-
-    socket.on("git-full-diff", async (data) => {
-      try {
-        const { workspacePath } = GitFullDiffRequestSchema.parse(data);
-        const diff = await gitDiffManager.getFullDiff(workspacePath);
-        socket.emit("git-full-diff-response", { diff });
-      } catch (error) {
-        serverLogger.error("Error getting full git diff:", error);
-        socket.emit("git-full-diff-response", {
-          diff: "",
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
-    });
+    // git-status and git-full-diff socket handlers removed - use RPC methods instead
 
     // Continue with all other handlers...
     // (I'll include the rest of the handlers in the next message due to length)
@@ -751,7 +670,6 @@ export function setupSocketHandlers(
         childProcess.on("close", (code) => {
           if (code === 0) {
             serverLogger.info(`Successfully opened ${path} in ${editor}`);
-            // Send success callback
             if (callback) {
               callback({ success: true });
             }
@@ -760,8 +678,7 @@ export function setupSocketHandlers(
               `Error opening ${editor}: process exited with code ${code}`,
             );
             const error = `Failed to open ${editor}: process exited with code ${code}`;
-            socket.emit("open-in-editor-error", { error });
-            // Send error callback
+            // Editor error events removed - errors now returned via callback only
             if (callback) {
               callback({ success: false, error });
             }
@@ -771,8 +688,7 @@ export function setupSocketHandlers(
         childProcess.on("error", (error) => {
           serverLogger.error(`Error opening ${editor}:`, error);
           const errorMessage = `Failed to open ${editor}: ${error.message}`;
-          socket.emit("open-in-editor-error", { error: errorMessage });
-          // Send error callback
+          // Editor error events removed - errors now returned via callback only
           if (callback) {
             callback({ success: false, error: errorMessage });
           }
@@ -781,238 +697,14 @@ export function setupSocketHandlers(
         serverLogger.error("Error opening editor:", error);
         const errorMessage =
           error instanceof Error ? error.message : "Unknown error";
-        socket.emit("open-in-editor-error", { error: errorMessage });
-        // Send error callback
+        // Editor error events removed - errors now returned via callback only
         if (callback) {
           callback({ success: false, error: errorMessage });
         }
       }
     });
 
-    socket.on("list-files", async (data) => {
-      try {
-        const {
-          repoPath: repoUrl,
-          branch,
-          pattern,
-          environmentId,
-        } = ListFilesRequestSchema.parse(data);
-        const repoManager = RepositoryManager.getInstance();
-
-        const ignoredPatterns = [
-          "**/node_modules/**",
-          "**/.git/**",
-          "**/dist/**",
-          "**/build/**",
-          "**/.next/**",
-          "**/coverage/**",
-          "**/.turbo/**",
-          "**/.vscode/**",
-          "**/.idea/**",
-          "**/tmp/**",
-          "**/.DS_Store",
-          "**/npm-debug.log*",
-          "**/yarn-debug.log*",
-          "**/yarn-error.log*",
-        ];
-
-        async function walkDir(
-          dir: string,
-          baseDir: string,
-        ): Promise<FileInfo[]> {
-          const files: FileInfo[] = [];
-
-          try {
-            const entries = await fs.readdir(dir, { withFileTypes: true });
-
-            for (const entry of entries) {
-              const fullPath = path.join(dir, entry.name);
-              const relativePath = path.relative(baseDir, fullPath);
-
-              const shouldIgnore = ignoredPatterns.some(
-                (ignorePattern) =>
-                  minimatch(relativePath, ignorePattern) ||
-                  minimatch(fullPath, ignorePattern),
-              );
-
-              if (shouldIgnore) continue;
-
-              if (entry.isDirectory() && !pattern) {
-                files.push({
-                  path: fullPath,
-                  name: entry.name,
-                  isDirectory: true,
-                  relativePath,
-                });
-              }
-
-              if (entry.isDirectory()) {
-                const subFiles = await walkDir(fullPath, baseDir);
-                files.push(...subFiles);
-              } else {
-                files.push({
-                  path: fullPath,
-                  name: entry.name,
-                  isDirectory: false,
-                  relativePath,
-                });
-              }
-            }
-          } catch (error) {
-            serverLogger.error(`Error reading directory ${dir}:`, error);
-          }
-
-          return files;
-        }
-
-        const listFilesForRepo = async ({
-          targetRepoUrl,
-          repoFullName,
-          branchOverride,
-        }: {
-          targetRepoUrl: string;
-          repoFullName?: string;
-          branchOverride?: string;
-        }): Promise<FileInfo[]> => {
-          const projectPaths = await getProjectPaths(targetRepoUrl, safeTeam);
-
-          await fs.mkdir(projectPaths.projectPath, { recursive: true });
-          await fs.mkdir(projectPaths.worktreesPath, { recursive: true });
-
-          await repoManager.ensureRepository(
-            targetRepoUrl,
-            projectPaths.originPath,
-          );
-
-          const baseBranch =
-            branchOverride ||
-            (await repoManager.getDefaultBranch(projectPaths.originPath));
-
-          await repoManager.ensureRepository(
-            targetRepoUrl,
-            projectPaths.originPath,
-            baseBranch,
-          );
-
-          const worktreeInfo = {
-            ...projectPaths,
-            worktreePath: `${projectPaths.worktreesPath}/${baseBranch}`,
-            branch: baseBranch,
-          } as const;
-
-          try {
-            await fs.access(worktreeInfo.originPath);
-          } catch {
-            serverLogger.error(
-              "Origin directory does not exist:",
-              worktreeInfo.originPath,
-            );
-            return [];
-          }
-
-          let fileList = await walkDir(
-            worktreeInfo.originPath,
-            worktreeInfo.originPath,
-          );
-
-          if (pattern) {
-            const filePaths = fileList.map((f) => f.relativePath);
-            const results = fuzzysort.go(pattern, filePaths, {
-              threshold: -10000,
-              limit: 1000,
-            });
-            const fileMap = new Map(fileList.map((f) => [f.relativePath, f]));
-
-            fileList = results
-              .map((result) => fileMap.get(result.target)!)
-              .filter(Boolean);
-          } else {
-            fileList.sort((a, b) => {
-              if (a.isDirectory && !b.isDirectory) return -1;
-              if (!a.isDirectory && b.isDirectory) return 1;
-              return a.relativePath.localeCompare(b.relativePath);
-            });
-          }
-
-          if (repoFullName) {
-            return fileList.map((file) => ({
-              ...file,
-              repoFullName,
-              relativePath: `${repoFullName}/${file.relativePath}`,
-            }));
-          }
-
-          return fileList;
-        };
-
-        if (environmentId) {
-          const environment = await getConvex().query(api.environments.get, {
-            teamSlugOrId: safeTeam,
-            id: environmentId,
-          });
-
-          if (!environment) {
-            socket.emit("list-files-response", {
-              files: [],
-              error: "Environment not found",
-            });
-            return;
-          }
-
-          const repoFullNames = (environment.selectedRepos || [])
-            .map((repo) => repo?.trim())
-            .filter((repo): repo is string => Boolean(repo));
-
-          if (repoFullNames.length === 0) {
-            socket.emit("list-files-response", {
-              files: [],
-              error: "This environment has no repositories configured",
-            });
-            return;
-          }
-
-          const aggregatedFiles: FileInfo[] = [];
-
-          for (const repoFullName of repoFullNames) {
-            try {
-              const files = await listFilesForRepo({
-                targetRepoUrl: `https://github.com/${repoFullName}.git`,
-                repoFullName,
-              });
-              aggregatedFiles.push(...files);
-            } catch (error) {
-              serverLogger.error(
-                `Failed to list files for environment repo ${repoFullName}:`,
-                error,
-              );
-            }
-          }
-
-          socket.emit("list-files-response", { files: aggregatedFiles });
-          return;
-        }
-
-        if (repoUrl) {
-          const fileList = await listFilesForRepo({
-            targetRepoUrl: repoUrl,
-            branchOverride: branch,
-          });
-          socket.emit("list-files-response", { files: fileList });
-          return;
-        }
-
-        socket.emit("list-files-response", {
-          files: [],
-          error: "Repository information missing",
-        });
-      } catch (error) {
-        serverLogger.error("Error listing files:", error);
-        socket.emit("list-files-response", {
-          files: [],
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
-    });
+    // list-files socket handler removed - use RPC listFiles() method instead
 
     socket.on("github-test-auth", async (callback) => {
       try {
@@ -1189,15 +881,7 @@ Please address the issue mentioned in the comment above.`;
 
         const primaryAgent = successfulAgents[0];
 
-        // Emit VSCode URL if available
-        if (primaryAgent.vscodeUrl) {
-          rt.emit("vscode-spawned", {
-            instanceId: primaryAgent.terminalId,
-            url: primaryAgent.vscodeUrl.replace("/?folder=/root/workspace", ""),
-            workspaceUrl: primaryAgent.vscodeUrl,
-            provider: "morph", // Since isCloudMode is true
-          });
-        }
+        // VSCode spawned events removed - no longer using socket.io push events
 
         callback({
           success: true,

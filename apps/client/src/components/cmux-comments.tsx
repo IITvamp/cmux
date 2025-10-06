@@ -1,4 +1,4 @@
-import { useSocket } from "@/contexts/socket/use-socket";
+import { useRpc } from "@/contexts/socket/use-rpc";
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import type { SpawnFromComment } from "@cmux/shared";
@@ -463,7 +463,7 @@ function CommentMarker({ comment, onClick, teamSlugOrId }: CommentMarkerProps) {
 }
 
 export function CmuxComments({ teamSlugOrId }: { teamSlugOrId: string }) {
-  const { socket } = useSocket();
+  const { rpcStub } = useRpc();
   const [isOpen, setIsOpen] = useState(false);
   const [isCommenting, setIsCommenting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -679,8 +679,8 @@ export function CmuxComments({ teamSlugOrId }: { teamSlugOrId: string }) {
     });
     console.log("Comment created:", commentId);
 
-    // Spawn agents via socket.io to address the comment
-    if (socket) {
+    // Spawn agents via RPC to address the comment
+    if (rpcStub) {
       const spawnData: SpawnFromComment = {
         ...pendingCommentData,
         content: commentDraft,
@@ -691,7 +691,8 @@ export function CmuxComments({ teamSlugOrId }: { teamSlugOrId: string }) {
         commentId,
       };
 
-      socket.emit("spawn-from-comment", spawnData, (response) => {
+      try {
+        const response = await rpcStub.spawnFromComment(spawnData);
         if (response.success) {
           console.log("Agents spawned successfully:", response);
           // Optionally navigate to the task page
@@ -703,7 +704,9 @@ export function CmuxComments({ teamSlugOrId }: { teamSlugOrId: string }) {
           console.error("Failed to spawn agents:", response.error);
           // Optionally show an error notification
         }
-      });
+      } catch (error) {
+        console.error("Failed to spawn agents:", error);
+      }
     }
 
     setCommentDraft("");
