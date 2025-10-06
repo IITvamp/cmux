@@ -414,18 +414,19 @@ jobs:
       - name: Generate icons
         working-directory: apps/client
         run: bun run ./scripts/generate-icons.mjs
-      - name: Build & publish Linux AppImage x64 to GitHub Releases
+      - name: Build & publish Linux x64 packages to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
           PUBLISH_FLAG: ${{ github.event_name == 'release' && 'always' || 'never' }}
         working-directory: apps/client
-        run: bunx electron-vite build -c electron.vite.config.ts && bunx electron-builder --config electron-builder.json --linux AppImage --x64 --publish "$PUBLISH_FLAG" --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
+        run: bunx electron-vite build -c electron.vite.config.ts && bunx electron-builder --config electron-builder.json --linux --x64 --publish "$PUBLISH_FLAG" --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
       - name: Upload Linux x64 artifacts
         uses: actions/upload-artifact@v4
         with:
           name: linux-x64-artifacts
           path: |
             apps/client/dist-electron/*.AppImage
+            apps/client/dist-electron/*.deb
             apps/client/dist-electron/*.yml
           if-no-files-found: error
           retention-days: 7
@@ -489,18 +490,19 @@ jobs:
       - name: Generate icons
         working-directory: apps/client
         run: bun run ./scripts/generate-icons.mjs
-      - name: Build & publish Linux AppImage arm64 to GitHub Releases
+      - name: Build & publish Linux arm64 packages to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
           PUBLISH_FLAG: ${{ github.event_name == 'release' && 'always' || 'never' }}
         working-directory: apps/client
-        run: bunx electron-vite build -c electron.vite.config.ts && bunx electron-builder --config electron-builder.json --linux AppImage --arm64 --publish "$PUBLISH_FLAG" --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
+        run: bunx electron-vite build -c electron.vite.config.ts && bunx electron-builder --config electron-builder.json --linux --arm64 --publish "$PUBLISH_FLAG" --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
       - name: Upload Linux arm64 artifacts
         uses: actions/upload-artifact@v4
         with:
           name: linux-arm64-artifacts
           path: |
             apps/client/dist-electron/*.AppImage
+            apps/client/dist-electron/*.deb
             apps/client/dist-electron/*.yml
           if-no-files-found: error
           retention-days: 7

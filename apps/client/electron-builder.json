@@ -70,7 +70,8 @@
     "icon": "build/icon.png",
     "category": "Development",
     "target": [
-      "AppImage"
+      "AppImage",
+      "deb"
     ],
     "desktop": {
       "Name": "cmux",
@@ -78,7 +79,8 @@
       "Terminal": false,
       "Type": "Application",
       "Categories": "Development;"
-    }
+    },
+    "maintainer": "cmux <hello@cmux.dev>"
   },
   "dmg": {
     "icon": "build/icon.icns",
