@@ -45,7 +45,13 @@ function WorkflowRuns({ teamSlugOrId, repoFullName, prNumber }: WorkflowRunsProp
   });
 
   if (!runs || runs.length === 0) {
-    return null;
+    return (
+      <div className="flex items-center gap-2 ml-2 shrink-0">
+        <span className="text-[11px] text-neutral-400 dark:text-neutral-500">
+          No workflow runs
+        </span>
+      </div>
+    );
   }
 
   const getStatusIcon = (status?: string, conclusion?: string) => {
@@ -149,6 +155,115 @@ function AdditionsAndDeletions({
   );
 }
 
+function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber }: WorkflowRunsProps) {
+  const runs = useConvexQuery(api.github_workflows.getWorkflowRunsForPr, {
+    teamId: teamSlugOrId,
+    repoFullName,
+    prNumber,
+    limit: 20,
+  });
+
+  const getStatusIcon = (status?: string, conclusion?: string) => {
+    if (conclusion === "success") {
+      return <Check className="w-4 h-4 text-green-600 dark:text-green-400" />;
+    }
+    if (conclusion === "failure") {
+      return <X className="w-4 h-4 text-red-600 dark:text-red-400" />;
+    }
+    if (conclusion === "cancelled") {
+      return <Circle className="w-4 h-4 text-neutral-500 dark:text-neutral-400" />;
+    }
+    if (status === "in_progress" || status === "queued") {
+      return <Clock className="w-4 h-4 text-yellow-600 dark:text-yellow-400 animate-pulse" />;
+    }
+    return <AlertCircle className="w-4 h-4 text-neutral-500 dark:text-neutral-400" />;
+  };
+
+  const getStatusColor = (status?: string, conclusion?: string) => {
+    if (conclusion === "success") {
+      return "border-green-200 dark:border-green-900/40 bg-green-50 dark:bg-green-950/20";
+    }
+    if (conclusion === "failure") {
+      return "border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-950/20";
+    }
+    if (conclusion === "cancelled") {
+      return "border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950/20";
+    }
+    if (status === "in_progress" || status === "queued") {
+      return "border-yellow-200 dark:border-yellow-900/40 bg-yellow-50 dark:bg-yellow-950/20";
+    }
+    return "border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950/20";
+  };
+
+  const getStatusText = (status?: string, conclusion?: string) => {
+    if (conclusion === "success") return "Success";
+    if (conclusion === "failure") return "Failed";
+    if (conclusion === "cancelled") return "Cancelled";
+    if (status === "in_progress") return "In Progress";
+    if (status === "queued") return "Queued";
+    return "Unknown";
+  };
+
+  if (!runs || runs.length === 0) {
+    return (
+      <div className="border-b border-neutral-200 dark:border-neutral-800 px-3.5 py-3">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-neutral-400 dark:text-neutral-500" />
+          <span className="text-sm text-neutral-500 dark:text-neutral-400">
+            No GitHub Actions workflow runs found
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-b border-neutral-200 dark:border-neutral-800">
+      <div className="px-3.5 py-2 bg-neutral-50 dark:bg-neutral-900/50">
+        <h2 className="text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wide">
+          GitHub Actions ({runs.length})
+        </h2>
+      </div>
+      <div className="divide-y divide-neutral-200 dark:divide-neutral-800">
+        {runs.map((run) => (
+          <a
+            key={run._id}
+            href={run.htmlUrl}
+            target="_blank"
+            rel="noreferrer"
+            className={`flex items-center gap-3 px-3.5 py-2.5 hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-colors border-l-2 ${getStatusColor(run.status, run.conclusion)}`}
+          >
+            {getStatusIcon(run.status, run.conclusion)}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
+                  {run.workflowName}
+                </span>
+                <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-200 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 font-medium shrink-0">
+                  {getStatusText(run.status, run.conclusion)}
+                </span>
+              </div>
+              {run.name && run.name !== run.workflowName && (
+                <div className="text-xs text-neutral-500 dark:text-neutral-400 truncate mt-0.5">
+                  {run.name}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400 shrink-0">
+              {run.runDuration && (
+                <span>
+                  {Math.floor(run.runDuration / 60)}m {run.runDuration % 60}s
+                </span>
+              )}
+              <ExternalLink className="w-3.5 h-3.5" />
+            </div>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function PullRequestDetailView({
   teamSlugOrId,
   owner,
@@ -191,12 +306,23 @@ export function PullRequestDetailView({
         credentials: "include",
       });
 
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || "Failed to close PR");
+      if (!response.ok) {
+        let errorMessage = `Failed to close PR (${response.status})`;
+        try {
+          const errorData = await response.json();
+          if (errorData.message) {
+            errorMessage = errorData.message;
+          }
+        } catch {
+          const text = await response.text();
+          if (text) {
+            errorMessage = text;
+          }
+        }
+        throw new Error(errorMessage);
       }
 
+      const data = await response.json();
       toast.success(data.message || `PR #${currentPR.number} closed successfully`);
     } catch (error) {
       toast.error(`Failed to close PR: ${error instanceof Error ? error.message : String(error)}`);
@@ -313,7 +439,7 @@ export function PullRequestDetailView({
                     <button
                       onClick={handleClosePR}
                       disabled={isClosing}
-                      className="flex items-center gap-1.5 px-3 py-1 bg-red-600 dark:bg-red-700 text-white border border-red-700 dark:border-red-600 rounded hover:bg-red-700 dark:hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-xs select-none whitespace-nowrap"
+                      className="flex items-center gap-1.5 px-3 py-1 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900 rounded hover:bg-red-100 dark:hover:bg-red-950/40 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-xs select-none whitespace-nowrap transition-colors"
                     >
                       <X className="w-3.5 h-3.5" />
                       Close PR
@@ -373,6 +499,13 @@ export function PullRequestDetailView({
             </div>
           </div>
           <div className="bg-white dark:bg-neutral-950">
+            <Suspense fallback={null}>
+              <WorkflowRunsSection
+                teamSlugOrId={teamSlugOrId}
+                repoFullName={currentPR.repoFullName}
+                prNumber={currentPR.number}
+              />
+            </Suspense>
             <Suspense
               fallback={
                 <div className="flex items-center justify-center h-full">
