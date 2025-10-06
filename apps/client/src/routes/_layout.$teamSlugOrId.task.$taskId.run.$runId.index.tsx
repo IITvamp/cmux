@@ -6,28 +6,30 @@ import { createFileRoute } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useCallback } from "react";
 import { PersistentWebView } from "@/components/persistent-webview";
-import { preloadTaskRunIframes } from "../lib/preloadTaskRunIframes";
 import { getTaskRunPersistKey } from "@/lib/persistent-webview-keys";
+import { toProxyWorkspaceUrl } from "@/lib/toProxyWorkspaceUrl";
+import { preloadTaskRunIframes } from "../lib/preloadTaskRunIframes";
 
 export const Route = createFileRoute(
-  "/_layout/$teamSlugOrId/task/$taskId/run/$taskRunId",
+  "/_layout/$teamSlugOrId/task/$taskId/run/$runId/"
 )({
   component: TaskRunComponent,
   parseParams: (params) => ({
     ...params,
-    taskRunId: typedZid("taskRuns").parse(params.taskRunId),
+    taskRunId: typedZid("taskRuns").parse(params.runId),
   }),
   loader: async (opts) => {
     const result = await opts.context.queryClient.ensureQueryData(
       convexQuery(api.taskRuns.get, {
         teamSlugOrId: opts.params.teamSlugOrId,
         id: opts.params.taskRunId,
-      }),
+      })
     );
     if (result) {
+      const workspaceUrl = result.vscode?.workspaceUrl;
       void preloadTaskRunIframes([
         {
-          url: result.vscode?.workspaceUrl || "",
+          url: workspaceUrl ? toProxyWorkspaceUrl(workspaceUrl) : "",
           taskRunId: opts.params.taskRunId,
         },
       ]);
@@ -41,10 +43,13 @@ function TaskRunComponent() {
     convexQuery(api.taskRuns.get, {
       teamSlugOrId,
       id: taskRunId,
-    }),
+    })
   );
 
-  const workspaceUrl = taskRun?.data?.vscode?.workspaceUrl ?? null;
+  const rawWorkspaceUrl = taskRun?.data?.vscode?.workspaceUrl ?? null;
+  const workspaceUrl = rawWorkspaceUrl
+    ? toProxyWorkspaceUrl(rawWorkspaceUrl)
+    : null;
   const persistKey = getTaskRunPersistKey(taskRunId);
   const hasWorkspace = workspaceUrl !== null;
 
@@ -56,10 +61,10 @@ function TaskRunComponent() {
     (error: Error) => {
       console.error(
         `Failed to load workspace view for task run ${taskRunId}:`,
-        error,
+        error
       );
     },
-    [taskRunId],
+    [taskRunId]
   );
 
   return (
@@ -72,8 +77,8 @@ function TaskRunComponent() {
               src={workspaceUrl}
               className="grow flex relative"
               iframeClassName="select-none"
-              allow="clipboard-read; clipboard-write; usb; serial; hid; cross-origin-isolated; autoplay; camera; microphone; geolocation; payment; fullscreen"
-              sandbox="allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-top-navigation"
+              allow="*"
+              sandbox="*"
               retainOnUnmount
               suspended={!hasWorkspace}
               onLoad={onLoad}
@@ -88,7 +93,7 @@ function TaskRunComponent() {
               {
                 "opacity-100": !hasWorkspace,
                 "opacity-0": hasWorkspace,
-              },
+              }
             )}
           >
             <div className="flex flex-col items-center gap-3">

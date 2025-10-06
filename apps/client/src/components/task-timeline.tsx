@@ -184,11 +184,12 @@ export function TaskTimeline({
         );
         content = event.runId ? (
           <Link
-            to="/$teamSlugOrId/task/$taskId/run/$runId/vscode"
+            to="/$teamSlugOrId/task/$taskId/run/$runId"
             params={{
               teamSlugOrId: params.teamSlugOrId,
               taskId: params.taskId,
               runId: event.runId,
+              taskRunId: event.runId,
             }}
             className="hover:underline inline"
           >
@@ -232,11 +233,12 @@ export function TaskTimeline({
           <>
             {event.runId ? (
               <Link
-                to="/$teamSlugOrId/task/$taskId/run/$runId/vscode"
+                to="/$teamSlugOrId/task/$taskId/run/$runId"
                 params={{
                   teamSlugOrId: params.teamSlugOrId,
                   taskId: params.taskId,
                   runId: event.runId,
+                  taskRunId: event.runId,
                 }}
                 className="hover:underline inline"
               >
@@ -291,11 +293,12 @@ export function TaskTimeline({
           <>
             {event.runId ? (
               <Link
-                to="/$teamSlugOrId/task/$taskId/run/$runId/vscode"
+                to="/$teamSlugOrId/task/$taskId/run/$runId"
                 params={{
                   teamSlugOrId: params.teamSlugOrId,
                   taskId: params.taskId,
                   runId: event.runId,
+                  taskRunId: event.runId,
                 }}
                 className="hover:underline inline"
               >
@@ -342,11 +345,12 @@ export function TaskTimeline({
           <>
             {event.runId ? (
               <Link
-                to="/$teamSlugOrId/task/$taskId/run/$runId/vscode"
+                to="/$teamSlugOrId/task/$taskId/run/$runId"
                 params={{
                   teamSlugOrId: params.teamSlugOrId,
                   taskId: params.taskId,
                   runId: event.runId,
+                  taskRunId: event.runId,
                 }}
                 className="hover:underline inline"
               >

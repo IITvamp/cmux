@@ -234,7 +234,9 @@ function resolveSemverVersion(value: string | null | undefined): string | null {
   return coerced ? coerced.version : null;
 }
 
-function isUpdateNewerThanCurrent(info: UpdateInfo | null | undefined): boolean {
+function isUpdateNewerThanCurrent(
+  info: UpdateInfo | null | undefined
+): boolean {
   if (!info) return false;
 
   const updateVersion = resolveSemverVersion(info.version);
@@ -496,6 +498,7 @@ function createWindow(): void {
       webviewTag: true,
       partition: PARTITION,
       allowRunningInsecureContent: true, // TODO: remove this
+      webSecurity: false,
     },
   };
 
@@ -676,6 +679,16 @@ app.whenReady().then(async () => {
     if (!img.isEmpty()) app.dock?.setIcon(img);
   }
 
+  // session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+  //   callback({
+  //     responseHeaders: {
+  //       ...details.responseHeaders,
+  //       // "Content-Security-Policy": ["script-src 'self' https://cmux.sh"],
+  //       "Content-Security-Policy": ["*"],
+  //     },
+  //   });
+  // });
+
   const ses = session.fromPartition(PARTITION);
   // Intercept HTTPS for our private host and serve local files; pass-through others.
   ses.protocol.handle("https", async (req) => {
@@ -690,7 +703,12 @@ app.whenReady().then(async () => {
       mainWarn("Blocked path outside baseDir", { fsPath, baseDir });
       return new Response("Not found", { status: 404 });
     }
-    return net.fetch(pathToFileURL(fsPath).toString());
+    const response = await net.fetch(pathToFileURL(fsPath).toString());
+    response.headers.set(
+      "Content-Security-Policy",
+      "default-src * 'unsafe-inline' 'unsafe-eval' data: blob: ws: wss:; worker-src * blob:; child-src * blob:; frame-src *"
+    );
+    return response;
   });
 
   // Create the initial window.

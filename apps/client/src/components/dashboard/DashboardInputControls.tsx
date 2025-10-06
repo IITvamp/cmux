@@ -541,7 +541,6 @@ export const DashboardInputControls = memo(function DashboardInputControls({
         <ModeToggleTooltip
           isCloudMode={isCloudMode}
           onToggle={onCloudModeToggle}
-          teamSlugOrId={teamSlugOrId}
           disabled={cloudToggleDisabled}
         />
 
