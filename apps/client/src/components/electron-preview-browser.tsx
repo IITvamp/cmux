@@ -121,7 +121,7 @@ export function ElectronPreviewBrowser({
         setLastError(null);
       }
     },
-    [isEditing]
+    [isEditing],
   );
 
   useEffect(() => {
@@ -158,7 +158,7 @@ export function ElectronPreviewBrowser({
         if (event.type === "load-failed" && event.isMainFrame) {
           setLastError(event.errorDescription || "Failed to load page");
         }
-      }
+      },
     );
     return () => {
       unsubscribe?.();
@@ -196,19 +196,25 @@ export function ElectronPreviewBrowser({
           console.warn("Failed to navigate WebContentsView", error);
         });
     },
-    [addressValue, viewHandle]
+    [addressValue, viewHandle],
   );
 
+  const initialSelectHandled = useRef(false);
+  const inputFocused = useRef(false);
+
   const handleInputFocus = useCallback(
-    (event: React.FocusEvent<HTMLInputElement>) => {
+    (_event: React.FocusEvent<HTMLInputElement>) => {
       setIsEditing(true);
-      event.currentTarget.select();
+      inputFocused.current = true;
+      // event.currentTarget.select();
     },
-    []
+    [],
   );
 
   const handleInputBlur = useCallback(
     (event: React.FocusEvent<HTMLInputElement>) => {
+      initialSelectHandled.current = false;
+      inputFocused.current = false;
       setIsEditing(false);
       setAddressValue(committedUrl);
       const input = event.currentTarget;
@@ -226,17 +232,18 @@ export function ElectronPreviewBrowser({
         }
       });
     },
-    [committedUrl]
+    [committedUrl],
   );
 
   const handleInputMouseUp = useCallback(
     (event: React.MouseEvent<HTMLInputElement>) => {
-      if (document.activeElement !== event.currentTarget) {
+      if (initialSelectHandled.current) {
         return;
       }
+      initialSelectHandled.current = true;
       event.currentTarget.select();
     },
-    []
+    [],
   );
 
   const handleInputKeyDown = useCallback(
@@ -247,7 +254,7 @@ export function ElectronPreviewBrowser({
         setAddressValue(committedUrl);
       }
     },
-    [committedUrl]
+    [committedUrl],
   );
 
   const handleToggleDevTools = useCallback(() => {
@@ -302,8 +309,8 @@ export function ElectronPreviewBrowser({
         <form onSubmit={handleSubmit} className="flex flex-col gap-2">
           <div
             className={cn(
-              "relative flex items-center gap-2 border border-neutral-200 bg-white px-3 font-mono",
-              "dark:border-neutral-800 dark:bg-neutral-900"
+              "relative flex items-center gap-1 border border-neutral-200 bg-white px-2 pt-0.5 pb-[3px]",
+              "dark:border-neutral-800 dark:bg-neutral-900",
             )}
           >
             <div className="flex items-center gap-1">
@@ -353,7 +360,7 @@ export function ElectronPreviewBrowser({
                         .catch((error: unknown) => {
                           console.warn(
                             "Failed to reload WebContentsView",
-                            error
+                            error,
                           );
                         });
                     }}
@@ -378,7 +385,7 @@ export function ElectronPreviewBrowser({
               onBlur={handleInputBlur}
               onMouseUp={handleInputMouseUp}
               onKeyDown={handleInputKeyDown}
-              className="flex-1 bg-transparent text-[11px] text-neutral-900 outline-none placeholder:text-neutral-400 disabled:cursor-not-allowed disabled:text-neutral-400 dark:text-neutral-100 dark:placeholder:text-neutral-600"
+              className="flex-1 bg-neutral-200 dark:bg-neutral-700 px-2 py-px rounded-[5px] text-[13px] text-neutral-800 outline-none placeholder:text-neutral-400 disabled:cursor-not-allowed disabled:text-neutral-400 dark:text-neutral-100 dark:placeholder:text-neutral-600 border-[1.7px] border-transparent active:border-neutral-400 focus:border-neutral-400 dark:active:border-neutral-500 dark:focus:border-neutral-500"
               placeholder="Enter a URL"
               spellCheck={false}
               autoCapitalize="none"
@@ -394,7 +401,7 @@ export function ElectronPreviewBrowser({
                     size="icon"
                     className={clsx(
                       "size-7 rounded-full p-0 text-neutral-600 hover:text-neutral-800 disabled:opacity-30 disabled:hover:text-neutral-400 dark:text-neutral-500 dark:hover:text-neutral-100 dark:disabled:hover:text-neutral-500",
-                      devtoolsOpen && "text-primary hover:text-primary"
+                      devtoolsOpen && "text-primary hover:text-primary",
                     )}
                     onClick={handleToggleDevTools}
                     disabled={!viewHandle}
@@ -425,7 +432,7 @@ export function ElectronPreviewBrowser({
           </div>
         ) : null}
       </div>
-      <div className="flex-1 overflow-hidden bg-white dark:bg-neutral-950">
+      <div className="flex-1 overflow-hidden bg-white dark:bg-neutral-950 pl-[pxpx] border-l">
         <PersistentWebView
           persistKey={persistKey}
           src={src}
