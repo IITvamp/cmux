@@ -422,11 +422,12 @@ export function setupSocketHandlers(
             const primaryAgent = successfulAgents[0];
 
             // Emit task-started event with full data
-            rt.emit("task-started", {
+            const taskStartedPayload = {
               taskId,
               worktreePath: primaryAgent.worktreePath,
               terminalId: primaryAgent.terminalId,
-            });
+            };
+            rt.emit("task-started", taskStartedPayload);
 
             // Emit VSCode URL if available
             if (primaryAgent.vscodeUrl) {

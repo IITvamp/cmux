@@ -22,7 +22,7 @@ import { createFakeConvexId } from "@/lib/fakeConvexId";
 import { branchesQueryOptions } from "@/queries/branches";
 import { api } from "@cmux/convex/api";
 import type { Doc, Id } from "@cmux/convex/dataModel";
-import type { ProviderStatusResponse } from "@cmux/shared";
+import type { ProviderStatusResponse, TaskAcknowledged, TaskError } from "@cmux/shared";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -30,6 +30,7 @@ import { useMutation } from "convex/react";
 import { Server as ServerIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { attachTaskLifecycleListeners } from "@/lib/socket/taskLifecycleListeners";
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId/dashboard")({
   component: DashboardComponent,
@@ -363,6 +364,24 @@ function DashboardComponent() {
         : `https://github.com/${projectFullName}.git`;
 
       // For socket.io, we need to send the content text (which includes image references) and the images
+      const handleStartTaskAck = (response: TaskAcknowledged | TaskError) => {
+        if ("error" in response) {
+          console.error("Task start error:", response.error);
+          toast.error(`Task start error: ${JSON.stringify(response.error)}`);
+          return;
+        }
+
+        attachTaskLifecycleListeners(socket, response.taskId, {
+          onStarted: (payload) => {
+            console.log("Task started:", payload);
+          },
+          onFailed: (payload) => {
+            toast.error(`Task failed to start: ${payload.error}`);
+          },
+        });
+        console.log("Task acknowledged:", response);
+      };
+
       socket.emit(
         "start-task",
         {
@@ -378,14 +397,7 @@ function DashboardComponent() {
           images: images.length > 0 ? images : undefined,
           theme,
         },
-        (response) => {
-          if ("error" in response) {
-            console.error("Task start error:", response.error);
-            toast.error(`Task start error: ${JSON.stringify(response.error)}`);
-          } else {
-            console.log("Task started:", response);
-          }
-        }
+        handleStartTaskAck
       );
       console.log("Task created:", taskId);
     } catch (error) {
