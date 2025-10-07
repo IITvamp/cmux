@@ -35,7 +35,6 @@ interface NativeViewHandle {
   restored: boolean;
 }
 
-
 function normalizeUrl(raw: string): string {
   const trimmed = raw.trim();
   if (trimmed.length === 0) return trimmed;
@@ -107,8 +106,9 @@ export function ElectronPreviewBrowser({
   const [isShowingErrorPage, setIsShowingErrorPage] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const isNavigatingRef = useRef(false);
-  const pendingRefocusTimeoutRef =
-    useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingRefocusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const windowHasFocusRef = useRef(
     typeof document !== "undefined" ? document.hasFocus() : true,
   );
@@ -143,9 +143,14 @@ export function ElectronPreviewBrowser({
       }
 
       setIsShowingErrorPage(showingError);
-      setCommittedUrl(displayUrl);
-      if (!isEditing) {
-        setAddressValue(displayUrl);
+
+      const hasDisplayUrl = displayUrl.trim().length > 0;
+
+      if (hasDisplayUrl) {
+        setCommittedUrl(displayUrl);
+        if (!isEditing) {
+          setAddressValue(displayUrl);
+        }
       }
       setIsLoading(state.isLoading);
       setDevtoolsOpen(state.isDevToolsOpened);
@@ -292,7 +297,8 @@ export function ElectronPreviewBrowser({
           }
           // Only refocus if window still has focus (user didn't alt-tab away)
           if (document.hasFocus()) {
-            void window.cmux?.ui?.focusWebContents(viewHandle.webContentsId)
+            void window.cmux?.ui
+              ?.focusWebContents(viewHandle.webContentsId)
               .catch((error: unknown) => {
                 console.warn(
                   "Failed to refocus WebContentsView on blur",
@@ -429,7 +435,6 @@ export function ElectronPreviewBrowser({
     }
   }, [committedUrl, isShowingErrorPage, persistKey, viewHandle]);
 
-
   useEffect(() => {
     if (typeof window === "undefined") return;
     const off = window.cmux?.on?.("shortcut:preview-reload", () => {
@@ -465,40 +470,43 @@ export function ElectronPreviewBrowser({
     let rafId: number | null = null;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-    const off = window.cmux?.on?.("shortcut:preview-focus-address", async () => {
-      // Clean up any pending focus operations
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      if (timeoutId !== null) clearTimeout(timeoutId);
+    const off = window.cmux?.on?.(
+      "shortcut:preview-focus-address",
+      async () => {
+        // Clean up any pending focus operations
+        if (rafId !== null) cancelAnimationFrame(rafId);
+        if (timeoutId !== null) clearTimeout(timeoutId);
 
-      // Focus the main window first to take focus away from WebContentsView
-      try {
-        const currentWebContentsId = window.cmux?.getCurrentWebContentsId?.();
-        if (currentWebContentsId) {
-          await window.cmux?.ui?.focusWebContents(currentWebContentsId);
+        // Focus the main window first to take focus away from WebContentsView
+        try {
+          const currentWebContentsId = window.cmux?.getCurrentWebContentsId?.();
+          if (currentWebContentsId) {
+            await window.cmux?.ui?.focusWebContents(currentWebContentsId);
+          }
+        } catch (error) {
+          console.warn("Failed to focus main window webContents", error);
         }
-      } catch (error) {
-        console.warn("Failed to focus main window webContents", error);
-      }
 
-      // Wait for focus to fully transfer, then focus and select the input
-      // Use multiple strategies to ensure it works
-      const focusInput = () => {
-        if (inputRef.current) {
-          inputRef.current.focus();
-          inputRef.current.select();
-        }
-      };
+        // Wait for focus to fully transfer, then focus and select the input
+        // Use multiple strategies to ensure it works
+        const focusInput = () => {
+          if (inputRef.current) {
+            inputRef.current.focus();
+            inputRef.current.select();
+          }
+        };
 
-      // Try immediately
-      focusInput();
-
-      // Try again after animation frame (ensures DOM has updated)
-      rafId = requestAnimationFrame(() => {
+        // Try immediately
         focusInput();
-        // And one more time after a small delay to handle slow focus transfers
-        timeoutId = setTimeout(focusInput, 50);
-      });
-    });
+
+        // Try again after animation frame (ensures DOM has updated)
+        rafId = requestAnimationFrame(() => {
+          focusInput();
+          // And one more time after a small delay to handle slow focus transfers
+          timeoutId = setTimeout(focusInput, 50);
+        });
+      },
+    );
 
     return () => {
       off?.();
@@ -543,12 +551,17 @@ export function ElectronPreviewBrowser({
           activeElement instanceof HTMLTextAreaElement ||
           activeElement instanceof HTMLButtonElement ||
           activeElement instanceof HTMLSelectElement ||
-          (activeElement instanceof HTMLElement && activeElement.isContentEditable);
+          (activeElement instanceof HTMLElement &&
+            activeElement.isContentEditable);
 
         if (!isInteractiveElementFocused && viewHandle) {
-          void window.cmux?.ui?.focusWebContents(viewHandle.webContentsId)
+          void window.cmux?.ui
+            ?.focusWebContents(viewHandle.webContentsId)
             .catch((error: unknown) => {
-              console.warn("Failed to refocus WebContentsView on window focus", error);
+              console.warn(
+                "Failed to refocus WebContentsView on window focus",
+                error,
+              );
             });
         }
       }, 50);
@@ -575,7 +588,6 @@ export function ElectronPreviewBrowser({
       }
     };
   }, [viewHandle]);
-
 
   const devtoolsTooltipLabel = devtoolsOpen
     ? "Close DevTools"
