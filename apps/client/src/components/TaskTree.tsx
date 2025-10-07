@@ -13,7 +13,7 @@ import type { AnnotatedTaskRun, TaskRunWithChildren } from "@/types/task";
 import { ContextMenu } from "@base-ui-components/react/context-menu";
 import { api } from "@cmux/convex/api";
 import { type Doc, type Id } from "@cmux/convex/dataModel";
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link, useLocation, type LinkProps } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useQuery as useConvexQuery } from "convex/react";
 import {
@@ -691,8 +691,8 @@ function TaskRunTreeInner({
 }
 
 interface TaskRunDetailLinkProps {
-  to: string;
-  params: Record<string, unknown>;
+  to: LinkProps["to"];
+  params: LinkProps["params"];
   icon: ReactNode;
   label: string;
   indentLevel: number;
@@ -804,8 +804,13 @@ function TaskRunDetails({
     <Fragment>
       {hasActiveVSCode && (
         <TaskRunDetailLink
-          to="/$teamSlugOrId/task/$taskId/run/$runId/vscode"
-          params={{ teamSlugOrId, taskId, runId: run._id }}
+          to="/$teamSlugOrId/task/$taskId/run/$runId"
+          params={{
+            teamSlugOrId,
+            taskId,
+            runId: run._id,
+            taskRunId: run._id,
+          }}
           icon={
             <VSCodeIcon className="w-3 h-3 mr-2 text-neutral-400 grayscale opacity-60" />
           }

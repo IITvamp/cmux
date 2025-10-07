@@ -107,7 +107,6 @@ export async function startDevScript({
 
   const command = `
 set -euo pipefail
-trap 'rm -rf ${devScriptDir}' EXIT
 mkdir -p ${LOG_DIR}
 mkdir -p ${devScriptDir}
 ${ensurePidStoppedCommand(pidFile)}

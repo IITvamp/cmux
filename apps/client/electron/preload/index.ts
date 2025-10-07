@@ -25,6 +25,11 @@ const mainLogListeners = new Set<LogListener>();
 
 // Cmux IPC API for Electron server communication
 const cmuxAPI = {
+  // Get the current webContents ID
+  getCurrentWebContentsId: () => {
+    return ipcRenderer.sendSync("cmux:get-current-webcontents-id") as number;
+  },
+
   // Register with the server (like socket connection)
   register: (meta: { auth?: string; team?: string; auth_json?: string }) => {
     return ipcRenderer.invoke("cmux:register", meta);
@@ -90,13 +95,14 @@ const cmuxAPI = {
     focusWebContents: (id: number) => {
       return ipcRenderer.invoke("cmux:ui:focus-webcontents", id) as Promise<{
         ok: boolean;
+        queued?: boolean;
       }>;
     },
     restoreLastFocusInWebContents: (id: number) => {
       return ipcRenderer.invoke(
         "cmux:ui:webcontents-restore-last-focus",
         id
-      ) as Promise<{ ok: boolean }>;
+      ) as Promise<{ ok: boolean; queued?: boolean }>;
     },
     restoreLastFocusInFrame: (
       contentsId: number,
@@ -107,7 +113,7 @@ const cmuxAPI = {
         contentsId,
         frameRoutingId,
         frameProcessId,
-      }) as Promise<{ ok: boolean }>;
+      }) as Promise<{ ok: boolean; queued?: boolean }>;
     },
     setCommandPaletteOpen: (open: boolean) => {
       return ipcRenderer.invoke(
@@ -115,9 +121,16 @@ const cmuxAPI = {
         Boolean(open)
       ) as Promise<{ ok: boolean }>;
     },
+    setPreviewReloadVisible: (visible: boolean) => {
+      return ipcRenderer.invoke(
+        "cmux:ui:set-preview-reload-visible",
+        Boolean(visible)
+      ) as Promise<{ ok: boolean }>;
+    },
     restoreLastFocus: () => {
       return ipcRenderer.invoke("cmux:ui:restore-last-focus") as Promise<{
         ok: boolean;
+        queued?: boolean;
       }>;
     },
   },

@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as MonacoSingleBufferRouteImport } from './routes/monaco-single-buffer'
 import { Route as ElectronWebContentsRouteImport } from './routes/electron-web-contents'
+import { Route as ElectronErrorRouteImport } from './routes/electron-error'
 import { Route as DebugWebcontentsRouteImport } from './routes/debug-webcontents'
 import { Route as DebugMonacoRouteImport } from './routes/debug-monaco'
 import { Route as DebugIconRouteImport } from './routes/debug-icon'
@@ -36,9 +37,9 @@ import { Route as LayoutTeamSlugOrIdEnvironmentsNewVersionRouteImport } from './
 import { Route as LayoutTeamSlugOrIdEnvironmentsNewRouteImport } from './routes/_layout.$teamSlugOrId.environments.new'
 import { Route as LayoutTeamSlugOrIdEnvironmentsEnvironmentIdRouteImport } from './routes/_layout.$teamSlugOrId.environments.$environmentId'
 import { Route as LayoutTeamSlugOrIdTaskTaskIdIndexRouteImport } from './routes/_layout.$teamSlugOrId.task.$taskId.index'
-import { Route as LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRouteImport } from './routes/_layout.$teamSlugOrId.task.$taskId.run.$taskRunId'
 import { Route as LayoutTeamSlugOrIdPrsOwnerRepoNumberRouteImport } from './routes/_layout.$teamSlugOrId.prs.$owner.$repo.$number'
 import { Route as LayoutTeamSlugOrIdPrsOnlyOwnerRepoNumberRouteImport } from './routes/_layout.$teamSlugOrId.prs-only.$owner.$repo.$number'
+import { Route as LayoutTeamSlugOrIdTaskTaskIdRunRunIdIndexRouteImport } from './routes/_layout.$teamSlugOrId.task.$taskId.run.$runId.index'
 import { Route as LayoutTeamSlugOrIdTaskTaskIdRunRunIdVscodeRouteImport } from './routes/_layout.$teamSlugOrId.task.$taskId.run.$runId.vscode'
 import { Route as LayoutTeamSlugOrIdTaskTaskIdRunRunIdPrRouteImport } from './routes/_layout.$teamSlugOrId.task.$taskId.run.$runId.pr'
 import { Route as LayoutTeamSlugOrIdTaskTaskIdRunRunIdDiffRouteImport } from './routes/_layout.$teamSlugOrId.task.$taskId.run.$runId.diff'
@@ -57,6 +58,11 @@ const MonacoSingleBufferRoute = MonacoSingleBufferRouteImport.update({
 const ElectronWebContentsRoute = ElectronWebContentsRouteImport.update({
   id: '/electron-web-contents',
   path: '/electron-web-contents',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ElectronErrorRoute = ElectronErrorRouteImport.update({
+  id: '/electron-error',
+  path: '/electron-error',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DebugWebcontentsRoute = DebugWebcontentsRouteImport.update({
@@ -189,12 +195,6 @@ const LayoutTeamSlugOrIdTaskTaskIdIndexRoute =
     path: '/',
     getParentRoute: () => LayoutTeamSlugOrIdTaskTaskIdRoute,
   } as any)
-const LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRoute =
-  LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRouteImport.update({
-    id: '/run/$taskRunId',
-    path: '/run/$taskRunId',
-    getParentRoute: () => LayoutTeamSlugOrIdTaskTaskIdRoute,
-  } as any)
 const LayoutTeamSlugOrIdPrsOwnerRepoNumberRoute =
   LayoutTeamSlugOrIdPrsOwnerRepoNumberRouteImport.update({
     id: '/$owner/$repo/$number',
@@ -206,6 +206,12 @@ const LayoutTeamSlugOrIdPrsOnlyOwnerRepoNumberRoute =
     id: '/prs-only/$owner/$repo/$number',
     path: '/prs-only/$owner/$repo/$number',
     getParentRoute: () => LayoutTeamSlugOrIdRoute,
+  } as any)
+const LayoutTeamSlugOrIdTaskTaskIdRunRunIdIndexRoute =
+  LayoutTeamSlugOrIdTaskTaskIdRunRunIdIndexRouteImport.update({
+    id: '/run/$runId/',
+    path: '/run/$runId/',
+    getParentRoute: () => LayoutTeamSlugOrIdTaskTaskIdRoute,
   } as any)
 const LayoutTeamSlugOrIdTaskTaskIdRunRunIdVscodeRoute =
   LayoutTeamSlugOrIdTaskTaskIdRunRunIdVscodeRouteImport.update({
@@ -237,6 +243,7 @@ export interface FileRoutesByFullPath {
   '/debug-icon': typeof DebugIconRoute
   '/debug-monaco': typeof DebugMonacoRoute
   '/debug-webcontents': typeof DebugWebcontentsRoute
+  '/electron-error': typeof ElectronErrorRoute
   '/electron-web-contents': typeof ElectronWebContentsRoute
   '/monaco-single-buffer': typeof MonacoSingleBufferRoute
   '/sign-in': typeof SignInRoute
@@ -261,10 +268,10 @@ export interface FileRoutesByFullPath {
   '/$teamSlugOrId/task/$taskId/': typeof LayoutTeamSlugOrIdTaskTaskIdIndexRoute
   '/$teamSlugOrId/prs-only/$owner/$repo/$number': typeof LayoutTeamSlugOrIdPrsOnlyOwnerRepoNumberRoute
   '/$teamSlugOrId/prs/$owner/$repo/$number': typeof LayoutTeamSlugOrIdPrsOwnerRepoNumberRoute
-  '/$teamSlugOrId/task/$taskId/run/$taskRunId': typeof LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRoute
   '/$teamSlugOrId/task/$taskId/run/$runId/diff': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdDiffRoute
   '/$teamSlugOrId/task/$taskId/run/$runId/pr': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdPrRoute
   '/$teamSlugOrId/task/$taskId/run/$runId/vscode': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdVscodeRoute
+  '/$teamSlugOrId/task/$taskId/run/$runId': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdIndexRoute
   '/$teamSlugOrId/task/$taskId/run/$runId/preview/$port': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdPreviewPortRoute
 }
 export interface FileRoutesByTo {
@@ -272,6 +279,7 @@ export interface FileRoutesByTo {
   '/debug-icon': typeof DebugIconRoute
   '/debug-monaco': typeof DebugMonacoRoute
   '/debug-webcontents': typeof DebugWebcontentsRoute
+  '/electron-error': typeof ElectronErrorRoute
   '/electron-web-contents': typeof ElectronWebContentsRoute
   '/monaco-single-buffer': typeof MonacoSingleBufferRoute
   '/sign-in': typeof SignInRoute
@@ -294,10 +302,10 @@ export interface FileRoutesByTo {
   '/$teamSlugOrId/task/$taskId': typeof LayoutTeamSlugOrIdTaskTaskIdIndexRoute
   '/$teamSlugOrId/prs-only/$owner/$repo/$number': typeof LayoutTeamSlugOrIdPrsOnlyOwnerRepoNumberRoute
   '/$teamSlugOrId/prs/$owner/$repo/$number': typeof LayoutTeamSlugOrIdPrsOwnerRepoNumberRoute
-  '/$teamSlugOrId/task/$taskId/run/$taskRunId': typeof LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRoute
   '/$teamSlugOrId/task/$taskId/run/$runId/diff': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdDiffRoute
   '/$teamSlugOrId/task/$taskId/run/$runId/pr': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdPrRoute
   '/$teamSlugOrId/task/$taskId/run/$runId/vscode': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdVscodeRoute
+  '/$teamSlugOrId/task/$taskId/run/$runId': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdIndexRoute
   '/$teamSlugOrId/task/$taskId/run/$runId/preview/$port': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdPreviewPortRoute
 }
 export interface FileRoutesById {
@@ -307,6 +315,7 @@ export interface FileRoutesById {
   '/debug-icon': typeof DebugIconRoute
   '/debug-monaco': typeof DebugMonacoRoute
   '/debug-webcontents': typeof DebugWebcontentsRoute
+  '/electron-error': typeof ElectronErrorRoute
   '/electron-web-contents': typeof ElectronWebContentsRoute
   '/monaco-single-buffer': typeof MonacoSingleBufferRoute
   '/sign-in': typeof SignInRoute
@@ -331,10 +340,10 @@ export interface FileRoutesById {
   '/_layout/$teamSlugOrId/task/$taskId/': typeof LayoutTeamSlugOrIdTaskTaskIdIndexRoute
   '/_layout/$teamSlugOrId/prs-only/$owner/$repo/$number': typeof LayoutTeamSlugOrIdPrsOnlyOwnerRepoNumberRoute
   '/_layout/$teamSlugOrId/prs/$owner/$repo/$number': typeof LayoutTeamSlugOrIdPrsOwnerRepoNumberRoute
-  '/_layout/$teamSlugOrId/task/$taskId/run/$taskRunId': typeof LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRoute
   '/_layout/$teamSlugOrId/task/$taskId/run/$runId/diff': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdDiffRoute
   '/_layout/$teamSlugOrId/task/$taskId/run/$runId/pr': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdPrRoute
   '/_layout/$teamSlugOrId/task/$taskId/run/$runId/vscode': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdVscodeRoute
+  '/_layout/$teamSlugOrId/task/$taskId/run/$runId/': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdIndexRoute
   '/_layout/$teamSlugOrId/task/$taskId/run/$runId/preview/$port': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdPreviewPortRoute
 }
 export interface FileRouteTypes {
@@ -344,6 +353,7 @@ export interface FileRouteTypes {
     | '/debug-icon'
     | '/debug-monaco'
     | '/debug-webcontents'
+    | '/electron-error'
     | '/electron-web-contents'
     | '/monaco-single-buffer'
     | '/sign-in'
@@ -368,10 +378,10 @@ export interface FileRouteTypes {
     | '/$teamSlugOrId/task/$taskId/'
     | '/$teamSlugOrId/prs-only/$owner/$repo/$number'
     | '/$teamSlugOrId/prs/$owner/$repo/$number'
-    | '/$teamSlugOrId/task/$taskId/run/$taskRunId'
     | '/$teamSlugOrId/task/$taskId/run/$runId/diff'
     | '/$teamSlugOrId/task/$taskId/run/$runId/pr'
     | '/$teamSlugOrId/task/$taskId/run/$runId/vscode'
+    | '/$teamSlugOrId/task/$taskId/run/$runId'
     | '/$teamSlugOrId/task/$taskId/run/$runId/preview/$port'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -379,6 +389,7 @@ export interface FileRouteTypes {
     | '/debug-icon'
     | '/debug-monaco'
     | '/debug-webcontents'
+    | '/electron-error'
     | '/electron-web-contents'
     | '/monaco-single-buffer'
     | '/sign-in'
@@ -401,10 +412,10 @@ export interface FileRouteTypes {
     | '/$teamSlugOrId/task/$taskId'
     | '/$teamSlugOrId/prs-only/$owner/$repo/$number'
     | '/$teamSlugOrId/prs/$owner/$repo/$number'
-    | '/$teamSlugOrId/task/$taskId/run/$taskRunId'
     | '/$teamSlugOrId/task/$taskId/run/$runId/diff'
     | '/$teamSlugOrId/task/$taskId/run/$runId/pr'
     | '/$teamSlugOrId/task/$taskId/run/$runId/vscode'
+    | '/$teamSlugOrId/task/$taskId/run/$runId'
     | '/$teamSlugOrId/task/$taskId/run/$runId/preview/$port'
   id:
     | '__root__'
@@ -413,6 +424,7 @@ export interface FileRouteTypes {
     | '/debug-icon'
     | '/debug-monaco'
     | '/debug-webcontents'
+    | '/electron-error'
     | '/electron-web-contents'
     | '/monaco-single-buffer'
     | '/sign-in'
@@ -437,10 +449,10 @@ export interface FileRouteTypes {
     | '/_layout/$teamSlugOrId/task/$taskId/'
     | '/_layout/$teamSlugOrId/prs-only/$owner/$repo/$number'
     | '/_layout/$teamSlugOrId/prs/$owner/$repo/$number'
-    | '/_layout/$teamSlugOrId/task/$taskId/run/$taskRunId'
     | '/_layout/$teamSlugOrId/task/$taskId/run/$runId/diff'
     | '/_layout/$teamSlugOrId/task/$taskId/run/$runId/pr'
     | '/_layout/$teamSlugOrId/task/$taskId/run/$runId/vscode'
+    | '/_layout/$teamSlugOrId/task/$taskId/run/$runId/'
     | '/_layout/$teamSlugOrId/task/$taskId/run/$runId/preview/$port'
   fileRoutesById: FileRoutesById
 }
@@ -450,6 +462,7 @@ export interface RootRouteChildren {
   DebugIconRoute: typeof DebugIconRoute
   DebugMonacoRoute: typeof DebugMonacoRoute
   DebugWebcontentsRoute: typeof DebugWebcontentsRoute
+  ElectronErrorRoute: typeof ElectronErrorRoute
   ElectronWebContentsRoute: typeof ElectronWebContentsRoute
   MonacoSingleBufferRoute: typeof MonacoSingleBufferRoute
   SignInRoute: typeof SignInRoute
@@ -477,6 +490,13 @@ declare module '@tanstack/react-router' {
       path: '/electron-web-contents'
       fullPath: '/electron-web-contents'
       preLoaderRoute: typeof ElectronWebContentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/electron-error': {
+      id: '/electron-error'
+      path: '/electron-error'
+      fullPath: '/electron-error'
+      preLoaderRoute: typeof ElectronErrorRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/debug-webcontents': {
@@ -647,13 +667,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutTeamSlugOrIdTaskTaskIdIndexRouteImport
       parentRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRoute
     }
-    '/_layout/$teamSlugOrId/task/$taskId/run/$taskRunId': {
-      id: '/_layout/$teamSlugOrId/task/$taskId/run/$taskRunId'
-      path: '/run/$taskRunId'
-      fullPath: '/$teamSlugOrId/task/$taskId/run/$taskRunId'
-      preLoaderRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRouteImport
-      parentRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRoute
-    }
     '/_layout/$teamSlugOrId/prs/$owner/$repo/$number': {
       id: '/_layout/$teamSlugOrId/prs/$owner/$repo/$number'
       path: '/$owner/$repo/$number'
@@ -667,6 +680,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/$teamSlugOrId/prs-only/$owner/$repo/$number'
       preLoaderRoute: typeof LayoutTeamSlugOrIdPrsOnlyOwnerRepoNumberRouteImport
       parentRoute: typeof LayoutTeamSlugOrIdRoute
+    }
+    '/_layout/$teamSlugOrId/task/$taskId/run/$runId/': {
+      id: '/_layout/$teamSlugOrId/task/$taskId/run/$runId/'
+      path: '/run/$runId'
+      fullPath: '/$teamSlugOrId/task/$taskId/run/$runId'
+      preLoaderRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdIndexRouteImport
+      parentRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRoute
     }
     '/_layout/$teamSlugOrId/task/$taskId/run/$runId/vscode': {
       id: '/_layout/$teamSlugOrId/task/$taskId/run/$runId/vscode'
@@ -739,10 +759,10 @@ const LayoutTeamSlugOrIdPrsRouteWithChildren =
 
 interface LayoutTeamSlugOrIdTaskTaskIdRouteChildren {
   LayoutTeamSlugOrIdTaskTaskIdIndexRoute: typeof LayoutTeamSlugOrIdTaskTaskIdIndexRoute
-  LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRoute
   LayoutTeamSlugOrIdTaskTaskIdRunRunIdDiffRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdDiffRoute
   LayoutTeamSlugOrIdTaskTaskIdRunRunIdPrRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdPrRoute
   LayoutTeamSlugOrIdTaskTaskIdRunRunIdVscodeRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdVscodeRoute
+  LayoutTeamSlugOrIdTaskTaskIdRunRunIdIndexRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdIndexRoute
   LayoutTeamSlugOrIdTaskTaskIdRunRunIdPreviewPortRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdPreviewPortRoute
 }
 
@@ -750,14 +770,14 @@ const LayoutTeamSlugOrIdTaskTaskIdRouteChildren: LayoutTeamSlugOrIdTaskTaskIdRou
   {
     LayoutTeamSlugOrIdTaskTaskIdIndexRoute:
       LayoutTeamSlugOrIdTaskTaskIdIndexRoute,
-    LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRoute:
-      LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRoute,
     LayoutTeamSlugOrIdTaskTaskIdRunRunIdDiffRoute:
       LayoutTeamSlugOrIdTaskTaskIdRunRunIdDiffRoute,
     LayoutTeamSlugOrIdTaskTaskIdRunRunIdPrRoute:
       LayoutTeamSlugOrIdTaskTaskIdRunRunIdPrRoute,
     LayoutTeamSlugOrIdTaskTaskIdRunRunIdVscodeRoute:
       LayoutTeamSlugOrIdTaskTaskIdRunRunIdVscodeRoute,
+    LayoutTeamSlugOrIdTaskTaskIdRunRunIdIndexRoute:
+      LayoutTeamSlugOrIdTaskTaskIdRunRunIdIndexRoute,
     LayoutTeamSlugOrIdTaskTaskIdRunRunIdPreviewPortRoute:
       LayoutTeamSlugOrIdTaskTaskIdRunRunIdPreviewPortRoute,
   }
@@ -823,6 +843,7 @@ const rootRouteChildren: RootRouteChildren = {
   DebugIconRoute: DebugIconRoute,
   DebugMonacoRoute: DebugMonacoRoute,
   DebugWebcontentsRoute: DebugWebcontentsRoute,
+  ElectronErrorRoute: ElectronErrorRoute,
   ElectronWebContentsRoute: ElectronWebContentsRoute,
   MonacoSingleBufferRoute: MonacoSingleBufferRoute,
   SignInRoute: SignInRoute,
