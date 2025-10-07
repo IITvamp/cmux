@@ -5,6 +5,7 @@ declare global {
     electron: ElectronAPI;
     api: unknown;
     cmux: {
+      getCurrentWebContentsId: () => number;
       register: (meta: { auth?: string; team?: string; auth_json?: string }) => Promise<unknown>;
       rpc: (event: string, ...args: unknown[]) => Promise<unknown>;
       on: (event: string, callback: (...args: unknown[]) => void) => () => void;
@@ -18,6 +19,7 @@ declare global {
           frameProcessId: number
         ) => Promise<{ ok: boolean }>;
         setCommandPaletteOpen: (open: boolean) => Promise<{ ok: boolean }>;
+        setPreviewReloadVisible: (visible: boolean) => Promise<{ ok: boolean }>;
         restoreLastFocus: () => Promise<{ ok: boolean }>;
       };
       socket: {
