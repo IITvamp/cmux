@@ -69,6 +69,23 @@ step_ensure_tooling() {
   DEBIAN_FRONTEND=noninteractive apt-get install -y \
     ca-certificates curl gnupg lsb-release apt-transport-https \
     procps util-linux coreutils tar python3
+
+  if ! command -v gh >/dev/null 2>&1; then
+    log "Installing GitHub CLI..."
+    install -m 0755 -d /usr/share/keyrings
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+    chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+      > /etc/apt/sources.list.d/github-cli.list
+    DEBIAN_FRONTEND=noninteractive apt-get update
+    if ! DEBIAN_FRONTEND=noninteractive apt-get install -y gh; then
+      log "Failed to install GitHub CLI" >&2
+      return 1
+    fi
+  else
+    log "GitHub CLI already installed"
+  fi
   rm -rf /var/lib/apt/lists/*
   mkdir -p /opt/app/rootfs /opt/app/workdir
   if ! bash "$ENSURE_DOCKER_SCRIPT_PATH"; then
@@ -380,9 +397,29 @@ BASH
     fi
   }
 
+  gh_cli_check() {
+    local log="$log_dir/gh.log"
+    if run_chroot /bin/bash >"$log" 2>&1 <<'BASH'
+set -euo pipefail
+if ! command -v gh >/dev/null 2>&1; then
+    echo "GitHub CLI (gh) not found in runtime" >&2
+    exit 1
+fi
+gh --version >/dev/null
+BASH
+    then
+      echo "[sanity] gh cli available"
+    else
+      echo "[sanity] gh cli missing" >&2
+      cat "$log" >&2 || true
+      return 1
+    fi
+  }
+
   forkpty_check
   docker_check
   envctl_check
+  gh_cli_check
 
   rm -rf "$log_dir"
   echo "[sanity] all checks passed"

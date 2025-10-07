@@ -119,6 +119,16 @@ check_unit() {
   echo "[sanity] systemd unit $unit is active"
 }
 
+check_gh_cli() {
+  local container="$1"
+  local platform="$2"
+  if ! docker exec "$container" bash -lc 'set -euo pipefail; command -v gh >/dev/null 2>&1; gh --version >/dev/null'; then
+    echo "[sanity][$platform] ERROR: GitHub CLI (gh) not available" >&2
+    exit 1
+  fi
+  echo "[sanity][$platform] GitHub CLI available"
+}
+
 HOST_ARCH=$(uname -m)
 HOST_PLATFORM=""
 case "$HOST_ARCH" in
@@ -220,6 +230,7 @@ run_checks_for_platform() {
 
   check_unit "$container_name" cmux-openvscode.service
   check_unit "$container_name" cmux-worker.service
+  check_gh_cli "$container_name" "$platform"
 
   run_dind_hello_world "$container_name" "$platform"
 
