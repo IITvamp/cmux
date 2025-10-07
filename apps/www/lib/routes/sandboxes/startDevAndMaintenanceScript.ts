@@ -6,6 +6,11 @@ import { maskSensitive, singleQuote } from "./shell";
 const WORKSPACE_ROOT = "/root/workspace";
 const CMUX_RUNTIME_DIR = "/var/tmp/cmux-scripts";
 const LOG_DIR = "/var/log/cmux";
+const DEFAULT_PATH = "/root/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+const TMUX_SESSION_NAME = "cmux";
+const TMUX_WAIT_ATTEMPTS = 240;
+const TMUX_WAIT_SLEEP_SECONDS = 0.5;
+const MAINTENANCE_WAIT_TIMEOUT_SECONDS = 600;
 
 const previewOutput = (
   value: string | undefined,
@@ -30,6 +35,18 @@ cat <<'CMUX_SCRIPT_EOF' > ${path}
 ${contents}
 CMUX_SCRIPT_EOF
 chmod +x ${path}
+`;
+
+const waitForTmuxSessionSnippet = (sessionName: string): string => `
+ATTEMPT=0
+while ! tmux has-session -t ${sessionName} 2>/dev/null; do
+  ATTEMPT=$((ATTEMPT + 1))
+  if [ "$ATTEMPT" -ge ${TMUX_WAIT_ATTEMPTS} ]; then
+    echo "Timed out waiting for tmux session ${sessionName}" >&2
+    exit 1
+  fi
+  sleep ${TMUX_WAIT_SLEEP_SECONDS}
+done
 `;
 
 const ensurePidStoppedCommand = (pidFile: string): string => `
@@ -62,13 +79,42 @@ export async function runMaintenanceScript({
   instance: MorphInstance;
   script: string;
 }): Promise<{ error: string | null }> {
-  const maintenanceScriptPath = `${CMUX_RUNTIME_DIR}/maintenance-script.sh`;
+  const maintenanceRunId = randomUUID().replace(/-/g, "");
+  const maintenanceScriptPath = `${CMUX_RUNTIME_DIR}/maintenance-script-${maintenanceRunId}.sh`;
+  const maintenanceWrapperPath = `${CMUX_RUNTIME_DIR}/maintenance-wrapper-${maintenanceRunId}.sh`;
+  const statusFile = `${CMUX_RUNTIME_DIR}/maintenance-status-${maintenanceRunId}.txt`;
+  const logFile = `${LOG_DIR}/maintenance-script.log`;
+  const waitName = `maintenance-${maintenanceRunId}`;
+
+  const maintenanceWrapperContent = `
+#!/bin/bash
+set -euo pipefail
+export PATH="${DEFAULT_PATH}"
+cd ${WORKSPACE_ROOT}
+status=0
+trap 'status=$?; printf "%s" "$status" > ${statusFile}; tmux wait-for -S ${waitName}' EXIT
+bash -eu -o pipefail ${maintenanceScriptPath} 2>&1 | tee ${logFile}
+`.trimStart();
+
   const command = `
 set -euo pipefail
-trap 'rm -f ${maintenanceScriptPath}' EXIT
+trap 'rm -f ${maintenanceWrapperPath} ${maintenanceScriptPath} ${statusFile}' EXIT
+mkdir -p ${LOG_DIR}
 ${buildScriptFileCommand(maintenanceScriptPath, script)}
-cd ${WORKSPACE_ROOT}
-bash -eu -o pipefail ${maintenanceScriptPath}
+${buildScriptFileCommand(maintenanceWrapperPath, maintenanceWrapperContent)}
+rm -f ${statusFile}
+${waitForTmuxSessionSnippet(TMUX_SESSION_NAME)}
+tmux kill-window -t ${TMUX_SESSION_NAME}:maintenance 2>/dev/null || true
+tmux new-window -d -t ${TMUX_SESSION_NAME} -n maintenance ${singleQuote(maintenanceWrapperPath)}
+if ! timeout ${MAINTENANCE_WAIT_TIMEOUT_SECONDS} tmux wait-for -L ${waitName}; then
+  echo "Maintenance script timed out waiting for completion" >&2
+  exit 1
+fi
+status=$(cat ${statusFile} 2>/dev/null || echo 1)
+if [ "$status" -ne 0 ]; then
+  tail -n 50 ${logFile} >&2 || true
+  exit "$status"
+fi
 `;
 
   try {
@@ -102,18 +148,63 @@ export async function startDevScript({
   const devScriptRunId = randomUUID().replace(/-/g, "");
   const devScriptDir = `${CMUX_RUNTIME_DIR}/${devScriptRunId}`;
   const devScriptPath = `${devScriptDir}/dev-script.sh`;
+  const devWrapperPath = `${devScriptDir}/dev-wrapper.sh`;
+  const statusFile = `${devScriptDir}/dev-status.txt`;
   const pidFile = `${LOG_DIR}/dev-script.pid`;
   const logFile = `${LOG_DIR}/dev-script.log`;
 
+  const devWrapperContent = `
+#!/bin/bash
+set -euo pipefail
+export PATH="${DEFAULT_PATH}"
+cd ${WORKSPACE_ROOT}
+rm -f ${statusFile}
+trap 'status=$?; printf "%s" "$status" > ${statusFile}' EXIT
+printf "%s" "$$" > ${pidFile}
+bash -eu -o pipefail ${devScriptPath} 2>&1 | tee -a ${logFile}
+`.trimStart();
+
   const command = `
 set -euo pipefail
+trap 'rm -f ${devWrapperPath}' EXIT
 mkdir -p ${LOG_DIR}
 mkdir -p ${devScriptDir}
 ${ensurePidStoppedCommand(pidFile)}
 ${buildScriptFileCommand(devScriptPath, script)}
-cd ${WORKSPACE_ROOT}
-nohup bash -eu -o pipefail ${devScriptPath} > ${logFile} 2>&1 &
-echo $! > ${pidFile}
+${buildScriptFileCommand(devWrapperPath, devWrapperContent)}
+rm -f ${statusFile}
+rm -f ${pidFile}
+${waitForTmuxSessionSnippet(TMUX_SESSION_NAME)}
+tmux kill-window -t ${TMUX_SESSION_NAME}:dev 2>/dev/null || true
+tmux new-window -d -t ${TMUX_SESSION_NAME} -n dev ${singleQuote(devWrapperPath)}
+start_attempts=40
+while [ $start_attempts -gt 0 ]; do
+  if [ -s ${pidFile} ]; then
+    break
+  fi
+  if [ -f ${statusFile} ]; then
+    break
+  fi
+  sleep 0.25
+  start_attempts=$((start_attempts - 1))
+done
+if [ ! -s ${pidFile} ]; then
+  tmux kill-window -t ${TMUX_SESSION_NAME}:dev 2>/dev/null || true
+  status=1
+  if [ -f ${statusFile} ]; then
+    status=$(cat ${statusFile})
+  fi
+  tail -n 50 ${logFile} >&2 || true
+  exit "$status"
+fi
+if [ -f ${statusFile} ]; then
+  status=$(cat ${statusFile})
+  if [ "$status" -ne 0 ]; then
+    tmux kill-window -t ${TMUX_SESSION_NAME}:dev 2>/dev/null || true
+    tail -n 50 ${logFile} >&2 || true
+    exit "$status"
+  fi
+fi
 `;
 
   try {
@@ -128,33 +219,6 @@ echo $! > ${pidFile}
         stdoutPreview ? `stdout: ${stdoutPreview}` : null,
       ].filter((part): part is string => part !== null);
       return { error: messageParts.join(" | ") };
-    }
-
-    // Check if the process started successfully and is still running
-    const checkCommand = `
-if [ -f ${pidFile} ]; then
-  PID=$(cat ${pidFile} 2>/dev/null || echo "")
-  if [ -n "\$PID" ]; then
-    sleep 0.5
-    if ! kill -0 \$PID 2>/dev/null; then
-      if [ -f ${logFile} ]; then
-        tail -n 50 ${logFile}
-      fi
-      exit 1
-    fi
-  fi
-fi
-`;
-
-    const checkResult = await instance.exec(
-      `bash -c ${singleQuote(checkCommand)}`,
-    );
-
-    if (checkResult.exit_code !== 0) {
-      const logPreview = previewOutput(checkResult.stdout, 2000);
-      return {
-        error: `Dev script failed immediately after start${logPreview ? ` | log: ${logPreview}` : ""}`,
-      };
     }
 
     return { error: null };
