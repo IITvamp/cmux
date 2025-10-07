@@ -3,12 +3,20 @@ import { Dropdown } from "@/components/ui/dropdown";
 import { normalizeGitRef } from "@/lib/refWithOrigin";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
-import { useQuery as useRQ, useMutation } from "@tanstack/react-query";
+import { useQuery as useRQ, useMutation, type DefaultError } from "@tanstack/react-query";
 import { useQuery as useConvexQuery } from "convex/react";
-import { ExternalLink, X, Check, Circle, Clock, AlertCircle } from "lucide-react";
+import { ExternalLink, X, Check, Circle, Clock, AlertCircle, GitCommit } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
+import { postApiIntegrationsGithubPrsCloseMutation } from "@cmux/www-openapi-client/react-query";
+import { postApiIntegrationsGithubPrsMergeSimple } from "@cmux/www-openapi-client";
+import type {
+  Options,
+  PostApiIntegrationsGithubPrsCloseData,
+  PostApiIntegrationsGithubPrsCloseResponse,
+  PostApiIntegrationsGithubPrsMergeSimpleResponse,
+} from "@cmux/www-openapi-client";
 
 type PullRequestDetailViewProps = {
   teamSlugOrId: string;
@@ -160,7 +168,7 @@ function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber }: WorkflowR
     teamSlugOrId,
     repoFullName,
     prNumber,
-    limit: 20,
+    limit: 50,
   });
 
   const getStatusIcon = (status?: string, conclusion?: string) => {
@@ -196,34 +204,46 @@ function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber }: WorkflowR
   };
 
   const getStatusText = (status?: string, conclusion?: string) => {
-    if (conclusion === "success") return "Success";
+    if (conclusion === "success") return "Passed";
     if (conclusion === "failure") return "Failed";
     if (conclusion === "cancelled") return "Cancelled";
-    if (status === "in_progress") return "In Progress";
+    if (conclusion === "skipped") return "Skipped";
+    if (conclusion === "timed_out") return "Timed out";
+    if (conclusion === "action_required") return "Action required";
+    if (conclusion === "neutral") return "Neutral";
+    if (status === "in_progress") return "Running";
     if (status === "queued") return "Queued";
+    if (status === "waiting") return "Waiting";
+    if (status === "pending") return "Pending";
     return "Unknown";
   };
 
+  const formatEventType = (event?: string) => {
+    if (!event) return null;
+    return event.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  };
+
+  const formatTimestamp = (timestamp?: number) => {
+    if (!timestamp) return null;
+    const date = new Date(timestamp);
+    const now = Date.now();
+    const diff = now - timestamp;
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+
+    if (minutes < 60) return `${minutes}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days < 7) return `${days}d ago`;
+    return date.toLocaleDateString();
+  };
+
   if (!runs || runs.length === 0) {
-    return (
-      <div className="border-b border-neutral-200 dark:border-neutral-800 px-3.5 py-3">
-        <div className="flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 text-neutral-400 dark:text-neutral-500" />
-          <span className="text-sm text-neutral-500 dark:text-neutral-400">
-            No GitHub Actions workflow runs found
-          </span>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   return (
     <div className="border-b border-neutral-200 dark:border-neutral-800">
-      <div className="px-3.5 py-2 bg-neutral-50 dark:bg-neutral-900/50">
-        <h2 className="text-xs font-semibold text-neutral-700 dark:text-neutral-300 uppercase tracking-wide">
-          GitHub Actions ({runs.length})
-        </h2>
-      </div>
       <div className="divide-y divide-neutral-200 dark:divide-neutral-800">
         {runs.map((run) => (
           <a
@@ -231,11 +251,13 @@ function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber }: WorkflowR
             href={run.htmlUrl}
             target="_blank"
             rel="noreferrer"
-            className={`flex items-center gap-3 px-3.5 py-2.5 hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-colors border-l-2 ${getStatusColor(run.status, run.conclusion)}`}
+            className={`flex items-start gap-3 px-3.5 py-3 hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-colors border-l-2 ${getStatusColor(run.status, run.conclusion)}`}
           >
-            {getStatusIcon(run.status, run.conclusion)}
+            <div className="mt-0.5">
+              {getStatusIcon(run.status, run.conclusion)}
+            </div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 mb-1">
                 <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
                   {run.workflowName}
                 </span>
@@ -244,17 +266,46 @@ function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber }: WorkflowR
                 </span>
               </div>
               {run.name && run.name !== run.workflowName && (
-                <div className="text-xs text-neutral-500 dark:text-neutral-400 truncate mt-0.5">
+                <div className="text-xs text-neutral-500 dark:text-neutral-400 truncate mb-1">
                   {run.name}
                 </div>
               )}
+              <div className="flex items-center gap-3 text-xs text-neutral-500 dark:text-neutral-400 flex-wrap">
+                {run.runNumber && (
+                  <div className="flex items-center gap-1">
+                    <span>#{run.runNumber}</span>
+                  </div>
+                )}
+                {run.event && (
+                  <div className="flex items-center gap-1">
+                    <span className="font-mono">{formatEventType(run.event)}</span>
+                  </div>
+                )}
+                {run.headSha && (
+                  <div className="flex items-center gap-1">
+                    <GitCommit className="w-3 h-3" />
+                    <span className="font-mono">{run.headSha.substring(0, 7)}</span>
+                  </div>
+                )}
+                {run.headBranch && (
+                  <div className="flex items-center gap-1">
+                    <span className="font-mono text-neutral-600 dark:text-neutral-400">{run.headBranch}</span>
+                  </div>
+                )}
+                {run.actorLogin && (
+                  <span>by {run.actorLogin}</span>
+                )}
+                {run.runStartedAt && (
+                  <span>{formatTimestamp(run.runStartedAt)}</span>
+                )}
+              </div>
             </div>
-            <div className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400 shrink-0">
-              {run.runDuration && (
-                <span>
+            <div className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400 shrink-0 mt-0.5">
+              {run.runDuration ? (
+                <span className="font-mono">
                   {Math.floor(run.runDuration / 60)}m {run.runDuration % 60}s
                 </span>
-              )}
+              ) : null}
               <ExternalLink className="w-3.5 h-3.5" />
             </div>
           </a>
@@ -285,48 +336,12 @@ export function PullRequestDetailView({
 
   const [diffControls, setDiffControls] = useState<DiffControls | null>(null);
 
-  const closePrMutation = useMutation({
-    mutationFn: async () => {
-      if (!currentPR) throw new Error("No PR selected");
-
-      const body = {
-        teamSlugOrId,
-        owner,
-        repo,
-        number: currentPR.number,
-      };
-
-      console.log("[close PR] Sending request", { body, url: "/api/integrations/github/prs/close" });
-
-      const response = await fetch("/api/integrations/github/prs/close", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-        credentials: "include",
-      });
-
-      console.log("[close PR] Response received", { status: response.status, ok: response.ok });
-
-      if (!response.ok) {
-        const text = await response.text();
-        console.error("[close PR] Error response", { text, status: response.status });
-
-        let errorData;
-        try {
-          errorData = JSON.parse(text);
-        } catch {
-          errorData = { message: text || response.statusText };
-        }
-
-        throw new Error(errorData.message || "Failed to close PR");
-      }
-
-      const data = await response.json();
-      console.log("[close PR] Success response", data);
-      return data;
-    },
+  const closePrMutation = useMutation<
+    PostApiIntegrationsGithubPrsCloseResponse,
+    DefaultError,
+    Options<PostApiIntegrationsGithubPrsCloseData>
+  >({
+    ...postApiIntegrationsGithubPrsCloseMutation(),
     onSuccess: (data) => {
       toast.success(data.message || `PR #${currentPR?.number} closed successfully`);
     },
@@ -335,48 +350,24 @@ export function PullRequestDetailView({
     },
   });
 
-  const mergePrMutation = useMutation({
+  const mergePrMutation = useMutation<
+    PostApiIntegrationsGithubPrsMergeSimpleResponse,
+    DefaultError,
+    MergeMethod
+  >({
     mutationFn: async (method: MergeMethod) => {
       if (!currentPR) throw new Error("No PR selected");
 
-      const body = {
-        teamSlugOrId,
-        owner,
-        repo,
-        number: currentPR.number,
-        method,
-      };
-
-      console.log("[merge PR] Sending request", { body, url: "/api/integrations/github/prs/merge-simple" });
-
-      const response = await fetch("/api/integrations/github/prs/merge-simple", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const { data } = await postApiIntegrationsGithubPrsMergeSimple({
+        body: {
+          teamSlugOrId,
+          owner,
+          repo,
+          number: currentPR.number,
+          method,
         },
-        body: JSON.stringify(body),
-        credentials: "include",
+        throwOnError: true,
       });
-
-      console.log("[merge PR] Response received", { status: response.status, ok: response.ok });
-
-      const text = await response.text();
-      console.log("[merge PR] Response text", { text });
-
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (e) {
-        console.error("[merge PR] Failed to parse JSON", { text, error: e });
-        throw new Error("Failed to parse response: " + text);
-      }
-
-      if (!response.ok || !data.success) {
-        console.error("[merge PR] Request failed", { data, status: response.status });
-        throw new Error(data.message || "Failed to merge PR");
-      }
-
-      console.log("[merge PR] Success response", data);
       return data;
     },
     onSuccess: (data) => {
@@ -388,7 +379,15 @@ export function PullRequestDetailView({
   });
 
   const handleClosePR = () => {
-    closePrMutation.mutate();
+    if (!currentPR) return;
+    closePrMutation.mutate({
+      body: {
+        teamSlugOrId,
+        owner,
+        repo,
+        number: currentPR.number,
+      },
+    });
   };
 
   const handleMergePR = (method: MergeMethod) => {
