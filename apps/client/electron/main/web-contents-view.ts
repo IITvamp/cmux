@@ -314,16 +314,9 @@ function setupEventForwarders(entry: Entry, logger: Logger) {
 
 const registeredSessions = new WeakSet<Session>();
 
-function ensureWebRequestListener(targetSession: Session, logger: Logger) {
+function ensureWebRequestListener(targetSession: Session, _logger: Logger) {
   if (registeredSessions.has(targetSession)) return;
-  const listener: OnCompletedListener = (details) => {
-    const { statusCode, resourceType, webContentsId, url } = details;
-    logger.log("webRequest:onCompleted", {
-      statusCode,
-      resourceType,
-      webContentsId,
-      url,
-    });
+  const listener: OnCompletedListener = () => {
     // Error handling is done in onDidNavigate
   };
   targetSession.webRequest.onCompleted(

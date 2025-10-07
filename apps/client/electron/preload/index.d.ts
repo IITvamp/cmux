@@ -11,16 +11,16 @@ declare global {
       on: (event: string, callback: (...args: unknown[]) => void) => () => void;
       off: (event: string, callback?: (...args: unknown[]) => void) => void;
       ui: {
-        focusWebContents: (id: number) => Promise<{ ok: boolean }>;
-        restoreLastFocusInWebContents: (id: number) => Promise<{ ok: boolean }>;
+        focusWebContents: (id: number) => Promise<{ ok: boolean; queued?: boolean }>;
+        restoreLastFocusInWebContents: (id: number) => Promise<{ ok: boolean; queued?: boolean }>;
         restoreLastFocusInFrame: (
           contentsId: number,
           frameRoutingId: number,
           frameProcessId: number
-        ) => Promise<{ ok: boolean }>;
+        ) => Promise<{ ok: boolean; queued?: boolean }>;
         setCommandPaletteOpen: (open: boolean) => Promise<{ ok: boolean }>;
         setPreviewReloadVisible: (visible: boolean) => Promise<{ ok: boolean }>;
-        restoreLastFocus: () => Promise<{ ok: boolean }>;
+        restoreLastFocus: () => Promise<{ ok: boolean; queued?: boolean }>;
       };
       socket: {
         connect: (query: Record<string, string>) => Promise<unknown>;

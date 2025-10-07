@@ -95,13 +95,14 @@ const cmuxAPI = {
     focusWebContents: (id: number) => {
       return ipcRenderer.invoke("cmux:ui:focus-webcontents", id) as Promise<{
         ok: boolean;
+        queued?: boolean;
       }>;
     },
     restoreLastFocusInWebContents: (id: number) => {
       return ipcRenderer.invoke(
         "cmux:ui:webcontents-restore-last-focus",
         id
-      ) as Promise<{ ok: boolean }>;
+      ) as Promise<{ ok: boolean; queued?: boolean }>;
     },
     restoreLastFocusInFrame: (
       contentsId: number,
@@ -112,7 +113,7 @@ const cmuxAPI = {
         contentsId,
         frameRoutingId,
         frameProcessId,
-      }) as Promise<{ ok: boolean }>;
+      }) as Promise<{ ok: boolean; queued?: boolean }>;
     },
     setCommandPaletteOpen: (open: boolean) => {
       return ipcRenderer.invoke(
@@ -129,6 +130,7 @@ const cmuxAPI = {
     restoreLastFocus: () => {
       return ipcRenderer.invoke("cmux:ui:restore-last-focus") as Promise<{
         ok: boolean;
+        queued?: boolean;
       }>;
     },
   },
