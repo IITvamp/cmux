@@ -266,7 +266,8 @@ export function ElectronPreviewBrowser({
   }, [src]);
 
   const applyState = useCallback(
-    (state: ElectronWebContentsState) => {
+    (state: ElectronWebContentsState, reason?: string) => {
+      console.log("[ElectronPreviewBrowser] applyState", { state, reason });
       setCommittedUrl(state.url);
       if (!isEditing) {
         setAddressValue(state.url);
@@ -275,7 +276,10 @@ export function ElectronPreviewBrowser({
       setDevtoolsOpen(state.isDevToolsOpened);
       setCanGoBack(Boolean(state.canGoBack));
       setCanGoForward(Boolean(state.canGoForward));
-      if (state.isLoading) {
+      // Only clear errors when starting a new navigation (did-start-loading),
+      // not during the same navigation (did-navigate can have isLoading=true with errors)
+      if (state.isLoading && reason === "did-start-loading") {
+        console.log("[ElectronPreviewBrowser] clearing loadError on new navigation");
         setLoadError(null);
       }
     },
@@ -311,7 +315,7 @@ export function ElectronPreviewBrowser({
       (event: ElectronWebContentsEvent) => {
         console.log("[ElectronPreviewBrowser] Event", event);
         if (event.type === "state") {
-          applyState(event.state);
+          applyState(event.state, event.reason);
           return;
         }
         if (event.type === "load-failed" && event.isMainFrame) {
@@ -332,17 +336,19 @@ export function ElectronPreviewBrowser({
         }
         if (event.type === "load-http-error") {
           const url = event.url || committedUrl;
-          setLoadError({
-            kind: "http",
+          const errorObj = {
+            kind: "http" as const,
             url,
             statusCode: event.statusCode,
             statusText: event.statusText,
-          });
-          console.log("[ElectronPreviewBrowser] http error", {
+          };
+          console.log("[ElectronPreviewBrowser] http error - setting loadError", {
             url,
             statusCode: event.statusCode,
             statusText: event.statusText,
+            errorObj,
           });
+          setLoadError(errorObj);
           return;
         }
       },
@@ -598,6 +604,8 @@ export function ElectronPreviewBrowser({
       width: `${Math.min(1, Math.max(progress, 0)) * 100}%`,
     } satisfies CSSProperties;
   }, [progress]);
+
+  console.log("[ElectronPreviewBrowser] render", { loadError, viewHandle });
 
   return (
     <div className="flex h-full flex-col">
