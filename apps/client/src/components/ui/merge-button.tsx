@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { ChevronDown, GitMerge, GitPullRequest } from "lucide-react";
+import { ChevronDown, GitMerge, GitPullRequest, Loader2 } from "lucide-react";
 import { useState } from "react";
 
 export type MergeMethod = "squash" | "rebase" | "merge";
@@ -11,6 +11,7 @@ interface MergeButtonProps {
   className?: string;
   disabled?: boolean;
   prCount?: number;
+  isLoading?: boolean;
 }
 
 const mergeOptions = [
@@ -40,6 +41,7 @@ export function MergeButton({
   className,
   disabled = false,
   prCount = 1,
+  isLoading = false,
 }: MergeButtonProps) {
   const [selectedMethod, setSelectedMethod] = useState<MergeMethod>("squash");
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -62,8 +64,12 @@ export function MergeButton({
           className
         )}
       >
-        <GitPullRequest className="w-3.5 h-3.5" />
-        {prCount === 1 ? "Open PR" : "Open PRs"}
+        {isLoading ? (
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        ) : (
+          <GitPullRequest className="w-3.5 h-3.5" />
+        )}
+        {isLoading ? "Opening..." : prCount === 1 ? "Open PR" : "Open PRs"}
       </button>
     );
   }
@@ -78,8 +84,12 @@ export function MergeButton({
           className
         )}
       >
-        <GitMerge className="w-3.5 h-3.5" />
-        {selectedOption?.label}
+        {isLoading ? (
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        ) : (
+          <GitMerge className="w-3.5 h-3.5" />
+        )}
+        {isLoading ? "Merging..." : selectedOption?.label}
       </button>
 
       <DropdownMenu.Root open={dropdownOpen} onOpenChange={setDropdownOpen}>

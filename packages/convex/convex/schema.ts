@@ -609,6 +609,64 @@ const convexSchema = defineSchema({
     .index("by_installation", ["installationId", "updatedAt"]) // debug/ops
     .index("by_runId", ["runId"]) // unique lookup
     .index("by_repo_runNumber", ["repoFullName", "runNumber"]), // unique per repo
+
+  // GitHub Check Runs (for Vercel, deployments, etc.)
+  githubCheckRuns: defineTable({
+    // Identity
+    provider: v.literal("github"),
+    installationId: v.number(),
+    repositoryId: v.optional(v.number()),
+    repoFullName: v.string(),
+    checkRunId: v.number(), // GitHub check run ID
+
+    // Team scoping
+    teamId: v.string(),
+
+    // Check run details
+    name: v.string(), // Check name (e.g., "Vercel - cmux-client")
+    status: v.optional(
+      v.union(
+        v.literal("queued"),
+        v.literal("in_progress"),
+        v.literal("completed"),
+      ),
+    ),
+    conclusion: v.optional(
+      v.union(
+        v.literal("success"),
+        v.literal("failure"),
+        v.literal("neutral"),
+        v.literal("cancelled"),
+        v.literal("skipped"),
+        v.literal("timed_out"),
+        v.literal("action_required"),
+      ),
+    ),
+
+    // Commit info
+    headSha: v.string(),
+
+    // URLs
+    htmlUrl: v.optional(v.string()),
+    detailsUrl: v.optional(v.string()),
+
+    // Timestamps
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+
+    // App info (e.g., Vercel)
+    appName: v.optional(v.string()),
+    appSlug: v.optional(v.string()),
+
+    // Triggering PR (if applicable)
+    triggeringPrNumber: v.optional(v.number()),
+  })
+    .index("by_team", ["teamId", "updatedAt"])
+    .index("by_team_repo", ["teamId", "repoFullName", "updatedAt"])
+    .index("by_checkRunId", ["checkRunId"])
+    .index("by_headSha", ["headSha", "updatedAt"]),
 });
 
 export default convexSchema;

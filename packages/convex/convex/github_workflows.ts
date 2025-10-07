@@ -243,10 +243,11 @@ export const getWorkflowRunsForPr = authQuery({
     teamSlugOrId: v.string(),
     repoFullName: v.string(),
     prNumber: v.number(),
+    headSha: v.optional(v.string()),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const { teamSlugOrId, repoFullName, prNumber, limit = 20 } = args;
+    const { teamSlugOrId, repoFullName, prNumber, headSha, limit = 20 } = args;
     const teamId = await getTeamId(ctx, teamSlugOrId);
 
     console.log("[getWorkflowRunsForPr] Query started", {
@@ -254,6 +255,7 @@ export const getWorkflowRunsForPr = authQuery({
       teamId,
       repoFullName,
       prNumber,
+      headSha,
       limit,
     });
 
@@ -269,21 +271,24 @@ export const getWorkflowRunsForPr = authQuery({
       repoFullName,
       totalRuns: allRunsForRepo.length,
       prNumbers: allRunsForRepo.map((r) => r.triggeringPrNumber),
+      headShas: allRunsForRepo.map((r) => r.headSha),
     });
 
-    const runs = await ctx.db
-      .query("githubWorkflowRuns")
-      .withIndex("by_team_repo", (q) =>
-        q.eq("teamId", teamId).eq("repoFullName", repoFullName),
-      )
-      .filter((q) => q.eq(q.field("triggeringPrNumber"), prNumber))
-      .order("desc")
-      .take(limit);
+    // Filter by either triggeringPrNumber or headSha
+    const runs = allRunsForRepo
+      .filter((run) => {
+        const matchesPrNumber = run.triggeringPrNumber === prNumber;
+        const matchesHeadSha = headSha && run.headSha === headSha;
+        return matchesPrNumber || matchesHeadSha;
+      })
+      .sort((a, b) => (b.runStartedAt ?? 0) - (a.runStartedAt ?? 0))
+      .slice(0, limit);
 
     console.log("[getWorkflowRunsForPr] Filtered runs for PR", {
       teamId,
       repoFullName,
       prNumber,
+      headSha,
       foundRuns: runs.length,
       runs: runs.map((r) => ({
         runId: r.runId,
@@ -291,6 +296,7 @@ export const getWorkflowRunsForPr = authQuery({
         status: r.status,
         conclusion: r.conclusion,
         triggeringPrNumber: r.triggeringPrNumber,
+        headSha: r.headSha,
       })),
     });
 

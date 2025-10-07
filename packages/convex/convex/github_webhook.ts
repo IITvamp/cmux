@@ -289,8 +289,30 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
         // In the future, we could track individual job details if needed
         break;
       }
+      case "check_run": {
+        try {
+          const checkRunPayload = body as any; // CheckRunEvent
+          const repoFullName = String(checkRunPayload.repository?.full_name ?? "");
+          const installation = Number(checkRunPayload.installation?.id ?? 0);
+          if (!repoFullName || !installation) break;
+          const conn = await _ctx.runQuery(
+            internal.github_app.getProviderConnectionByInstallationId,
+            { installationId: installation },
+          );
+          const teamId = conn?.teamId;
+          if (!teamId) break;
+          await _ctx.runMutation(internal.github_check_runs.upsertCheckRunFromWebhook, {
+            installationId: installation,
+            repoFullName,
+            teamId,
+            payload: checkRunPayload,
+          });
+        } catch (error) {
+          console.error("Failed to process check_run event:", error);
+        }
+        break;
+      }
       case "check_suite":
-      case "check_run":
       case "status": {
         // Acknowledge unsupported events without retries for now.
         break;

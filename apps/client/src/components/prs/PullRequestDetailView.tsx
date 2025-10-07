@@ -5,7 +5,7 @@ import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
 import { useQuery as useRQ, useMutation, type DefaultError } from "@tanstack/react-query";
 import { useQuery as useConvexQuery } from "convex/react";
-import { ExternalLink, X, Check, Circle, Clock, AlertCircle, GitCommit } from "lucide-react";
+import { ExternalLink, X, Check, Circle, Clock, AlertCircle, Loader2 } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
@@ -42,78 +42,233 @@ type WorkflowRunsProps = {
   teamSlugOrId: string;
   repoFullName: string;
   prNumber: number;
+  headSha?: string;
 };
 
-function WorkflowRuns({ teamSlugOrId, repoFullName, prNumber }: WorkflowRunsProps) {
-  const runs = useConvexQuery(api.github_workflows.getWorkflowRunsForPr, {
+function WorkflowRuns({ teamSlugOrId, repoFullName, prNumber, headSha }: WorkflowRunsProps) {
+  const workflowRuns = useConvexQuery(api.github_workflows.getWorkflowRunsForPr, {
     teamSlugOrId,
     repoFullName,
     prNumber,
-    limit: 10,
+    headSha,
+    limit: 50,
   });
 
-  if (!runs || runs.length === 0) {
-    return (
-      <div className="flex items-center gap-2 ml-2 shrink-0">
-        <span className="text-[11px] text-neutral-400 dark:text-neutral-500">
-          No workflow runs
-        </span>
-      </div>
-    );
+  const checkRuns = useConvexQuery(api.github_check_runs.getCheckRunsForPr, {
+    teamSlugOrId,
+    repoFullName,
+    prNumber,
+    headSha,
+    limit: 50,
+  });
+
+  // Combine both types of runs
+  const allRuns = [
+    ...(workflowRuns || []).map(run => ({ ...run, type: 'workflow' as const, name: run.workflowName, timestamp: run.runStartedAt })),
+    ...(checkRuns || []).map(run => ({ ...run, type: 'check' as const, timestamp: run.startedAt })),
+  ];
+
+  if (allRuns.length === 0) {
+    return null;
   }
+
+  // Group by name and get latest
+  const latestRunsByName = allRuns.reduce((acc, run) => {
+    const existing = acc.get(run.name);
+    if (!existing || (run.timestamp ?? 0) > (existing.timestamp ?? 0)) {
+      acc.set(run.name, run);
+    }
+    return acc;
+  }, new Map<string, typeof allRuns[0]>());
+
+  const latestRuns = Array.from(latestRunsByName.values());
+
+  const hasAnyRunning = latestRuns.some(
+    (run) => run.status === "in_progress" || run.status === "queued" || run.status === "waiting" || run.status === "pending"
+  );
+  const hasAnyFailure = latestRuns.some(
+    (run) => run.conclusion === "failure" || run.conclusion === "timed_out" || run.conclusion === "action_required"
+  );
+  const allPassed = latestRuns.length > 0 && latestRuns.every(
+    (run) => run.conclusion === "success" || run.conclusion === "neutral" || run.conclusion === "skipped"
+  );
+
+  let icon;
+  let colorClass;
+  let statusText;
+
+  if (hasAnyRunning) {
+    icon = <Clock className="w-3.5 h-3.5 animate-pulse" />;
+    colorClass = "text-yellow-600 dark:text-yellow-400";
+    statusText = "Running";
+  } else if (hasAnyFailure) {
+    icon = <X className="w-3.5 h-3.5" />;
+    colorClass = "text-red-600 dark:text-red-400";
+    statusText = "Failed";
+  } else if (allPassed) {
+    icon = <Check className="w-3.5 h-3.5" />;
+    colorClass = "text-green-600 dark:text-green-400";
+    statusText = "Passed";
+  } else {
+    icon = <Circle className="w-3.5 h-3.5" />;
+    colorClass = "text-neutral-500 dark:text-neutral-400";
+    statusText = "Checks";
+  }
+
+  return (
+    <div className={`flex items-center gap-1.5 ml-2 shrink-0 ${colorClass}`}>
+      {icon}
+      <span className="text-[11px] font-medium select-none">{statusText}</span>
+    </div>
+  );
+}
+
+function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber, headSha }: WorkflowRunsProps) {
+  const workflowRuns = useConvexQuery(api.github_workflows.getWorkflowRunsForPr, {
+    teamSlugOrId,
+    repoFullName,
+    prNumber,
+    headSha,
+    limit: 50,
+  });
+
+  const checkRuns = useConvexQuery(api.github_check_runs.getCheckRunsForPr, {
+    teamSlugOrId,
+    repoFullName,
+    prNumber,
+    headSha,
+    limit: 50,
+  });
+
+  // Combine both types of runs
+  const allRuns = [
+    ...(workflowRuns || []).map(run => ({ ...run, type: 'workflow' as const, name: run.workflowName, timestamp: run.runStartedAt, url: run.htmlUrl })),
+    ...(checkRuns || []).map(run => ({ ...run, type: 'check' as const, timestamp: run.startedAt, url: run.detailsUrl || run.htmlUrl })),
+  ];
 
   const getStatusIcon = (status?: string, conclusion?: string) => {
     if (conclusion === "success") {
-      return <Check className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />;
+      return <Check className="w-4 h-4 text-green-600 dark:text-green-400" strokeWidth={2.5} />;
     }
     if (conclusion === "failure") {
-      return <X className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />;
+      return <X className="w-4 h-4 text-red-600 dark:text-red-400" strokeWidth={2.5} />;
     }
     if (conclusion === "cancelled") {
-      return <Circle className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />;
+      return <Circle className="w-4 h-4 text-neutral-500 dark:text-neutral-400" />;
     }
     if (status === "in_progress" || status === "queued") {
-      return <Clock className="w-3.5 h-3.5 text-yellow-600 dark:text-yellow-400 animate-pulse" />;
+      return <Loader2 className="w-4 h-4 text-yellow-600 dark:text-yellow-500 animate-spin" />;
     }
-    return <AlertCircle className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />;
+    return <AlertCircle className="w-4 h-4 text-neutral-500 dark:text-neutral-400" />;
   };
 
-  const getStatusColor = (status?: string, conclusion?: string) => {
-    if (conclusion === "success") {
-      return "text-green-600 dark:text-green-400";
-    }
-    if (conclusion === "failure") {
-      return "text-red-600 dark:text-red-400";
-    }
-    if (conclusion === "cancelled") {
-      return "text-neutral-500 dark:text-neutral-400";
-    }
-    if (status === "in_progress" || status === "queued") {
-      return "text-yellow-600 dark:text-yellow-400";
-    }
-    return "text-neutral-500 dark:text-neutral-400";
+
+  const formatTimeAgo = (timestamp?: number) => {
+    if (!timestamp) return "";
+    const seconds = Math.floor((Date.now() - timestamp) / 1000);
+    if (seconds < 60) return "just now";
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
   };
+
+  const getStatusDescription = (run: typeof allRuns[0]) => {
+    const parts: string[] = [];
+
+    if (run.conclusion === "success") {
+      if (run.type === 'workflow' && 'runDuration' in run && run.runDuration) {
+        const mins = Math.floor(run.runDuration / 60);
+        const secs = run.runDuration % 60;
+        parts.push(`Successful in ${mins}m ${secs}s`);
+      } else {
+        parts.push("Successful");
+      }
+    } else if (run.conclusion === "failure") {
+      parts.push("Failed");
+    } else if (run.conclusion === "cancelled") {
+      parts.push("Cancelled");
+    } else if (run.conclusion === "skipped") {
+      parts.push("Skipped");
+    } else if (run.conclusion === "timed_out") {
+      parts.push("Timed out");
+    } else if (run.conclusion === "action_required") {
+      parts.push("Action required");
+    } else if (run.conclusion === "neutral") {
+      parts.push("Neutral");
+    } else if (run.status === "in_progress") {
+      parts.push("In progress");
+    } else if (run.status === "queued") {
+      parts.push("Queued");
+    } else if (run.status === "waiting") {
+      parts.push("Waiting");
+    } else if (run.status === "pending") {
+      parts.push("Pending");
+    }
+
+    const timeAgo = formatTimeAgo(run.timestamp);
+    if (timeAgo) {
+      parts.push(timeAgo);
+    }
+
+    return parts.join(" — ");
+  };
+
+
+  if (allRuns.length === 0) {
+    return null;
+  }
+
+  // Group by name and show only the latest run per name
+  const latestRunsByName = allRuns.reduce((acc, run) => {
+    const existing = acc.get(run.name);
+    if (!existing || (run.timestamp ?? 0) > (existing.timestamp ?? 0)) {
+      acc.set(run.name, run);
+    }
+    return acc;
+  }, new Map<string, typeof allRuns[0]>());
+
+  const sortedRuns = Array.from(latestRunsByName.values()).sort((a, b) => {
+    return (b.timestamp ?? 0) - (a.timestamp ?? 0);
+  });
 
   return (
-    <div className="flex items-center gap-2 ml-2 shrink-0">
-      {runs.slice(0, 3).map((run) => (
-        <a
-          key={run._id}
-          href={run.htmlUrl}
-          target="_blank"
-          rel="noreferrer"
-          className={`flex items-center gap-1 text-[11px] hover:underline ${getStatusColor(run.status, run.conclusion)}`}
-          title={`${run.workflowName}: ${run.conclusion || run.status || 'unknown'}`}
-        >
-          {getStatusIcon(run.status, run.conclusion)}
-          <span className="font-medium">{run.workflowName}</span>
-        </a>
-      ))}
-      {runs.length > 3 && (
-        <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
-          +{runs.length - 3} more
-        </span>
-      )}
+    <div className="border-b border-neutral-200 dark:border-neutral-800">
+      <div className="divide-y divide-neutral-200 dark:divide-neutral-800">
+        {sortedRuns.map((run) => (
+          <div
+            key={run.type === 'workflow' ? `workflow-${run._id}` : `check-${run._id}`}
+            className="flex items-center justify-between gap-2 px-3 py-1.5 hover:bg-neutral-50 dark:hover:bg-neutral-900/50 transition-colors group"
+          >
+            <div className="flex items-center gap-2.5 flex-1 min-w-0">
+              <div className="shrink-0">
+                {getStatusIcon(run.status, run.conclusion)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm text-neutral-900 dark:text-neutral-100">
+                  {run.name}
+                </div>
+              </div>
+              <div className="text-xs text-neutral-600 dark:text-neutral-400 shrink-0">
+                {getStatusDescription(run)}
+              </div>
+            </div>
+            {run.url && (
+              <a
+                href={run.url}
+                target="_blank"
+                rel="noreferrer"
+                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-neutral-200 dark:hover:bg-neutral-800 rounded transition-opacity shrink-0"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <ExternalLink className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-400" />
+              </a>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -163,157 +318,6 @@ function AdditionsAndDeletions({
   );
 }
 
-function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber }: WorkflowRunsProps) {
-  const runs = useConvexQuery(api.github_workflows.getWorkflowRunsForPr, {
-    teamSlugOrId,
-    repoFullName,
-    prNumber,
-    limit: 50,
-  });
-
-  const getStatusIcon = (status?: string, conclusion?: string) => {
-    if (conclusion === "success") {
-      return <Check className="w-4 h-4 text-green-600 dark:text-green-400" />;
-    }
-    if (conclusion === "failure") {
-      return <X className="w-4 h-4 text-red-600 dark:text-red-400" />;
-    }
-    if (conclusion === "cancelled") {
-      return <Circle className="w-4 h-4 text-neutral-500 dark:text-neutral-400" />;
-    }
-    if (status === "in_progress" || status === "queued") {
-      return <Clock className="w-4 h-4 text-yellow-600 dark:text-yellow-400 animate-pulse" />;
-    }
-    return <AlertCircle className="w-4 h-4 text-neutral-500 dark:text-neutral-400" />;
-  };
-
-  const getStatusColor = (status?: string, conclusion?: string) => {
-    if (conclusion === "success") {
-      return "border-green-200 dark:border-green-900/40 bg-green-50 dark:bg-green-950/20";
-    }
-    if (conclusion === "failure") {
-      return "border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-950/20";
-    }
-    if (conclusion === "cancelled") {
-      return "border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950/20";
-    }
-    if (status === "in_progress" || status === "queued") {
-      return "border-yellow-200 dark:border-yellow-900/40 bg-yellow-50 dark:bg-yellow-950/20";
-    }
-    return "border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950/20";
-  };
-
-  const getStatusText = (status?: string, conclusion?: string) => {
-    if (conclusion === "success") return "Passed";
-    if (conclusion === "failure") return "Failed";
-    if (conclusion === "cancelled") return "Cancelled";
-    if (conclusion === "skipped") return "Skipped";
-    if (conclusion === "timed_out") return "Timed out";
-    if (conclusion === "action_required") return "Action required";
-    if (conclusion === "neutral") return "Neutral";
-    if (status === "in_progress") return "Running";
-    if (status === "queued") return "Queued";
-    if (status === "waiting") return "Waiting";
-    if (status === "pending") return "Pending";
-    return "Unknown";
-  };
-
-  const formatEventType = (event?: string) => {
-    if (!event) return null;
-    return event.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-  };
-
-  const formatTimestamp = (timestamp?: number) => {
-    if (!timestamp) return null;
-    const date = new Date(timestamp);
-    const now = Date.now();
-    const diff = now - timestamp;
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
-
-    if (minutes < 60) return `${minutes}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    if (days < 7) return `${days}d ago`;
-    return date.toLocaleDateString();
-  };
-
-  if (!runs || runs.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="border-b border-neutral-200 dark:border-neutral-800">
-      <div className="divide-y divide-neutral-200 dark:divide-neutral-800">
-        {runs.map((run) => (
-          <a
-            key={run._id}
-            href={run.htmlUrl}
-            target="_blank"
-            rel="noreferrer"
-            className={`flex items-start gap-3 px-3.5 py-3 hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-colors border-l-2 ${getStatusColor(run.status, run.conclusion)}`}
-          >
-            <div className="mt-0.5">
-              {getStatusIcon(run.status, run.conclusion)}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
-                  {run.workflowName}
-                </span>
-                <span className="text-xs px-1.5 py-0.5 rounded bg-neutral-200 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 font-medium shrink-0">
-                  {getStatusText(run.status, run.conclusion)}
-                </span>
-              </div>
-              {run.name && run.name !== run.workflowName && (
-                <div className="text-xs text-neutral-500 dark:text-neutral-400 truncate mb-1">
-                  {run.name}
-                </div>
-              )}
-              <div className="flex items-center gap-3 text-xs text-neutral-500 dark:text-neutral-400 flex-wrap">
-                {run.runNumber && (
-                  <div className="flex items-center gap-1">
-                    <span>#{run.runNumber}</span>
-                  </div>
-                )}
-                {run.event && (
-                  <div className="flex items-center gap-1">
-                    <span className="font-mono">{formatEventType(run.event)}</span>
-                  </div>
-                )}
-                {run.headSha && (
-                  <div className="flex items-center gap-1">
-                    <GitCommit className="w-3 h-3" />
-                    <span className="font-mono">{run.headSha.substring(0, 7)}</span>
-                  </div>
-                )}
-                {run.headBranch && (
-                  <div className="flex items-center gap-1">
-                    <span className="font-mono text-neutral-600 dark:text-neutral-400">{run.headBranch}</span>
-                  </div>
-                )}
-                {run.actorLogin && (
-                  <span>by {run.actorLogin}</span>
-                )}
-                {run.runStartedAt && (
-                  <span>{formatTimestamp(run.runStartedAt)}</span>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400 shrink-0 mt-0.5">
-              {run.runDuration ? (
-                <span className="font-mono">
-                  {Math.floor(run.runDuration / 60)}m {run.runDuration % 60}s
-                </span>
-              ) : null}
-              <ExternalLink className="w-3.5 h-3.5" />
-            </div>
-          </a>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 export function PullRequestDetailView({
   teamSlugOrId,
@@ -435,6 +439,7 @@ export function PullRequestDetailView({
                     teamSlugOrId={teamSlugOrId}
                     repoFullName={currentPR.repoFullName}
                     prNumber={currentPR.number}
+                    headSha={currentPR.headSha}
                   />
                 </Suspense>
               </div>
@@ -464,14 +469,19 @@ export function PullRequestDetailView({
                       onMerge={handleMergePR}
                       isOpen={true}
                       disabled={mergePrMutation.isPending || closePrMutation.isPending}
+                      isLoading={mergePrMutation.isPending}
                     />
                     <button
                       onClick={handleClosePR}
                       disabled={mergePrMutation.isPending || closePrMutation.isPending}
                       className="flex items-center gap-1.5 px-3 py-1 h-[26px] bg-[#cf222e] dark:bg-[#da3633] text-white rounded hover:bg-[#cf222e]/90 dark:hover:bg-[#da3633]/90 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-xs select-none whitespace-nowrap transition-colors"
                     >
-                      <X className="w-3.5 h-3.5" />
-                      Close PR
+                      {closePrMutation.isPending ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <X className="w-3.5 h-3.5" />
+                      )}
+                      {closePrMutation.isPending ? "Closing..." : "Close PR"}
                     </button>
                   </>
                 )}
@@ -533,6 +543,7 @@ export function PullRequestDetailView({
                 teamSlugOrId={teamSlugOrId}
                 repoFullName={currentPR.repoFullName}
                 prNumber={currentPR.number}
+                headSha={currentPR.headSha}
               />
             </Suspense>
             <Suspense
