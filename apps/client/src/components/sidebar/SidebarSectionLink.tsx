@@ -1,13 +1,11 @@
-import { Link } from "@tanstack/react-router";
+import { Link, type LinkProps } from "@tanstack/react-router";
 import clsx from "clsx";
 import { type ReactNode } from "react";
 
-import { type SidebarLinkRecord } from "./SidebarNavLink";
-
 interface SidebarSectionLinkProps {
-  to: string;
-  params?: SidebarLinkRecord;
-  search?: SidebarLinkRecord;
+  to: LinkProps["to"];
+  params?: LinkProps["params"];
+  search?: LinkProps["search"];
   exact?: boolean;
   children: ReactNode;
   className?: string;
