@@ -110,7 +110,7 @@ githubWorkflowsRouter.openapi(
     try {
       // Get workflow runs from Convex
       const runs = await convex.query(api.github_workflows.getWorkflowRuns, {
-        teamId: team,
+        teamSlugOrId: team,
         repoFullName,
         workflowId,
         limit: Math.min(limit, 100), // Cap at 100
@@ -181,7 +181,7 @@ githubWorkflowsRouter.openapi(
       const runs = await convex.query(
         api.github_workflows.getWorkflowRunsForPr,
         {
-          teamId: team,
+          teamSlugOrId: team,
           repoFullName,
           prNumber,
           limit: Math.min(limit, 50), // Cap at 50
