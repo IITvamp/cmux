@@ -2,9 +2,13 @@ import {
   BrowserWindow,
   WebContentsView,
   ipcMain,
+  type OnCompletedListener,
+  type OnDidGetResponseDetailsListener,
   type Rectangle,
+  type Session,
   type WebContents,
 } from "electron";
+import { STATUS_CODES } from "node:http";
 import type {
   ElectronDevToolsMode,
   ElectronWebContentsEvent,
@@ -17,6 +21,7 @@ import { applyChromeCamouflage, type Logger } from "./chrome-camouflage";
 interface RegisterOptions {
   logger: Logger;
   maxSuspendedEntries?: number;
+  rendererBaseUrl: string;
 }
 
 interface CreateOptions {
@@ -63,12 +68,14 @@ interface Entry {
 }
 
 const viewEntries = new Map<number, Entry>();
+const entriesByWebContentsId = new Map<number, Entry>();
 let nextViewId = 1;
 const windowCleanupRegistered = new Set<number>();
 const suspendedQueue: number[] = [];
 const suspendedByKey = new Map<string, Entry>();
 let suspendedCount = 0;
 let maxSuspendedEntries = 25;
+let rendererBaseUrl = "";
 
 const validDevToolsModes: ReadonlySet<ElectronDevToolsMode> = new Set([
   "bottom",
@@ -81,11 +88,38 @@ function eventChannelFor(id: number): string {
   return `cmux:webcontents:event:${id}`;
 }
 
+function buildErrorUrl(params: {
+  type: "navigation" | "http";
+  url: string;
+  code?: number;
+  description?: string;
+  statusCode?: number;
+  statusText?: string;
+}): string {
+  const url = new URL("/electron-error", rendererBaseUrl);
+  url.searchParams.set("type", params.type);
+  if (params.url) url.searchParams.set("url", params.url);
+  if (params.type === "navigation") {
+    if (params.code !== undefined)
+      url.searchParams.set("code", String(params.code));
+    if (params.description) url.searchParams.set("description", params.description);
+  } else if (params.type === "http") {
+    if (params.statusCode !== undefined)
+      url.searchParams.set("statusCode", String(params.statusCode));
+    if (params.statusText) url.searchParams.set("statusText", params.statusText);
+  }
+  return url.toString();
+}
+
 function sendEventToOwner(
   entry: Entry,
   payload: ElectronWebContentsEvent,
   logger: Logger,
 ) {
+  logger.log("Forwarding WebContentsView event", {
+    id: entry.id,
+    payload,
+  });
   const sender = entry.ownerSender;
   if (!sender || sender.isDestroyed()) {
     return;
@@ -133,6 +167,12 @@ function setupEventForwarders(entry: Entry, logger: Logger) {
   if (entry.eventCleanup.length > 0) return;
   const { webContents } = entry.view;
   const cleanup: Array<() => void> = [];
+  entriesByWebContentsId.set(webContents.id, entry);
+  cleanup.push(() => {
+    entriesByWebContentsId.delete(webContents.id);
+  });
+
+  ensureWebRequestListener(webContents.session, logger);
 
   const onDidStartLoading = () => {
     sendState(entry, logger, "did-start-loading");
@@ -150,7 +190,29 @@ function setupEventForwarders(entry: Entry, logger: Logger) {
     webContents.removeListener("did-stop-loading", onDidStopLoading);
   });
 
-  const onDidNavigate = () => {
+  const onDidNavigate = (
+    _event: Electron.Event,
+    url: string,
+    httpResponseCode: number,
+    httpStatusText: string,
+  ) => {
+    // Check for HTTP errors (4xx, 5xx)
+    if (httpResponseCode >= 400) {
+      const statusText = httpStatusText || STATUS_CODES[httpResponseCode];
+      const errorUrl = buildErrorUrl({
+        type: "http",
+        url,
+        statusCode: httpResponseCode,
+        statusText: statusText ?? undefined,
+      });
+      logger.log("Loading error page for HTTP error", {
+        id: entry.id,
+        statusCode: httpResponseCode,
+        errorUrl,
+      });
+      void entry.view.webContents.loadURL(errorUrl);
+      return;
+    }
     sendState(entry, logger, "did-navigate");
   };
   webContents.on("did-navigate", onDidNavigate);
@@ -197,15 +259,21 @@ function setupEventForwarders(entry: Entry, logger: Logger) {
     validatedURL: string,
     isMainFrame: boolean,
   ) => {
-    const payload: ElectronWebContentsEvent = {
-      type: "load-failed",
-      id: entry.id,
-      errorCode,
-      errorDescription,
-      validatedURL,
-      isMainFrame: Boolean(isMainFrame),
-    };
-    sendEventToOwner(entry, payload, logger);
+    if (isMainFrame) {
+      const errorUrl = buildErrorUrl({
+        type: "navigation",
+        url: validatedURL,
+        code: errorCode,
+        description: errorDescription,
+      });
+      logger.log("Loading error page for navigation failure", {
+        id: entry.id,
+        errorCode,
+        errorUrl,
+      });
+      void entry.view.webContents.loadURL(errorUrl);
+      return;
+    }
     sendState(entry, logger, "did-fail-load");
   };
   webContents.on("did-fail-load", onDidFailLoad);
@@ -213,8 +281,49 @@ function setupEventForwarders(entry: Entry, logger: Logger) {
     webContents.removeListener("did-fail-load", onDidFailLoad);
   });
 
+  const onDidGetResponseDetails: OnDidGetResponseDetailsListener = (
+    _event,
+    _status,
+    newURL,
+    _originalURL,
+    httpResponseCode,
+    _requestMethod,
+    _referrer,
+    _responseHeaders,
+    resourceType,
+  ) => {
+    logger.log("did-get-response-details", {
+      id: entry.id,
+      url: newURL,
+      httpResponseCode,
+      resourceType,
+    });
+    // Error handling is done in onDidNavigate
+  };
+  webContents.on("did-get-response-details", onDidGetResponseDetails);
+  cleanup.push(() => {
+    webContents.removeListener(
+      "did-get-response-details",
+      onDidGetResponseDetails,
+    );
+  });
+
   entry.eventCleanup = cleanup;
   sendState(entry, logger, "initialized");
+}
+
+const registeredSessions = new WeakSet<Session>();
+
+function ensureWebRequestListener(targetSession: Session, _logger: Logger) {
+  if (registeredSessions.has(targetSession)) return;
+  const listener: OnCompletedListener = () => {
+    // Error handling is done in onDidNavigate
+  };
+  targetSession.webRequest.onCompleted(
+    { urls: ["*://*/*"] },
+    listener as OnCompletedListener,
+  );
+  registeredSessions.add(targetSession);
 }
 
 function setMaxSuspendedEntries(limit: number | undefined): number {
@@ -357,6 +466,7 @@ function suspendEntriesForDestroyedOwner(
 function destroyView(id: number): boolean {
   const entry = viewEntries.get(id);
   if (!entry) return false;
+  entriesByWebContentsId.delete(entry.view.webContents.id);
   try {
     removeFromSuspended(entry);
     for (const cleanup of entry.eventCleanup) {
@@ -466,8 +576,10 @@ function destroyWebContents(contents: WebContents) {
 export function registerWebContentsViewHandlers({
   logger,
   maxSuspendedEntries: providedMax,
+  rendererBaseUrl: providedBaseUrl,
 }: RegisterOptions): void {
   setMaxSuspendedEntries(providedMax);
+  rendererBaseUrl = providedBaseUrl;
 
   ipcMain.handle(
     "cmux:webcontents:create",

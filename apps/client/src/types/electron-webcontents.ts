@@ -43,6 +43,15 @@ export interface ElectronWebContentsLoadFailedEvent {
   isMainFrame: boolean;
 }
 
+export interface ElectronWebContentsHttpErrorEvent {
+  type: "load-http-error";
+  id: number;
+  statusCode: number;
+  statusText?: string;
+  url: string;
+}
+
 export type ElectronWebContentsEvent =
   | ElectronWebContentsStateEvent
-  | ElectronWebContentsLoadFailedEvent;
+  | ElectronWebContentsLoadFailedEvent
+  | ElectronWebContentsHttpErrorEvent;

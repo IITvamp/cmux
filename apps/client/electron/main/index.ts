@@ -9,6 +9,7 @@ import {
   dialog,
   ipcMain,
   Menu,
+  MenuItem,
   nativeImage,
   net,
   session,
@@ -60,10 +61,6 @@ function resolveMaxSuspendedWebContents(): number | undefined {
   return parsed;
 }
 
-let rendererLoaded = false;
-let pendingProtocolUrl: string | null = null;
-let mainWindow: BrowserWindow | null = null;
-
 type AutoUpdateToastPayload = {
   version: string | null;
 };
@@ -79,6 +76,12 @@ const LOG_ROTATION: LogRotationOptions = {
   maxBytes: 5 * 1024 * 1024,
   maxBackups: 3,
 };
+
+let rendererLoaded = false;
+let pendingProtocolUrl: string | null = null;
+let mainWindow: BrowserWindow | null = null;
+let previewReloadMenuItem: MenuItem | null = null;
+let previewReloadMenuVisible = false;
 
 function getTimestamp(): string {
   return new Date().toISOString();
@@ -206,6 +209,46 @@ export function mainError(...args: unknown[]) {
   console.error("[MAIN]", line);
   emitToRenderer("error", `[MAIN] ${line}`);
 }
+
+function sendShortcutToFocusedWindow(
+  eventName: string,
+  payload?: unknown
+): boolean {
+  try {
+    const target =
+      BrowserWindow.getFocusedWindow() ??
+      mainWindow ??
+      BrowserWindow.getAllWindows()[0] ??
+      null;
+    if (!target || target.isDestroyed()) {
+      return false;
+    }
+    target.webContents.send(`cmux:event:shortcut:${eventName}`, payload);
+    return true;
+  } catch (error) {
+    mainWarn("Failed to dispatch shortcut event", { eventName, error });
+    return false;
+  }
+}
+
+function setPreviewReloadMenuVisibility(visible: boolean): void {
+  previewReloadMenuVisible = visible;
+  if (previewReloadMenuItem) {
+    previewReloadMenuItem.visible = visible;
+  }
+}
+
+ipcMain.on("cmux:get-current-webcontents-id", (event) => {
+  event.returnValue = event.sender.id;
+});
+
+ipcMain.handle(
+  "cmux:ui:set-preview-reload-visible",
+  async (_event, visible: unknown) => {
+    setPreviewReloadMenuVisibility(Boolean(visible));
+    return { ok: true };
+  }
+);
 
 function emitAutoUpdateToastIfPossible(): void {
   if (!queuedAutoUpdateToast) return;
@@ -624,6 +667,55 @@ app.whenReady().then(async () => {
       warn: mainWarn,
     },
   });
+
+  // Register before-input-event handlers for preview browser shortcuts
+  // These fire before web content sees them, so they work even in WebContentsViews
+  app.on("web-contents-created", (_event, contents) => {
+    contents.on("before-input-event", (e, input) => {
+      if (input.type !== "keyDown") return;
+
+      // Only handle preview shortcuts when preview is visible
+      if (!previewReloadMenuVisible) return;
+
+      const isMac = process.platform === "darwin";
+      const modKey = isMac ? input.meta : input.control;
+      if (!modKey || input.alt || input.shift) return;
+
+      const key = input.key.toLowerCase();
+
+      // cmd+l: focus address bar
+      if (key === "l") {
+        e.preventDefault();
+        sendShortcutToFocusedWindow("preview-focus-address");
+        return;
+      }
+
+      // cmd+[: go back
+      if (input.key === "[") {
+        e.preventDefault();
+        sendShortcutToFocusedWindow("preview-back");
+        return;
+      }
+
+      // cmd+]: go forward
+      if (input.key === "]") {
+        e.preventDefault();
+        sendShortcutToFocusedWindow("preview-forward");
+        return;
+      }
+
+      // cmd+r: reload
+      if (key === "r") {
+        e.preventDefault();
+        sendShortcutToFocusedWindow("preview-reload");
+        return;
+      }
+    });
+  });
+  const rendererBaseUrl = is.dev && process.env["ELECTRON_RENDERER_URL"]
+    ? process.env["ELECTRON_RENDERER_URL"]
+    : `https://${APP_HOST}`;
+
   registerWebContentsViewHandlers({
     logger: {
       log: mainLog,
@@ -631,6 +723,7 @@ app.whenReady().then(async () => {
       error: mainError,
     },
     maxSuspendedEntries: resolveMaxSuspendedWebContents(),
+    rendererBaseUrl,
   });
 
   // Ensure macOS menu and About panel use "cmux" instead of package.json name
@@ -722,6 +815,69 @@ app.whenReady().then(async () => {
     } else {
       template.push({ label: "File", submenu: [{ role: "quit" }] });
     }
+    const resolveTargetWindow = () =>
+      BrowserWindow.getFocusedWindow() ??
+      mainWindow ??
+      BrowserWindow.getAllWindows()[0] ??
+      null;
+    const viewMenu: MenuItemConstructorOptions = {
+      label: "View",
+      submenu: [
+        {
+          id: "cmux-preview-reload",
+          visible: previewReloadMenuVisible,
+          label: "Reload Preview",
+          accelerator: "CommandOrControl+R",
+          click: () => {
+            const dispatched = sendShortcutToFocusedWindow("preview-reload");
+            if (!dispatched) {
+              mainWarn("Reload Preview shortcut triggered with no active renderer");
+            }
+          },
+        },
+        {
+          id: "cmux-preview-back",
+          visible: previewReloadMenuVisible,
+          label: "Back",
+          accelerator: "CommandOrControl+[",
+          click: () => {
+            sendShortcutToFocusedWindow("preview-back");
+          },
+        },
+        {
+          id: "cmux-preview-forward",
+          visible: previewReloadMenuVisible,
+          label: "Forward",
+          accelerator: "CommandOrControl+]",
+          click: () => {
+            sendShortcutToFocusedWindow("preview-forward");
+          },
+        },
+        {
+          id: "cmux-preview-focus-address",
+          visible: previewReloadMenuVisible,
+          label: "Focus Address Bar",
+          accelerator: "CommandOrControl+L",
+          click: () => {
+            sendShortcutToFocusedWindow("preview-focus-address");
+          },
+        },
+        {
+          label: "Reload Application",
+          click: () => {
+            const target = resolveTargetWindow();
+            target?.webContents.reload();
+          },
+        },
+        { type: "separator" },
+        { role: "resetZoom" },
+        { role: "zoomIn" },
+        { role: "zoomOut" },
+        { type: "separator" },
+        { role: "togglefullscreen" },
+        { role: "toggleDevTools" },
+      ],
+    };
     template.push(
       { role: "editMenu" },
       {
@@ -732,11 +888,7 @@ app.whenReady().then(async () => {
             accelerator: "CommandOrControl+K",
             click: () => {
               try {
-                const target =
-                  BrowserWindow.getFocusedWindow() ??
-                  mainWindow ??
-                  BrowserWindow.getAllWindows()[0] ??
-                  null;
+                const target = resolveTargetWindow();
                 keyDebug("menu-accelerator-cmdk", {
                   to: target?.webContents.id,
                 });
@@ -751,7 +903,7 @@ app.whenReady().then(async () => {
           },
         ],
       },
-      { role: "viewMenu" },
+      viewMenu,
       { role: "windowMenu" }
     );
     template.push({
@@ -795,6 +947,8 @@ app.whenReady().then(async () => {
       ],
     });
     const menu = Menu.buildFromTemplate(template);
+    previewReloadMenuItem = menu.getMenuItemById("cmux-preview-reload") ?? null;
+    setPreviewReloadMenuVisibility(previewReloadMenuVisible);
     Menu.setApplicationMenu(menu);
   } catch (e) {
     mainWarn("Failed to set application menu", e);
