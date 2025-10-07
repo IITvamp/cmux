@@ -83,6 +83,7 @@ interface CmuxWebContentsViewAPI {
 }
 
 interface CmuxAPI {
+  getCurrentWebContentsId?: () => number | undefined;
   register: (meta: {
     auth?: string;
     team?: string;

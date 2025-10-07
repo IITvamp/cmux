@@ -106,6 +106,12 @@ export function ElectronPreviewBrowser({
   const [canGoForward, setCanGoForward] = useState(false);
   const [isShowingErrorPage, setIsShowingErrorPage] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const isNavigatingRef = useRef(false);
+  const pendingRefocusTimeoutRef =
+    useRef<ReturnType<typeof setTimeout> | null>(null);
+  const windowHasFocusRef = useRef(
+    typeof document !== "undefined" ? document.hasFocus() : true,
+  );
 
   const { progress, visible } = useLoadingProgress(isLoading);
 
@@ -145,6 +151,11 @@ export function ElectronPreviewBrowser({
       setDevtoolsOpen(state.isDevToolsOpened);
       setCanGoBack(Boolean(state.canGoBack));
       setCanGoForward(Boolean(state.canGoForward));
+
+      // Clear navigation flag when loading starts
+      if (state.isLoading && isNavigatingRef.current) {
+        isNavigatingRef.current = false;
+      }
     },
     [isEditing],
   );
@@ -210,6 +221,7 @@ export function ElectronPreviewBrowser({
       setCommittedUrl(target);
       setAddressValue(target);
       setIsEditing(false);
+      isNavigatingRef.current = true;
       inputRef.current?.blur();
       void window.cmux?.webContentsView
         ?.loadURL(viewHandle.id, target)
@@ -256,16 +268,36 @@ export function ElectronPreviewBrowser({
       // Only refocus WebContentsView if:
       // 1. Focus isn't going to another UI element
       // 2. The window still has focus (not cmd+tabbing away)
+      // 3. We're not in the middle of navigating (user just submitted URL)
       const focusGoingToUIElement = event.relatedTarget instanceof HTMLElement;
 
-      if (viewHandle && !focusGoingToUIElement) {
+      // Clear any existing pending refocus
+      if (pendingRefocusTimeoutRef.current !== null) {
+        clearTimeout(pendingRefocusTimeoutRef.current);
+        pendingRefocusTimeoutRef.current = null;
+      }
+
+      if (viewHandle && !focusGoingToUIElement && !isNavigatingRef.current) {
         // Wait a tick to let focus settle, then check if window still has focus
-        setTimeout(() => {
-          // If document doesn't have focus, user is cmd+tabbing away - don't refocus
-          if (typeof document !== "undefined" && document.hasFocus()) {
+        pendingRefocusTimeoutRef.current = setTimeout(() => {
+          pendingRefocusTimeoutRef.current = null;
+          if (!windowHasFocusRef.current) {
+            return;
+          }
+          if (typeof document === "undefined") {
+            return;
+          }
+          if (document.visibilityState !== "visible") {
+            return;
+          }
+          // Only refocus if window still has focus (user didn't alt-tab away)
+          if (document.hasFocus()) {
             void window.cmux?.ui?.focusWebContents(viewHandle.webContentsId)
               .catch((error: unknown) => {
-                console.warn("Failed to refocus WebContentsView on blur", error);
+                console.warn(
+                  "Failed to refocus WebContentsView on blur",
+                  error,
+                );
               });
           }
         }, 0);
@@ -316,6 +348,7 @@ export function ElectronPreviewBrowser({
 
   const handleGoBack = useCallback(() => {
     if (!viewHandle) return;
+    isNavigatingRef.current = true;
     void window.cmux?.webContentsView
       ?.goBack(viewHandle.id)
       .catch((error: unknown) => {
@@ -323,8 +356,31 @@ export function ElectronPreviewBrowser({
       });
   }, [viewHandle]);
 
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const handleVisibilityChange = () => {
+      const isVisible = document.visibilityState === "visible";
+      if (!isVisible) {
+        windowHasFocusRef.current = false;
+        if (pendingRefocusTimeoutRef.current !== null) {
+          clearTimeout(pendingRefocusTimeoutRef.current);
+          pendingRefocusTimeoutRef.current = null;
+        }
+        return;
+      }
+      windowHasFocusRef.current = document.hasFocus();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
   const handleGoForward = useCallback(() => {
     if (!viewHandle) return;
+    isNavigatingRef.current = true;
     void window.cmux?.webContentsView
       ?.goForward(viewHandle.id)
       .catch((error: unknown) => {
@@ -334,6 +390,7 @@ export function ElectronPreviewBrowser({
 
   const reloadCurrentView = useCallback(() => {
     if (viewHandle) {
+      isNavigatingRef.current = true;
       // If showing error page, retry the original URL instead of reloading error page
       if (isShowingErrorPage && committedUrl) {
         void window.cmux?.webContentsView
@@ -468,13 +525,17 @@ export function ElectronPreviewBrowser({
     };
   }, []);
 
-  // When window regains focus (cmd+tab back), refocus the WebContentsView if nothing else has focus
+  // Track window focus/blur state and cancel pending refocus on blur
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     const handleWindowFocus = () => {
+      windowHasFocusRef.current = true;
       // Give the browser a moment to restore natural focus
       setTimeout(() => {
+        if (typeof document === "undefined") {
+          return;
+        }
         // If no input/button/etc has focus, refocus the WebContentsView
         const activeElement = document.activeElement;
         const isInteractiveElementFocused =
@@ -493,9 +554,25 @@ export function ElectronPreviewBrowser({
       }, 50);
     };
 
+    const handleWindowBlur = () => {
+      windowHasFocusRef.current = false;
+      // Cancel any pending refocus operations when window loses focus
+      if (pendingRefocusTimeoutRef.current !== null) {
+        clearTimeout(pendingRefocusTimeoutRef.current);
+        pendingRefocusTimeoutRef.current = null;
+      }
+    };
+
     window.addEventListener("focus", handleWindowFocus);
+    window.addEventListener("blur", handleWindowBlur);
     return () => {
       window.removeEventListener("focus", handleWindowFocus);
+      window.removeEventListener("blur", handleWindowBlur);
+      // Clean up any pending refocus on unmount
+      if (pendingRefocusTimeoutRef.current !== null) {
+        clearTimeout(pendingRefocusTimeoutRef.current);
+        pendingRefocusTimeoutRef.current = null;
+      }
     };
   }, [viewHandle]);
 

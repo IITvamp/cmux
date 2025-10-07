@@ -222,7 +222,29 @@ export function initCmdK(opts: {
   ipcMain.handle("cmux:ui:focus-webcontents", (_evt, id: number) => {
     try {
       const wc = webContents.fromId(id);
-      if (!wc || wc.isDestroyed()) return { ok: false };
+      if (!wc || wc.isDestroyed()) {
+        return { ok: false };
+      }
+
+      const owningWindow = BrowserWindow.fromWebContents(wc);
+      if (!owningWindow || owningWindow.isDestroyed()) {
+        return { ok: false };
+      }
+
+      // Skip refocusing if the owning window isn't the active window. This avoids
+      // bringing CMUX back to the front while the user is interacting with another app.
+      const isWindowFocused =
+        owningWindow.isFocused() &&
+        BrowserWindow.getFocusedWindow() === owningWindow;
+
+      if (!isWindowFocused) {
+        keyDebug("focus-webcontents-skipped", {
+          id,
+          reason: "window-not-focused",
+        });
+        return { ok: false };
+      }
+
       wc.focus();
       keyDebug("focus-webcontents", { id });
       return { ok: true };
