@@ -290,7 +290,7 @@ jobs:
             gh release upload "$release_tag" "$artifact" --repo "$repo" --clobber
           done
 
-  mac-universal:
+  # mac-universal:
     name: macOS Universal
     needs: prepare-release
     environment: electron
