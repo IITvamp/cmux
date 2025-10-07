@@ -205,7 +205,9 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
       case "delete":
       case "pull_request_review":
       case "pull_request_review_comment":
-      case "issue_comment":
+      case "issue_comment": {
+        break;
+      }
       case "workflow_run": {
         try {
           const workflowRunPayload = body as WorkflowRunEvent;
@@ -213,13 +215,51 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             workflowRunPayload.repository?.full_name ?? "",
           );
           const installation = Number(workflowRunPayload.installation?.id ?? 0);
-          if (!repoFullName || !installation) break;
+
+          console.log("[workflow_run] Received webhook", {
+            delivery,
+            repoFullName,
+            installation,
+            action: workflowRunPayload.action,
+            runId: workflowRunPayload.workflow_run?.id,
+            runNumber: workflowRunPayload.workflow_run?.run_number,
+            workflowName: workflowRunPayload.workflow?.name,
+            status: workflowRunPayload.workflow_run?.status,
+            conclusion: workflowRunPayload.workflow_run?.conclusion,
+            prNumbers: workflowRunPayload.workflow_run?.pull_requests?.map(pr => pr.number),
+          });
+
+          if (!repoFullName || !installation) {
+            console.warn("[workflow_run] Missing repoFullName or installation", {
+              repoFullName,
+              installation,
+              delivery,
+            });
+            break;
+          }
+
           const conn = await _ctx.runQuery(
             internal.github_app.getProviderConnectionByInstallationId,
             { installationId: installation },
           );
           const teamId = conn?.teamId;
-          if (!teamId) break;
+
+          if (!teamId) {
+            console.warn("[workflow_run] No teamId found for installation", {
+              installation,
+              delivery,
+              connectionFound: !!conn,
+            });
+            break;
+          }
+
+          console.log("[workflow_run] Processing workflow run", {
+            delivery,
+            teamId,
+            repoFullName,
+            runId: workflowRunPayload.workflow_run?.id,
+          });
+
           await _ctx.runMutation(
             internal.github_workflows.upsertWorkflowRunFromWebhook,
             {
@@ -229,10 +269,17 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
               payload: workflowRunPayload,
             },
           );
+
+          console.log("[workflow_run] Successfully processed", {
+            delivery,
+            runId: workflowRunPayload.workflow_run?.id,
+          });
         } catch (err) {
-          console.error("github_webhook workflow_run handler failed", {
+          console.error("[workflow_run] Handler failed", {
             err,
             delivery,
+            message: err instanceof Error ? err.message : String(err),
+            stack: err instanceof Error ? err.stack : undefined,
           });
         }
         break;

@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { getTeamId } from "../_shared/team";
 import { internalMutation } from "./_generated/server";
 import { authQuery, authMutation } from "./users/utils";
 import type { WorkflowRunEvent } from "@octokit/webhooks-types";
@@ -25,6 +26,13 @@ export const upsertWorkflowRunFromWebhook = internalMutation({
     const payload = args.payload as WorkflowRunEvent;
     const { installationId, repoFullName, teamId } = args;
 
+    console.log("[upsertWorkflowRun] Starting", {
+      teamId,
+      repoFullName,
+      installationId,
+      action: payload.action,
+    });
+
     // Extract core workflow run data
     const runId = payload.workflow_run?.id;
     const runNumber = payload.workflow_run?.run_number;
@@ -32,12 +40,13 @@ export const upsertWorkflowRunFromWebhook = internalMutation({
     const workflowName = payload.workflow?.name;
 
     if (!runId || !runNumber || !workflowId || !workflowName) {
-      console.warn("Skipping workflow run webhook: missing required fields", {
+      console.warn("[upsertWorkflowRun] Missing required fields", {
         runId,
         runNumber,
         workflowId,
         workflowName,
         repoFullName,
+        teamId,
       });
       return;
     }
@@ -116,6 +125,18 @@ export const upsertWorkflowRunFromWebhook = internalMutation({
       triggeringPrNumber,
     };
 
+    console.log("[upsertWorkflowRun] Prepared document", {
+      runId,
+      runNumber,
+      workflowId,
+      workflowName,
+      status,
+      conclusion,
+      triggeringPrNumber,
+      teamId,
+      repoFullName,
+    });
+
     // Upsert the workflow run
     await ctx.db
       .query("githubWorkflowRuns")
@@ -129,18 +150,26 @@ export const upsertWorkflowRunFromWebhook = internalMutation({
             ...workflowRunDoc,
             _id: existing._id,
           });
-          console.log("Updated workflow run", {
+          console.log("[upsertWorkflowRun] Updated workflow run", {
+            _id: existing._id,
             runId,
             repoFullName,
             runNumber,
+            status,
+            conclusion,
+            triggeringPrNumber,
           });
         } else {
           // Insert new run
-          await ctx.db.insert("githubWorkflowRuns", workflowRunDoc);
-          console.log("Inserted workflow run", {
+          const newId = await ctx.db.insert("githubWorkflowRuns", workflowRunDoc);
+          console.log("[upsertWorkflowRun] Inserted workflow run", {
+            _id: newId,
             runId,
             repoFullName,
             runNumber,
+            status,
+            conclusion,
+            triggeringPrNumber,
           });
         }
       });
@@ -150,13 +179,14 @@ export const upsertWorkflowRunFromWebhook = internalMutation({
 // Query to get workflow runs for a team
 export const getWorkflowRuns = authQuery({
   args: {
-    teamId: v.string(),
+    teamSlugOrId: v.string(),
     repoFullName: v.optional(v.string()),
     workflowId: v.optional(v.number()),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const { teamId, repoFullName, workflowId, limit = 50 } = args;
+    const { teamSlugOrId, repoFullName, workflowId, limit = 50 } = args;
+    const teamId = await getTeamId(ctx, teamSlugOrId);
 
     let query = ctx.db
       .query("githubWorkflowRuns")
@@ -189,11 +219,12 @@ export const getWorkflowRuns = authQuery({
 // Query to get a specific workflow run by ID
 export const getWorkflowRunById = authQuery({
   args: {
-    teamId: v.string(),
+    teamSlugOrId: v.string(),
     runId: v.number(),
   },
   handler: async (ctx, args) => {
-    const { teamId, runId } = args;
+    const { teamSlugOrId, runId } = args;
+    const teamId = await getTeamId(ctx, teamSlugOrId);
 
     const run = await ctx.db
       .query("githubWorkflowRuns")
@@ -209,13 +240,36 @@ export const getWorkflowRunById = authQuery({
 // Query to get workflow runs for a specific PR
 export const getWorkflowRunsForPr = authQuery({
   args: {
-    teamId: v.string(),
+    teamSlugOrId: v.string(),
     repoFullName: v.string(),
     prNumber: v.number(),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const { teamId, repoFullName, prNumber, limit = 20 } = args;
+    const { teamSlugOrId, repoFullName, prNumber, limit = 20 } = args;
+    const teamId = await getTeamId(ctx, teamSlugOrId);
+
+    console.log("[getWorkflowRunsForPr] Query started", {
+      teamSlugOrId,
+      teamId,
+      repoFullName,
+      prNumber,
+      limit,
+    });
+
+    const allRunsForRepo = await ctx.db
+      .query("githubWorkflowRuns")
+      .withIndex("by_team_repo", (q) =>
+        q.eq("teamId", teamId).eq("repoFullName", repoFullName),
+      )
+      .collect();
+
+    console.log("[getWorkflowRunsForPr] All runs for repo", {
+      teamId,
+      repoFullName,
+      totalRuns: allRunsForRepo.length,
+      prNumbers: allRunsForRepo.map((r) => r.triggeringPrNumber),
+    });
 
     const runs = await ctx.db
       .query("githubWorkflowRuns")
@@ -226,6 +280,20 @@ export const getWorkflowRunsForPr = authQuery({
       .order("desc")
       .take(limit);
 
+    console.log("[getWorkflowRunsForPr] Filtered runs for PR", {
+      teamId,
+      repoFullName,
+      prNumber,
+      foundRuns: runs.length,
+      runs: runs.map((r) => ({
+        runId: r.runId,
+        workflowName: r.workflowName,
+        status: r.status,
+        conclusion: r.conclusion,
+        triggeringPrNumber: r.triggeringPrNumber,
+      })),
+    });
+
     return runs;
   },
 });
@@ -233,18 +301,20 @@ export const getWorkflowRunsForPr = authQuery({
 // Mutation to manually trigger a backfill of workflow runs (for existing repos)
 export const backfillWorkflowRuns = authMutation({
   args: {
-    teamId: v.string(),
+    teamSlugOrId: v.string(),
     repoFullName: v.string(),
     workflowId: v.optional(v.number()),
   },
-  handler: async (_ctx, args) => {
-    const { teamId, repoFullName, workflowId } = args;
+  handler: async (ctx, args) => {
+    const { teamSlugOrId, repoFullName, workflowId } = args;
+    const teamId = await getTeamId(ctx, teamSlugOrId);
 
     // This would typically call the GitHub API to fetch historical workflow runs
     // For now, we'll just return a success message
     // In a real implementation, you'd use the GitHub API client to fetch runs
 
     console.log("Workflow runs backfill requested", {
+      teamSlugOrId,
       teamId,
       repoFullName,
       workflowId,
