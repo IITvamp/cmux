@@ -71,7 +71,8 @@ exit $EXIT_CODE
   console.log("[sandboxes.start] Starting hydration with Bun script");
   const hydrateRes = await execInRootfs(
     instance,
-    `bash -c ${singleQuote(command.trim())}`
+    `bash -c ${singleQuote(command.trim())}`,
+    { forceRootfs: true }
   );
 
   // Log the full output for debugging

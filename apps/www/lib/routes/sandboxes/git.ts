@@ -89,8 +89,8 @@ export const configureGithubAccess = async (
         "cat <<'CMUX_GH_TOKEN' > \"$token_file\"",
         token,
         "CMUX_GH_TOKEN",
-        '/usr/bin/gh auth login --with-token < "$token_file"',
-        "/usr/bin/gh auth setup-git",
+        'gh auth login --with-token < "$token_file"',
+        "gh auth setup-git",
       ].join("\n");
 
       const ghAuthRes = await execInRootfs(instance, [
@@ -100,6 +100,12 @@ export const configureGithubAccess = async (
       ]);
 
       if (ghAuthRes.exit_code === 0) {
+        return;
+      }
+      if (ghAuthRes.exit_code === 126 || ghAuthRes.exit_code === 127) {
+        console.warn(
+          `[sandboxes.start] GIT AUTH: gh CLI unavailable (exit=${ghAuthRes.exit_code}); skipping GitHub auth setup`
+        );
         return;
       }
 
