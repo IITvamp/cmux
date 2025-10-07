@@ -88,6 +88,14 @@ export const stackWebhook = httpAction(async (ctx, req) => {
         isAnonymous: u.is_anonymous,
         oauthProviders,
       });
+      if (event.type === "user.created") {
+        await ctx.runAction(
+          internal.stack_webhook_actions.ensureUserMembershipsAcrossLiveTeams,
+          {
+            userId: u.id,
+          },
+        );
+      }
       break;
     }
     case "user.deleted": {
