@@ -55,7 +55,48 @@ export const stackWebhook = httpAction(async (ctx, req) => {
   }
 
   switch (event.type) {
-    case "user.created":
+    case "user.created": {
+      const u = event.data;
+      const oauthProviders = u.oauth_providers?.map((p) => ({
+        id: p.id,
+        accountId: p.account_id,
+        email: undefIfNull(p.email),
+      }));
+      await Promise.all([
+        ctx.runMutation(internal.stack.upsertUser, {
+          id: u.id,
+          primaryEmail: undefIfNull(u.primary_email || undefined),
+          primaryEmailVerified: u.primary_email_verified,
+          primaryEmailAuthEnabled: u.primary_email_auth_enabled,
+          displayName: undefIfNull(u.display_name || undefined),
+          selectedTeamId: undefIfNull(u.selected_team_id || undefined),
+          selectedTeamDisplayName: undefIfNull(
+            u.selected_team?.display_name || undefined,
+          ),
+          selectedTeamProfileImageUrl: undefIfNull(
+            u.selected_team?.profile_image_url || undefined,
+          ),
+          profileImageUrl: undefIfNull(u.profile_image_url || undefined),
+          signedUpAtMillis: u.signed_up_at_millis,
+          lastActiveAtMillis: u.last_active_at_millis,
+          hasPassword: u.has_password,
+          otpAuthEnabled: u.otp_auth_enabled,
+          passkeyAuthEnabled: u.passkey_auth_enabled,
+          clientMetadata: undefIfNull(u.client_metadata),
+          clientReadOnlyMetadata: undefIfNull(u.client_read_only_metadata),
+          serverMetadata: undefIfNull(u.server_metadata),
+          isAnonymous: u.is_anonymous,
+          oauthProviders,
+        }),
+        ctx.runAction(
+          internal.stack_webhook_actions.syncUserTeamMembershipsFromStack,
+          {
+            userId: u.id,
+          },
+        ),
+      ]);
+      break;
+    }
     case "user.updated": {
       const u = event.data;
       const oauthProviders = u.oauth_providers?.map((p) => ({
