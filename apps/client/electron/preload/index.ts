@@ -25,6 +25,11 @@ const mainLogListeners = new Set<LogListener>();
 
 // Cmux IPC API for Electron server communication
 const cmuxAPI = {
+  // Get the current webContents ID
+  getCurrentWebContentsId: () => {
+    return ipcRenderer.sendSync("cmux:get-current-webcontents-id") as number;
+  },
+
   // Register with the server (like socket connection)
   register: (meta: { auth?: string; team?: string; auth_json?: string }) => {
     return ipcRenderer.invoke("cmux:register", meta);

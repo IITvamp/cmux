@@ -353,26 +353,6 @@ export function ElectronPreviewBrowser({
     }
   }, [committedUrl, isShowingErrorPage, persistKey, viewHandle]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const key = event.key.toLowerCase();
-      if (
-        (event.metaKey || event.ctrlKey) &&
-        !event.altKey &&
-        !event.shiftKey &&
-        key === "r"
-      ) {
-        event.preventDefault();
-        if (event.repeat) return;
-        reloadCurrentView();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown, { capture: true });
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown, { capture: true });
-    };
-  }, [reloadCurrentView]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -383,6 +363,73 @@ export function ElectronPreviewBrowser({
       off?.();
     };
   }, [reloadCurrentView]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const off = window.cmux?.on?.("shortcut:preview-back", () => {
+      handleGoBack();
+    });
+    return () => {
+      off?.();
+    };
+  }, [handleGoBack]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const off = window.cmux?.on?.("shortcut:preview-forward", () => {
+      handleGoForward();
+    });
+    return () => {
+      off?.();
+    };
+  }, [handleGoForward]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let rafId: number | null = null;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const off = window.cmux?.on?.("shortcut:preview-focus-address", async () => {
+      // Clean up any pending focus operations
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      if (timeoutId !== null) clearTimeout(timeoutId);
+
+      // Focus the main window first to take focus away from WebContentsView
+      try {
+        const currentWebContentsId = window.cmux?.getCurrentWebContentsId?.();
+        if (currentWebContentsId) {
+          await window.cmux?.ui?.focusWebContents(currentWebContentsId);
+        }
+      } catch (error) {
+        console.warn("Failed to focus main window webContents", error);
+      }
+
+      // Wait for focus to fully transfer, then focus and select the input
+      // Use multiple strategies to ensure it works
+      const focusInput = () => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+          inputRef.current.select();
+        }
+      };
+
+      // Try immediately
+      focusInput();
+
+      // Try again after animation frame (ensures DOM has updated)
+      rafId = requestAnimationFrame(() => {
+        focusInput();
+        // And one more time after a small delay to handle slow focus transfers
+        timeoutId = setTimeout(focusInput, 50);
+      });
+    });
+
+    return () => {
+      off?.();
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      if (timeoutId !== null) clearTimeout(timeoutId);
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

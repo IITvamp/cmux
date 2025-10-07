@@ -238,6 +238,10 @@ function setPreviewReloadMenuVisibility(visible: boolean): void {
   }
 }
 
+ipcMain.on("cmux:get-current-webcontents-id", (event) => {
+  event.returnValue = event.sender.id;
+});
+
 ipcMain.handle(
   "cmux:ui:set-preview-reload-visible",
   async (_event, visible: unknown) => {
@@ -663,6 +667,51 @@ app.whenReady().then(async () => {
       warn: mainWarn,
     },
   });
+
+  // Register before-input-event handlers for preview browser shortcuts
+  // These fire before web content sees them, so they work even in WebContentsViews
+  app.on("web-contents-created", (_event, contents) => {
+    contents.on("before-input-event", (e, input) => {
+      if (input.type !== "keyDown") return;
+
+      // Only handle preview shortcuts when preview is visible
+      if (!previewReloadMenuVisible) return;
+
+      const isMac = process.platform === "darwin";
+      const modKey = isMac ? input.meta : input.control;
+      if (!modKey || input.alt || input.shift) return;
+
+      const key = input.key.toLowerCase();
+
+      // cmd+l: focus address bar
+      if (key === "l") {
+        e.preventDefault();
+        sendShortcutToFocusedWindow("preview-focus-address");
+        return;
+      }
+
+      // cmd+[: go back
+      if (input.key === "[") {
+        e.preventDefault();
+        sendShortcutToFocusedWindow("preview-back");
+        return;
+      }
+
+      // cmd+]: go forward
+      if (input.key === "]") {
+        e.preventDefault();
+        sendShortcutToFocusedWindow("preview-forward");
+        return;
+      }
+
+      // cmd+r: reload
+      if (key === "r") {
+        e.preventDefault();
+        sendShortcutToFocusedWindow("preview-reload");
+        return;
+      }
+    });
+  });
   const rendererBaseUrl = is.dev && process.env["ELECTRON_RENDERER_URL"]
     ? process.env["ELECTRON_RENDERER_URL"]
     : `https://${APP_HOST}`;
@@ -784,6 +833,33 @@ app.whenReady().then(async () => {
             if (!dispatched) {
               mainWarn("Reload Preview shortcut triggered with no active renderer");
             }
+          },
+        },
+        {
+          id: "cmux-preview-back",
+          visible: previewReloadMenuVisible,
+          label: "Back",
+          accelerator: "CommandOrControl+[",
+          click: () => {
+            sendShortcutToFocusedWindow("preview-back");
+          },
+        },
+        {
+          id: "cmux-preview-forward",
+          visible: previewReloadMenuVisible,
+          label: "Forward",
+          accelerator: "CommandOrControl+]",
+          click: () => {
+            sendShortcutToFocusedWindow("preview-forward");
+          },
+        },
+        {
+          id: "cmux-preview-focus-address",
+          visible: previewReloadMenuVisible,
+          label: "Focus Address Bar",
+          accelerator: "CommandOrControl+L",
+          click: () => {
+            sendShortcutToFocusedWindow("preview-focus-address");
           },
         },
         {
