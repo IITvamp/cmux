@@ -11,6 +11,7 @@ import { HTTPException } from "hono/http-exception";
 import { MorphCloudClient } from "morphcloud";
 import { randomBytes } from "node:crypto";
 import { determineHttpServiceUpdates } from "./determine-http-service-updates";
+import { execInRootfs } from "./sandboxes/shell";
 
 export const environmentsRouter = new OpenAPIHono();
 
@@ -239,14 +240,15 @@ environmentsRouter.openapi(
         return { dataVaultKey };
       })();
 
-      await instance.exec(
-        [
+      await execInRootfs(
+        instance,
+        ['/bin/bash', '-lc', [
           "git config --global --unset user.name 2>/dev/null || true",
           "git config --global --unset user.email 2>/dev/null || true",
           "git config --global --unset credential.helper 2>/dev/null || true",
           "git credential-cache exit 2>/dev/null || true",
           "gh auth logout 2>/dev/null || true",
-        ].join(" && ")
+        ].join(" && ")],
       );
 
       const snapshot = await instance.snapshot();

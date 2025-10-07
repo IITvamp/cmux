@@ -24,6 +24,7 @@ import {
   encodeEnvContentForEnvctl,
   envctlLoadCommand,
 } from "./utils/ensure-env-vars";
+import { execInRootfs } from "./sandboxes/shell";
 
 export const sandboxesRouter = new OpenAPIHono();
 
@@ -218,7 +219,10 @@ sandboxesRouter.openapi(
       if (envVarsToApply.trim().length > 0) {
         try {
           const encodedEnv = encodeEnvContentForEnvctl(envVarsToApply);
-          const loadRes = await instance.exec(envctlLoadCommand(encodedEnv));
+          const loadRes = await execInRootfs(
+            instance,
+            ['/bin/bash', '-lc', envctlLoadCommand(encodedEnv)],
+          );
           if (loadRes.exit_code === 0) {
             console.log(
               `[sandboxes.start] Applied environment variables via envctl`,
@@ -430,7 +434,7 @@ sandboxesRouter.openapi(
 
       const encodedEnv = encodeEnvContentForEnvctl(envVarsContent);
       const command = envctlLoadCommand(encodedEnv);
-      const execResult = await instance.exec(command);
+      const execResult = await execInRootfs(instance, ['/bin/bash', '-lc', command]);
       if (execResult.exit_code !== 0) {
         console.error(
           `[sandboxes.env] envctl load failed exit=${execResult.exit_code} stderr=${(execResult.stderr || "").slice(0, 200)}`,
@@ -591,8 +595,9 @@ sandboxesRouter.openapi(
       const reservedPorts = RESERVED_CMUX_PORT_SET;
 
       // Attempt to read devcontainer.json for declared forwarded ports
-      const devcontainerJson = await instance.exec(
-        "cat /root/workspace/.devcontainer/devcontainer.json",
+      const devcontainerJson = await execInRootfs(
+        instance,
+        ['/bin/bash', '-lc', 'cat /root/workspace/.devcontainer/devcontainer.json'],
       );
       const parsed =
         devcontainerJson.exit_code === 0

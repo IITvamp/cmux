@@ -4,7 +4,7 @@ import { api } from "@cmux/convex/api";
 import type { MorphCloudClient } from "morphcloud";
 
 import type { ConvexClient } from "./snapshot";
-import { maskSensitive, singleQuote } from "./shell";
+import { execInRootfs, maskSensitive, singleQuote } from "./shell";
 
 export type MorphInstance = Awaited<
   ReturnType<MorphCloudClient["instances"]["start"]>
@@ -23,15 +23,50 @@ export const configureGitIdentity = async (
   instance: MorphInstance,
   identity: { name: string; email: string }
 ) => {
-  const gitCfgRes = await instance.exec(
-    `bash -lc "git config --global user.name ${singleQuote(identity.name)} && git config --global user.email ${singleQuote(identity.email)} && git config --global init.defaultBranch main && echo NAME:$(git config --global --get user.name) && echo EMAIL:$(git config --global --get user.email) || true"`
-  );
-  if (gitCfgRes.exit_code !== 0) {
-    console.error(
-      `[sandboxes.start] GIT CONFIG: Failed to configure git identity, exit=${gitCfgRes.exit_code}`
-    );
+  const commands: string[][] = [
+    ["/usr/bin/git", "config", "--global", "user.name", identity.name],
+    ["/usr/bin/git", "config", "--global", "user.email", identity.email],
+    ["/usr/bin/git", "config", "--global", "init.defaultBranch", "main"],
+  ];
+
+  for (const command of commands) {
+    const result = await execInRootfs(instance, command);
+    if (result.exit_code !== 0) {
+      console.error(
+        `[sandboxes.start] GIT CONFIG: Failed to run ${command.join(" ")}, exit=${result.exit_code}`
+      );
+      return;
+    }
+  }
+
+  const verifyName = await execInRootfs(instance, [
+    "/usr/bin/git",
+    "config",
+    "--global",
+    "--get",
+    "user.name",
+  ]);
+  const verifyEmail = await execInRootfs(instance, [
+    "/usr/bin/git",
+    "config",
+    "--global",
+    "--get",
+    "user.email",
+  ]);
+  if (verifyName.exit_code === 0) {
+    console.log(`[sandboxes.start] git user.name=${verifyName.stdout.trim()}`);
+  }
+  if (verifyEmail.exit_code === 0) {
+    console.log(`[sandboxes.start] git user.email=${verifyEmail.stdout.trim()}`);
   }
 };
+
+const toAnsiCQuoted = (value: string): string =>
+  `$'${value
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")}'`;
 
 export const configureGithubAccess = async (
   instance: MorphInstance,
@@ -42,9 +77,27 @@ export const configureGithubAccess = async (
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const ghAuthRes = await instance.exec(
-        `bash -lc "printf %s ${singleQuote(token)} | gh auth login --with-token && gh auth setup-git 2>&1"`
-      );
+      const tokenFile = `/tmp/cmux-gh-token-${Date.now().toString(36)}-${Math.random()
+        .toString(36)
+        .slice(2)}`;
+      const tokenFileQuoted = singleQuote(tokenFile);
+      const ghAuthCommand = [
+        "set -euo pipefail",
+        `token_file=${tokenFileQuoted}`,
+        'cleanup() { rm -f "$token_file"; }',
+        "trap cleanup EXIT",
+        "cat <<'CMUX_GH_TOKEN' > \"$token_file\"",
+        token,
+        "CMUX_GH_TOKEN",
+        '/usr/bin/gh auth login --with-token < "$token_file"',
+        "/usr/bin/gh auth setup-git",
+      ].join("\n");
+
+      const ghAuthRes = await execInRootfs(instance, [
+        "/bin/bash",
+        "-lc",
+        toAnsiCQuoted(ghAuthCommand),
+      ]);
 
       if (ghAuthRes.exit_code === 0) {
         return;

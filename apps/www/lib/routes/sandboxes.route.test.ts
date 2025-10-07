@@ -3,6 +3,7 @@ import { __TEST_INTERNAL_ONLY_MORPH_CLIENT } from "@/lib/test-utils/__TEST_INTER
 import { testApiClient } from "@/lib/test-utils/openapi-client";
 import { postApiSandboxesStart } from "@cmux/www-openapi-client";
 import { describe, expect, it } from "vitest";
+import { execInRootfs } from "./sandboxes/shell";
 
 const ENVIRONMENT_ID =
   process.env.DEBUG_ENVIRONMENT_ID ?? "mn71k65q132jp5wb51p4btmzn57qvk3y";
@@ -53,7 +54,10 @@ describe("sandboxesRouter integration", () => {
       const instance = await __TEST_INTERNAL_ONLY_MORPH_CLIENT.instances.get({
         instanceId: res.data.instanceId,
       });
-      const envctlVersion = await instance.exec("envctl --version");
+      const envctlVersion = await execInRootfs(
+        instance,
+        "envctl --version"
+      );
       console.log("envctlVersion", envctlVersion);
     }
   );
