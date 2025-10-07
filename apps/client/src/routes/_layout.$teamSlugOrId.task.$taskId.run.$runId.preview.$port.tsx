@@ -1,6 +1,4 @@
 import { ElectronPreviewBrowser } from "@/components/electron-preview-browser";
-import { PersistentWebView } from "@/components/persistent-webview";
-import { isElectron } from "@/lib/electron";
 import { getTaskRunPreviewPersistKey } from "@/lib/persistent-webview-keys";
 import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
@@ -16,7 +14,7 @@ const paramsSchema = z.object({
 });
 
 export const Route = createFileRoute(
-  "/_layout/$teamSlugOrId/task/$taskId/run/$runId/preview/$port"
+  "/_layout/$teamSlugOrId/task/$taskId/run/$runId/preview/$port",
 )({
   component: PreviewPage,
   params: {
@@ -49,7 +47,7 @@ function PreviewPage() {
     if (!selectedRun?.networking) return null;
     const portNum = parseInt(port, 10);
     const service = selectedRun.networking.find(
-      (s) => s.port === portNum && s.status === "running"
+      (s) => s.port === portNum && s.status === "running",
     );
     return service?.url;
   }, [selectedRun, port]);
@@ -63,22 +61,27 @@ function PreviewPage() {
   return (
     <>
       {previewUrl ? (
-        isElectron ? (
-          <ElectronPreviewBrowser
-            persistKey={persistKey}
-            src={previewUrl}
-            borderRadius={paneBorderRadius}
-          />
-        ) : (
-          <PersistentWebView
-            persistKey={persistKey}
-            src={previewUrl}
-            className="w-full h-full border-0"
-            borderRadius={paneBorderRadius}
-            sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-downloads"
-          />
-        )
+        <ElectronPreviewBrowser
+          persistKey={persistKey}
+          src={previewUrl}
+          borderRadius={paneBorderRadius}
+        />
       ) : (
+        // isElectron ? (
+        //   <ElectronPreviewBrowser
+        //     persistKey={persistKey}
+        //     src={previewUrl}
+        //     borderRadius={paneBorderRadius}
+        //   />
+        // ) : (
+        //   <PersistentWebView
+        //     persistKey={persistKey}
+        //     src={previewUrl}
+        //     className="w-full h-full border-0"
+        //     borderRadius={paneBorderRadius}
+        //     sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-downloads"
+        //   />
+        // )
         <div className="flex items-center justify-center h-full bg-white dark:bg-neutral-950">
           <div className="text-center">
             <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-2">

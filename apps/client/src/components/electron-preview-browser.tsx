@@ -53,11 +53,17 @@ function useLoadingProgress(isLoading: boolean) {
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | null = null;
-    let timeout: ReturnType<typeof setTimeout> | null = null;
+    let hideTimeout: ReturnType<typeof setTimeout> | null = null;
+    let resetTimeout: ReturnType<typeof setTimeout> | null = null;
 
     if (isLoading) {
       setVisible(true);
-      setProgress((prev) => (prev <= 0 ? 0.08 : prev));
+      setProgress((prev) => {
+        if (prev <= 0 || prev >= 1) {
+          return 0.08;
+        }
+        return prev;
+      });
       interval = setInterval(() => {
         setProgress((prev) => {
           const next = prev + (1 - prev) * 0.18;
@@ -66,15 +72,18 @@ function useLoadingProgress(isLoading: boolean) {
       }, 120);
     } else {
       setProgress((prev) => (prev === 0 ? 0 : 1));
-      timeout = setTimeout(() => {
+      hideTimeout = setTimeout(() => {
         setVisible(false);
-        setProgress(0);
-      }, 260);
+        resetTimeout = setTimeout(() => {
+          setProgress(0);
+        }, 500);
+      }, 300);
     }
 
     return () => {
       if (interval) clearInterval(interval);
-      if (timeout) clearTimeout(timeout);
+      if (hideTimeout) clearTimeout(hideTimeout);
+      if (resetTimeout) clearTimeout(resetTimeout);
     };
   }, [isLoading]);
 
@@ -92,33 +101,65 @@ export function ElectronPreviewBrowser({
   const [isLoading, setIsLoading] = useState(false);
   const [devtoolsOpen, setDevtoolsOpen] = useState(false);
   const [devtoolsMode] = useState<ElectronDevToolsMode>("right");
-  const [lastError, setLastError] = useState<string | null>(null);
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
+  const [isShowingErrorPage, setIsShowingErrorPage] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const isNavigatingRef = useRef(false);
+  const pendingRefocusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const windowHasFocusRef = useRef(
+    typeof document !== "undefined" ? document.hasFocus() : true,
+  );
 
   const { progress, visible } = useLoadingProgress(isLoading);
 
   useEffect(() => {
     setAddressValue(src);
     setCommittedUrl(src);
-    setLastError(null);
     setCanGoBack(false);
     setCanGoForward(false);
   }, [src]);
 
   const applyState = useCallback(
-    (state: ElectronWebContentsState) => {
-      setCommittedUrl(state.url);
-      if (!isEditing) {
-        setAddressValue(state.url);
+    (state: ElectronWebContentsState, reason?: string) => {
+      console.log("[ElectronPreviewBrowser] applyState", { state, reason });
+
+      // Check if this is the error page - preserve original URL in address bar
+      let displayUrl = state.url;
+      let showingError = false;
+      try {
+        const url = new URL(state.url);
+        if (url.pathname === "/electron-error") {
+          showingError = true;
+          const originalUrl = url.searchParams.get("url");
+          if (originalUrl) {
+            displayUrl = originalUrl;
+          }
+        }
+      } catch {
+        // Invalid URL, use as-is
+      }
+
+      setIsShowingErrorPage(showingError);
+
+      const hasDisplayUrl = displayUrl.trim().length > 0;
+
+      if (hasDisplayUrl) {
+        setCommittedUrl(displayUrl);
+        if (!isEditing) {
+          setAddressValue(displayUrl);
+        }
       }
       setIsLoading(state.isLoading);
       setDevtoolsOpen(state.isDevToolsOpened);
       setCanGoBack(Boolean(state.canGoBack));
       setCanGoForward(Boolean(state.canGoForward));
-      if (state.isLoading) {
-        setLastError(null);
+
+      // Clear navigation flag when loading starts
+      if (state.isLoading && isNavigatingRef.current) {
+        isNavigatingRef.current = false;
       }
     },
     [isEditing],
@@ -151,12 +192,10 @@ export function ElectronPreviewBrowser({
     const unsubscribe = subscribe(
       viewHandle.id,
       (event: ElectronWebContentsEvent) => {
+        console.log("[ElectronPreviewBrowser] Event", event);
         if (event.type === "state") {
-          applyState(event.state);
+          applyState(event.state, event.reason);
           return;
-        }
-        if (event.type === "load-failed" && event.isMainFrame) {
-          setLastError(event.errorDescription || "Failed to load page");
         }
       },
     );
@@ -167,7 +206,6 @@ export function ElectronPreviewBrowser({
 
   const handleViewReady = useCallback((info: NativeViewHandle) => {
     setViewHandle(info);
-    setLastError(null);
   }, []);
 
   const handleViewDestroyed = useCallback(() => {
@@ -187,8 +225,8 @@ export function ElectronPreviewBrowser({
       const target = normalizeUrl(raw);
       setCommittedUrl(target);
       setAddressValue(target);
-      setLastError(null);
       setIsEditing(false);
+      isNavigatingRef.current = true;
       inputRef.current?.blur();
       void window.cmux?.webContentsView
         ?.loadURL(viewHandle.id, target)
@@ -231,8 +269,70 @@ export function ElectronPreviewBrowser({
           window.getSelection?.()?.removeAllRanges?.();
         }
       });
+
+      // Only refocus WebContentsView if:
+      // 1. Focus isn't going to another UI element
+      // 2. The window still has focus (not cmd+tabbing away)
+      // 3. We're not in the middle of navigating (user just submitted URL)
+      const focusGoingToUIElement = event.relatedTarget instanceof HTMLElement;
+
+      // Clear any existing pending refocus
+      if (pendingRefocusTimeoutRef.current !== null) {
+        clearTimeout(pendingRefocusTimeoutRef.current);
+        pendingRefocusTimeoutRef.current = null;
+      }
+
+      if (viewHandle && !focusGoingToUIElement && !isNavigatingRef.current) {
+        // Wait a tick to let focus settle, then check if window still has focus
+        pendingRefocusTimeoutRef.current = setTimeout(() => {
+          pendingRefocusTimeoutRef.current = null;
+          if (!windowHasFocusRef.current) {
+            return;
+          }
+          if (typeof document === "undefined") {
+            return;
+          }
+          if (document.visibilityState !== "visible") {
+            return;
+          }
+
+          // Double-check after a small delay to ensure we're really focused
+          // This handles the edge case where blur happens during alt-tab
+          setTimeout(() => {
+            // Recheck all conditions to avoid refocusing if user alt-tabbed
+            if (
+              !windowHasFocusRef.current ||
+              document.visibilityState !== "visible" ||
+              !document.hasFocus()
+            ) {
+              return;
+            }
+
+            // Check if any interactive element gained focus in the meantime
+            const activeElement = document.activeElement;
+            const isInteractiveElementFocused =
+              activeElement instanceof HTMLInputElement ||
+              activeElement instanceof HTMLTextAreaElement ||
+              activeElement instanceof HTMLButtonElement ||
+              activeElement instanceof HTMLSelectElement ||
+              (activeElement instanceof HTMLElement &&
+                activeElement.isContentEditable);
+
+            if (!isInteractiveElementFocused) {
+              void window.cmux?.ui
+                ?.focusWebContents(viewHandle.webContentsId)
+                .catch((error: unknown) => {
+                  console.warn(
+                    "Failed to refocus WebContentsView on blur",
+                    error,
+                  );
+                });
+            }
+          }, 100); // Wait 100ms to ensure focus state has settled
+        }, 0);
+      }
     },
-    [committedUrl],
+    [committedUrl, viewHandle],
   );
 
   const handleInputMouseUp = useCallback(
@@ -250,8 +350,9 @@ export function ElectronPreviewBrowser({
     (event: React.KeyboardEvent<HTMLInputElement>) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        event.currentTarget.blur();
         setAddressValue(committedUrl);
+        event.currentTarget.blur();
+        // Blur will handle refocusing the WebContentsView
       }
     },
     [committedUrl],
@@ -276,6 +377,7 @@ export function ElectronPreviewBrowser({
 
   const handleGoBack = useCallback(() => {
     if (!viewHandle) return;
+    isNavigatingRef.current = true;
     void window.cmux?.webContentsView
       ?.goBack(viewHandle.id)
       .catch((error: unknown) => {
@@ -283,13 +385,260 @@ export function ElectronPreviewBrowser({
       });
   }, [viewHandle]);
 
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const handleVisibilityChange = () => {
+      const isVisible = document.visibilityState === "visible";
+      if (!isVisible) {
+        windowHasFocusRef.current = false;
+        if (pendingRefocusTimeoutRef.current !== null) {
+          clearTimeout(pendingRefocusTimeoutRef.current);
+          pendingRefocusTimeoutRef.current = null;
+        }
+        return;
+      }
+      windowHasFocusRef.current = document.hasFocus();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
   const handleGoForward = useCallback(() => {
     if (!viewHandle) return;
+    isNavigatingRef.current = true;
     void window.cmux?.webContentsView
       ?.goForward(viewHandle.id)
       .catch((error: unknown) => {
         console.warn("Failed to go forward", error);
       });
+  }, [viewHandle]);
+
+  const reloadCurrentView = useCallback(() => {
+    if (viewHandle) {
+      isNavigatingRef.current = true;
+      // If showing error page, retry the original URL instead of reloading error page
+      if (isShowingErrorPage && committedUrl) {
+        void window.cmux?.webContentsView
+          ?.loadURL(viewHandle.id, committedUrl)
+          .catch((error: unknown) => {
+            console.warn("Failed to retry URL", error);
+          });
+      } else {
+        void window.cmux?.webContentsView
+          ?.reload(viewHandle.id)
+          .catch((error: unknown) => {
+            console.warn("Failed to reload WebContentsView", error);
+          });
+      }
+      return;
+    }
+
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const escapedKey =
+      typeof CSS !== "undefined" && typeof CSS.escape === "function"
+        ? CSS.escape(persistKey)
+        : persistKey.replace(/"/g, '\\"');
+    const iframe = document.querySelector<HTMLIFrameElement>(
+      `[data-iframe-key="${escapedKey}"] iframe`,
+    );
+    if (!iframe?.contentWindow) {
+      return;
+    }
+    try {
+      iframe.contentWindow.location.reload();
+    } catch (error) {
+      console.warn("Failed to reload iframe view", error);
+    }
+  }, [committedUrl, isShowingErrorPage, persistKey, viewHandle]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const off = window.cmux?.on?.("shortcut:preview-reload", () => {
+      reloadCurrentView();
+    });
+    return () => {
+      off?.();
+    };
+  }, [reloadCurrentView]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const off = window.cmux?.on?.("shortcut:preview-back", () => {
+      handleGoBack();
+    });
+    return () => {
+      off?.();
+    };
+  }, [handleGoBack]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const off = window.cmux?.on?.("shortcut:preview-forward", () => {
+      handleGoForward();
+    });
+    return () => {
+      off?.();
+    };
+  }, [handleGoForward]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let rafId: number | null = null;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const off = window.cmux?.on?.(
+      "shortcut:preview-focus-address",
+      async () => {
+        // Clean up any pending focus operations
+        if (rafId !== null) cancelAnimationFrame(rafId);
+        if (timeoutId !== null) clearTimeout(timeoutId);
+
+        // Focus the main window first to take focus away from WebContentsView
+        try {
+          const currentWebContentsId = window.cmux?.getCurrentWebContentsId?.();
+          if (currentWebContentsId) {
+            await window.cmux?.ui?.focusWebContents(currentWebContentsId);
+          }
+        } catch (error) {
+          console.warn("Failed to focus main window webContents", error);
+        }
+
+        // Wait for focus to fully transfer, then focus and select the input
+        // Use multiple strategies to ensure it works
+        const focusInput = () => {
+          if (inputRef.current) {
+            inputRef.current.focus();
+            inputRef.current.select();
+          }
+        };
+
+        // Try immediately
+        focusInput();
+
+        // Try again after animation frame (ensures DOM has updated)
+        rafId = requestAnimationFrame(() => {
+          focusInput();
+          // And one more time after a small delay to handle slow focus transfers
+          timeoutId = setTimeout(focusInput, 50);
+        });
+      },
+    );
+
+    return () => {
+      off?.();
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      if (timeoutId !== null) clearTimeout(timeoutId);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const show = window.cmux?.ui?.setPreviewReloadVisible;
+    if (show) {
+      void show(true).catch((error: unknown) => {
+        console.warn("Failed to show preview reload menu item", error);
+      });
+    }
+    return () => {
+      const hide = window.cmux?.ui?.setPreviewReloadVisible;
+      if (hide) {
+        void hide(false).catch((error: unknown) => {
+          console.warn("Failed to hide preview reload menu item", error);
+        });
+      }
+    };
+  }, []);
+
+  // Track window focus/blur state and cancel pending refocus on blur
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleWindowFocus = () => {
+      // Wait a moment to ensure focus state has stabilized
+      setTimeout(() => {
+        if (typeof document === "undefined") {
+          return;
+        }
+
+        // Only update focus state if document is actually visible and focused
+        if (document.visibilityState === "visible" && document.hasFocus()) {
+          windowHasFocusRef.current = true;
+
+          // Give the browser more time to restore natural focus
+          // This prevents premature refocusing when switching between apps
+          setTimeout(() => {
+            if (typeof document === "undefined") {
+              return;
+            }
+
+            // Double-check that we're still focused after the delay
+            // This prevents focus stealing when rapidly switching apps
+            if (
+              !document.hasFocus() ||
+              document.visibilityState !== "visible"
+            ) {
+              windowHasFocusRef.current = false;
+              return;
+            }
+
+            // If no input/button/etc has focus, refocus the WebContentsView
+            const activeElement = document.activeElement;
+            const isInteractiveElementFocused =
+              activeElement instanceof HTMLInputElement ||
+              activeElement instanceof HTMLTextAreaElement ||
+              activeElement instanceof HTMLButtonElement ||
+              activeElement instanceof HTMLSelectElement ||
+              (activeElement instanceof HTMLElement &&
+                activeElement.isContentEditable);
+
+            if (
+              !isInteractiveElementFocused &&
+              viewHandle &&
+              windowHasFocusRef.current
+            ) {
+              void window.cmux?.ui
+                ?.focusWebContents(viewHandle.webContentsId)
+                .catch((error: unknown) => {
+                  console.warn(
+                    "Failed to refocus WebContentsView on window focus",
+                    error,
+                  );
+                });
+            }
+          }, 150); // Increased delay to ensure focus has settled
+        } else {
+          windowHasFocusRef.current = false;
+        }
+      }, 10);
+    };
+
+    const handleWindowBlur = () => {
+      windowHasFocusRef.current = false;
+      // Cancel any pending refocus operations when window loses focus
+      if (pendingRefocusTimeoutRef.current !== null) {
+        clearTimeout(pendingRefocusTimeoutRef.current);
+        pendingRefocusTimeoutRef.current = null;
+      }
+    };
+
+    window.addEventListener("focus", handleWindowFocus);
+    window.addEventListener("blur", handleWindowBlur);
+    return () => {
+      window.removeEventListener("focus", handleWindowFocus);
+      window.removeEventListener("blur", handleWindowBlur);
+      // Clean up any pending refocus on unmount
+      if (pendingRefocusTimeoutRef.current !== null) {
+        clearTimeout(pendingRefocusTimeoutRef.current);
+        pendingRefocusTimeoutRef.current = null;
+      }
+    };
   }, [viewHandle]);
 
   const devtoolsTooltipLabel = devtoolsOpen
@@ -299,9 +648,8 @@ export function ElectronPreviewBrowser({
   const progressStyles = useMemo(() => {
     return {
       width: `${Math.min(1, Math.max(progress, 0)) * 100}%`,
-      opacity: visible ? 1 : 0,
     } satisfies CSSProperties;
-  }, [progress, visible]);
+  }, [progress]);
 
   return (
     <div className="flex h-full flex-col">
@@ -353,17 +701,7 @@ export function ElectronPreviewBrowser({
                     variant="ghost"
                     size="icon"
                     className="size-7 rounded-full p-0 text-neutral-600 hover:text-neutral-800 disabled:opacity-30 disabled:hover:text-neutral-400 dark:text-neutral-500 dark:hover:text-neutral-100 dark:disabled:hover:text-neutral-500"
-                    onClick={() => {
-                      if (!viewHandle) return;
-                      void window.cmux?.webContentsView
-                        ?.reload(viewHandle.id)
-                        .catch((error: unknown) => {
-                          console.warn(
-                            "Failed to reload WebContentsView",
-                            error,
-                          );
-                        });
-                    }}
+                    onClick={reloadCurrentView}
                     disabled={!viewHandle}
                     aria-label="Refresh page"
                   >
@@ -416,33 +754,30 @@ export function ElectronPreviewBrowser({
               </Tooltip>
             </div>
             <div
-              className="pointer-events-none absolute inset-x-0 -top-px h-[2px] overflow-hidden bg-neutral-200/70 transition-opacity duration-500 dark:bg-neutral-800/80"
+              className="pointer-events-none absolute inset-x-0 -top-px h-[1.5px] overflow-hidden transition-opacity duration-300"
               style={{ opacity: visible ? 1 : 0 }}
             >
               <div
-                className="h-full rounded-full bg-primary transition-[opacity,width]"
+                className="h-full rounded-full bg-neutral-900/80 dark:bg-neutral-300 transition-[width] duration-200"
                 style={progressStyles}
               />
             </div>
           </div>
         </form>
-        {lastError ? (
-          <div className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive dark:border-red-700/40 dark:bg-red-500/15">
-            Failed to load page: {lastError}
-          </div>
-        ) : null}
       </div>
       <div className="flex-1 overflow-hidden bg-white dark:bg-neutral-950 pl-[pxpx] border-l">
-        <PersistentWebView
-          persistKey={persistKey}
-          src={src}
-          className="h-full w-full border-0"
-          borderRadius={0}
-          sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-downloads"
-          onElectronViewReady={handleViewReady}
-          onElectronViewDestroyed={handleViewDestroyed}
-          forceWebContentsViewIfElectron
-        />
+        <div className="relative h-full w-full">
+          <PersistentWebView
+            persistKey={persistKey}
+            src={src}
+            className="h-full w-full border-0"
+            borderRadius={0}
+            sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-downloads"
+            onElectronViewReady={handleViewReady}
+            onElectronViewDestroyed={handleViewDestroyed}
+            forceWebContentsViewIfElectron
+          />
+        </div>
       </div>
     </div>
   );
