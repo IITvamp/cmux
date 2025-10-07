@@ -5,7 +5,7 @@ import {
   validateSlug,
   deriveSlugSuffix,
 } from "../_shared/teamSlug";
-import { internalMutation, type MutationCtx } from "./_generated/server";
+import { internalMutation, internalQuery, type MutationCtx } from "./_generated/server";
 import { authMutation } from "./users/utils";
 
 type UpsertUserArgs = {
@@ -451,4 +451,15 @@ export const deletePermissionPublic = authMutation({
   args: { teamId: v.string(), userId: v.string(), permissionId: v.string() },
   handler: async (ctx, { teamId, userId, permissionId }) =>
     deletePermissionCore(ctx as unknown as MutationCtx, teamId, userId, permissionId),
+});
+
+export const listAllMemberships = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const memberships = await ctx.db.query("teamMemberships").collect();
+    return memberships.map((m) => ({
+      teamId: m.teamId,
+      userId: m.userId,
+    }));
+  },
 });

@@ -7,8 +7,10 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@cmux/convex": "workspace:*",
     "@cmux/shared": "workspace:*",
     "@daytonaio/sdk": "^0.22.1",
+    "@stackframe/js": "^2.8.41",
     "convex": "^1.27.1",
     "commander": "^12.1.0",
     "prompts": "^2.4.2",
