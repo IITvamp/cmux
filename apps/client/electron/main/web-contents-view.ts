@@ -21,6 +21,7 @@ import { applyChromeCamouflage, type Logger } from "./chrome-camouflage";
 interface RegisterOptions {
   logger: Logger;
   maxSuspendedEntries?: number;
+  rendererBaseUrl: string;
 }
 
 interface CreateOptions {
@@ -74,6 +75,7 @@ const suspendedQueue: number[] = [];
 const suspendedByKey = new Map<string, Entry>();
 let suspendedCount = 0;
 let maxSuspendedEntries = 25;
+let rendererBaseUrl = "";
 
 const validDevToolsModes: ReadonlySet<ElectronDevToolsMode> = new Set([
   "bottom",
@@ -84,6 +86,29 @@ const validDevToolsModes: ReadonlySet<ElectronDevToolsMode> = new Set([
 
 function eventChannelFor(id: number): string {
   return `cmux:webcontents:event:${id}`;
+}
+
+function buildErrorUrl(params: {
+  type: "navigation" | "http";
+  url: string;
+  code?: number;
+  description?: string;
+  statusCode?: number;
+  statusText?: string;
+}): string {
+  const url = new URL("/electron-error", rendererBaseUrl);
+  url.searchParams.set("type", params.type);
+  if (params.url) url.searchParams.set("url", params.url);
+  if (params.type === "navigation") {
+    if (params.code !== undefined)
+      url.searchParams.set("code", String(params.code));
+    if (params.description) url.searchParams.set("description", params.description);
+  } else if (params.type === "http") {
+    if (params.statusCode !== undefined)
+      url.searchParams.set("statusCode", String(params.statusCode));
+    if (params.statusText) url.searchParams.set("statusText", params.statusText);
+  }
+  return url.toString();
 }
 
 function sendEventToOwner(
@@ -174,14 +199,19 @@ function setupEventForwarders(entry: Entry, logger: Logger) {
     // Check for HTTP errors (4xx, 5xx)
     if (httpResponseCode >= 400) {
       const statusText = httpStatusText || STATUS_CODES[httpResponseCode];
-      const payload: ElectronWebContentsEvent = {
-        type: "load-http-error",
-        id: entry.id,
+      const errorUrl = buildErrorUrl({
+        type: "http",
+        url,
         statusCode: httpResponseCode,
         statusText: statusText ?? undefined,
-        url,
-      };
-      sendEventToOwner(entry, payload, logger);
+      });
+      logger.log("Loading error page for HTTP error", {
+        id: entry.id,
+        statusCode: httpResponseCode,
+        errorUrl,
+      });
+      void entry.view.webContents.loadURL(errorUrl);
+      return;
     }
     sendState(entry, logger, "did-navigate");
   };
@@ -229,15 +259,21 @@ function setupEventForwarders(entry: Entry, logger: Logger) {
     validatedURL: string,
     isMainFrame: boolean,
   ) => {
-    const payload: ElectronWebContentsEvent = {
-      type: "load-failed",
-      id: entry.id,
-      errorCode,
-      errorDescription,
-      validatedURL,
-      isMainFrame: Boolean(isMainFrame),
-    };
-    sendEventToOwner(entry, payload, logger);
+    if (isMainFrame) {
+      const errorUrl = buildErrorUrl({
+        type: "navigation",
+        url: validatedURL,
+        code: errorCode,
+        description: errorDescription,
+      });
+      logger.log("Loading error page for navigation failure", {
+        id: entry.id,
+        errorCode,
+        errorUrl,
+      });
+      void entry.view.webContents.loadURL(errorUrl);
+      return;
+    }
     sendState(entry, logger, "did-fail-load");
   };
   webContents.on("did-fail-load", onDidFailLoad);
@@ -262,17 +298,7 @@ function setupEventForwarders(entry: Entry, logger: Logger) {
       httpResponseCode,
       resourceType,
     });
-    if (resourceType !== "mainFrame") return;
-    if (httpResponseCode < 400) return;
-    const statusText = STATUS_CODES[httpResponseCode];
-    const payload: ElectronWebContentsEvent = {
-      type: "load-http-error",
-      id: entry.id,
-      statusCode: httpResponseCode,
-      statusText: statusText ?? undefined,
-      url: newURL,
-    };
-    sendEventToOwner(entry, payload, logger);
+    // Error handling is done in onDidNavigate
   };
   webContents.on("did-get-response-details", onDidGetResponseDetails);
   cleanup.push(() => {
@@ -298,20 +324,7 @@ function ensureWebRequestListener(targetSession: Session, logger: Logger) {
       webContentsId,
       url,
     });
-    if (resourceType !== "mainFrame") return;
-    if (typeof webContentsId !== "number") return;
-    const entry = entriesByWebContentsId.get(webContentsId);
-    if (!entry) return;
-    if (statusCode < 400) return;
-    const statusText = STATUS_CODES[statusCode];
-    const payload: ElectronWebContentsEvent = {
-      type: "load-http-error",
-      id: entry.id,
-      statusCode,
-      statusText: statusText ?? undefined,
-      url,
-    };
-    sendEventToOwner(entry, payload, logger);
+    // Error handling is done in onDidNavigate
   };
   targetSession.webRequest.onCompleted(
     { urls: ["*://*/*"] },
@@ -570,8 +583,10 @@ function destroyWebContents(contents: WebContents) {
 export function registerWebContentsViewHandlers({
   logger,
   maxSuspendedEntries: providedMax,
+  rendererBaseUrl: providedBaseUrl,
 }: RegisterOptions): void {
   setMaxSuspendedEntries(providedMax);
+  rendererBaseUrl = providedBaseUrl;
 
   ipcMain.handle(
     "cmux:webcontents:create",

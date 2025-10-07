@@ -663,6 +663,10 @@ app.whenReady().then(async () => {
       warn: mainWarn,
     },
   });
+  const rendererBaseUrl = is.dev && process.env["ELECTRON_RENDERER_URL"]
+    ? process.env["ELECTRON_RENDERER_URL"]
+    : `https://${APP_HOST}`;
+
   registerWebContentsViewHandlers({
     logger: {
       log: mainLog,
@@ -670,6 +674,7 @@ app.whenReady().then(async () => {
       error: mainError,
     },
     maxSuspendedEntries: resolveMaxSuspendedWebContents(),
+    rendererBaseUrl,
   });
 
   // Ensure macOS menu and About panel use "cmux" instead of package.json name
