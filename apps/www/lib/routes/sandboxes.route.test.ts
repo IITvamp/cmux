@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { execInRootfs } from "./sandboxes/shell";
 
 const ENVIRONMENT_ID =
-  process.env.DEBUG_ENVIRONMENT_ID ?? "mn7e45c52hh8ykzsp1rsdq9ff57s1ny2";
+  process.env.DEBUG_ENVIRONMENT_ID ?? "mn755yy1appegcktp5t894426n7s0s9k";
 
 describe("sandboxesRouter integration", () => {
   it("rejects providing a snapshotId not owned by the team", async () => {
