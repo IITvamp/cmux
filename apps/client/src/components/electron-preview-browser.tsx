@@ -290,16 +290,36 @@ export function ElectronPreviewBrowser({
           if (document.visibilityState !== "visible") {
             return;
           }
-          // Only refocus if window still has focus (user didn't alt-tab away)
-          if (document.hasFocus()) {
-            void window.cmux?.ui?.focusWebContents(viewHandle.webContentsId)
-              .catch((error: unknown) => {
-                console.warn(
-                  "Failed to refocus WebContentsView on blur",
-                  error,
-                );
-              });
-          }
+
+          // Double-check after a small delay to ensure we're really focused
+          // This handles the edge case where blur happens during alt-tab
+          setTimeout(() => {
+            // Recheck all conditions to avoid refocusing if user alt-tabbed
+            if (!windowHasFocusRef.current ||
+                document.visibilityState !== "visible" ||
+                !document.hasFocus()) {
+              return;
+            }
+
+            // Check if any interactive element gained focus in the meantime
+            const activeElement = document.activeElement;
+            const isInteractiveElementFocused =
+              activeElement instanceof HTMLInputElement ||
+              activeElement instanceof HTMLTextAreaElement ||
+              activeElement instanceof HTMLButtonElement ||
+              activeElement instanceof HTMLSelectElement ||
+              (activeElement instanceof HTMLElement && activeElement.isContentEditable);
+
+            if (!isInteractiveElementFocused) {
+              void window.cmux?.ui?.focusWebContents(viewHandle.webContentsId)
+                .catch((error: unknown) => {
+                  console.warn(
+                    "Failed to refocus WebContentsView on blur",
+                    error,
+                  );
+                });
+            }
+          }, 100); // Wait 100ms to ensure focus state has settled
         }, 0);
       }
     },
@@ -530,28 +550,44 @@ export function ElectronPreviewBrowser({
     if (typeof window === "undefined") return;
 
     const handleWindowFocus = () => {
-      windowHasFocusRef.current = true;
-      // Give the browser a moment to restore natural focus
+      // Wait a moment to ensure focus state has stabilized
       setTimeout(() => {
-        if (typeof document === "undefined") {
-          return;
-        }
-        // If no input/button/etc has focus, refocus the WebContentsView
-        const activeElement = document.activeElement;
-        const isInteractiveElementFocused =
-          activeElement instanceof HTMLInputElement ||
-          activeElement instanceof HTMLTextAreaElement ||
-          activeElement instanceof HTMLButtonElement ||
-          activeElement instanceof HTMLSelectElement ||
-          (activeElement instanceof HTMLElement && activeElement.isContentEditable);
+        // Only update focus state if document is actually visible and focused
+        if (document.visibilityState === "visible" && document.hasFocus()) {
+          windowHasFocusRef.current = true;
 
-        if (!isInteractiveElementFocused && viewHandle) {
-          void window.cmux?.ui?.focusWebContents(viewHandle.webContentsId)
-            .catch((error: unknown) => {
-              console.warn("Failed to refocus WebContentsView on window focus", error);
-            });
+          // Give the browser more time to restore natural focus
+          // This prevents premature refocusing when switching between apps
+          setTimeout(() => {
+            if (typeof document === "undefined") {
+              return;
+            }
+
+            // Double-check that we're still focused after the delay
+            // This prevents focus stealing when rapidly switching apps
+            if (!document.hasFocus() || document.visibilityState !== "visible") {
+              windowHasFocusRef.current = false;
+              return;
+            }
+
+            // If no input/button/etc has focus, refocus the WebContentsView
+            const activeElement = document.activeElement;
+            const isInteractiveElementFocused =
+              activeElement instanceof HTMLInputElement ||
+              activeElement instanceof HTMLTextAreaElement ||
+              activeElement instanceof HTMLButtonElement ||
+              activeElement instanceof HTMLSelectElement ||
+              (activeElement instanceof HTMLElement && activeElement.isContentEditable);
+
+            if (!isInteractiveElementFocused && viewHandle && windowHasFocusRef.current) {
+              void window.cmux?.ui?.focusWebContents(viewHandle.webContentsId)
+                .catch((error: unknown) => {
+                  console.warn("Failed to refocus WebContentsView on window focus", error);
+                });
+            }
+          }, 150); // Increased delay to ensure focus has settled
         }
-      }, 50);
+      }, 10);
     };
 
     const handleWindowBlur = () => {
