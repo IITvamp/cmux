@@ -52,7 +52,7 @@
     }
   },
   "postCreateCommand": "CI=1 pnpm install --frozen-lockfile --prefer-offline",
-  "postStartCommand": "bash /root/workspace/scripts/dev.sh",
+  "postStartCommand": "bash /root/workspace/scripts/dev-tmux.sh",
   "remoteUser": "root",
   "features": {
     "ghcr.io/devcontainers/features/git:1": {},
