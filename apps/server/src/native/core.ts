@@ -17,12 +17,12 @@ function tryLoadNative(): NativeCoreModule | null {
     const dirCandidates = [
       process.env.CMUX_NATIVE_CORE_DIR,
       typeof (process as unknown as { resourcesPath?: string }).resourcesPath ===
-      "string"
+        "string"
         ? path.join(
-            (process as unknown as { resourcesPath: string }).resourcesPath,
-            "native",
-            "core"
-          )
+          (process as unknown as { resourcesPath: string }).resourcesPath,
+          "native",
+          "core"
+        )
         : undefined,
       fileURLToPath(new URL("../../native/core/", import.meta.url)),
       path.resolve(here, "../../../server/native/core"),
@@ -31,13 +31,8 @@ function tryLoadNative(): NativeCoreModule | null {
       path.resolve(process.cwd(), "../../apps/server/native/core"),
       path.resolve(process.cwd(), "apps/server/native/core"),
       path.resolve(process.cwd(), "server/native/core"),
-      
-    ];
 
-    const archAliases = new Set<string>([arch]);
-    if (arch === "x64") archAliases.add("x86_64");
-    if (arch === "arm64") archAliases.add("aarch64");
-    const archAliasList = Array.from(archAliases);
+    ];
 
     for (const maybeDir of dirCandidates) {
       const nativeDir = maybeDir ?? "";
@@ -45,24 +40,8 @@ function tryLoadNative(): NativeCoreModule | null {
       try {
         const files = fs.readdirSync(nativeDir);
         const nodes = files.filter((f) => f.endsWith(".node"));
-        const preferredCandidates: Array<string | undefined> = [];
-
-        preferredCandidates.push(
-          nodes.find((file) =>
-            file.includes(plat) && archAliasList.some((alias) => file.includes(alias))
-          )
-        );
-        preferredCandidates.push(
-          nodes.find((file) => file.includes(plat) && file.includes("universal"))
-        );
-        preferredCandidates.push(nodes.find((file) => file.includes(plat)));
-        if (nodes.length > 0) {
-          preferredCandidates.push(nodes[0]);
-        }
-
-        const preferred = preferredCandidates.find(
-          (candidate): candidate is string => Boolean(candidate)
-        );
+        const preferred =
+          nodes.find((f) => f.includes(plat) && f.includes(arch)) || nodes[0];
 
         if (!preferred) continue;
         const mod = nodeRequire(
