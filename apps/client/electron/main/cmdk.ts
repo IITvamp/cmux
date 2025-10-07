@@ -61,11 +61,156 @@ const lastFocusByWindow = new Map<
   { contentsId: number; frameRoutingId: number; frameProcessId: number }
 >();
 
+let browserWindowFocusListenerRegistered = false;
+
+type QueuedWindowTask = () => Promise<void> | void;
+const pendingWindowTasks = new Map<number, QueuedWindowTask[]>();
+const windowsWithTaskListeners = new WeakSet<BrowserWindow>();
+
+function describeWindowFocus(win: BrowserWindow): {
+  windowId: number;
+  isDestroyed: boolean;
+  isFocused: boolean;
+  focusedWindowId: number | null;
+  hasFocus: boolean;
+} {
+  const focused = BrowserWindow.getFocusedWindow();
+  return {
+    windowId: win.id,
+    isDestroyed: win.isDestroyed(),
+    isFocused: win.isFocused(),
+    focusedWindowId: focused?.id ?? null,
+    hasFocus: hasWindowFocus(win),
+  };
+}
+
+function hasWindowFocus(win: BrowserWindow): boolean {
+  if (win.isDestroyed()) return false;
+  const focused = BrowserWindow.getFocusedWindow();
+  if (!focused) return false;
+  return focused.id === win.id && win.isFocused();
+}
+
+async function drainQueuedWindowTasks(win: BrowserWindow): Promise<void> {
+  if (!hasWindowFocus(win)) {
+    keyDebug("deferred-window-task-drain.skip-no-focus", describeWindowFocus(win));
+    return;
+  }
+
+  const queue = pendingWindowTasks.get(win.id);
+  if (!queue || queue.length === 0) {
+    return;
+  }
+
+  keyDebug("deferred-window-task-drain.begin", {
+    ...describeWindowFocus(win),
+    queueLength: queue.length,
+  });
+
+  while (queue.length > 0) {
+    if (!hasWindowFocus(win)) {
+      keyDebug("deferred-window-task-drain.pause", {
+        ...describeWindowFocus(win),
+        remaining: queue.length,
+      });
+      return;
+    }
+    const task = queue.shift();
+    if (!task) {
+      continue;
+    }
+    try {
+      await task();
+    } catch (err) {
+      keyDebug("deferred-window-task-error", {
+        windowId: win.id,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+    keyDebug("deferred-window-task-drain.task-complete", {
+      ...describeWindowFocus(win),
+      remaining: queue.length,
+    });
+  }
+
+  if (queue.length === 0) {
+    pendingWindowTasks.delete(win.id);
+  }
+
+  keyDebug("deferred-window-task-drain.end", describeWindowFocus(win));
+}
+
+function ensureWindowTaskListeners(win: BrowserWindow): void {
+  if (windowsWithTaskListeners.has(win)) {
+    return;
+  }
+
+  const handleFocus = () => {
+    keyDebug("browser-window.focus", describeWindowFocus(win));
+    void drainQueuedWindowTasks(win);
+  };
+
+  const handleBlur = () => {
+    keyDebug("browser-window.blur", describeWindowFocus(win));
+  };
+
+  const handleClosed = () => {
+    win.removeListener("focus", handleFocus);
+    win.removeListener("blur", handleBlur);
+    win.removeListener("closed", handleClosed);
+    pendingWindowTasks.delete(win.id);
+    windowsWithTaskListeners.delete(win);
+  };
+
+  win.on("focus", handleFocus);
+  win.on("blur", handleBlur);
+  win.on("closed", handleClosed);
+  windowsWithTaskListeners.add(win);
+}
+
+function enqueueWindowTask(
+  win: BrowserWindow,
+  task: QueuedWindowTask,
+  debugEvent: string,
+  debugData: Record<string, unknown> = {},
+): void {
+  if (win.isDestroyed()) {
+    return;
+  }
+
+  ensureWindowTaskListeners(win);
+  const queue = pendingWindowTasks.get(win.id) ?? [];
+  queue.push(task);
+  pendingWindowTasks.set(win.id, queue);
+
+  keyDebug(`${debugEvent}.deferred`, {
+    ...describeWindowFocus(win),
+    queueLength: queue.length,
+    ...debugData,
+  });
+
+  // Attempt to drain soon in case the window already regained focus.
+  queueMicrotask(() => {
+    if (!win.isDestroyed()) {
+      void drainQueuedWindowTasks(win);
+    }
+  });
+}
+
 export function initCmdK(opts: {
   getMainWindow: () => BrowserWindow | null;
   logger: Logger;
 }): void {
   ensureKeyDebugFile(opts.logger);
+  if (!browserWindowFocusListenerRegistered) {
+    app.on("browser-window-focus", (_event, win) => {
+      if (win) {
+        keyDebug("app.browser-window-focus", describeWindowFocus(win));
+        void drainQueuedWindowTasks(win);
+      }
+    });
+    browserWindowFocusListenerRegistered = true;
+  }
 
   // Attach to all webContents including webviews and subframes
   app.on("web-contents-created", (_event, contents) => {
@@ -231,22 +376,66 @@ export function initCmdK(opts: {
         return { ok: false };
       }
 
+      const queueFocus = (attempt = 0): void => {
+        enqueueWindowTask(
+          owningWindow,
+          async () => {
+            if (!hasWindowFocus(owningWindow)) {
+              keyDebug("focus-webcontents.deferred-waiting", {
+                id,
+                attempt,
+                ...describeWindowFocus(owningWindow),
+              });
+              queueFocus(attempt + 1);
+              return;
+            }
+            const target = webContents.fromId(id);
+            if (!target || target.isDestroyed()) {
+              keyDebug("focus-webcontents.deferred-missing", { id, attempt });
+              return;
+            }
+            try {
+              keyDebug("focus-webcontents.deferred-run", {
+                id,
+                attempt,
+                ...describeWindowFocus(owningWindow),
+              });
+              target.focus();
+              keyDebug("focus-webcontents.deferred-success", {
+                id,
+                attempt,
+                ...describeWindowFocus(owningWindow),
+              });
+            } catch (error) {
+              keyDebug("focus-webcontents.deferred-error", {
+                id,
+                attempt,
+                err: error instanceof Error ? error.message : String(error),
+              });
+            }
+          },
+          "focus-webcontents",
+          { id, attempt },
+        );
+      };
+
       // Skip refocusing if the owning window isn't the active window. This avoids
       // bringing CMUX back to the front while the user is interacting with another app.
-      const isWindowFocused =
-        owningWindow.isFocused() &&
-        BrowserWindow.getFocusedWindow() === owningWindow;
-
-      if (!isWindowFocused) {
-        keyDebug("focus-webcontents-skipped", {
+      if (!hasWindowFocus(owningWindow)) {
+        keyDebug("focus-webcontents.defer-immediate", {
           id,
-          reason: "window-not-focused",
+          ...describeWindowFocus(owningWindow),
         });
-        return { ok: false };
+        queueFocus();
+        return { ok: false, queued: true };
       }
 
       wc.focus();
-      keyDebug("focus-webcontents", { id });
+      keyDebug("focus-webcontents", {
+        id,
+        immediate: true,
+        ...describeWindowFocus(owningWindow),
+      });
       return { ok: true };
     } catch (err) {
       keyDebug("focus-webcontents-error", { id, err: String(err) });
@@ -260,8 +449,87 @@ export function initCmdK(opts: {
       try {
         const wc = webContents.fromId(id);
         if (!wc || wc.isDestroyed()) return { ok: false };
+        const owningWindow = BrowserWindow.fromWebContents(wc);
+        if (!owningWindow || owningWindow.isDestroyed()) return { ok: false };
+
+        const performRestore = async (attempt: number): Promise<void> => {
+          if (!hasWindowFocus(owningWindow)) {
+            keyDebug("restore-last-focus.deferred-waiting", {
+              id,
+              attempt,
+              ...describeWindowFocus(owningWindow),
+            });
+            queueRestore(attempt + 1);
+            return;
+          }
+          const target = webContents.fromId(id);
+          if (!target || target.isDestroyed()) {
+            keyDebug("restore-last-focus.deferred-missing", { id, attempt });
+            return;
+          }
+          try {
+            target.focus();
+          } catch {
+            // ignore focus failures; we'll still attempt to restore element focus
+          }
+          keyDebug("restore-last-focus.begin", {
+            id,
+            deferred: true,
+            attempt,
+            ...describeWindowFocus(owningWindow),
+          });
+          const ok = await target.executeJavaScript(
+            `(() => {
+              try {
+                const el = window.__cmuxLastFocused;
+                if (el && typeof el.focus === 'function') {
+                  el.focus();
+                  if (el.tagName === 'IFRAME') {
+                    try { el.contentWindow && el.contentWindow.focus && el.contentWindow.focus(); } catch {}
+                  }
+                  return true;
+                }
+                const a = document.activeElement;
+                if (a && typeof a.focus === 'function') { a.focus(); return true; }
+                if (document.body && typeof document.body.focus === 'function') { document.body.focus(); return true; }
+                return false;
+              } catch { return false; }
+            })()`,
+            true,
+          );
+          keyDebug("restore-last-focus.result", {
+            id,
+            ok,
+            deferred: true,
+            attempt,
+            ...describeWindowFocus(owningWindow),
+          });
+        };
+
+        const queueRestore = (attempt = 0): void => {
+          enqueueWindowTask(
+            owningWindow,
+            () => performRestore(attempt),
+            "restore-last-focus",
+            { id, attempt },
+          );
+        };
+
+        if (!hasWindowFocus(owningWindow)) {
+          keyDebug("restore-last-focus.defer-immediate", {
+            id,
+            ...describeWindowFocus(owningWindow),
+          });
+          queueRestore();
+          return { ok: false, queued: true };
+        }
+
         await wc.focus();
-        keyDebug("restore-last-focus.begin", { id });
+        keyDebug("restore-last-focus.begin", {
+          id,
+          deferred: false,
+          ...describeWindowFocus(owningWindow),
+        });
         const ok = await wc.executeJavaScript(
           `(() => {
             try {
@@ -276,12 +544,17 @@ export function initCmdK(opts: {
               const a = document.activeElement;
               if (a && typeof a.focus === 'function') { a.focus(); return true; }
               if (document.body && typeof document.body.focus === 'function') { document.body.focus(); return true; }
-              return false;
-            } catch { return false; }
-          })()`,
-          true
+            return false;
+          } catch { return false; }
+        })()`,
+          true,
         );
-        keyDebug("restore-last-focus.result", { id, ok });
+        keyDebug("restore-last-focus.result", {
+          id,
+          ok,
+          deferred: false,
+          ...describeWindowFocus(owningWindow),
+        });
         return { ok: Boolean(ok) };
       } catch (err) {
         keyDebug("restore-last-focus.error", { id, err: String(err) });
@@ -304,8 +577,99 @@ export function initCmdK(opts: {
           keyDebug("frame-restore-last-focus.no-frame", info);
           return { ok: false };
         }
+        const owningWindow = BrowserWindow.fromWebContents(wc);
+        if (!owningWindow || owningWindow.isDestroyed()) return { ok: false };
+
+        const performRestore = async (attempt: number): Promise<void> => {
+          if (!hasWindowFocus(owningWindow)) {
+            keyDebug("frame-restore-last-focus.deferred-waiting", {
+              ...info,
+              attempt,
+              ...describeWindowFocus(owningWindow),
+            });
+            queueRestore(attempt + 1);
+            return;
+          }
+          const targetWc = webContents.fromId(info.contentsId);
+          if (!targetWc || targetWc.isDestroyed()) {
+            keyDebug("frame-restore-last-focus.deferred-missing", {
+              ...info,
+              attempt,
+            });
+            return;
+          }
+          const targetFrame = webFrameMain.fromId(
+            info.frameProcessId,
+            info.frameRoutingId,
+          );
+          if (!targetFrame) {
+            keyDebug("frame-restore-last-focus.deferred-no-frame", {
+              ...info,
+              attempt,
+            });
+            return;
+          }
+          try {
+            targetWc.focus();
+          } catch {
+            // ignore focus failures; we'll still attempt to restore element focus
+          }
+          if (!hasWindowFocus(owningWindow)) {
+            queueRestore(attempt + 1);
+            return;
+          }
+          keyDebug("frame-restore-last-focus.begin", {
+            ...info,
+            deferred: true,
+            attempt,
+            ...describeWindowFocus(owningWindow),
+          });
+          const ok = await targetFrame.executeJavaScript(
+            `(() => {
+              try {
+                const el = window.__cmuxLastFocused;
+                if (el && typeof el.focus === 'function') { el.focus(); return true; }
+                const a = document.activeElement;
+                if (a && typeof a.focus === 'function') { a.focus(); return true; }
+                if (document.body && typeof document.body.focus === 'function') { document.body.focus(); return true; }
+                return false;
+              } catch { return false; }
+            })()`,
+            true,
+          );
+          keyDebug("frame-restore-last-focus.result", {
+            ...info,
+            ok,
+            deferred: true,
+            attempt,
+            ...describeWindowFocus(owningWindow),
+          });
+        };
+
+        const queueRestore = (attempt = 0): void => {
+          enqueueWindowTask(
+            owningWindow,
+            () => performRestore(attempt),
+            "frame-restore-last-focus",
+            { ...info, attempt },
+          );
+        };
+
+        if (!hasWindowFocus(owningWindow)) {
+          keyDebug("frame-restore-last-focus.defer-immediate", {
+            ...info,
+            ...describeWindowFocus(owningWindow),
+          });
+          queueRestore();
+          return { ok: false, queued: true };
+        }
+
         await wc.focus();
-        keyDebug("frame-restore-last-focus.begin", info);
+        keyDebug("frame-restore-last-focus.begin", {
+          ...info,
+          deferred: false,
+          ...describeWindowFocus(owningWindow),
+        });
         const ok = await frame.executeJavaScript(
           `(() => {
             try {
@@ -314,12 +678,17 @@ export function initCmdK(opts: {
               const a = document.activeElement;
               if (a && typeof a.focus === 'function') { a.focus(); return true; }
               if (document.body && typeof document.body.focus === 'function') { document.body.focus(); return true; }
-              return false;
-            } catch { return false; }
-          })()`,
-          true
+            return false;
+          } catch { return false; }
+        })()`,
+          true,
         );
-        keyDebug("frame-restore-last-focus.result", { ...info, ok });
+        keyDebug("frame-restore-last-focus.result", {
+          ...info,
+          ok,
+          deferred: false,
+          ...describeWindowFocus(owningWindow),
+        });
         return { ok: Boolean(ok) };
       } catch (err) {
         keyDebug("frame-restore-last-focus.error", { ...info, err: String(err) });
@@ -352,7 +721,106 @@ export function initCmdK(opts: {
       if (!wc || wc.isDestroyed()) return { ok: false };
       const frame = webFrameMain.fromId(info.frameProcessId, info.frameRoutingId);
       if (!frame) return { ok: false };
+      const owningWindow = BrowserWindow.fromWebContents(wc);
+      if (!owningWindow || owningWindow.isDestroyed()) return { ok: false };
+
+      const performRestore = async (attempt: number): Promise<void> => {
+        if (!hasWindowFocus(owningWindow)) {
+          keyDebug("window-restore-last-focus.deferred-waiting", {
+            windowWcId,
+            ...info,
+            attempt,
+            ...describeWindowFocus(owningWindow),
+          });
+          queueRestore(attempt + 1);
+          return;
+        }
+        const targetWc = webContents.fromId(info.contentsId);
+        if (!targetWc || targetWc.isDestroyed()) {
+          keyDebug("window-restore-last-focus.deferred-missing", {
+            windowWcId,
+            ...info,
+            attempt,
+          });
+          return;
+        }
+        const targetFrame = webFrameMain.fromId(
+          info.frameProcessId,
+          info.frameRoutingId,
+        );
+        if (!targetFrame) {
+          keyDebug("window-restore-last-focus.deferred-no-frame", {
+            windowWcId,
+            ...info,
+            attempt,
+          });
+          return;
+        }
+        try {
+          targetWc.focus();
+        } catch {
+          // ignore focus failures; we'll still attempt to restore element focus
+        }
+        if (!hasWindowFocus(owningWindow)) {
+          queueRestore(attempt + 1);
+          return;
+        }
+        keyDebug("window-restore-last-focus.begin", {
+          windowWcId,
+          deferred: true,
+          attempt,
+          ...info,
+          ...describeWindowFocus(owningWindow),
+        });
+        const ok = await targetFrame.executeJavaScript(
+          `(() => {
+            try {
+              const el = window.__cmuxLastFocused;
+              if (el && typeof el.focus === 'function') { el.focus(); return true; }
+              const a = document.activeElement;
+              if (a && typeof a.focus === 'function') { a.focus(); return true; }
+              if (document.body && typeof document.body.focus === 'function') { document.body.focus(); return true; }
+              return false;
+            } catch { return false; }
+          })()`,
+          true,
+        );
+        keyDebug("window-restore-last-focus.result", {
+          windowWcId,
+          ok,
+          deferred: true,
+          attempt,
+          ...info,
+          ...describeWindowFocus(owningWindow),
+        });
+      };
+
+      const queueRestore = (attempt = 0): void => {
+        enqueueWindowTask(
+          owningWindow,
+          () => performRestore(attempt),
+          "window-restore-last-focus",
+          { windowWcId, ...info, attempt },
+        );
+      };
+
+      if (!hasWindowFocus(owningWindow)) {
+        keyDebug("window-restore-last-focus.defer-immediate", {
+          windowWcId,
+          ...info,
+          ...describeWindowFocus(owningWindow),
+        });
+        queueRestore();
+        return { ok: false, queued: true };
+      }
+
       await wc.focus();
+      keyDebug("window-restore-last-focus.begin", {
+        windowWcId,
+        deferred: false,
+        ...info,
+        ...describeWindowFocus(owningWindow),
+      });
       const ok = await frame.executeJavaScript(
         `(() => {
           try {
@@ -364,9 +832,15 @@ export function initCmdK(opts: {
             return false;
           } catch { return false; }
         })()`,
-        true
+        true,
       );
-      keyDebug("window-restore-last-focus.result", { windowWcId, ok });
+      keyDebug("window-restore-last-focus.result", {
+        windowWcId,
+        ok,
+        deferred: false,
+        ...info,
+        ...describeWindowFocus(owningWindow),
+      });
       return { ok: Boolean(ok) };
     } catch (err) {
       keyDebug("window-restore-last-focus.error", { err: String(err) });
