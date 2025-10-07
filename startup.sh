@@ -202,8 +202,9 @@ export IS_SANDBOX=true
 # Start Docker readiness check and devcontainer in background
 # start_devcontainer &
 
-# Start default empty tmux session for cmux that the agent will be spawned in
-# (cd /root/workspace && tmux new-session -d -s cmux)
+# Start tmux session with dev.sh and maintenance.sh
+# This runs in the background so the worker can start
+(cd /root/workspace && bash ./scripts/start-tmux-session.sh) &
 
 rm -f /startup.sh
 
