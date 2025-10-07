@@ -252,8 +252,26 @@ export function ElectronPreviewBrowser({
           window.getSelection?.()?.removeAllRanges?.();
         }
       });
+
+      // Only refocus WebContentsView if:
+      // 1. Focus isn't going to another UI element
+      // 2. The window still has focus (not cmd+tabbing away)
+      const focusGoingToUIElement = event.relatedTarget instanceof HTMLElement;
+
+      if (viewHandle && !focusGoingToUIElement) {
+        // Wait a tick to let focus settle, then check if window still has focus
+        setTimeout(() => {
+          // If document doesn't have focus, user is cmd+tabbing away - don't refocus
+          if (typeof document !== "undefined" && document.hasFocus()) {
+            void window.cmux?.ui?.focusWebContents(viewHandle.webContentsId)
+              .catch((error: unknown) => {
+                console.warn("Failed to refocus WebContentsView on blur", error);
+              });
+          }
+        }, 0);
+      }
     },
-    [committedUrl],
+    [committedUrl, viewHandle],
   );
 
   const handleInputMouseUp = useCallback(
@@ -271,8 +289,9 @@ export function ElectronPreviewBrowser({
     (event: React.KeyboardEvent<HTMLInputElement>) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        event.currentTarget.blur();
         setAddressValue(committedUrl);
+        event.currentTarget.blur();
+        // Blur will handle refocusing the WebContentsView
       }
     },
     [committedUrl],
@@ -448,6 +467,37 @@ export function ElectronPreviewBrowser({
       }
     };
   }, []);
+
+  // When window regains focus (cmd+tab back), refocus the WebContentsView if nothing else has focus
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleWindowFocus = () => {
+      // Give the browser a moment to restore natural focus
+      setTimeout(() => {
+        // If no input/button/etc has focus, refocus the WebContentsView
+        const activeElement = document.activeElement;
+        const isInteractiveElementFocused =
+          activeElement instanceof HTMLInputElement ||
+          activeElement instanceof HTMLTextAreaElement ||
+          activeElement instanceof HTMLButtonElement ||
+          activeElement instanceof HTMLSelectElement ||
+          (activeElement instanceof HTMLElement && activeElement.isContentEditable);
+
+        if (!isInteractiveElementFocused && viewHandle) {
+          void window.cmux?.ui?.focusWebContents(viewHandle.webContentsId)
+            .catch((error: unknown) => {
+              console.warn("Failed to refocus WebContentsView on window focus", error);
+            });
+        }
+      }, 50);
+    };
+
+    window.addEventListener("focus", handleWindowFocus);
+    return () => {
+      window.removeEventListener("focus", handleWindowFocus);
+    };
+  }, [viewHandle]);
 
 
   const devtoolsTooltipLabel = devtoolsOpen
