@@ -34,14 +34,36 @@ function tryLoadNative(): NativeCoreModule | null {
       
     ];
 
+    const archAliases = new Set<string>([arch]);
+    if (arch === "x64") archAliases.add("x86_64");
+    if (arch === "arm64") archAliases.add("aarch64");
+    const archAliasList = Array.from(archAliases);
+
     for (const maybeDir of dirCandidates) {
       const nativeDir = maybeDir ?? "";
       if (!nativeDir) continue;
       try {
         const files = fs.readdirSync(nativeDir);
         const nodes = files.filter((f) => f.endsWith(".node"));
-        const preferred =
-          nodes.find((f) => f.includes(plat) && f.includes(arch)) || nodes[0];
+        const preferredCandidates: Array<string | undefined> = [];
+
+        preferredCandidates.push(
+          nodes.find((file) =>
+            file.includes(plat) && archAliasList.some((alias) => file.includes(alias))
+          )
+        );
+        preferredCandidates.push(
+          nodes.find((file) => file.includes(plat) && file.includes("universal"))
+        );
+        preferredCandidates.push(nodes.find((file) => file.includes(plat)));
+        if (nodes.length > 0) {
+          preferredCandidates.push(nodes[0]);
+        }
+
+        const preferred = preferredCandidates.find(
+          (candidate): candidate is string => Boolean(candidate)
+        );
+
         if (!preferred) continue;
         const mod = nodeRequire(
           path.join(nativeDir, preferred)

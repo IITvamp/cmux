@@ -244,10 +244,13 @@ jobs:
           NEXT_PUBLIC_WWW_ORIGIN=${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
           NEXT_PUBLIC_GITHUB_APP_SLUG=${{ secrets.NEXT_PUBLIC_GITHUB_APP_SLUG }}
           EOF
-      - name: Build native Rust addon
+      - name: Build native Rust addon (arm64 + x64)
         working-directory: apps/server/native/core
         shell: bash
-        run: bunx --bun @napi-rs/cli build --platform --release
+        run: |
+          set -euo pipefail
+          bunx --bun @napi-rs/cli build --platform --release --target aarch64-apple-darwin
+          bunx --bun @napi-rs/cli build --platform --release --target x86_64-apple-darwin
       - name: Build, sign, and notarize (arm64) via publish script
         env:
           MAC_CERT_BASE64: ${{ secrets.MAC_CERT_BASE64 }}
@@ -344,10 +347,13 @@ jobs:
           NEXT_PUBLIC_WWW_ORIGIN=${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
           NEXT_PUBLIC_GITHUB_APP_SLUG=${{ secrets.NEXT_PUBLIC_GITHUB_APP_SLUG }}
           EOF
-      - name: Build native Rust addon
+      - name: Build native Rust addon (arm64 + x64)
         working-directory: apps/server/native/core
         shell: bash
-        run: bunx --bun @napi-rs/cli build --platform --release
+        run: |
+          set -euo pipefail
+          bunx --bun @napi-rs/cli build --platform --release --target aarch64-apple-darwin
+          bunx --bun @napi-rs/cli build --platform --release --target x86_64-apple-darwin
       - name: Build, sign, and notarize (universal) via publish script
         env:
           MAC_CERT_BASE64: ${{ secrets.MAC_CERT_BASE64 }}
