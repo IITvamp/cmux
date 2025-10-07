@@ -39,3 +39,36 @@ export const syncTeamMembershipsFromStack = internalAction({
     }
   },
 });
+
+export const syncUserTeamMembershipsFromStack = internalAction({
+  args: { userId: v.string() },
+  handler: async (ctx, { userId }) => {
+    try {
+      const user = await stackServerAppJs.getUser(userId);
+      if (!user) {
+        console.warn(
+          "[stack_webhook] User not found in Stack during team membership sync",
+          {
+            userId,
+          },
+        );
+        return;
+      }
+
+      const teams = await user.listTeams();
+      await Promise.all(
+        teams.map((team) =>
+          ctx.runMutation(internal.stack.ensureMembership, {
+            teamId: team.id,
+            userId,
+          }),
+        ),
+      );
+    } catch (error) {
+      console.error("[stack_webhook] Failed to sync user team memberships", {
+        userId,
+        error,
+      });
+    }
+  },
+});
