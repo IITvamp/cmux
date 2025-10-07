@@ -8,6 +8,10 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 CLIENT_DIR="$ROOT_DIR/apps/client"
 ENTITLEMENTS="$CLIENT_DIR/build/entitlements.mac.plist"
 DIST_DIR="$CLIENT_DIR/dist-electron"
+NATIVE_CORE_DIR="$ROOT_DIR/apps/server/native/core"
+
+NATIVE_CORE_STASH_DIR=""
+UNIVERSAL_NATIVE_PATH=""
 
 usage() {
   cat <<EOF
@@ -143,6 +147,72 @@ PY
   export APPLE_API_KEY="$key_path"
 }
 
+restore_native_core_archives() {
+  if [[ -n "$NATIVE_CORE_STASH_DIR" && -d "$NATIVE_CORE_STASH_DIR" ]]; then
+    shopt -s nullglob
+    for archived in "$NATIVE_CORE_STASH_DIR"/*; do
+      mv "$archived" "$NATIVE_CORE_DIR/" || true
+    done
+    shopt -u nullglob
+    rmdir "$NATIVE_CORE_STASH_DIR" 2>/dev/null || true
+    NATIVE_CORE_STASH_DIR=""
+  fi
+
+  if [[ -n "$UNIVERSAL_NATIVE_PATH" && -f "$UNIVERSAL_NATIVE_PATH" ]]; then
+    rm -f "$UNIVERSAL_NATIVE_PATH"
+    UNIVERSAL_NATIVE_PATH=""
+  fi
+}
+
+trap restore_native_core_archives EXIT
+
+ensure_universal_native_core() {
+  echo "==> Building native Rust addon (arm64 + x64 + universal merge)"
+
+  (
+    cd "$NATIVE_CORE_DIR"
+    bunx --bun @napi-rs/cli build --platform --release --target aarch64-apple-darwin
+    bunx --bun @napi-rs/cli build --platform --release --target x86_64-apple-darwin
+  )
+
+  local arm64_bin="$NATIVE_CORE_DIR/cmux_native_core.darwin-arm64.node"
+  local x64_candidate=""
+
+  if [[ -f "$NATIVE_CORE_DIR/cmux_native_core.darwin-x64.node" ]]; then
+    x64_candidate="$NATIVE_CORE_DIR/cmux_native_core.darwin-x64.node"
+  elif [[ -f "$NATIVE_CORE_DIR/cmux_native_core.darwin-x86_64.node" ]]; then
+    x64_candidate="$NATIVE_CORE_DIR/cmux_native_core.darwin-x86_64.node"
+  fi
+
+  if [[ ! -f "$arm64_bin" ]]; then
+    echo "Missing arm64 native binary after build (ensure rust target aarch64-apple-darwin is installed)" >&2
+    exit 1
+  fi
+
+  if [[ -z "$x64_candidate" || ! -f "$x64_candidate" ]]; then
+    echo "Missing x64 native binary after build (ensure rust target x86_64-apple-darwin is installed)" >&2
+    exit 1
+  fi
+
+  local universal_bin="$NATIVE_CORE_DIR/cmux_native_core.darwin-universal.node"
+  if [[ -f "$universal_bin" ]]; then
+    rm -f "$universal_bin"
+  fi
+
+  xcrun lipo "$arm64_bin" "$x64_candidate" -create -output "$universal_bin"
+  echo "Created universal native addon: $universal_bin"
+
+  NATIVE_CORE_STASH_DIR="$(mktemp -d)"
+  mv "$arm64_bin" "$NATIVE_CORE_STASH_DIR/"
+  mv "$x64_candidate" "$NATIVE_CORE_STASH_DIR/"
+
+  if [[ -f "$NATIVE_CORE_DIR/cmux_native_core.darwin-x86_64.node" && "$NATIVE_CORE_DIR/cmux_native_core.darwin-x86_64.node" != "$x64_candidate" ]]; then
+    mv "$NATIVE_CORE_DIR/cmux_native_core.darwin-x86_64.node" "$NATIVE_CORE_STASH_DIR/"
+  fi
+
+  UNIVERSAL_NATIVE_PATH="$universal_bin"
+}
+
 # Preconditions
 if [[ "$(uname)" != "Darwin" ]]; then
   echo "This script must run on macOS." >&2
@@ -208,6 +278,8 @@ bash "$ROOT_DIR/scripts/publish-build-electron-prod.sh"
 # The workaround script cleans the client's build directory; recreate entitlements after
 echo "==> Re-preparing macOS entitlements (after prebuild)"
 bash "$ROOT_DIR/scripts/publish-prepare-macos-entitlements.sh" || true
+
+ensure_universal_native_core
 
 # Detect presence of signing + notarization secrets (mirror GH workflow)
 echo "==> Detecting signing environment"
