@@ -306,152 +306,154 @@ export function setupSocketHandlers(
       const taskData = taskDataParseResult.data;
       serverLogger.info("starting task!", taskData);
       const taskId = taskData.taskId;
-      try {
-        // For local mode, ensure Docker is running before attempting to spawn
-        if (!taskData.isCloudMode) {
-          try {
-            const { checkDockerStatus } = await import(
-              "@cmux/shared/providers/common/check-docker"
-            );
-            const docker = await checkDockerStatus();
-            if (!docker.isRunning) {
-              callback({
-                taskId,
-                error:
-                  "Docker is not running. Please start Docker Desktop or switch to Cloud mode.",
-              });
-              return;
-            }
-          } catch (e) {
-            serverLogger.warn(
-              "Failed to verify Docker status before start-task",
-              e,
-            );
+
+      // For local mode, ensure Docker is running before attempting to spawn
+      if (!taskData.isCloudMode) {
+        try {
+          const { checkDockerStatus } = await import(
+            "@cmux/shared/providers/common/check-docker"
+          );
+          const docker = await checkDockerStatus();
+          if (!docker.isRunning) {
             callback({
               taskId,
               error:
-                "Unable to verify Docker status. Ensure Docker is running or switch to Cloud mode.",
+                "Docker is not running. Please start Docker Desktop or switch to Cloud mode.",
             });
             return;
           }
-        }
-
-        // Generate PR title early from the task description
-        let generatedTitle: string | null = null;
-        try {
-          generatedTitle = await getPRTitleFromTaskDescription(
-            taskData.taskDescription,
-            safeTeam,
-          );
-          // Persist to Convex immediately
-          await getConvex().mutation(api.tasks.setPullRequestTitle, {
-            teamSlugOrId: safeTeam,
-            id: taskId,
-            pullRequestTitle: generatedTitle,
-          });
-          serverLogger.info(`[Server] Saved early PR title: ${generatedTitle}`);
         } catch (e) {
-          serverLogger.error(
-            `[Server] Failed generating/saving early PR title:`,
+          serverLogger.warn(
+            "Failed to verify Docker status before start-task",
             e,
           );
-        }
-
-        // Spawn all agents in parallel (each will create its own taskRun)
-        const agentResults = await spawnAllAgents(
-          taskId,
-          {
-            repoUrl: taskData.repoUrl,
-            branch: taskData.branch,
-            taskDescription: taskData.taskDescription,
-            prTitle: generatedTitle ?? undefined,
-            selectedAgents: taskData.selectedAgents,
-            isCloudMode: taskData.isCloudMode,
-            images: taskData.images,
-            theme: taskData.theme,
-            environmentId: taskData.environmentId,
-          },
-          safeTeam,
-        );
-
-        // Check if at least one agent spawned successfully
-        const successfulAgents = agentResults.filter(
-          (result) => result.success,
-        );
-        if (successfulAgents.length === 0) {
-          const errors = agentResults
-            .filter((r) => !r.success)
-            .map((r) => `${r.agentName}: ${r.error || "Unknown error"}`)
-            .join("; ");
           callback({
             taskId,
-            error: errors || "Failed to spawn any agents",
+            error:
+              "Unable to verify Docker status. Ensure Docker is running or switch to Cloud mode.",
           });
           return;
         }
+      }
 
-        // Log results for debugging
-        agentResults.forEach((result) => {
-          if (result.success) {
-            serverLogger.info(
-              `Successfully spawned ${result.agentName} with terminal ${result.terminalId}`,
+      // Acknowledge immediately to prevent timeout
+      callback({
+        taskId,
+        worktreePath: "", // Will be updated via events
+        terminalId: "", // Will be updated via events
+      });
+
+      // Continue with the actual work in the background
+      (async () => {
+        try {
+          // Generate PR title early from the task description
+          let generatedTitle: string | null = null;
+          try {
+            generatedTitle = await getPRTitleFromTaskDescription(
+              taskData.taskDescription,
+              safeTeam,
             );
-            if (result.vscodeUrl) {
-              serverLogger.info(
-                `VSCode URL for ${result.agentName}: ${result.vscodeUrl}`,
-              );
-            }
-          } else {
+            // Persist to Convex immediately
+            await getConvex().mutation(api.tasks.setPullRequestTitle, {
+              teamSlugOrId: safeTeam,
+              id: taskId,
+              pullRequestTitle: generatedTitle,
+            });
+            serverLogger.info(`[Server] Saved early PR title: ${generatedTitle}`);
+          } catch (e) {
             serverLogger.error(
-              `Failed to spawn ${result.agentName}: ${result.error}`,
+              `[Server] Failed generating/saving early PR title:`,
+              e,
             );
           }
-        });
 
-        // Return the first successful agent's info (you might want to modify this to return all)
-        const primaryAgent = successfulAgents[0];
-
-        // Emit VSCode URL if available
-        if (primaryAgent.vscodeUrl) {
-          rt.emit("vscode-spawned", {
-            instanceId: primaryAgent.terminalId,
-            url: primaryAgent.vscodeUrl.replace("/?folder=/root/workspace", ""),
-            workspaceUrl: primaryAgent.vscodeUrl,
-            provider: taskData.isCloudMode ? "morph" : "docker",
-          });
-        }
-
-        // Set up file watching for git changes (optional - don't fail if it doesn't work)
-        try {
-          void gitDiffManager.watchWorkspace(
-            primaryAgent.worktreePath,
-            (changedPath) => {
-              rt.emit("git-file-changed", {
-                workspacePath: primaryAgent.worktreePath,
-                filePath: changedPath,
-              });
+          // Spawn all agents in parallel (each will create its own taskRun)
+          const agentResults = await spawnAllAgents(
+            taskId,
+            {
+              repoUrl: taskData.repoUrl,
+              branch: taskData.branch,
+              taskDescription: taskData.taskDescription,
+              prTitle: generatedTitle ?? undefined,
+              selectedAgents: taskData.selectedAgents,
+              isCloudMode: taskData.isCloudMode,
+              images: taskData.images,
+              theme: taskData.theme,
+              environmentId: taskData.environmentId,
             },
+            safeTeam,
           );
-        } catch (error) {
-          serverLogger.warn(
-            "Could not set up file watching for workspace:",
-            error,
-          );
-          // Continue without file watching
-        }
 
-        callback({
-          taskId,
-          worktreePath: primaryAgent.worktreePath,
-          terminalId: primaryAgent.terminalId,
-        });
-      } catch (error) {
-        serverLogger.error("Error in start-task:", error);
-        callback({
-          taskId,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
+          // Check if at least one agent spawned successfully
+          const successfulAgents = agentResults.filter(
+            (result) => result.success,
+          );
+          if (successfulAgents.length === 0) {
+            const errors = agentResults
+              .filter((r) => !r.success)
+              .map((r) => `${r.agentName}: ${r.error || "Unknown error"}`)
+              .join("; ");
+            serverLogger.error(`Failed to spawn any agents for task ${taskId}: ${errors}`);
+            // Could emit an error event here if needed
+            return;
+          }
+
+          // Log results for debugging
+          agentResults.forEach((result) => {
+            if (result.success) {
+              serverLogger.info(
+                `Successfully spawned ${result.agentName} with terminal ${result.terminalId}`,
+              );
+              if (result.vscodeUrl) {
+                serverLogger.info(
+                  `VSCode URL for ${result.agentName}: ${result.vscodeUrl}`,
+                );
+              }
+            } else {
+              serverLogger.error(
+                `Failed to spawn ${result.agentName}: ${result.error}`,
+              );
+            }
+          });
+
+          // Return the first successful agent's info (you might want to modify this to return all)
+          const primaryAgent = successfulAgents[0];
+
+          // Emit VSCode URL if available
+          if (primaryAgent.vscodeUrl) {
+            rt.emit("vscode-spawned", {
+              instanceId: primaryAgent.terminalId,
+              url: primaryAgent.vscodeUrl.replace("/?folder=/root/workspace", ""),
+              workspaceUrl: primaryAgent.vscodeUrl,
+              provider: taskData.isCloudMode ? "morph" : "docker",
+            });
+          }
+
+          // Set up file watching for git changes (optional - don't fail if it doesn't work)
+          try {
+            void gitDiffManager.watchWorkspace(
+              primaryAgent.worktreePath,
+              (changedPath) => {
+                rt.emit("git-file-changed", {
+                  workspacePath: primaryAgent.worktreePath,
+                  filePath: changedPath,
+                });
+              },
+            );
+          } catch (error) {
+            serverLogger.warn(
+              "Could not set up file watching for workspace:",
+              error,
+            );
+            // Continue without file watching
+          }
+
+          serverLogger.info(`Task ${taskId} fully started with worktree: ${primaryAgent.worktreePath}, terminal: ${primaryAgent.terminalId}`);
+        } catch (error) {
+          serverLogger.error("Error in start-task background processing:", error);
+          // Could emit an error event here if needed
+        }
+      })();
     });
 
     // Sync PR state (non-destructive): query GitHub and update Convex
