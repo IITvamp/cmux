@@ -306,6 +306,14 @@ export function setupSocketHandlers(
       const taskData = taskDataParseResult.data;
       serverLogger.info("starting task!", taskData);
       const taskId = taskData.taskId;
+      
+      // Acknowledge immediately to prevent RPC timeout
+      callback({
+        taskId,
+        acknowledged: true,
+      });
+      
+      // Continue with async work
       try {
         // For local mode, ensure Docker is running before attempting to spawn
         if (!taskData.isCloudMode) {
@@ -315,7 +323,7 @@ export function setupSocketHandlers(
             );
             const docker = await checkDockerStatus();
             if (!docker.isRunning) {
-              callback({
+              rt.emit("start-task-error", {
                 taskId,
                 error:
                   "Docker is not running. Please start Docker Desktop or switch to Cloud mode.",
@@ -327,7 +335,7 @@ export function setupSocketHandlers(
               "Failed to verify Docker status before start-task",
               e,
             );
-            callback({
+            rt.emit("start-task-error", {
               taskId,
               error:
                 "Unable to verify Docker status. Ensure Docker is running or switch to Cloud mode.",
@@ -383,7 +391,7 @@ export function setupSocketHandlers(
             .filter((r) => !r.success)
             .map((r) => `${r.agentName}: ${r.error || "Unknown error"}`)
             .join("; ");
-          callback({
+          rt.emit("start-task-error", {
             taskId,
             error: errors || "Failed to spawn any agents",
           });
@@ -440,14 +448,15 @@ export function setupSocketHandlers(
           // Continue without file watching
         }
 
-        callback({
+        // Emit success with task details
+        rt.emit("start-task-success", {
           taskId,
           worktreePath: primaryAgent.worktreePath,
           terminalId: primaryAgent.terminalId,
         });
       } catch (error) {
         serverLogger.error("Error in start-task:", error);
-        callback({
+        rt.emit("start-task-error", {
           taskId,
           error: error instanceof Error ? error.message : "Unknown error",
         });

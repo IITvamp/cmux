@@ -28,6 +28,7 @@ import {
   Suspense,
   memo,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -195,12 +196,14 @@ const RestartTaskForm = memo(function RestartTaskForm({
             toast.error(`Task restart error: ${response.error}`);
             return;
           }
-          editorApiRef.current?.clear();
-          setFollowUpText("");
+          if ("acknowledged" in response) {
+            // Success/error will be handled by socket event listeners
+            editorApiRef.current?.clear();
+            setFollowUpText("");
+            toast.success("Started follow-up task");
+          }
         },
       );
-
-      toast.success("Started follow-up task");
     } catch (error) {
       console.error("Failed to restart task", error);
       toast.error("Failed to start follow-up task");
@@ -618,6 +621,37 @@ function RunDiffPage() {
 
   const taskRunId = selectedRun?._id ?? runId;
   const restartTaskPersistenceKey = `restart-task-${taskId}-${runId}`;
+
+  const { socket } = useSocket();
+
+  // Listen for start-task success and error events
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleStartTaskSuccess = (data: {
+      taskId: string;
+      worktreePath: string;
+      terminalId: string;
+    }) => {
+      console.log("Task started successfully:", data);
+    };
+
+    const handleStartTaskError = (data: {
+      taskId: string;
+      error: string;
+    }) => {
+      console.error("Task start error:", data.error);
+      toast.error(`Task start error: ${data.error}`);
+    };
+
+    socket.on("start-task-success", handleStartTaskSuccess);
+    socket.on("start-task-error", handleStartTaskError);
+
+    return () => {
+      socket.off("start-task-success", handleStartTaskSuccess);
+      socket.off("start-task-error", handleStartTaskError);
+    };
+  }, [socket]);
 
   // 404 if selected run is missing
   if (!selectedRun) {

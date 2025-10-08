@@ -493,6 +493,9 @@ function DashboardComponent() {
           if ("error" in response) {
             console.error("Task start error:", response.error);
             toast.error(`Task start error: ${JSON.stringify(response.error)}`);
+          } else if ("acknowledged" in response) {
+            console.log("Task acknowledged:", response);
+            // Success/error will be handled by socket event listeners
           } else {
             console.log("Task started:", response);
           }
@@ -652,6 +655,35 @@ function DashboardComponent() {
 
     return () => {
       socket.off("vscode-spawned", handleVSCodeSpawned);
+    };
+  }, [socket]);
+
+  // Listen for start-task success and error events
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleStartTaskSuccess = (data: {
+      taskId: string;
+      worktreePath: string;
+      terminalId: string;
+    }) => {
+      console.log("Task started successfully:", data);
+    };
+
+    const handleStartTaskError = (data: {
+      taskId: string;
+      error: string;
+    }) => {
+      console.error("Task start error:", data.error);
+      toast.error(`Task start error: ${data.error}`);
+    };
+
+    socket.on("start-task-success", handleStartTaskSuccess);
+    socket.on("start-task-error", handleStartTaskError);
+
+    return () => {
+      socket.off("start-task-success", handleStartTaskSuccess);
+      socket.off("start-task-error", handleStartTaskError);
     };
   }, [socket]);
 
