@@ -8,6 +8,7 @@ import { DashboardStartTaskButton } from "@/components/dashboard/DashboardStartT
 import { TaskList } from "@/components/dashboard/TaskList";
 import { FloatingPane } from "@/components/floating-pane";
 import { GitHubIcon } from "@/components/icons/github";
+import { ResizableRows } from "@/components/ResizableRows";
 import { useTheme } from "@/components/theme/use-theme";
 import { TitleBar } from "@/components/TitleBar";
 import type { SelectOption } from "@/components/ui/searchable-select";
@@ -16,6 +17,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { VSCodeEditor } from "@/components/VSCodeEditor";
 import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { createFakeConvexId } from "@/lib/fakeConvexId";
@@ -28,7 +30,7 @@ import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation } from "convex/react";
-import { Server as ServerIcon } from "lucide-react";
+import { ChevronDown, ChevronUp, Server as ServerIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -115,6 +117,16 @@ function DashboardComponent() {
   const [, setDockerReady] = useState<boolean | null>(null);
   const [providerStatus, setProviderStatus] =
     useState<ProviderStatusResponse | null>(null);
+
+  // VS Code editor state
+  const [showVSCode, setShowVSCode] = useState<boolean>(() => {
+    const stored = localStorage.getItem("showVSCodeEditor");
+    return stored ? JSON.parse(stored) : false;
+  });
+  const [vscodeWorkspaceUrl, setVscodeWorkspaceUrl] = useState<string | undefined>(() => {
+    const stored = localStorage.getItem("vscodeWorkspaceUrl");
+    return stored || undefined;
+  });
 
   // Ref to access editor API
   const editorApiRef = useRef<EditorApi | null>(null);
@@ -633,6 +645,19 @@ function DashboardComponent() {
     localStorage.setItem("isCloudMode", JSON.stringify(newMode));
   }, [isCloudMode, isEnvSelected]);
 
+  // VS Code editor toggle handler
+  const handleVSCodeToggle = useCallback(() => {
+    const newShowVSCode = !showVSCode;
+    setShowVSCode(newShowVSCode);
+    localStorage.setItem("showVSCodeEditor", JSON.stringify(newShowVSCode));
+  }, [showVSCode]);
+
+  // VS Code workspace URL change handler
+  const handleVSCodeWorkspaceUrlChange = useCallback((url: string) => {
+    setVscodeWorkspaceUrl(url);
+    localStorage.setItem("vscodeWorkspaceUrl", url);
+  }, []);
+
   // Listen for VSCode spawned events
   useEffect(() => {
     if (!socket) return;
@@ -794,44 +819,89 @@ function DashboardComponent() {
     effectiveSelectedBranch,
   ]);
 
-  return (
-    <FloatingPane header={<TitleBar title="cmux" />}>
-      <div className="flex flex-col grow overflow-y-auto">
-        {/* Main content area */}
-        <div className="flex-1 flex justify-center px-4 pt-60 pb-4">
-          <div className="w-full max-w-4xl min-w-0">
-            <DashboardMainCard
-              editorApiRef={editorApiRef}
-              onTaskDescriptionChange={handleTaskDescriptionChange}
-              onSubmit={handleSubmit}
-              lexicalRepoUrl={lexicalRepoUrl}
-              lexicalEnvironmentId={lexicalEnvironmentId}
-              lexicalBranch={lexicalBranch}
-              projectOptions={projectOptions}
-              selectedProject={selectedProject}
-              onProjectChange={handleProjectChange}
-              branchOptions={branchOptions}
-              selectedBranch={effectiveSelectedBranch}
-              onBranchChange={handleBranchChange}
-              selectedAgents={selectedAgents}
-              onAgentChange={handleAgentChange}
-              isCloudMode={isCloudMode}
-              onCloudModeToggle={handleCloudModeToggle}
-              isLoadingProjects={reposByOrgQuery.isLoading}
-              isLoadingBranches={branchesQuery.isPending}
-              teamSlugOrId={teamSlugOrId}
-              cloudToggleDisabled={isEnvSelected}
-              branchDisabled={isEnvSelected || !selectedProject[0]}
-              providerStatus={providerStatus}
-              canSubmit={canSubmit}
-              onStartTask={handleStartTask}
-            />
+  const chatInterface = (
+    <div className="flex flex-col grow overflow-y-auto">
+      {/* Main content area */}
+      <div className="flex-1 flex justify-center px-4 pt-60 pb-4">
+        <div className="w-full max-w-4xl min-w-0">
+          <DashboardMainCard
+            editorApiRef={editorApiRef}
+            onTaskDescriptionChange={handleTaskDescriptionChange}
+            onSubmit={handleSubmit}
+            lexicalRepoUrl={lexicalRepoUrl}
+            lexicalEnvironmentId={lexicalEnvironmentId}
+            lexicalBranch={lexicalBranch}
+            projectOptions={projectOptions}
+            selectedProject={selectedProject}
+            onProjectChange={handleProjectChange}
+            branchOptions={branchOptions}
+            selectedBranch={effectiveSelectedBranch}
+            onBranchChange={handleBranchChange}
+            selectedAgents={selectedAgents}
+            onAgentChange={handleAgentChange}
+            isCloudMode={isCloudMode}
+            onCloudModeToggle={handleCloudModeToggle}
+            isLoadingProjects={reposByOrgQuery.isLoading}
+            isLoadingBranches={branchesQuery.isPending}
+            teamSlugOrId={teamSlugOrId}
+            cloudToggleDisabled={isEnvSelected}
+            branchDisabled={isEnvSelected || !selectedProject[0]}
+            providerStatus={providerStatus}
+            canSubmit={canSubmit}
+            onStartTask={handleStartTask}
+          />
 
-            {/* Task List */}
-            <TaskList teamSlugOrId={teamSlugOrId} />
-          </div>
+          {/* Task List */}
+          <TaskList teamSlugOrId={teamSlugOrId} />
         </div>
       </div>
+    </div>
+  );
+
+  return (
+    <FloatingPane
+      header={
+        <div className="flex items-center justify-between w-full">
+          <TitleBar title="cmux" />
+          <button
+            type="button"
+            onClick={handleVSCodeToggle}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors mr-2"
+            title={showVSCode ? "Hide VS Code Editor" : "Show VS Code Editor"}
+          >
+            {showVSCode ? (
+              <>
+                <ChevronUp className="w-3 h-3" />
+                <span>Hide Editor</span>
+              </>
+            ) : (
+              <>
+                <ChevronDown className="w-3 h-3" />
+                <span>Show Editor</span>
+              </>
+            )}
+          </button>
+        </div>
+      }
+    >
+      {showVSCode ? (
+        <ResizableRows
+          top={
+            <VSCodeEditor
+              workspaceUrl={vscodeWorkspaceUrl}
+              onWorkspaceUrlChange={handleVSCodeWorkspaceUrlChange}
+            />
+          }
+          bottom={chatInterface}
+          storageKey="dashboard-vscode-height"
+          defaultTopHeight={400}
+          minTop={200}
+          maxTop={800}
+          className="h-full"
+        />
+      ) : (
+        chatInterface
+      )}
     </FloatingPane>
   );
 }
