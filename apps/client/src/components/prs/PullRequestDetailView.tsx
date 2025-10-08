@@ -6,10 +6,10 @@ import { api } from "@cmux/convex/api";
 import { useQuery as useRQ, useMutation, type DefaultError } from "@tanstack/react-query";
 import { useQuery as useConvexQuery } from "convex/react";
 import { ExternalLink, X, Check, Circle, Clock, AlertCircle, Loader2 } from "lucide-react";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useMemo, useState, useEffect } from "react";
 import { toast } from "sonner";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
-import { postApiIntegrationsGithubPrsCloseMutation } from "@cmux/www-openapi-client/react-query";
+import { postApiIntegrationsGithubPrsCloseMutation, postApiApiIntegrationsGithubPrsSyncChecksMutation } from "@cmux/www-openapi-client/react-query";
 import { postApiIntegrationsGithubPrsMergeSimple } from "@cmux/www-openapi-client";
 import type {
   Options,
@@ -143,7 +143,11 @@ function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber, headSha }: 
   // Combine both types of runs
   const allRuns = [
     ...(workflowRuns || []).map(run => ({ ...run, type: 'workflow' as const, name: run.workflowName, timestamp: run.runStartedAt, url: run.htmlUrl })),
-    ...(checkRuns || []).map(run => ({ ...run, type: 'check' as const, timestamp: run.startedAt, url: run.detailsUrl || run.htmlUrl })),
+    ...(checkRuns || []).map(run => {
+      // Use detailsUrl which points to the check details page (e.g., Vercel deployment, GitHub checks)
+      const url = run.detailsUrl || run.htmlUrl || `https://github.com/${repoFullName}/pull/${prNumber}/checks?check_run_id=${run.checkRunId}`;
+      return { ...run, type: 'check' as const, timestamp: run.startedAt, url };
+    }),
   ];
 
   const getStatusIcon = (status?: string, conclusion?: string) => {
@@ -378,6 +382,26 @@ export function PullRequestDetailView({
       toast.error(`Failed to merge PR: ${error instanceof Error ? error.message : String(error)}`);
     },
   });
+
+  const syncChecksMutation = useMutation({
+    ...postApiApiIntegrationsGithubPrsSyncChecksMutation(),
+  });
+
+  // Sync checks when PR is loaded
+  useEffect(() => {
+    if (currentPR?.headSha) {
+      syncChecksMutation.mutate({
+        body: {
+          teamSlugOrId,
+          owner,
+          repo,
+          prNumber: currentPR.number,
+          ref: currentPR.headSha,
+        },
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPR?.number, currentPR?.headSha]);
 
   const handleClosePR = () => {
     if (!currentPR) return;

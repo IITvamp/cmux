@@ -116,7 +116,15 @@ githubPrsSyncChecksRouter.openapi(
 
         console.log(`[syncChecks] Found ${checkRuns.check_runs.length} check runs`);
 
-          checkRunsCount = checkRuns.check_runs.length;
+        await convex.mutation(api.github_check_runs.upsertCheckRunsFromApi, {
+          teamSlugOrId,
+          repoFullName,
+          installationId,
+          repositoryId: repoDoc.providerRepoId,
+          checkRuns: checkRuns.check_runs,
+        });
+
+        checkRunsCount = checkRuns.check_runs.length;
       }
 
       console.log(`[syncChecks] Fetching workflow runs for ${repoFullName} PR #${prNumber}`);
@@ -135,6 +143,16 @@ githubPrsSyncChecksRouter.openapi(
       });
 
       console.log(`[syncChecks] Found ${relevantWorkflowRuns.length} relevant workflow runs out of ${workflowRuns.workflow_runs.length} total`);
+
+      if (relevantWorkflowRuns.length > 0) {
+        await convex.mutation(api.github_workflows.upsertWorkflowRunsFromApi, {
+          teamSlugOrId,
+          repoFullName,
+          installationId,
+          repositoryId: repoDoc.providerRepoId,
+          workflowRuns: relevantWorkflowRuns,
+        });
+      }
 
       workflowRunsCount = relevantWorkflowRuns.length;
 

@@ -304,6 +304,116 @@ export const getWorkflowRunsForPr = authQuery({
   },
 });
 
+// Mutation to upsert workflow runs from API (not webhook)
+export const upsertWorkflowRunsFromApi = authMutation({
+  args: {
+    teamSlugOrId: v.string(),
+    repoFullName: v.string(),
+    installationId: v.number(),
+    repositoryId: v.optional(v.number()),
+    workflowRuns: v.array(v.any()),
+  },
+  handler: async (ctx, args) => {
+    const { teamSlugOrId, repoFullName, installationId, repositoryId, workflowRuns } = args;
+    const teamId = await getTeamId(ctx, teamSlugOrId);
+
+    console.log("[upsertWorkflowRunsFromApi] Upserting workflow runs", {
+      teamSlugOrId,
+      teamId,
+      repoFullName,
+      count: workflowRuns.length,
+    });
+
+    for (const workflowRun of workflowRuns) {
+      const runId = workflowRun.id;
+      const runNumber = workflowRun.run_number;
+      const workflowId = workflowRun.workflow_id;
+      const workflowName = workflowRun.name;
+
+      if (!runId || !runNumber || !workflowId) {
+        console.warn("[upsertWorkflowRunsFromApi] Missing required fields", {
+          runId,
+          runNumber,
+          workflowId,
+        });
+        continue;
+      }
+
+      const githubStatus = workflowRun.status;
+      const status = githubStatus === "requested" ? undefined : githubStatus;
+
+      const githubConclusion = workflowRun.conclusion;
+      const conclusion =
+        githubConclusion === "stale" || githubConclusion === null
+          ? undefined
+          : githubConclusion;
+
+      const createdAt = normalizeTimestamp(workflowRun.created_at);
+      const updatedAt = normalizeTimestamp(workflowRun.updated_at);
+      const runStartedAt = normalizeTimestamp(workflowRun.run_started_at);
+
+      let runCompletedAt: number | undefined;
+      if (workflowRun.status === "completed") {
+        runCompletedAt = normalizeTimestamp(workflowRun.updated_at);
+      }
+
+      let runDuration: number | undefined;
+      if (runStartedAt && runCompletedAt) {
+        runDuration = Math.round((runCompletedAt - runStartedAt) / 1000);
+      }
+
+      const actorLogin = workflowRun.actor?.login;
+      const actorId = workflowRun.actor?.id;
+
+      let triggeringPrNumber: number | undefined;
+      if (workflowRun.pull_requests && workflowRun.pull_requests.length > 0) {
+        triggeringPrNumber = workflowRun.pull_requests[0]?.number;
+      }
+
+      const workflowRunDoc = {
+        provider: "github" as const,
+        installationId,
+        repositoryId: repositoryId || 0,
+        repoFullName,
+        runId,
+        runNumber,
+        teamId,
+        workflowId,
+        workflowName: workflowName || workflowRun.workflow?.name || "",
+        name: workflowRun.name || undefined,
+        event: workflowRun.event,
+        status,
+        conclusion,
+        headBranch: workflowRun.head_branch || undefined,
+        headSha: workflowRun.head_sha || undefined,
+        htmlUrl: workflowRun.html_url || undefined,
+        createdAt,
+        updatedAt,
+        runStartedAt,
+        runCompletedAt,
+        runDuration,
+        actorLogin,
+        actorId,
+        triggeringPrNumber,
+      };
+
+      const existing = await ctx.db
+        .query("githubWorkflowRuns")
+        .withIndex("by_runId")
+        .filter((q) => q.eq(q.field("runId"), runId))
+        .unique();
+
+      if (existing) {
+        await ctx.db.patch(existing._id, workflowRunDoc);
+      } else {
+        await ctx.db.insert("githubWorkflowRuns", workflowRunDoc);
+      }
+    }
+
+    return { success: true, count: workflowRuns.length };
+  },
+});
+
 // Mutation to manually trigger a backfill of workflow runs (for existing repos)
 export const backfillWorkflowRuns = authMutation({
   args: {

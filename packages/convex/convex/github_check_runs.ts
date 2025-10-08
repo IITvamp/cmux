@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { getTeamId } from "../_shared/team";
 import { internalMutation } from "./_generated/server";
-import { authQuery } from "./users/utils";
+import { authQuery, authMutation } from "./users/utils";
 import type { CheckRunEvent } from "@octokit/webhooks-types";
 
 function normalizeTimestamp(
@@ -158,6 +158,107 @@ export const upsertCheckRunFromWebhook = internalMutation({
           });
         }
       });
+  },
+});
+
+// Mutation to upsert check runs from API (not webhook)
+export const upsertCheckRunsFromApi = authMutation({
+  args: {
+    teamSlugOrId: v.string(),
+    repoFullName: v.string(),
+    installationId: v.number(),
+    repositoryId: v.optional(v.number()),
+    checkRuns: v.array(v.any()),
+  },
+  handler: async (ctx, args) => {
+    const { teamSlugOrId, repoFullName, installationId, repositoryId, checkRuns } = args;
+    const teamId = await getTeamId(ctx, teamSlugOrId);
+
+    console.log("[upsertCheckRunsFromApi] Upserting check runs", {
+      teamSlugOrId,
+      teamId,
+      repoFullName,
+      count: checkRuns.length,
+    });
+
+    for (const checkRun of checkRuns) {
+      const checkRunId = checkRun.id;
+      const name = checkRun.name;
+      const headSha = checkRun.head_sha;
+
+      if (!checkRunId || !name || !headSha) {
+        console.warn("[upsertCheckRunsFromApi] Missing required fields", {
+          checkRunId,
+          name,
+          headSha,
+        });
+        continue;
+      }
+
+      const githubStatus = checkRun.status;
+      const status =
+        githubStatus === "queued" || githubStatus === "in_progress" || githubStatus === "completed"
+          ? githubStatus
+          : undefined;
+
+      const githubConclusion = checkRun.conclusion;
+      const conclusion =
+        githubConclusion === "stale" || githubConclusion === null
+          ? undefined
+          : githubConclusion;
+
+      const createdAt = normalizeTimestamp(checkRun.created_at);
+      const updatedAt = normalizeTimestamp(checkRun.updated_at);
+      const startedAt = normalizeTimestamp(checkRun.started_at);
+      const completedAt = normalizeTimestamp(checkRun.completed_at);
+
+      const appName = checkRun.app?.name;
+      const appSlug = checkRun.app?.slug;
+
+      const htmlUrl = checkRun.html_url;
+      const detailsUrl = checkRun.details_url;
+
+      let triggeringPrNumber: number | undefined;
+      if (checkRun.pull_requests && checkRun.pull_requests.length > 0) {
+        triggeringPrNumber = checkRun.pull_requests[0]?.number;
+      }
+
+      const checkRunDoc = {
+        provider: "github" as const,
+        installationId,
+        repositoryId,
+        repoFullName,
+        checkRunId,
+        teamId,
+        name,
+        status,
+        conclusion,
+        headSha,
+        htmlUrl,
+        detailsUrl,
+        createdAt,
+        updatedAt,
+        startedAt,
+        completedAt,
+        appName,
+        appSlug,
+        triggeringPrNumber,
+      };
+
+      const existing = await ctx.db
+        .query("githubCheckRuns")
+        .withIndex("by_checkRunId")
+        .filter((q) => q.eq(q.field("checkRunId"), checkRunId))
+        .unique();
+
+      if (existing) {
+        await ctx.db.patch(existing._id, checkRunDoc);
+      } else {
+        await ctx.db.insert("githubCheckRuns", checkRunDoc);
+      }
+    }
+
+    return { success: true, count: checkRuns.length };
   },
 });
 
