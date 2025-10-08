@@ -1,8 +1,11 @@
 import type {
+  DeploymentEvent,
+  DeploymentStatusEvent,
   InstallationEvent,
   InstallationRepositoriesEvent,
   PullRequestEvent,
   PushEvent,
+  StatusEvent,
   WebhookEvent,
   WorkflowRunEvent,
 } from "@octokit/webhooks-types";
@@ -312,9 +315,196 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
         }
         break;
       }
-      case "check_suite":
+      case "check_suite": {
+        break;
+      }
+      case "deployment": {
+        try {
+          const deploymentPayload = body as DeploymentEvent;
+          const repoFullName = String(deploymentPayload.repository?.full_name ?? "");
+          const installation = Number(deploymentPayload.installation?.id ?? 0);
+
+          console.log("[deployment] Received webhook", {
+            delivery,
+            repoFullName,
+            installation,
+            deploymentId: deploymentPayload.deployment?.id,
+            sha: deploymentPayload.deployment?.sha,
+            environment: deploymentPayload.deployment?.environment,
+          });
+
+          if (!repoFullName || !installation) {
+            console.warn("[deployment] Missing repoFullName or installation", {
+              repoFullName,
+              installation,
+              delivery,
+            });
+            break;
+          }
+
+          const conn = await _ctx.runQuery(
+            internal.github_app.getProviderConnectionByInstallationId,
+            { installationId: installation },
+          );
+          const teamId = conn?.teamId;
+
+          if (!teamId) {
+            console.warn("[deployment] No teamId found for installation", {
+              installation,
+              delivery,
+              connectionFound: !!conn,
+            });
+            break;
+          }
+
+          await _ctx.runMutation(
+            internal.github_deployments.upsertDeploymentFromWebhook,
+            {
+              installationId: installation,
+              repoFullName,
+              teamId,
+              payload: deploymentPayload,
+            },
+          );
+
+          console.log("[deployment] Successfully processed", {
+            delivery,
+            deploymentId: deploymentPayload.deployment?.id,
+          });
+        } catch (err) {
+          console.error("[deployment] Handler failed", {
+            err,
+            delivery,
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
+        break;
+      }
+      case "deployment_status": {
+        try {
+          const deploymentStatusPayload = body as DeploymentStatusEvent;
+          const repoFullName = String(deploymentStatusPayload.repository?.full_name ?? "");
+          const installation = Number(deploymentStatusPayload.installation?.id ?? 0);
+
+          console.log("[deployment_status] Received webhook", {
+            delivery,
+            repoFullName,
+            installation,
+            deploymentId: deploymentStatusPayload.deployment?.id,
+            state: deploymentStatusPayload.deployment_status?.state,
+            environment: deploymentStatusPayload.deployment?.environment,
+          });
+
+          if (!repoFullName || !installation) {
+            console.warn("[deployment_status] Missing repoFullName or installation", {
+              repoFullName,
+              installation,
+              delivery,
+            });
+            break;
+          }
+
+          const conn = await _ctx.runQuery(
+            internal.github_app.getProviderConnectionByInstallationId,
+            { installationId: installation },
+          );
+          const teamId = conn?.teamId;
+
+          if (!teamId) {
+            console.warn("[deployment_status] No teamId found for installation", {
+              installation,
+              delivery,
+              connectionFound: !!conn,
+            });
+            break;
+          }
+
+          await _ctx.runMutation(
+            internal.github_deployments.updateDeploymentStatusFromWebhook,
+            {
+              installationId: installation,
+              repoFullName,
+              teamId,
+              payload: deploymentStatusPayload,
+            },
+          );
+
+          console.log("[deployment_status] Successfully processed", {
+            delivery,
+            deploymentId: deploymentStatusPayload.deployment?.id,
+            state: deploymentStatusPayload.deployment_status?.state,
+          });
+        } catch (err) {
+          console.error("[deployment_status] Handler failed", {
+            err,
+            delivery,
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
+        break;
+      }
       case "status": {
-        // Acknowledge unsupported events without retries for now.
+        try {
+          const statusPayload = body as StatusEvent;
+          const repoFullName = String(statusPayload.repository?.full_name ?? "");
+          const installation = Number(statusPayload.installation?.id ?? 0);
+
+          console.log("[status] Received webhook", {
+            delivery,
+            repoFullName,
+            installation,
+            sha: statusPayload.sha,
+            state: statusPayload.state,
+            context: statusPayload.context,
+          });
+
+          if (!repoFullName || !installation) {
+            console.warn("[status] Missing repoFullName or installation", {
+              repoFullName,
+              installation,
+              delivery,
+            });
+            break;
+          }
+
+          const conn = await _ctx.runQuery(
+            internal.github_app.getProviderConnectionByInstallationId,
+            { installationId: installation },
+          );
+          const teamId = conn?.teamId;
+
+          if (!teamId) {
+            console.warn("[status] No teamId found for installation", {
+              installation,
+              delivery,
+              connectionFound: !!conn,
+            });
+            break;
+          }
+
+          await _ctx.runMutation(
+            internal.github_commit_statuses.upsertCommitStatusFromWebhook,
+            {
+              installationId: installation,
+              repoFullName,
+              teamId,
+              payload: statusPayload,
+            },
+          );
+
+          console.log("[status] Successfully processed", {
+            delivery,
+            sha: statusPayload.sha,
+            context: statusPayload.context,
+            state: statusPayload.state,
+          });
+        } catch (err) {
+          console.error("[status] Handler failed", {
+            err,
+            delivery,
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
         break;
       }
       case "pull_request": {

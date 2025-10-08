@@ -629,6 +629,8 @@ const convexSchema = defineSchema({
         v.literal("queued"),
         v.literal("in_progress"),
         v.literal("completed"),
+        v.literal("pending"),
+        v.literal("waiting"),
       ),
     ),
     conclusion: v.optional(
@@ -665,6 +667,89 @@ const convexSchema = defineSchema({
     .index("by_team_repo", ["teamId", "repoFullName", "updatedAt"])
     .index("by_checkRunId", ["checkRunId"])
     .index("by_headSha", ["headSha", "updatedAt"]),
+
+  // GitHub Deployments (Vercel, etc.)
+  githubDeployments: defineTable({
+    provider: v.literal("github"),
+    installationId: v.number(),
+    repositoryId: v.optional(v.number()),
+    repoFullName: v.string(),
+    deploymentId: v.number(),
+    teamId: v.string(),
+
+    // Deployment details
+    sha: v.string(),
+    ref: v.optional(v.string()),
+    task: v.optional(v.string()),
+    environment: v.optional(v.string()),
+    description: v.optional(v.string()),
+
+    // Creator info
+    creatorLogin: v.optional(v.string()),
+
+    // Timestamps
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
+
+    // Current status (from latest deployment_status)
+    state: v.optional(
+      v.union(
+        v.literal("error"),
+        v.literal("failure"),
+        v.literal("pending"),
+        v.literal("in_progress"),
+        v.literal("queued"),
+        v.literal("success"),
+      ),
+    ),
+    statusDescription: v.optional(v.string()),
+    targetUrl: v.optional(v.string()),
+    environmentUrl: v.optional(v.string()),
+
+    // Triggering PR (if applicable)
+    triggeringPrNumber: v.optional(v.number()),
+  })
+    .index("by_team", ["teamId", "updatedAt"])
+    .index("by_team_repo", ["teamId", "repoFullName", "updatedAt"])
+    .index("by_deploymentId", ["deploymentId"])
+    .index("by_sha", ["sha", "updatedAt"]),
+
+  // GitHub Commit Statuses (legacy status API)
+  githubCommitStatuses: defineTable({
+    provider: v.literal("github"),
+    installationId: v.number(),
+    repositoryId: v.optional(v.number()),
+    repoFullName: v.string(),
+    statusId: v.number(),
+    teamId: v.string(),
+
+    // Status details
+    sha: v.string(),
+    state: v.union(
+      v.literal("error"),
+      v.literal("failure"),
+      v.literal("pending"),
+      v.literal("success"),
+    ),
+    context: v.string(),
+    description: v.optional(v.string()),
+    targetUrl: v.optional(v.string()),
+
+    // Creator info
+    creatorLogin: v.optional(v.string()),
+
+    // Timestamps
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
+
+    // Triggering PR (if applicable)
+    triggeringPrNumber: v.optional(v.number()),
+  })
+    .index("by_team", ["teamId", "updatedAt"])
+    .index("by_team_repo", ["teamId", "repoFullName", "updatedAt"])
+    .index("by_statusId", ["statusId"])
+    .index("by_sha_context", ["sha", "context", "updatedAt"])
+    .index("by_sha", ["sha", "updatedAt"]),
 });
 
 export default convexSchema;

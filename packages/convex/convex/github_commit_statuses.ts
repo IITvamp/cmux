@@ -1,0 +1,238 @@
+import { v } from "convex/values";
+import { getTeamId } from "../_shared/team";
+import { internalMutation } from "./_generated/server";
+import { authQuery, authMutation } from "./users/utils";
+import type { StatusEvent } from "@octokit/webhooks-types";
+
+function normalizeTimestamp(
+  value: string | number | null | undefined,
+): number | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === "number") {
+    return value > 1000000000000 ? value : value * 1000;
+  }
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+export const upsertCommitStatusFromWebhook = internalMutation({
+  args: {
+    installationId: v.number(),
+    repoFullName: v.string(),
+    teamId: v.string(),
+    payload: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const payload = args.payload as StatusEvent;
+    const { installationId, repoFullName, teamId } = args;
+
+    console.log("[upsertCommitStatus] Starting", {
+      teamId,
+      repoFullName,
+      installationId,
+      state: payload.state,
+      context: payload.context,
+    });
+
+    const statusId = payload.id;
+    const sha = payload.sha;
+    const context = payload.context;
+
+    if (!statusId || !sha || !context) {
+      console.warn("[upsertCommitStatus] Missing required fields", {
+        statusId,
+        sha,
+        context,
+        repoFullName,
+        teamId,
+      });
+      return;
+    }
+
+    const validStates = ["error", "failure", "pending", "success"] as const;
+    const state = validStates.includes(payload.state as any)
+      ? (payload.state as typeof validStates[number])
+      : "pending";
+
+    const createdAt = normalizeTimestamp(payload.created_at);
+    const updatedAt = normalizeTimestamp(payload.updated_at);
+
+    const statusDoc = {
+      provider: "github" as const,
+      installationId,
+      repositoryId: payload.repository?.id,
+      repoFullName,
+      statusId,
+      teamId,
+      sha,
+      state,
+      context,
+      description: payload.description ?? undefined,
+      targetUrl: payload.target_url ?? undefined,
+      creatorLogin: payload.sender?.login,
+      createdAt,
+      updatedAt,
+      triggeringPrNumber: undefined,
+    };
+
+    console.log("[upsertCommitStatus] Prepared document", {
+      statusId,
+      sha,
+      context,
+      state,
+      teamId,
+      repoFullName,
+    });
+
+    const existing = await ctx.db
+      .query("githubCommitStatuses")
+      .withIndex("by_statusId")
+      .filter((q) => q.eq(q.field("statusId"), statusId))
+      .unique();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, statusDoc);
+      console.log("[upsertCommitStatus] Updated commit status", {
+        _id: existing._id,
+        statusId,
+        context,
+        state,
+        repoFullName,
+      });
+    } else {
+      const newId = await ctx.db.insert("githubCommitStatuses", statusDoc);
+      console.log("[upsertCommitStatus] Inserted commit status", {
+        _id: newId,
+        statusId,
+        context,
+        state,
+        repoFullName,
+      });
+    }
+  },
+});
+
+export const getCommitStatusesForPr = authQuery({
+  args: {
+    teamSlugOrId: v.string(),
+    repoFullName: v.string(),
+    prNumber: v.number(),
+    headSha: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const { teamSlugOrId, repoFullName, headSha, limit = 20 } = args;
+    const teamId = await getTeamId(ctx, teamSlugOrId);
+
+    console.log("[getCommitStatusesForPr] Query started", {
+      teamSlugOrId,
+      teamId,
+      repoFullName,
+      headSha,
+      limit,
+    });
+
+    if (!headSha) {
+      console.log("[getCommitStatusesForPr] No headSha provided, returning empty array");
+      return [];
+    }
+
+    const statuses = await ctx.db
+      .query("githubCommitStatuses")
+      .withIndex("by_sha", (q) => q.eq("sha", headSha))
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("teamId"), teamId),
+          q.eq(q.field("repoFullName"), repoFullName),
+        ),
+      )
+      .order("desc")
+      .take(limit);
+
+    console.log("[getCommitStatusesForPr] Found commit statuses", {
+      teamId,
+      repoFullName,
+      headSha,
+      foundStatuses: statuses.length,
+      contexts: statuses.map((s) => s.context),
+    });
+
+    return statuses;
+  },
+});
+
+export const upsertCommitStatusesFromApi = authMutation({
+  args: {
+    teamSlugOrId: v.string(),
+    repoFullName: v.string(),
+    installationId: v.number(),
+    repositoryId: v.optional(v.number()),
+    statuses: v.array(v.any()),
+  },
+  handler: async (ctx, args) => {
+    const { teamSlugOrId, repoFullName, installationId, repositoryId, statuses } = args;
+    const teamId = await getTeamId(ctx, teamSlugOrId);
+
+    console.log("[upsertCommitStatusesFromApi] Upserting commit statuses", {
+      teamSlugOrId,
+      teamId,
+      repoFullName,
+      count: statuses.length,
+    });
+
+    for (const status of statuses) {
+      const statusId = status.id;
+      const sha = status.sha;
+      const context = status.context;
+
+      if (!statusId || !sha || !context) {
+        console.warn("[upsertCommitStatusesFromApi] Missing required fields", {
+          statusId,
+          sha,
+          context,
+        });
+        continue;
+      }
+
+      const validStates = ["error", "failure", "pending", "success"] as const;
+      const state = validStates.includes(status.state as any)
+        ? (status.state as typeof validStates[number])
+        : "pending";
+
+      const createdAt = normalizeTimestamp(status.created_at);
+      const updatedAt = normalizeTimestamp(status.updated_at);
+
+      const statusDoc = {
+        provider: "github" as const,
+        installationId,
+        repositoryId,
+        repoFullName,
+        statusId,
+        teamId,
+        sha,
+        state,
+        context,
+        description: status.description ?? undefined,
+        targetUrl: status.target_url ?? undefined,
+        creatorLogin: status.creator?.login,
+        createdAt,
+        updatedAt,
+        triggeringPrNumber: undefined,
+      };
+
+      const existing = await ctx.db
+        .query("githubCommitStatuses")
+        .withIndex("by_statusId")
+        .filter((q) => q.eq(q.field("statusId"), statusId))
+        .unique();
+
+      if (existing) {
+        await ctx.db.patch(existing._id, statusDoc);
+      } else {
+        await ctx.db.insert("githubCommitStatuses", statusDoc);
+      }
+    }
+
+    return { success: true, count: statuses.length };
+  },
+});
