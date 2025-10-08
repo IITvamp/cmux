@@ -235,12 +235,15 @@ function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber, headSha }: 
   });
 
   return (
-    <div className="border-b border-neutral-200 dark:border-neutral-800">
+    <div className="border-t border-b border-neutral-200 dark:border-neutral-800">
       <div className="divide-y divide-neutral-200 dark:divide-neutral-800">
         {sortedRuns.map((run) => (
-          <div
+          <a
             key={run.type === 'workflow' ? `workflow-${run._id}` : `check-${run._id}`}
-            className="flex items-center justify-between gap-2 px-3 py-1.5 hover:bg-neutral-50 dark:hover:bg-neutral-900/50 transition-colors group"
+            href={run.url || '#'}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center justify-between gap-2 px-3 py-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors group"
           >
             <div className="flex items-center gap-2.5 flex-1 min-w-0">
               <div className="shrink-0">
@@ -256,17 +259,11 @@ function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber, headSha }: 
               </div>
             </div>
             {run.url && (
-              <a
-                href={run.url}
-                target="_blank"
-                rel="noreferrer"
-                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-neutral-200 dark:hover:bg-neutral-800 rounded transition-opacity shrink-0"
-                onClick={(e) => e.stopPropagation()}
-              >
+              <div className="p-1 shrink-0">
                 <ExternalLink className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-400" />
-              </a>
+              </div>
             )}
-          </div>
+          </a>
         ))}
       </div>
     </div>

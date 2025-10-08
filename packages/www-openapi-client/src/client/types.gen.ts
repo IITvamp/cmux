@@ -1402,6 +1402,62 @@ export type PostApiIntegrationsGithubPrsFileContentsBatchResponses = {
 
 export type PostApiIntegrationsGithubPrsFileContentsBatchResponse = PostApiIntegrationsGithubPrsFileContentsBatchResponses[keyof PostApiIntegrationsGithubPrsFileContentsBatchResponses];
 
+export type PostApiApiIntegrationsGithubPrsSyncChecksData = {
+    body: {
+        /**
+         * Team slug or UUID
+         */
+        teamSlugOrId: string;
+        /**
+         * Repository owner
+         */
+        owner: string;
+        /**
+         * Repository name
+         */
+        repo: string;
+        /**
+         * Pull request number
+         */
+        prNumber: number;
+        /**
+         * Git ref (SHA) to fetch checks for
+         */
+        ref?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/api/integrations/github/prs/sync-checks';
+};
+
+export type PostApiApiIntegrationsGithubPrsSyncChecksErrors = {
+    /**
+     * Bad request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Internal server error
+     */
+    500: unknown;
+};
+
+export type PostApiApiIntegrationsGithubPrsSyncChecksResponses = {
+    /**
+     * Checks synced successfully
+     */
+    200: {
+        success: boolean;
+        checkRunsCount: number;
+        workflowRunsCount: number;
+    };
+};
+
+export type PostApiApiIntegrationsGithubPrsSyncChecksResponse = PostApiApiIntegrationsGithubPrsSyncChecksResponses[keyof PostApiApiIntegrationsGithubPrsSyncChecksResponses];
+
 export type GetApiApiIntegrationsGithubWorkflowRunsData = {
     body?: never;
     path?: never;
