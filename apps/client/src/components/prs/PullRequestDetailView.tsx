@@ -144,8 +144,7 @@ function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber, headSha }: 
   const allRuns = [
     ...(workflowRuns || []).map(run => ({ ...run, type: 'workflow' as const, name: run.workflowName, timestamp: run.runStartedAt, url: run.htmlUrl })),
     ...(checkRuns || []).map(run => {
-      // Use detailsUrl which points to the check details page (e.g., Vercel deployment, GitHub checks)
-      const url = run.detailsUrl || run.htmlUrl || `https://github.com/${repoFullName}/pull/${prNumber}/checks?check_run_id=${run.checkRunId}`;
+      const url = run.htmlUrl || `https://github.com/${repoFullName}/pull/${prNumber}/checks?check_run_id=${run.checkRunId}`;
       return { ...run, type: 'check' as const, timestamp: run.startedAt, url };
     }),
   ];

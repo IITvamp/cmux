@@ -1458,6 +1458,71 @@ export type PostApiApiIntegrationsGithubPrsSyncChecksResponses = {
 
 export type PostApiApiIntegrationsGithubPrsSyncChecksResponse = PostApiApiIntegrationsGithubPrsSyncChecksResponses[keyof PostApiApiIntegrationsGithubPrsSyncChecksResponses];
 
+export type PostApiApiIntegrationsGithubChecksBackfillData = {
+    body: {
+        /**
+         * Team slug or UUID
+         */
+        teamSlugOrId: string;
+        /**
+         * Repository owner
+         */
+        owner: string;
+        /**
+         * Repository name
+         */
+        repo: string;
+        /**
+         * Git ref (SHA or branch) to fetch checks for
+         */
+        ref?: string;
+        /**
+         * Pull request number to fetch checks for
+         */
+        prNumber?: number;
+        /**
+         * Number of items per page (max 100)
+         */
+        perPage?: number;
+        /**
+         * Maximum number of pages to fetch (max 10)
+         */
+        maxPages?: number;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/api/integrations/github/checks/backfill';
+};
+
+export type PostApiApiIntegrationsGithubChecksBackfillErrors = {
+    /**
+     * Bad request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Internal server error
+     */
+    500: unknown;
+};
+
+export type PostApiApiIntegrationsGithubChecksBackfillResponses = {
+    /**
+     * Checks backfilled successfully
+     */
+    200: {
+        success: boolean;
+        checkRunsCount: number;
+        workflowRunsCount: number;
+        pagesFetched: number;
+    };
+};
+
+export type PostApiApiIntegrationsGithubChecksBackfillResponse = PostApiApiIntegrationsGithubChecksBackfillResponses[keyof PostApiApiIntegrationsGithubChecksBackfillResponses];
+
 export type GetApiApiIntegrationsGithubWorkflowRunsData = {
     body?: never;
     path?: never;

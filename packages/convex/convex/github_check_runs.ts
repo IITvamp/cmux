@@ -64,7 +64,6 @@ export const upsertCheckRunFromWebhook = internalMutation({
         : githubConclusion;
 
     // Normalize timestamps
-    const createdAt = normalizeTimestamp((payload.check_run as any)?.created_at);
     const updatedAt = normalizeTimestamp((payload.check_run as any)?.updated_at);
     const startedAt = normalizeTimestamp((payload.check_run as any)?.started_at);
     const completedAt = normalizeTimestamp((payload.check_run as any)?.completed_at);
@@ -75,7 +74,6 @@ export const upsertCheckRunFromWebhook = internalMutation({
 
     // Extract URLs
     const htmlUrl = payload.check_run?.html_url;
-    const detailsUrl = payload.check_run?.details_url;
 
     // Extract triggering PR info if available
     let triggeringPrNumber: number | undefined;
@@ -100,8 +98,6 @@ export const upsertCheckRunFromWebhook = internalMutation({
       conclusion,
       headSha,
       htmlUrl,
-      detailsUrl,
-      createdAt,
       updatedAt,
       startedAt,
       completedAt,
@@ -207,7 +203,6 @@ export const upsertCheckRunsFromApi = authMutation({
           ? undefined
           : githubConclusion;
 
-      const createdAt = normalizeTimestamp(checkRun.created_at);
       const updatedAt = normalizeTimestamp(checkRun.updated_at);
       const startedAt = normalizeTimestamp(checkRun.started_at);
       const completedAt = normalizeTimestamp(checkRun.completed_at);
@@ -216,7 +211,6 @@ export const upsertCheckRunsFromApi = authMutation({
       const appSlug = checkRun.app?.slug;
 
       const htmlUrl = checkRun.html_url;
-      const detailsUrl = checkRun.details_url;
 
       let triggeringPrNumber: number | undefined;
       if (checkRun.pull_requests && checkRun.pull_requests.length > 0) {
@@ -235,8 +229,6 @@ export const upsertCheckRunsFromApi = authMutation({
         conclusion,
         headSha,
         htmlUrl,
-        detailsUrl,
-        createdAt,
         updatedAt,
         startedAt,
         completedAt,

@@ -648,10 +648,8 @@ const convexSchema = defineSchema({
 
     // URLs
     htmlUrl: v.optional(v.string()),
-    detailsUrl: v.optional(v.string()),
 
     // Timestamps
-    createdAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),
     startedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
