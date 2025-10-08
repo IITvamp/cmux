@@ -2,7 +2,6 @@ import { RunDiffSection } from "@/components/RunDiffSection";
 import { Dropdown } from "@/components/ui/dropdown";
 import { normalizeGitRef } from "@/lib/refWithOrigin";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
-import { syncPullRequestChecksQueryOptions } from "@/queries/github-prs";
 import { api } from "@cmux/convex/api";
 import { useQuery as useRQ, useMutation, type DefaultError } from "@tanstack/react-query";
 import { useQuery as useConvexQuery } from "convex/react";
@@ -44,10 +43,9 @@ type WorkflowRunsProps = {
   repoFullName: string;
   prNumber: number;
   headSha?: string;
-  isSyncingChecks?: boolean;
 };
 
-function WorkflowRuns({ teamSlugOrId, repoFullName, prNumber, headSha, isSyncingChecks = false }: WorkflowRunsProps) {
+function WorkflowRuns({ teamSlugOrId, repoFullName, prNumber, headSha }: WorkflowRunsProps) {
   const workflowRuns = useConvexQuery(api.github_workflows.getWorkflowRunsForPr, {
     teamSlugOrId,
     repoFullName,
@@ -101,15 +99,6 @@ function WorkflowRuns({ teamSlugOrId, repoFullName, prNumber, headSha, isSyncing
       conclusion: status.state === 'success' ? 'success' : status.state === 'failure' || status.state === 'error' ? 'failure' : undefined
     })),
   ];
-
-  if (isSyncingChecks && allRuns.length === 0) {
-    return (
-      <div className="flex items-center gap-1.5 ml-2 shrink-0 text-neutral-500 dark:text-neutral-400">
-        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-        <span className="text-[11px] font-medium select-none">Loading checks...</span>
-      </div>
-    );
-  }
 
   if (allRuns.length === 0) {
     return null;
@@ -166,7 +155,7 @@ function WorkflowRuns({ teamSlugOrId, repoFullName, prNumber, headSha, isSyncing
   );
 }
 
-function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber, headSha, isSyncingChecks = false }: WorkflowRunsProps) {
+function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber, headSha }: WorkflowRunsProps) {
   const workflowRuns = useConvexQuery(api.github_workflows.getWorkflowRunsForPr, {
     teamSlugOrId,
     repoFullName,
@@ -296,17 +285,6 @@ function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber, headSha, is
     return parts.join(" — ");
   };
 
-
-  if (isSyncingChecks && allRuns.length === 0) {
-    return (
-      <div className="border-t border-b border-neutral-200 dark:border-neutral-800">
-        <div className="px-3 py-2 flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-300">
-          <Loader2 className="w-4 h-4 animate-spin text-neutral-500 dark:text-neutral-400" />
-          <span>Loading checks...</span>
-        </div>
-      </div>
-    );
-  }
 
   if (allRuns.length === 0) {
     return null;
@@ -470,18 +448,6 @@ export function PullRequestDetailView({
     },
   });
 
-  const syncChecksQuery = useRQ(
-    syncPullRequestChecksQueryOptions({
-      teamSlugOrId,
-      owner,
-      repo,
-      prNumber: currentPR?.number ?? null,
-      headSha: currentPR?.headSha ?? null,
-    }),
-  );
-
-  const isSyncingChecks = Boolean(syncChecksQuery.isPending || syncChecksQuery.isFetching);
-
   const handleClosePR = () => {
     if (!currentPR) return;
     closePrMutation.mutate({
@@ -540,7 +506,6 @@ export function PullRequestDetailView({
                     repoFullName={currentPR.repoFullName}
                     prNumber={currentPR.number}
                     headSha={currentPR.headSha}
-                    isSyncingChecks={isSyncingChecks}
                   />
                 </Suspense>
               </div>
@@ -645,7 +610,6 @@ export function PullRequestDetailView({
                 repoFullName={currentPR.repoFullName}
                 prNumber={currentPR.number}
                 headSha={currentPR.headSha}
-                isSyncingChecks={isSyncingChecks}
               />
             </Suspense>
             <Suspense
