@@ -1,4 +1,5 @@
 import CmuxLogo from "@/components/logo/cmux-logo";
+import { MacDownloadLink } from "@/components/mac-download-link";
 import {
   Cloud,
   GitBranch,
@@ -14,11 +15,13 @@ import cmuxDemo0 from "@/docs/assets/cmux-demo-00.png";
 import cmuxDemo1 from "@/docs/assets/cmux-demo-10.png";
 import cmuxDemo2 from "@/docs/assets/cmux-demo-20.png";
 import cmuxDemo3 from "@/docs/assets/cmux-demo-30.png";
-
-const RELEASE_PAGE_URL = "https://github.com/manaflow-ai/cmux/releases/latest";
-const GITHUB_RELEASE_URL =
-  "https://api.github.com/repos/manaflow-ai/cmux/releases/latest";
-const DMG_SUFFIX = "-arm64.dmg";
+import {
+  DMG_SUFFIXES,
+  GITHUB_RELEASE_URL,
+  MacArchitecture,
+  MacDownloadUrls,
+  RELEASE_PAGE_URL,
+} from "@/lib/releases";
 
 const normalizeVersion = (tag: string): string =>
   tag.startsWith("v") ? tag.slice(1) : tag;
@@ -33,12 +36,22 @@ type GithubRelease = {
 
 type ReleaseInfo = {
   latestVersion: string | null;
-  macDownloadUrl: string;
+  macDownloadUrls: MacDownloadUrls;
+  fallbackUrl: string;
 };
 
 const deriveReleaseInfo = (data: GithubRelease | null): ReleaseInfo => {
+  const emptyDownloads: MacDownloadUrls = {
+    arm64: null,
+    x64: null,
+  };
+
   if (!data) {
-    return { latestVersion: null, macDownloadUrl: RELEASE_PAGE_URL };
+    return {
+      latestVersion: null,
+      macDownloadUrls: emptyDownloads,
+      fallbackUrl: RELEASE_PAGE_URL,
+    };
   }
 
   const latestVersion =
@@ -46,18 +59,37 @@ const deriveReleaseInfo = (data: GithubRelease | null): ReleaseInfo => {
       ? normalizeVersion(data.tag_name)
       : null;
 
-  const macDownloadUrl = data.assets?.find((asset) => {
-    const assetName = asset.name?.toLowerCase();
+  const macDownloadUrls: MacDownloadUrls = {
+    arm64: null,
+    x64: null,
+  };
 
-    return typeof assetName === "string" && assetName.endsWith(DMG_SUFFIX);
-  })?.browser_download_url;
+  if (Array.isArray(data.assets)) {
+    for (const asset of data.assets) {
+      const assetName = asset.name?.toLowerCase();
+
+      if (typeof assetName !== "string") {
+        continue;
+      }
+
+      for (const architecture of Object.keys(DMG_SUFFIXES) as MacArchitecture[]) {
+        const suffix = DMG_SUFFIXES[architecture];
+
+        if (assetName.endsWith(suffix)) {
+          const downloadUrl = asset.browser_download_url;
+
+          if (typeof downloadUrl === "string" && downloadUrl.trim() !== "") {
+            macDownloadUrls[architecture] = downloadUrl;
+          }
+        }
+      }
+    }
+  }
 
   return {
     latestVersion,
-    macDownloadUrl:
-      typeof macDownloadUrl === "string" && macDownloadUrl.trim() !== ""
-        ? macDownloadUrl
-        : RELEASE_PAGE_URL,
+    macDownloadUrls,
+    fallbackUrl: RELEASE_PAGE_URL,
   };
 };
 
@@ -87,7 +119,8 @@ async function fetchLatestRelease(): Promise<ReleaseInfo> {
 }
 
 export default async function LandingPage() {
-  const { macDownloadUrl, latestVersion } = await fetchLatestRelease();
+  const { fallbackUrl, latestVersion, macDownloadUrls } =
+    await fetchLatestRelease();
 
   return (
     <div className="min-h-dvh bg-background text-foreground overflow-y-auto">
@@ -176,12 +209,19 @@ export default async function LandingPage() {
                     |
                   </li>
                   <li>
-                    <a
-                      href={macDownloadUrl}
+                    <MacDownloadLink
+                      autoDetect
+                      fallbackUrl={fallbackUrl}
                       className="inline-flex h-8 items-center bg-blue-500 px-3 text-base font-semibold text-white hover:bg-blue-400 transition"
+                      title={
+                        latestVersion
+                          ? `Download cmux ${latestVersion} for macOS`
+                          : "Download cmux for macOS"
+                      }
+                      urls={macDownloadUrls}
                     >
                       Download
-                    </a>
+                    </MacDownloadLink>
                   </li>
                 </ul>
               </nav>
@@ -238,14 +278,16 @@ export default async function LandingPage() {
               </p>
 
               <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
-                <a
-                  href={macDownloadUrl}
+                <MacDownloadLink
+                  autoDetect
+                  className="inline-flex h-12 items-center gap-2 text-base font-medium text-black bg-white hover:bg-neutral-50 border border-neutral-800 rounded-lg px-4 transition-all whitespace-nowrap"
+                  fallbackUrl={fallbackUrl}
                   title={
                     latestVersion
-                      ? "Download cmux for macOS arm64"
+                      ? `Download cmux ${latestVersion} for macOS`
                       : "Requires macOS"
                   }
-                  className="inline-flex h-12 items-center gap-2 text-base font-medium text-black bg-white hover:bg-neutral-50 border border-neutral-800 rounded-lg px-4 transition-all whitespace-nowrap"
+                  urls={macDownloadUrls}
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -260,7 +302,32 @@ export default async function LandingPage() {
                     ></path>
                   </svg>
                   Download for Mac
-                </a>
+                </MacDownloadLink>
+                <MacDownloadLink
+                  architecture="x64"
+                  className="inline-flex h-12 items-center gap-2 text-base font-medium text-white bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-lg px-4 transition-all whitespace-nowrap"
+                  fallbackUrl={fallbackUrl}
+                  title={
+                    latestVersion
+                      ? `Download cmux ${latestVersion} for macOS Intel (x64)`
+                      : "Download cmux for macOS Intel"
+                  }
+                  urls={macDownloadUrls}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 16 16"
+                    className="h-5 w-5"
+                    aria-hidden="true"
+                  >
+                    <path
+                      fill="currentColor"
+                      d="M12.665 15.358c-.905.844-1.893.711-2.843.311-1.006-.409-1.93-.427-2.991 0-1.33.551-2.03.391-2.825-.31C-.498 10.886.166 4.078 5.28 3.83c1.246.062 2.114.657 2.843.71 1.09-.213 2.133-.826 3.296-.746 1.393.107 2.446.64 3.138 1.6-2.88 1.662-2.197 5.315.443 6.337-.526 1.333-1.21 2.657-2.345 3.635zM8.03 3.778C7.892 1.794 9.563.16 11.483 0c.268 2.293-2.16 4-3.452 3.777"
+                    ></path>
+                  </svg>
+                  Download for Mac Intel
+                </MacDownloadLink>
                 <a
                   href="https://github.com/manaflow-ai/cmux"
                   target="_blank"
