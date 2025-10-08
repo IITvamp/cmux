@@ -80,8 +80,8 @@ export const TerminalRestoreSchema = z.object({
 
 export const TaskStartedSchema = z.object({
   taskId: typedZid("tasks"),
-  worktreePath: z.string(),
-  terminalId: z.string(),
+  worktreePath: z.string().optional(),
+  terminalId: z.string().optional(),
 });
 
 export const TaskErrorSchema = z.object({
