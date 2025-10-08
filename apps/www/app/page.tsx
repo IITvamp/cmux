@@ -1,4 +1,5 @@
 import CmuxLogo from "@/components/logo/cmux-logo";
+import { MacDownloadButton } from "@/components/mac-download-button";
 import {
   Cloud,
   GitBranch,
@@ -18,7 +19,8 @@ import cmuxDemo3 from "@/docs/assets/cmux-demo-30.png";
 const RELEASE_PAGE_URL = "https://github.com/manaflow-ai/cmux/releases/latest";
 const GITHUB_RELEASE_URL =
   "https://api.github.com/repos/manaflow-ai/cmux/releases/latest";
-const DMG_SUFFIX = "-arm64.dmg";
+const DMG_ARM64_SUFFIX = "-arm64.dmg";
+const DMG_X64_SUFFIX = "-x64.dmg";
 
 const normalizeVersion = (tag: string): string =>
   tag.startsWith("v") ? tag.slice(1) : tag;
@@ -33,12 +35,17 @@ type GithubRelease = {
 
 type ReleaseInfo = {
   latestVersion: string | null;
-  macDownloadUrl: string;
+  macArm64DownloadUrl: string;
+  macX64DownloadUrl: string;
 };
 
 const deriveReleaseInfo = (data: GithubRelease | null): ReleaseInfo => {
   if (!data) {
-    return { latestVersion: null, macDownloadUrl: RELEASE_PAGE_URL };
+    return {
+      latestVersion: null,
+      macArm64DownloadUrl: RELEASE_PAGE_URL,
+      macX64DownloadUrl: RELEASE_PAGE_URL,
+    };
   }
 
   const latestVersion =
@@ -46,17 +53,25 @@ const deriveReleaseInfo = (data: GithubRelease | null): ReleaseInfo => {
       ? normalizeVersion(data.tag_name)
       : null;
 
-  const macDownloadUrl = data.assets?.find((asset) => {
+  const macArm64DownloadUrl = data.assets?.find((asset) => {
     const assetName = asset.name?.toLowerCase();
+    return typeof assetName === "string" && assetName.endsWith(DMG_ARM64_SUFFIX);
+  })?.browser_download_url;
 
-    return typeof assetName === "string" && assetName.endsWith(DMG_SUFFIX);
+  const macX64DownloadUrl = data.assets?.find((asset) => {
+    const assetName = asset.name?.toLowerCase();
+    return typeof assetName === "string" && assetName.endsWith(DMG_X64_SUFFIX);
   })?.browser_download_url;
 
   return {
     latestVersion,
-    macDownloadUrl:
-      typeof macDownloadUrl === "string" && macDownloadUrl.trim() !== ""
-        ? macDownloadUrl
+    macArm64DownloadUrl:
+      typeof macArm64DownloadUrl === "string" && macArm64DownloadUrl.trim() !== ""
+        ? macArm64DownloadUrl
+        : RELEASE_PAGE_URL,
+    macX64DownloadUrl:
+      typeof macX64DownloadUrl === "string" && macX64DownloadUrl.trim() !== ""
+        ? macX64DownloadUrl
         : RELEASE_PAGE_URL,
   };
 };
@@ -87,7 +102,8 @@ async function fetchLatestRelease(): Promise<ReleaseInfo> {
 }
 
 export default async function LandingPage() {
-  const { macDownloadUrl, latestVersion } = await fetchLatestRelease();
+  const { macArm64DownloadUrl, macX64DownloadUrl, latestVersion } =
+    await fetchLatestRelease();
 
   return (
     <div className="min-h-dvh bg-background text-foreground overflow-y-auto">
@@ -176,12 +192,14 @@ export default async function LandingPage() {
                     |
                   </li>
                   <li>
-                    <a
-                      href={macDownloadUrl}
+                    <MacDownloadButton
+                      macArm64DownloadUrl={macArm64DownloadUrl}
+                      macX64DownloadUrl={macX64DownloadUrl}
+                      latestVersion={latestVersion}
                       className="inline-flex h-8 items-center bg-blue-500 px-3 text-base font-semibold text-white hover:bg-blue-400 transition"
                     >
                       Download
-                    </a>
+                    </MacDownloadButton>
                   </li>
                 </ul>
               </nav>
@@ -238,13 +256,10 @@ export default async function LandingPage() {
               </p>
 
               <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
-                <a
-                  href={macDownloadUrl}
-                  title={
-                    latestVersion
-                      ? "Download cmux for macOS arm64"
-                      : "Requires macOS"
-                  }
+                <MacDownloadButton
+                  macArm64DownloadUrl={macArm64DownloadUrl}
+                  macX64DownloadUrl={macX64DownloadUrl}
+                  latestVersion={latestVersion}
                   className="inline-flex h-12 items-center gap-2 text-base font-medium text-black bg-white hover:bg-neutral-50 border border-neutral-800 rounded-lg px-4 transition-all whitespace-nowrap"
                 >
                   <svg
@@ -260,7 +275,7 @@ export default async function LandingPage() {
                     ></path>
                   </svg>
                   Download for Mac
-                </a>
+                </MacDownloadButton>
                 <a
                   href="https://github.com/manaflow-ai/cmux"
                   target="_blank"
