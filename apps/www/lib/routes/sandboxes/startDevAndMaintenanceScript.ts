@@ -32,26 +32,17 @@ CMUX_SCRIPT_EOF
 chmod +x ${path}
 `;
 
-const ensurePidStoppedCommand = (pidFile: string): string => `
-if [ -f ${pidFile} ]; then
-  (
-    set -euo pipefail
-    trap 'status=$?; echo "Failed to stop process recorded in ${pidFile} (pid \${EXISTING_PID:-unknown}) (exit $status)" >&2' ERR
-    EXISTING_PID=$(cat ${pidFile} 2>/dev/null || true)
-    if [ -n "\${EXISTING_PID}" ] && kill -0 \${EXISTING_PID} 2>/dev/null; then
-      if kill \${EXISTING_PID} 2>/dev/null; then
-        sleep 0.2
-      elif kill -0 \${EXISTING_PID} 2>/dev/null; then
-        echo "Unable to terminate process \${EXISTING_PID}" >&2
-        exit 1
-      fi
+/**
+ * Sanitize a string to be used as a tmux session name.
+ * Tmux session names cannot contain: periods (.), colons (:), spaces, or other special characters.
+ */
+const sanitizeTmuxSessionName = (name: string): string => {
+  return name.replace(/[.:]/g, "-").replace(/[^a-zA-Z0-9_-]/g, "");
+};
 
-      if kill -0 \${EXISTING_PID} 2>/dev/null; then
-        echo "Process \${EXISTING_PID} still running after SIGTERM" >&2
-        exit 1
-      fi
-    fi
-  )
+const ensureTmuxSessionStoppedCommand = (sessionName: string): string => `
+if tmux has-session -t ${sessionName} 2>/dev/null; then
+  tmux kill-session -t ${sessionName}
 fi
 `;
 
@@ -63,12 +54,16 @@ export async function runMaintenanceScript({
   script: string;
 }): Promise<{ error: string | null }> {
   const maintenanceScriptPath = `${CMUX_RUNTIME_DIR}/maintenance-script.sh`;
+  const sessionName = sanitizeTmuxSessionName("cmux-maintenance");
+  const logFile = `${LOG_DIR}/maintenance-script.log`;
+
   const command = `
 set -euo pipefail
-trap 'rm -f ${maintenanceScriptPath}' EXIT
+mkdir -p ${LOG_DIR}
 ${buildScriptFileCommand(maintenanceScriptPath, script)}
+${ensureTmuxSessionStoppedCommand(sessionName)}
 cd ${WORKSPACE_ROOT}
-bash -eu -o pipefail ${maintenanceScriptPath}
+tmux new-session -d -s ${sessionName} "bash -eu -o pipefail ${maintenanceScriptPath} 2>&1 | tee ${logFile}; echo \$? > ${logFile}.exit_code"
 `;
 
   try {
@@ -78,9 +73,50 @@ bash -eu -o pipefail ${maintenanceScriptPath}
       const stderrPreview = previewOutput(result.stderr, 2000);
       const stdoutPreview = previewOutput(result.stdout, 500);
       const messageParts = [
-        `Maintenance script failed with exit code ${result.exit_code}`,
+        `Failed to start maintenance script with exit code ${result.exit_code}`,
         stderrPreview ? `stderr: ${stderrPreview}` : null,
         stdoutPreview ? `stdout: ${stdoutPreview}` : null,
+      ].filter((part): part is string => part !== null);
+      return { error: messageParts.join(" | ") };
+    }
+
+    // Wait for the tmux session to complete
+    const waitCommand = `
+max_wait=300
+waited=0
+while tmux has-session -t ${sessionName} 2>/dev/null; do
+  sleep 1
+  waited=$((waited + 1))
+  if [ \$waited -ge \$max_wait ]; then
+    echo "Maintenance script timed out after \${max_wait}s" >&2
+    tmux kill-session -t ${sessionName} 2>/dev/null || true
+    exit 124
+  fi
+done
+
+if [ -f ${logFile}.exit_code ]; then
+  exit_code=$(cat ${logFile}.exit_code)
+  if [ "\$exit_code" != "0" ]; then
+    if [ -f ${logFile} ]; then
+      tail -n 50 ${logFile}
+    fi
+    exit \$exit_code
+  fi
+else
+  echo "Maintenance script exit code not found" >&2
+  exit 1
+fi
+`;
+
+    const waitResult = await instance.exec(`bash -c ${singleQuote(waitCommand)}`);
+
+    if (waitResult.exit_code !== 0) {
+      const logPreview = previewOutput(waitResult.stdout, 2000);
+      const stderrPreview = previewOutput(waitResult.stderr, 500);
+      const messageParts = [
+        `Maintenance script failed with exit code ${waitResult.exit_code}`,
+        logPreview ? `log: ${logPreview}` : null,
+        stderrPreview ? `stderr: ${stderrPreview}` : null,
       ].filter((part): part is string => part !== null);
       return { error: messageParts.join(" | ") };
     }
@@ -102,18 +138,17 @@ export async function startDevScript({
   const devScriptRunId = randomUUID().replace(/-/g, "");
   const devScriptDir = `${CMUX_RUNTIME_DIR}/${devScriptRunId}`;
   const devScriptPath = `${devScriptDir}/dev-script.sh`;
-  const pidFile = `${LOG_DIR}/dev-script.pid`;
+  const sessionName = sanitizeTmuxSessionName("cmux-dev");
   const logFile = `${LOG_DIR}/dev-script.log`;
 
   const command = `
 set -euo pipefail
 mkdir -p ${LOG_DIR}
 mkdir -p ${devScriptDir}
-${ensurePidStoppedCommand(pidFile)}
 ${buildScriptFileCommand(devScriptPath, script)}
+${ensureTmuxSessionStoppedCommand(sessionName)}
 cd ${WORKSPACE_ROOT}
-nohup bash -eu -o pipefail ${devScriptPath} > ${logFile} 2>&1 &
-echo $! > ${pidFile}
+tmux new-session -d -s ${sessionName} "bash -eu -o pipefail ${devScriptPath} 2>&1 | tee ${logFile}"
 `;
 
   try {
@@ -130,19 +165,15 @@ echo $! > ${pidFile}
       return { error: messageParts.join(" | ") };
     }
 
-    // Check if the process started successfully and is still running
+    // Check if the tmux session started successfully and is still running
     const checkCommand = `
-if [ -f ${pidFile} ]; then
-  PID=$(cat ${pidFile} 2>/dev/null || echo "")
-  if [ -n "\$PID" ]; then
-    sleep 0.5
-    if ! kill -0 \$PID 2>/dev/null; then
-      if [ -f ${logFile} ]; then
-        tail -n 50 ${logFile}
-      fi
-      exit 1
-    fi
+sleep 0.5
+if ! tmux has-session -t ${sessionName} 2>/dev/null; then
+  if [ -f ${logFile} ]; then
+    tail -n 50 ${logFile}
   fi
+  echo "Dev script tmux session not found" >&2
+  exit 1
 fi
 `;
 
@@ -152,9 +183,13 @@ fi
 
     if (checkResult.exit_code !== 0) {
       const logPreview = previewOutput(checkResult.stdout, 2000);
-      return {
-        error: `Dev script failed immediately after start${logPreview ? ` | log: ${logPreview}` : ""}`,
-      };
+      const stderrPreview = previewOutput(checkResult.stderr, 500);
+      const messageParts = [
+        "Dev script failed immediately after start",
+        logPreview ? `log: ${logPreview}` : null,
+        stderrPreview ? `stderr: ${stderrPreview}` : null,
+      ].filter((part): part is string => part !== null);
+      return { error: messageParts.join(" | ") };
     }
 
     return { error: null };
