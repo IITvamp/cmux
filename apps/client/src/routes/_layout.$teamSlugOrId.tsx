@@ -2,6 +2,8 @@ import { CmuxComments } from "@/components/cmux-comments";
 import { CommandBar } from "@/components/CommandBar";
 import { Sidebar } from "@/components/Sidebar";
 import { SIDEBAR_PRS_DEFAULT_LIMIT } from "@/components/sidebar/const";
+import { VSCodePanel } from "@/components/vscode-panel/VSCodePanel";
+import { VerticalResizableLayout } from "@/components/vscode-panel/VerticalResizableLayout";
 import { convexQueryClient } from "@/contexts/convex/convex-query-client";
 import { ExpandTasksProvider } from "@/contexts/expand-tasks/ExpandTasksProvider";
 import { cachedGetUser } from "@/lib/cachedGetUser";
@@ -11,7 +13,8 @@ import { api } from "@cmux/convex/api";
 import { convexQuery } from "@convex-dev/react-query";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { Suspense, useEffect, useMemo } from "react";
+import { Code2, X } from "lucide-react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId")({
   component: LayoutComponentWrapper,
@@ -58,6 +61,14 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId")({
 function LayoutComponent() {
   const { teamSlugOrId } = Route.useParams();
   const tasks = useQuery(api.tasks.get, { teamSlugOrId });
+  const [showVSCode, setShowVSCode] = useState<boolean>(() => {
+    const stored = localStorage.getItem("showVSCodePanel");
+    return stored ? JSON.parse(stored) : true;
+  });
+
+  useEffect(() => {
+    localStorage.setItem("showVSCodePanel", JSON.stringify(showVSCode));
+  }, [showVSCode]);
 
   // Sort tasks by creation date (newest first) and take the latest 5
   const recentTasks = useMemo(() => {
@@ -70,7 +81,7 @@ function LayoutComponent() {
 
   const displayTasks = tasks === undefined ? undefined : recentTasks;
 
-  return (
+  const mainContent = (
     <>
       <CommandBar teamSlugOrId={teamSlugOrId} />
 
@@ -78,11 +89,9 @@ function LayoutComponent() {
         <div className="flex flex-row grow min-h-0 bg-white dark:bg-black">
           <Sidebar tasks={displayTasks} teamSlugOrId={teamSlugOrId} />
 
-          {/* <div className="flex flex-col grow overflow-hidden bg-white dark:bg-neutral-950"> */}
           <Suspense fallback={<div>Loading...</div>}>
             <Outlet />
           </Suspense>
-          {/* </div> */}
         </div>
       </ExpandTasksProvider>
 
@@ -90,8 +99,6 @@ function LayoutComponent() {
         onClick={() => {
           const msg = window.prompt("Enter debug note");
           if (msg) {
-            // Prefix allows us to easily grep in the console.
-
             console.log(`[USER NOTE] ${msg}`);
           }
         }}
@@ -114,6 +121,41 @@ function LayoutComponent() {
       >
         Add Debug Note
       </button>
+    </>
+  );
+
+  return (
+    <>
+      {/* VSCode Toggle Button - Fixed position */}
+      <button
+        onClick={() => setShowVSCode(!showVSCode)}
+        className="fixed top-2 right-2 z-50 flex items-center gap-2 px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-600 rounded-lg shadow-lg hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
+        title={showVSCode ? "Hide VSCode" : "Show VSCode"}
+      >
+        {showVSCode ? (
+          <>
+            <X className="w-4 h-4" />
+            <span className="text-sm font-medium">Hide VSCode</span>
+          </>
+        ) : (
+          <>
+            <Code2 className="w-4 h-4" />
+            <span className="text-sm font-medium">Show VSCode</span>
+          </>
+        )}
+      </button>
+
+      {/* Layout with or without VSCode */}
+      {showVSCode ? (
+        <VerticalResizableLayout
+          topPanel={
+            <VSCodePanel className="w-full h-full bg-neutral-100 dark:bg-neutral-900" />
+          }
+          bottomPanel={<div className="w-full h-full">{mainContent}</div>}
+        />
+      ) : (
+        mainContent
+      )}
     </>
   );
 }
