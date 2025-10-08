@@ -56,7 +56,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     perl
 
 # Install Rust toolchain with x86_64 cross-compilation support
-RUN <<'EOF'
+RUN bash <<'EOF'
 set -eux
 RUST_VERSION_RAW="${RUST_VERSION:-}"
 if [ -z "${RUST_VERSION_RAW}" ]; then
@@ -99,7 +99,7 @@ corepack prepare pnpm@10.14.0 --activate
 EOF
 
 # Install nvm for optional Node version management
-RUN <<'EOF'
+RUN bash <<'EOF'
 set -eux
 NVM_VERSION="${NVM_VERSION:-0.39.7}"
 mkdir -p "${NVM_DIR}"
@@ -392,14 +392,15 @@ rustup target add "${RUST_HOST_TARGET}" --toolchain "${RUST_VERSION}"
 rustup default "${RUST_VERSION}"
 EOF
 
-# Install GitHub CLI
+# Install GitHub CLI using repo enabler
+COPY scripts/repo-enablers /usr/local/share/cmux/repo-enablers
+RUN find /usr/local/share/cmux/repo-enablers -type f -name '*.sh' -exec chmod +x {} +
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
-    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-    && apt-get update \
-    && apt-get install -y gh
+    /usr/local/share/cmux/repo-enablers/deb/github-cli.sh \
+    && DEBIAN_FRONTEND=noninteractive apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y gh \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 24.x (runtime) and enable pnpm via corepack
 RUN <<EOF
@@ -584,6 +585,15 @@ ARG DOCKER_COMPOSE_VERSION
 ARG BUILDX_VERSION
 ARG BUILDKIT_VERSION
 
+COPY scripts/repo-enablers /usr/local/share/cmux/repo-enablers
+RUN find /usr/local/share/cmux/repo-enablers -type f -name '*.sh' -exec chmod +x {} +
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    /usr/local/share/cmux/repo-enablers/deb/github-cli.sh \
+    && DEBIAN_FRONTEND=noninteractive apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y gh \
+    && rm -rf /var/lib/apt/lists/*
+
 # Switch to legacy iptables for Docker compatibility
 RUN update-alternatives --set iptables /usr/sbin/iptables-legacy
 
@@ -673,5 +683,167 @@ EOF
 # Stage 4: Morph runtime without Docker
 FROM runtime-base AS morph
 
-# Final image (default) uses the local DinD runtime
-FROM runtime-local
+# Final runtime image (default behaviour)
+FROM runtime-local AS runtime-final
+
+# Packaging factory stage: produces .deb/.rpm artifacts using nfpm
+FROM runtime-final AS package-prep
+
+ARG VERSION
+ARG TARGETPLATFORM
+ARG CMUX_RELEASE=1
+ARG NFPM_VERSION=2.39.0
+
+COPY configs/systemd-host /tmp/systemd-host
+COPY configs/nfpm/cmux.yaml /tmp/nfpm/cmux.yaml
+COPY scripts/package /tmp/package-scripts
+
+RUN bash <<'EOF'
+set -euo pipefail
+
+pkgroot="/pkgroot"
+rm -rf "${pkgroot}" /out
+mkdir -p \
+  "${pkgroot}/usr/local/bin" \
+  "${pkgroot}/usr/local/lib/cmux" \
+  "${pkgroot}/usr/local/lib/node_modules" \
+  "${pkgroot}/opt/cmux/bin" \
+  "${pkgroot}/opt/cmux/repo-enablers" \
+  "${pkgroot}/opt/cmux/openvscode-server" \
+  "${pkgroot}/opt/cmux/builtins" \
+  "${pkgroot}/etc/cmux" \
+  "${pkgroot}/lib/systemd/system" \
+  /out \
+  /tmp/nfpm
+
+if compgen -G "/tmp/package-scripts/*.sh" > /dev/null; then
+  chmod +x /tmp/package-scripts/*.sh
+fi
+
+# Copy runtime executables required on the host
+for bin in envctl envd cmux-proxy node npm npx corepack; do
+  if [ -x "/usr/local/bin/${bin}" ]; then
+    install -m 0755 "/usr/local/bin/${bin}" "${pkgroot}/usr/local/bin/${bin}"
+  fi
+done
+
+# Node global modules (corepack uses this path)
+if [ -d /usr/local/lib/node_modules ]; then
+  cp -a /usr/local/lib/node_modules "${pkgroot}/usr/local/lib/node_modules"
+fi
+
+# Provide jq so configure-openvscode works even without extra host deps
+if command -v jq >/dev/null 2>&1; then
+  install -m 0755 "$(command -v jq)" "${pkgroot}/usr/local/bin/jq"
+fi
+
+# Copy application artifacts
+cp -a /app/openvscode-server/. "${pkgroot}/opt/cmux/openvscode-server/"
+cp -a /builtins/. "${pkgroot}/opt/cmux/builtins/"
+
+# Host helper scripts
+cp -a /tmp/systemd-host/bin/. "${pkgroot}/opt/cmux/bin/"
+chmod +x "${pkgroot}"/opt/cmux/bin/*
+if [ -f /usr/local/lib/cmux/configure-openvscode ]; then
+  install -m 0755 /usr/local/lib/cmux/configure-openvscode "${pkgroot}/opt/cmux/bin/configure-openvscode"
+fi
+if [ -d /usr/local/share/cmux/repo-enablers ]; then
+  cp -a /usr/local/share/cmux/repo-enablers/. "${pkgroot}/opt/cmux/repo-enablers/"
+fi
+
+# Config and unit files
+install -m 0644 /tmp/systemd-host/cmux.env "${pkgroot}/etc/cmux/cmux.env"
+for unit in cmux.target cmux-openvscode.service cmux-worker.service; do
+  install -m 0644 "/tmp/systemd-host/${unit}" "${pkgroot}/lib/systemd/system/${unit}"
+done
+
+# Prepare workspace directory layout
+mkdir -p "${pkgroot}/opt/cmux/workspace"
+
+# Determine target architecture mappings
+case "${TARGETPLATFORM:-$(uname -m)}" in
+  "linux/amd64"|amd64|x86_64)
+    deb_arch="amd64"
+    rpm_arch="x86_64"
+    nfpm_archive_arch="x86_64"
+    ;;
+  "linux/arm64"|arm64|aarch64)
+    deb_arch="arm64"
+    rpm_arch="aarch64"
+    nfpm_archive_arch="arm64"
+    ;;
+  *)
+    echo "Unsupported TARGETPLATFORM ${TARGETPLATFORM:-unknown}" >&2
+    exit 1
+    ;;
+esac
+
+# Install nfpm
+nfpm_tar="/tmp/nfpm.tar.gz"
+nfpm_tmp_dir="/tmp/nfpm-dist"
+curl -fsSL "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_${nfpm_archive_arch}.tar.gz" -o "${nfpm_tar}"
+rm -rf "${nfpm_tmp_dir}"
+mkdir -p "${nfpm_tmp_dir}"
+tar -xzf "${nfpm_tar}" -C "${nfpm_tmp_dir}"
+install -m 0755 "${nfpm_tmp_dir}/nfpm" /usr/local/bin/nfpm
+rm -rf "${nfpm_tmp_dir}" "${nfpm_tar}"
+
+export CMUX_VERSION="${VERSION:-0.0.0-dev}"
+export CMUX_RELEASE="${CMUX_RELEASE:-1}"
+
+rendered_config="/tmp/nfpm/rendered.yaml"
+
+# Build Debian package
+export NFPM_ARCH="${deb_arch}"
+python3 - <<'PY' "/tmp/nfpm/cmux.yaml" "${rendered_config}"
+import os
+import sys
+from pathlib import Path
+
+template_path, rendered_path = sys.argv[1:3]
+content = Path(template_path).read_text(encoding="utf-8")
+content = content.replace("__NFPM_ARCH__", os.environ["NFPM_ARCH"])
+content = content.replace("__CMUX_VERSION__", os.environ["CMUX_VERSION"])
+content = content.replace("__CMUX_RELEASE__", os.environ["CMUX_RELEASE"])
+Path(rendered_path).write_text(content, encoding="utf-8")
+PY
+nfpm pkg \
+  --config "${rendered_config}" \
+  --packager deb \
+  --target "/out/cmux_${CMUX_VERSION}_${deb_arch}.deb"
+
+# Build RPM package
+export NFPM_ARCH="${rpm_arch}"
+python3 - <<'PY' "/tmp/nfpm/cmux.yaml" "${rendered_config}"
+import os
+import sys
+from pathlib import Path
+
+template_path, rendered_path = sys.argv[1:3]
+content = Path(template_path).read_text(encoding="utf-8")
+content = content.replace("__NFPM_ARCH__", os.environ["NFPM_ARCH"])
+content = content.replace("__CMUX_VERSION__", os.environ["CMUX_VERSION"])
+content = content.replace("__CMUX_RELEASE__", os.environ["CMUX_RELEASE"])
+Path(rendered_path).write_text(content, encoding="utf-8")
+PY
+nfpm pkg \
+  --config "${rendered_config}" \
+  --packager rpm \
+  --target "/out/cmux_${CMUX_VERSION}_${rpm_arch}.rpm"
+
+cat <<META > /out/manifest.json
+{
+  "version": "${CMUX_VERSION}",
+  "release": "${CMUX_RELEASE}",
+  "deb": "cmux_${CMUX_VERSION}_${deb_arch}.deb",
+  "rpm": "cmux_${CMUX_VERSION}_${rpm_arch}.rpm",
+  "platform": "${TARGETPLATFORM:-$(uname -m)}"
+}
+META
+EOF
+
+FROM scratch AS package-export
+COPY --from=package-prep /out /out
+
+# Final image (unchanged default runtime)
+FROM runtime-final

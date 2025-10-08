@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - typing helpers only
-    from morphcloud.api import Snapshot
+    from morphcloud.api import Instance, Snapshot
 
 MORPH_EXPECTED_UNAME_ARCH = "x86_64"
 DOCKER_ENGINE_VERSION = "28.4.0"
@@ -16,12 +16,12 @@ DOCKER_BUILDX_VERSION = "v0.29.0"
 
 
 def write_remote_file(
-    snapshot: "Snapshot",
+    snapshot: "Snapshot | Instance",
     *,
     remote_path: str,
     content: str,
     executable: bool = False,
-) -> "Snapshot":
+) -> "Snapshot | Instance":
     """Write text content to `remote_path` on the snapshot without remote exec."""
     tmp_path: Path | None = None
     try:
@@ -42,12 +42,12 @@ def write_remote_file(
 
 
 def write_remote_file_from_path(
-    snapshot: "Snapshot",
+    snapshot: "Snapshot | Instance",
     *,
     remote_path: str,
     local_path: Path,
     executable: bool = False,
-) -> "Snapshot":
+) -> "Snapshot | Instance":
     """Read a local file and upload its contents to the snapshot."""
     text = local_path.read_text(encoding="utf-8")
     return write_remote_file(
