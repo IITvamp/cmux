@@ -19,7 +19,10 @@ import {
 import type { HydrateRepoConfig } from "./sandboxes/hydration";
 import { hydrateWorkspace } from "./sandboxes/hydration";
 import { resolveTeamAndSnapshot } from "./sandboxes/snapshot";
-import { runMaintenanceScript, startDevScript } from "./sandboxes/startDevAndMaintenanceScript";
+import {
+  runMaintenanceScript,
+  startDevScript,
+} from "./sandboxes/startDevAndMaintenanceScript";
 import {
   encodeEnvContentForEnvctl,
   envctlLoadCommand,
@@ -196,7 +199,7 @@ sandboxesRouter.openapi(
       const vscodeService = exposed.find((s) => s.port === 39378);
       const workerService = exposed.find((s) => s.port === 39377);
       if (!vscodeService || !workerService) {
-        await instance.stop().catch(() => { });
+        await instance.stop().catch(() => {});
         return c.text("VSCode or worker service not found", 500);
       }
 
@@ -298,7 +301,7 @@ sandboxesRouter.openapi(
         });
       } catch (error) {
         console.error(`[sandboxes.start] Hydration failed:`, error);
-        await instance.stop().catch(() => { });
+        await instance.stop().catch(() => {});
         return c.text("Failed to hydrate sandbox", 500);
       }
 
@@ -306,9 +309,9 @@ sandboxesRouter.openapi(
         (async () => {
           const maintenanceScriptResult = maintenanceScript
             ? await runMaintenanceScript({
-              instance,
-              script: maintenanceScript,
-            })
+                instance,
+                script: maintenanceScript,
+              })
             : undefined;
           const devScriptResult = devScript
             ? await startDevScript({ instance, script: devScript })
@@ -340,6 +343,23 @@ sandboxesRouter.openapi(
       }
 
       await configureGitIdentityTask;
+
+      // Update task run with the snapshot ID that was used
+      if (taskRunConvexId && body.environmentId) {
+        try {
+          await convex.mutation(api.taskRuns.updateMorphSnapshotId, {
+            teamSlugOrId: body.teamSlugOrId,
+            id: taskRunConvexId,
+            morphSnapshotId: resolvedSnapshotId,
+          });
+        } catch (error) {
+          console.error(
+            "[sandboxes.start] Failed to update task run with morph snapshot ID:",
+            error,
+          );
+          // Don't fail the request if this update fails
+        }
+      }
 
       return c.json({
         instanceId: instance.id,
@@ -597,8 +617,8 @@ sandboxesRouter.openapi(
       const parsed =
         devcontainerJson.exit_code === 0
           ? (JSON.parse(devcontainerJson.stdout || "{}") as {
-            forwardPorts?: number[];
-          })
+              forwardPorts?: number[];
+            })
           : { forwardPorts: [] as number[] };
 
       const devcontainerPorts = Array.isArray(parsed.forwardPorts)

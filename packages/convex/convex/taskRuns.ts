@@ -1133,6 +1133,29 @@ export const updateEnvironmentError = authMutation({
   },
 });
 
+// Update morph snapshot ID for a task run
+export const updateMorphSnapshotId = authMutation({
+  args: {
+    teamSlugOrId: v.string(),
+    id: v.id("taskRuns"),
+    morphSnapshotId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = ctx.identity.subject;
+    const run = await ctx.db.get(args.id);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+
+    if (!run || run.teamId !== teamId || run.userId !== userId) {
+      throw new Error("Task run not found or unauthorized");
+    }
+
+    await ctx.db.patch(args.id, {
+      morphSnapshotId: args.morphSnapshotId,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 // Get containers that should be stopped based on TTL and settings
 export const getContainersToStop = authQuery({
   args: { teamSlugOrId: v.string() },
