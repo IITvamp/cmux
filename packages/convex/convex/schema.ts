@@ -506,8 +506,6 @@ const convexSchema = defineSchema({
     state: v.union(v.literal("open"), v.literal("closed")),
     merged: v.optional(v.boolean()),
     draft: v.optional(v.boolean()),
-    mergeable: v.optional(v.boolean()),
-    mergeableState: v.optional(v.string()),
     authorLogin: v.optional(v.string()),
     authorId: v.optional(v.number()),
     htmlUrl: v.optional(v.string()),

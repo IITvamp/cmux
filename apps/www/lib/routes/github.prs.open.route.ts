@@ -27,8 +27,6 @@ type GitHubPrBasic = {
 type GitHubPrDetail = GitHubPrBasic & {
   merged_at: string | null;
   node_id: string;
-  mergeable: boolean | null;
-  mergeable_state: string;
 };
 
 type ConvexClient = ReturnType<typeof getConvex>;
@@ -792,8 +790,6 @@ githubPrsOpenRouter.openapi(
           state: "closed",
           merged: Boolean(closedPR.merged_at),
           draft: closedPR.draft,
-          mergeable: closedPR.mergeable ?? undefined,
-          mergeableState: closedPR.mergeable_state,
           authorLogin: existingPR.authorLogin,
           authorId: existingPR.authorId,
           htmlUrl: closedPR.html_url,
@@ -925,43 +921,6 @@ githubPrsOpenRouter.openapi(
     const octokit = createOctokit(githubAccessToken);
 
     try {
-      const currentPR = await fetchPullRequestDetail({
-        octokit,
-        owner,
-        repo,
-        number,
-      });
-
-      if (currentPR.mergeable === false) {
-        return c.json(
-          {
-            success: false,
-            message: `PR #${number} has merge conflicts and cannot be merged`,
-          },
-          400,
-        );
-      }
-
-      if (currentPR.mergeable === null) {
-        return c.json(
-          {
-            success: false,
-            message: `PR #${number} mergeability is still being calculated. Please try again in a moment.`,
-          },
-          400,
-        );
-      }
-
-      if (currentPR.mergeable_state === "blocked") {
-        return c.json(
-          {
-            success: false,
-            message: `PR #${number} is blocked and cannot be merged (required checks may be failing)`,
-          },
-          400,
-        );
-      }
-
       await mergePullRequest({
         octokit,
         owner,
@@ -990,8 +949,6 @@ githubPrsOpenRouter.openapi(
           state: mergedPR.state === "open" ? "open" : "closed",
           merged: Boolean(mergedPR.merged_at),
           draft: mergedPR.draft,
-          mergeable: mergedPR.mergeable ?? undefined,
-          mergeableState: mergedPR.mergeable_state,
           authorLogin: existingPR.authorLogin,
           authorId: existingPR.authorId,
           htmlUrl: mergedPR.html_url,
@@ -1182,8 +1139,6 @@ async function fetchPullRequestDetail({
     draft: data.draft ?? undefined,
     merged_at: data.merged_at,
     node_id: data.node_id,
-    mergeable: data.mergeable,
-    mergeable_state: data.mergeable_state ?? "unknown",
   };
 }
 
