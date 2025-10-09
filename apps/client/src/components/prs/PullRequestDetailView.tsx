@@ -5,7 +5,7 @@ import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
 import { useQuery as useRQ, useMutation, type DefaultError } from "@tanstack/react-query";
 import { useQuery as useConvexQuery } from "convex/react";
-import { ExternalLink, X, Check, Circle, Clock, AlertCircle, Loader2 } from "lucide-react";
+import { ExternalLink, X, Check, Circle, Clock, AlertCircle, Loader2, ChevronRight } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
@@ -131,19 +131,19 @@ function WorkflowRuns({ allRuns, isLoading }: { allRuns: CombinedRun[]; isLoadin
   let statusText;
 
   if (hasAnyRunning) {
-    icon = <Clock className="w-[7px] h-[7px] animate-pulse" />;
+    icon = <Clock className="w-[10px] h-[10px] animate-pulse" />;
     colorClass = "text-yellow-600 dark:text-yellow-400";
     statusText = "Running";
   } else if (hasAnyFailure) {
-    icon = <X className="w-[7px] h-[7px]" />;
+    icon = <X className="w-[10px] h-[10px]" />;
     colorClass = "text-red-600 dark:text-red-400";
     statusText = "Failed";
   } else if (allPassed) {
-    icon = <Check className="w-[7px] h-[7px]" />;
+    icon = <Check className="w-[10px] h-[10px]" />;
     colorClass = "text-green-600 dark:text-green-400";
     statusText = "Passed";
   } else {
-    icon = <Circle className="w-[7px] h-[7px]" />;
+    icon = <Circle className="w-[10px] h-[10px]" />;
     colorClass = "text-neutral-500 dark:text-neutral-400";
     statusText = "Checks";
   }
@@ -157,24 +157,78 @@ function WorkflowRuns({ allRuns, isLoading }: { allRuns: CombinedRun[]; isLoadin
 }
 
 function WorkflowRunsSection({ allRuns, isLoading }: { allRuns: CombinedRun[]; isLoading: boolean }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const sortedRuns = useMemo(() => allRuns.slice().sort((a, b) => {
+    const getStatusPriority = (run: typeof a) => {
+      if (run.conclusion === "failure" || run.conclusion === "timed_out" || run.conclusion === "action_required") return 0;
+      if (run.status === "in_progress" || run.status === "queued" || run.status === "waiting" || run.status === "pending") return 1;
+      if (run.conclusion === "success" || run.conclusion === "neutral" || run.conclusion === "skipped") return 2;
+      if (run.conclusion === "cancelled") return 3;
+      return 4;
+    };
+
+    const priorityA = getStatusPriority(a);
+    const priorityB = getStatusPriority(b);
+
+    if (priorityA !== priorityB) {
+      return priorityA - priorityB;
+    }
+
+    return (b.timestamp ?? 0) - (a.timestamp ?? 0);
+  }), [allRuns]);
+
+  const hasAnyRunning = sortedRuns.some(
+    (run) => run.status === "in_progress" || run.status === "queued" || run.status === "waiting" || run.status === "pending"
+  );
+  const failedRuns = sortedRuns.filter(
+    (run) => run.conclusion === "failure" || run.conclusion === "timed_out" || run.conclusion === "action_required"
+  );
+  const hasAnyFailure = failedRuns.length > 0;
+  const allPassed = sortedRuns.length > 0 && sortedRuns.every(
+    (run) => run.conclusion === "success" || run.conclusion === "neutral" || run.conclusion === "skipped"
+  );
+
   if (isLoading || allRuns.length === 0) {
     return null;
   }
 
+  let summaryIcon;
+  let summaryText;
+  let summaryColorClass;
+
+  if (hasAnyRunning) {
+    summaryIcon = <Loader2 className="w-3 h-3 animate-spin" strokeWidth={2} />;
+    summaryText = `${sortedRuns.length} ${sortedRuns.length === 1 ? 'check' : 'checks'} running`;
+    summaryColorClass = "text-yellow-600 dark:text-yellow-500";
+  } else if (hasAnyFailure) {
+    summaryIcon = <X className="w-3 h-3" strokeWidth={2} />;
+    summaryText = `${failedRuns.length} ${failedRuns.length === 1 ? 'check' : 'checks'} failed`;
+    summaryColorClass = "text-red-600 dark:text-red-500";
+  } else if (allPassed) {
+    summaryIcon = <Check className="w-3 h-3" strokeWidth={2} />;
+    summaryText = "All checks passed";
+    summaryColorClass = "text-green-600 dark:text-green-500";
+  } else {
+    summaryIcon = <Circle className="w-3 h-3" strokeWidth={2} />;
+    summaryText = `${sortedRuns.length} ${sortedRuns.length === 1 ? 'check' : 'checks'}`;
+    summaryColorClass = "text-neutral-500 dark:text-neutral-400";
+  }
+
   const getStatusIcon = (status?: string, conclusion?: string) => {
     if (conclusion === "success") {
-      return <Check className="w-2 h-2 text-green-600 dark:text-green-400" strokeWidth={2.5} />;
+      return <Check className="w-3 h-3 text-green-600 dark:text-green-400" strokeWidth={2} />;
     }
     if (conclusion === "failure") {
-      return <X className="w-2 h-2 text-red-600 dark:text-red-400" strokeWidth={2.5} />;
+      return <X className="w-3 h-3 text-red-600 dark:text-red-400" strokeWidth={2} />;
     }
     if (conclusion === "cancelled") {
-      return <Circle className="w-2 h-2 text-neutral-500 dark:text-neutral-400" />;
+      return <Circle className="w-3 h-3 text-neutral-500 dark:text-neutral-400" strokeWidth={2} />;
     }
     if (status === "in_progress" || status === "queued") {
-      return <Loader2 className="w-2 h-2 text-yellow-600 dark:text-yellow-500 animate-spin" />;
+      return <Loader2 className="w-3 h-3 text-yellow-600 dark:text-yellow-500 animate-spin" strokeWidth={2} />;
     }
-    return <AlertCircle className="w-2 h-2 text-neutral-500 dark:text-neutral-400" />;
+    return <AlertCircle className="w-3 h-3 text-neutral-500 dark:text-neutral-400" strokeWidth={2} />;
   };
 
   const formatTimeAgo = (timestamp?: number) => {
@@ -230,46 +284,47 @@ function WorkflowRunsSection({ allRuns, isLoading }: { allRuns: CombinedRun[]; i
     return parts.join(" — ");
   };
 
-  const sortedRuns = allRuns.slice().sort((a, b) => {
-    const getStatusPriority = (run: typeof a) => {
-      if (run.conclusion === "failure" || run.conclusion === "timed_out" || run.conclusion === "action_required") return 0;
-      if (run.status === "in_progress" || run.status === "queued" || run.status === "waiting" || run.status === "pending") return 1;
-      if (run.conclusion === "success" || run.conclusion === "neutral" || run.conclusion === "skipped") return 2;
-      if (run.conclusion === "cancelled") return 3;
-      return 4;
-    };
-
-    const priorityA = getStatusPriority(a);
-    const priorityB = getStatusPriority(b);
-
-    if (priorityA !== priorityB) {
-      return priorityA - priorityB;
-    }
-
-    return (b.timestamp ?? 0) - (a.timestamp ?? 0);
-  });
-
   return (
-    <div className="border-t border-b border-neutral-200 dark:border-neutral-800">
-      <div className="divide-y divide-neutral-200 dark:divide-neutral-800">
-        {sortedRuns.map((run) => (
+    <div>
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center pl-3 pr-2.5 py-1.5 border-y border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900"
+      >
+        <div className="flex items-center" style={{ width: '20px' }}>
+          <ChevronRight
+            className={`w-3.5 h-3.5 text-neutral-600 dark:text-neutral-400 transition-transform ${
+              isExpanded ? "rotate-90" : ""
+            }`}
+            strokeWidth={1.5}
+          />
+        </div>
+        <div className="flex items-center" style={{ width: '20px' }}>
+          <div className={`${summaryColorClass}`}>
+            {summaryIcon}
+          </div>
+        </div>
+        <span className={`text-[11px] font-semibold ${summaryColorClass}`}>{summaryText}</span>
+      </button>
+      {isExpanded && (
+        <div className="divide-y divide-neutral-200 dark:divide-neutral-800 border-b border-neutral-200 dark:border-neutral-800">
+          {sortedRuns.map((run) => (
           <a
             key={`${run.type}-${run._id}`}
             href={run.url || '#'}
             target="_blank"
             rel="noreferrer"
-            className="flex items-center justify-between gap-2 px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors group"
+            className="flex items-center justify-between gap-2 pl-8 pr-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors group"
           >
             <div className="flex items-center gap-1.5 flex-1 min-w-0">
               <div className="shrink-0">
                 {getStatusIcon(run.status, run.conclusion)}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-[11px] text-neutral-900 dark:text-neutral-100">
+                <div className="text-[11px] text-neutral-900 dark:text-neutral-100 font-normal">
                   {run.name}
                 </div>
               </div>
-              <div className="text-[9px] text-neutral-600 dark:text-neutral-400 shrink-0">
+              <div className="text-[11px] text-neutral-600 dark:text-neutral-400 shrink-0">
                 {getStatusDescription(run)}
               </div>
             </div>
@@ -279,8 +334,9 @@ function WorkflowRunsSection({ allRuns, isLoading }: { allRuns: CombinedRun[]; i
               </div>
             )}
           </a>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -337,18 +393,11 @@ export function PullRequestDetailView({
   repo,
   number,
 }: PullRequestDetailViewProps) {
-  const prs = useConvexQuery(api.github_prs.listPullRequests, {
+  const currentPR = useConvexQuery(api.github_prs.getPullRequest, {
     teamSlugOrId,
-    state: "all",
+    repoFullName: `${owner}/${repo}`,
+    number: Number(number),
   });
-  const currentPR = useMemo(() => {
-    const key = `${owner}/${repo}`;
-    const num = Number(number);
-    return (
-      (prs || []).find((p) => p.repoFullName === key && p.number === num) ||
-      null
-    );
-  }, [prs, owner, repo, number]);
 
   const workflowData = useCombinedWorkflowData({
     teamSlugOrId,
