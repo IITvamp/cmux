@@ -576,6 +576,22 @@ export function PullRequestDetailView({
                     isLoading={workflowData.isLoading}
                   />
                 </Suspense>
+                {currentPR.mergeable === false && (
+                  <div className="flex items-center gap-1 ml-2 shrink-0">
+                    <AlertCircle className="w-[10px] h-[10px] text-red-600 dark:text-red-400" />
+                    <span className="text-[9px] font-medium text-red-600 dark:text-red-400 select-none">
+                      Conflicts
+                    </span>
+                  </div>
+                )}
+                {currentPR.mergeableState === "blocked" && currentPR.mergeable !== false && (
+                  <div className="flex items-center gap-1 ml-2 shrink-0">
+                    <Circle className="w-[10px] h-[10px] text-orange-600 dark:text-orange-400" />
+                    <span className="text-[9px] font-medium text-orange-600 dark:text-orange-400 select-none">
+                      Blocked
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="col-start-3 row-start-1 row-span-2 self-center flex items-center gap-2 shrink-0">
@@ -584,7 +600,12 @@ export function PullRequestDetailView({
                     <MergeButton
                       onMerge={handleMergePR}
                       isOpen={true}
-                      disabled={mergePrMutation.isPending || closePrMutation.isPending}
+                      disabled={
+                        mergePrMutation.isPending ||
+                        closePrMutation.isPending ||
+                        currentPR.mergeable === false ||
+                        currentPR.mergeableState === "blocked"
+                      }
                       isLoading={mergePrMutation.isPending}
                     />
                     <button
