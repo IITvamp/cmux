@@ -743,6 +743,25 @@ githubPrsOpenRouter.openapi(
 
     await verifyTeamAccess({ req: c.req.raw, teamSlugOrId });
 
+    const convex = getConvex({ accessToken });
+    const repoFullName = `${owner}/${repo}`;
+
+    const existingPR = await convex.query(api.github_prs.getPullRequest, {
+      teamSlugOrId,
+      repoFullName,
+      number,
+    });
+
+    if (!existingPR) {
+      return c.json(
+        {
+          success: false,
+          message: `PR #${number} not found in database`,
+        },
+        404,
+      );
+    }
+
     const octokit = createOctokit(githubAccessToken);
 
     try {
@@ -751,6 +770,40 @@ githubPrsOpenRouter.openapi(
         owner,
         repo,
         number,
+      });
+
+      const closedPR = await fetchPullRequestDetail({
+        octokit,
+        owner,
+        repo,
+        number,
+      });
+
+      await convex.mutation(api.github_prs.upsertFromServer, {
+        teamSlugOrId,
+        installationId: existingPR.installationId,
+        repoFullName,
+        number,
+        record: {
+          providerPrId: closedPR.number,
+          title: existingPR.title,
+          state: "closed",
+          merged: Boolean(closedPR.merged_at),
+          draft: closedPR.draft,
+          authorLogin: existingPR.authorLogin,
+          authorId: existingPR.authorId,
+          htmlUrl: closedPR.html_url,
+          baseRef: existingPR.baseRef,
+          headRef: existingPR.headRef,
+          baseSha: existingPR.baseSha,
+          headSha: existingPR.headSha,
+          mergeCommitSha: existingPR.mergeCommitSha,
+          createdAt: existingPR.createdAt,
+          updatedAt: existingPR.updatedAt,
+          closedAt: Date.now(),
+          mergedAt: closedPR.merged_at ? new Date(closedPR.merged_at).getTime() : undefined,
+          repositoryId: existingPR.repositoryId,
+        },
       });
 
       return c.json({
@@ -846,6 +899,25 @@ githubPrsOpenRouter.openapi(
 
     await verifyTeamAccess({ req: c.req.raw, teamSlugOrId });
 
+    const convex = getConvex({ accessToken });
+    const repoFullName = `${owner}/${repo}`;
+
+    const existingPR = await convex.query(api.github_prs.getPullRequest, {
+      teamSlugOrId,
+      repoFullName,
+      number,
+    });
+
+    if (!existingPR) {
+      return c.json(
+        {
+          success: false,
+          message: `PR #${number} not found in database`,
+        },
+        404,
+      );
+    }
+
     const octokit = createOctokit(githubAccessToken);
 
     try {
@@ -857,6 +929,40 @@ githubPrsOpenRouter.openapi(
         method,
         commitTitle: `Merge pull request #${number}`,
         commitMessage: `Merged via cmux`,
+      });
+
+      const mergedPR = await fetchPullRequestDetail({
+        octokit,
+        owner,
+        repo,
+        number,
+      });
+
+      await convex.mutation(api.github_prs.upsertFromServer, {
+        teamSlugOrId,
+        installationId: existingPR.installationId,
+        repoFullName,
+        number,
+        record: {
+          providerPrId: mergedPR.number,
+          title: existingPR.title,
+          state: mergedPR.state === "open" ? "open" : "closed",
+          merged: Boolean(mergedPR.merged_at),
+          draft: mergedPR.draft,
+          authorLogin: existingPR.authorLogin,
+          authorId: existingPR.authorId,
+          htmlUrl: mergedPR.html_url,
+          baseRef: existingPR.baseRef,
+          headRef: existingPR.headRef,
+          baseSha: existingPR.baseSha,
+          headSha: existingPR.headSha,
+          mergeCommitSha: existingPR.mergeCommitSha,
+          createdAt: existingPR.createdAt,
+          updatedAt: existingPR.updatedAt,
+          closedAt: existingPR.closedAt,
+          mergedAt: mergedPR.merged_at ? new Date(mergedPR.merged_at).getTime() : undefined,
+          repositoryId: existingPR.repositoryId,
+        },
       });
 
       return c.json({

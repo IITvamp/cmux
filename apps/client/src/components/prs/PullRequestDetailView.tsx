@@ -185,16 +185,18 @@ function WorkflowRunsSection({
     return (b.timestamp ?? 0) - (a.timestamp ?? 0);
   }), [allRuns]);
 
-  const hasAnyRunning = sortedRuns.some(
+  const runningRuns = sortedRuns.filter(
     (run) => run.status === "in_progress" || run.status === "queued" || run.status === "waiting" || run.status === "pending"
   );
+  const hasAnyRunning = runningRuns.length > 0;
   const failedRuns = sortedRuns.filter(
     (run) => run.conclusion === "failure" || run.conclusion === "timed_out" || run.conclusion === "action_required"
   );
   const hasAnyFailure = failedRuns.length > 0;
-  const allPassed = sortedRuns.length > 0 && sortedRuns.every(
+  const passedRuns = sortedRuns.filter(
     (run) => run.conclusion === "success" || run.conclusion === "neutral" || run.conclusion === "skipped"
   );
+  const allPassed = sortedRuns.length > 0 && passedRuns.length === sortedRuns.length;
 
   if (isLoading) {
     return (
@@ -219,7 +221,17 @@ function WorkflowRunsSection({
   const { summaryIcon, summaryText, summaryColorClass } = hasAnyRunning
     ? {
       summaryIcon: <Loader2 className="w-3 h-3 animate-spin" strokeWidth={2} />,
-      summaryText: `${sortedRuns.length} ${sortedRuns.length === 1 ? "check" : "checks"} running`,
+      summaryText: (() => {
+        const parts: string[] = [];
+        if (passedRuns.length > 0) {
+          parts.push(`${passedRuns.length} passed`);
+        }
+        if (failedRuns.length > 0) {
+          parts.push(`${failedRuns.length} failed`);
+        }
+        parts.push(`${runningRuns.length} running`);
+        return parts.join(", ");
+      })(),
       summaryColorClass: "text-yellow-600 dark:text-yellow-500",
     }
     : hasAnyFailure
