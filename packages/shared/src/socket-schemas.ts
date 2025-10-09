@@ -53,6 +53,12 @@ export const SpawnStandaloneVSCodeSchema = z.object({
   workspaceId: z.string().optional(),
 });
 
+export const SpawnDashboardVSCodeSchema = z.object({
+  repoUrl: z.string().optional(),
+  branch: z.string().optional(),
+  projectFullName: z.string().optional(),
+});
+
 // Server to Client Events
 export const TerminalCreatedSchema = z.object({
   terminalId: z.string(),
@@ -386,6 +392,7 @@ export type Resize = z.infer<typeof ResizeSchema>;
 export type CloseTerminal = z.infer<typeof CloseTerminalSchema>;
 export type StartTask = z.infer<typeof StartTaskSchema>;
 export type SpawnStandaloneVSCode = z.infer<typeof SpawnStandaloneVSCodeSchema>;
+export type SpawnDashboardVSCode = z.infer<typeof SpawnDashboardVSCodeSchema>;
 export type TerminalCreated = z.infer<typeof TerminalCreatedSchema>;
 export type TerminalOutput = z.infer<typeof TerminalOutputSchema>;
 export type TerminalExit = z.infer<typeof TerminalExitSchema>;
@@ -513,6 +520,7 @@ export interface ClientToServerEvents {
     callback: (response: { success: boolean; error?: string }) => void
   ) => void;
   "spawn-standalone-vscode": (data: SpawnStandaloneVSCode) => void;
+  "spawn-dashboard-vscode": (data: SpawnDashboardVSCode) => void;
   "spawn-from-comment": (
     data: SpawnFromComment,
     callback: (response: {
@@ -534,6 +542,7 @@ export interface ServerToClientEvents {
   "open-in-editor-error": (data: OpenInEditorError) => void;
   "list-files-response": (data: ListFilesResponse) => void;
   "vscode-spawned": (data: VSCodeSpawned) => void;
+  "dashboard-vscode-spawned": (data: VSCodeSpawned) => void;
   "default-repo": (data: DefaultRepo) => void;
   "available-editors": (data: AvailableEditors) => void;
   "task-started": (data: TaskStarted) => void;

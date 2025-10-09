@@ -1528,59 +1528,47 @@ ${title}`;
       projectFullName?: string;
     }) => {
       try {
-        serverLogger.info("Spawning dashboard VSCode instance", data);
+        serverLogger.info("Spawning persistent dashboard workspace", data);
 
-        // Clone repository if provided - just use the main repo directly
-        let workspacePath: string;
+        const { PersistentDockerWorkspace } = await import("./workspace/PersistentDockerWorkspace");
+        const workspace = new PersistentDockerWorkspace({ teamSlugOrId: safeTeam });
+
+        const info = await workspace.start();
+
         if (data.repoUrl && data.projectFullName) {
-          // Get the project paths
-          const paths = await getProjectPaths(data.repoUrl, safeTeam);
-          serverLogger.info(`Project paths:`, paths);
+          const repoName = data.projectFullName.split("/").pop() || data.projectFullName;
 
-          // Ensure repository exists
-          const repoManager = RepositoryManager.getInstance();
-          await repoManager.ensureRepository(data.repoUrl, paths.originPath);
+          const existingRepos = await workspace.listRepos();
+          if (!existingRepos.includes(repoName)) {
+            await workspace.cloneRepo(data.repoUrl, repoName, data.branch);
 
-          // Use the origin path as workspace
-          workspacePath = paths.originPath;
-          serverLogger.info(`Dashboard VSCode workspace path: ${workspacePath}`);
-
-          // Verify the path exists and is readable
-          try {
-            const stats = await fs.stat(workspacePath);
-            serverLogger.info(`Workspace exists: ${stats.isDirectory() ? 'directory' : 'file'}`);
-          } catch (error) {
-            serverLogger.error(`Workspace path does not exist or is not accessible: ${error}`);
+            await getConvex().mutation((api as any).workspaceRepos.upsert, {
+              teamSlugOrId: safeTeam,
+              repoFullName: data.projectFullName,
+              repoUrl: data.repoUrl,
+              localPath: `/workspaces/${repoName}`,
+              defaultBranch: data.branch,
+              currentBranch: data.branch,
+            });
           }
-        } else {
-          // Create a temporary workspace
-          workspacePath = await fs.mkdtemp(path.join(os.tmpdir(), "cmux-dashboard-"));
+
+          await workspace.switchRepo(repoName);
+          await getConvex().mutation((api as any).dashboardWorkspaces.updateCurrentRepo, {
+            teamSlugOrId: safeTeam,
+            repoFullName: data.projectFullName,
+          });
         }
 
-        // Create fake IDs for the container
-        const instanceId = `dashboard-${Date.now()}` as any;
+        serverLogger.info("Persistent dashboard workspace ready:", info);
 
-        // Spawn VSCode container
-        const vscodeInstance = new DockerVSCodeInstance({
-          taskRunId: instanceId,
-          taskId: instanceId,
-          teamSlugOrId: safeTeam,
-          workspacePath,
-        });
-
-        const info = await vscodeInstance.start();
-
-        serverLogger.info("Dashboard VSCode spawned:", info);
-
-        // Emit dashboard-vscode-spawned event
         socket.emit("dashboard-vscode-spawned", {
-          instanceId,
-          url: info.url,
+          instanceId: info.workspaceId,
+          url: info.vscodeUrl,
           workspaceUrl: info.workspaceUrl,
-          provider: "docker",
+          provider: info.provider,
         });
       } catch (error) {
-        serverLogger.error("Error spawning dashboard VSCode:", error);
+        serverLogger.error("Error spawning persistent dashboard workspace:", error);
       }
     });
   });

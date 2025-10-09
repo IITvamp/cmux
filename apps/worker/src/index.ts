@@ -793,6 +793,138 @@ managementIO.on("connection", (socket) => {
     }
   });
 
+  socket.on("workspace:clone-repo", async (data, callback) => {
+    try {
+      const { repoUrl, repoName, branch } = data;
+      const repoPath = `/workspaces/${repoName}`;
+
+      log("INFO", `Cloning repo ${repoUrl} to ${repoPath}`);
+
+      const cloneCommand = branch
+        ? `git clone --branch ${branch} ${repoUrl} ${repoPath}`
+        : `git clone ${repoUrl} ${repoPath}`;
+
+      await execAsync(cloneCommand);
+
+      log("INFO", `Successfully cloned ${repoName}`);
+      callback({ success: true });
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      log("ERROR", `Failed to clone repo: ${errorMsg}`);
+      callback({ success: false, error: errorMsg });
+    }
+  });
+
+  socket.on("workspace:switch-repo", async (data, callback) => {
+    try {
+      const { repoName } = data;
+      const repoPath = `/workspaces/${repoName}`;
+
+      log("INFO", `Switching to repo ${repoName}`);
+
+      const stats = await fs.stat(repoPath);
+      if (!stats.isDirectory()) {
+        throw new Error(`${repoPath} is not a directory`);
+      }
+
+      callback({ success: true });
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      log("ERROR", `Failed to switch repo: ${errorMsg}`);
+      callback({ success: false, error: errorMsg });
+    }
+  });
+
+  socket.on("workspace:fetch-repo", async (data, callback) => {
+    try {
+      const { repoName } = data;
+      const repoPath = `/workspaces/${repoName}`;
+
+      log("INFO", `Fetching repo ${repoName}`);
+
+      await execAsync("git fetch --all", { cwd: repoPath });
+
+      log("INFO", `Successfully fetched ${repoName}`);
+      callback({ success: true });
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      log("ERROR", `Failed to fetch repo: ${errorMsg}`);
+      callback({ success: false, error: errorMsg });
+    }
+  });
+
+  socket.on("workspace:repo-status", async (data, callback) => {
+    try {
+      const { repoName } = data;
+      const repoPath = `/workspaces/${repoName}`;
+
+      log("INFO", `Getting status for repo ${repoName}`);
+
+      const branchResult = await execAsync("git branch --show-current", {
+        cwd: repoPath,
+      });
+      const currentBranch = branchResult.stdout.trim();
+
+      const statusResult = await execAsync("git status --porcelain", {
+        cwd: repoPath,
+      });
+      const uncommittedFiles = statusResult.stdout
+        .trim()
+        .split("\n")
+        .filter((line) => line.length > 0).length;
+      const isDirty = uncommittedFiles > 0;
+
+      callback({
+        success: true,
+        status: {
+          repoFullName: repoName,
+          currentBranch,
+          isDirty,
+          uncommittedFiles,
+        },
+      });
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      log("ERROR", `Failed to get repo status: ${errorMsg}`);
+      callback({ success: false, error: errorMsg });
+    }
+  });
+
+  socket.on("workspace:list-repos", async (_data, callback) => {
+    try {
+      log("INFO", "Listing repos in /workspaces");
+
+      const entries = await fs.readdir("/workspaces", { withFileTypes: true });
+      const repos = entries
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name);
+
+      callback({ success: true, repos });
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      log("ERROR", `Failed to list repos: ${errorMsg}`);
+      callback({ success: false, error: errorMsg });
+    }
+  });
+
+  socket.on("workspace:remove-repo", async (data, callback) => {
+    try {
+      const { repoName } = data;
+      const repoPath = `/workspaces/${repoName}`;
+
+      log("INFO", `Removing repo ${repoName}`);
+
+      await execAsync(`rm -rf ${repoPath}`);
+
+      log("INFO", `Successfully removed ${repoName}`);
+      callback({ success: true });
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      log("ERROR", `Failed to remove repo: ${errorMsg}`);
+      callback({ success: false, error: errorMsg });
+    }
+  });
+
   socket.on("disconnect", (reason) => {
     log("WARNING", `Main server disconnected from worker ${WORKER_ID}`, {
       reason,

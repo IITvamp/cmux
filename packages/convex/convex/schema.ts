@@ -536,6 +536,61 @@ const convexSchema = defineSchema({
     .index("by_team_repo_number", ["teamId", "repoFullName", "number"]) // upsert key
     .index("by_installation", ["installationId", "updatedAt"]) // debug/ops
     .index("by_repo", ["repoFullName", "updatedAt"]),
+
+  // Persistent dashboard workspaces (one per team)
+  dashboardWorkspaces: defineTable({
+    teamId: v.string(),
+    provider: v.union(
+      v.literal("docker"),
+      v.literal("morph"),
+      v.literal("daytona")
+    ),
+    status: v.union(
+      v.literal("starting"),
+      v.literal("running"),
+      v.literal("stopped")
+    ),
+    containerName: v.optional(v.string()), // For Docker provider
+    instanceId: v.optional(v.string()), // For cloud providers
+    vscodeUrl: v.optional(v.string()),
+    workerUrl: v.optional(v.string()),
+    workspaceUrl: v.optional(v.string()),
+    volumePath: v.optional(v.string()), // Local volume path for Docker
+    currentRepoName: v.optional(v.string()), // Currently active repo
+    ports: v.optional(
+      v.object({
+        vscode: v.string(),
+        worker: v.string(),
+        extension: v.optional(v.string()),
+      })
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    startedAt: v.optional(v.number()),
+    stoppedAt: v.optional(v.number()),
+    lastAccessedAt: v.optional(v.number()),
+  })
+    .index("by_team", ["teamId"])
+    .index("by_status", ["status"]),
+
+  // Repos within persistent workspaces
+  workspaceRepos: defineTable({
+    workspaceId: v.id("dashboardWorkspaces"),
+    teamId: v.string(),
+    repoFullName: v.string(),
+    repoUrl: v.string(),
+    localPath: v.string(), // Path within the workspace volume
+    defaultBranch: v.optional(v.string()),
+    currentBranch: v.optional(v.string()),
+    isDirty: v.optional(v.boolean()), // Has uncommitted changes
+    lastFetchedAt: v.optional(v.number()),
+    lastAccessedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_workspace", ["workspaceId"])
+    .index("by_team", ["teamId"])
+    .index("by_workspace_repo", ["workspaceId", "repoFullName"]),
 });
 
 export default convexSchema;

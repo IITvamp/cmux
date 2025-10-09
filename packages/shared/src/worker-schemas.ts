@@ -259,6 +259,44 @@ export interface ServerToWorkerEvents {
   "worker:check-docker": (
     callback: (response: DockerReadinessResponse) => void
   ) => void;
+
+  // Workspace repository operations
+  "workspace:clone-repo": (
+    data: { repoUrl: string; repoName: string; branch?: string },
+    callback: (response: { success: boolean; error?: string }) => void
+  ) => void;
+  "workspace:switch-repo": (
+    data: { repoName: string },
+    callback: (response: { success: boolean; error?: string }) => void
+  ) => void;
+  "workspace:fetch-repo": (
+    data: { repoName: string },
+    callback: (response: { success: boolean; error?: string }) => void
+  ) => void;
+  "workspace:repo-status": (
+    data: { repoName: string },
+    callback: (
+      response:
+        | {
+            success: true;
+            status: {
+              repoFullName: string;
+              currentBranch: string;
+              isDirty: boolean;
+              uncommittedFiles: number;
+            };
+          }
+        | { success: false; error: string }
+    ) => void
+  ) => void;
+  "workspace:list-repos": (
+    data: Record<string, never>,
+    callback: (response: { success: boolean; repos?: string[]; error?: string }) => void
+  ) => void;
+  "workspace:remove-repo": (
+    data: { repoName: string },
+    callback: (response: { success: boolean; error?: string }) => void
+  ) => void;
 }
 
 export interface WorkerFileChange {
