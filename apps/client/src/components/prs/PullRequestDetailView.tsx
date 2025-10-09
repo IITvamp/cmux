@@ -5,9 +5,11 @@ import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
 import { useQuery as useRQ, useMutation, type DefaultError } from "@tanstack/react-query";
 import { useQuery as useConvexQuery } from "convex/react";
-import { ExternalLink, X, Check, Circle, Clock, AlertCircle, Loader2, ChevronRight, ChevronDown } from "lucide-react";
+import { ExternalLink, X, Check, Circle, Clock, AlertCircle, Loader2, ChevronRight, ChevronDown, Copy, GitBranch } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { useClipboard } from "@mantine/hooks";
+import clsx from "clsx";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { postApiIntegrationsGithubPrsCloseMutation } from "@cmux/www-openapi-client/react-query";
 import { postApiIntegrationsGithubPrsMergeSimple } from "@cmux/www-openapi-client";
@@ -410,6 +412,8 @@ export function PullRequestDetailView({
   repo,
   number,
 }: PullRequestDetailViewProps) {
+  const clipboard = useClipboard({ timeout: 2000 });
+
   const currentPR = useConvexQuery(api.github_prs.getPullRequest, {
     teamSlugOrId,
     repoFullName: `${owner}/${repo}`,
@@ -614,42 +618,42 @@ export function PullRequestDetailView({
                 <span className="text-neutral-500 dark:text-neutral-600 select-none">
                   •
                 </span>
-                <span className="text-[11px] text-neutral-600 dark:text-neutral-300 flex items-center gap-1">
+                <span className="font-mono text-[11px] text-neutral-600 dark:text-neutral-300 flex items-center gap-1">
                   <button
                     onClick={() => {
                       if (currentPR.headRef) {
-                        navigator.clipboard
-                          .writeText(currentPR.headRef)
-                          .then(() => {
-                            toast.success(`Copied branch: ${currentPR.headRef}`);
-                          })
-                          .catch(() => {
-                            toast.error("Failed to copy branch");
-                          });
+                        clipboard.copy(currentPR.headRef);
                       }
                     }}
-                    className="hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors cursor-pointer"
+                    className="flex items-center gap-1 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors cursor-pointer group"
                   >
+                    <div className="relative w-3 h-3">
+                      <GitBranch
+                        className={clsx(
+                          "w-3 h-3 absolute inset-0 z-0",
+                          clipboard.copied ? "hidden" : "block group-hover:hidden",
+                        )}
+                        aria-hidden={clipboard.copied}
+                      />
+                      <Copy
+                        className={clsx(
+                          "w-3 h-3 absolute inset-0 z-[var(--z-low)]",
+                          clipboard.copied ? "hidden" : "hidden group-hover:block",
+                        )}
+                        aria-hidden={clipboard.copied}
+                      />
+                      <Check
+                        className={clsx(
+                          "w-3 h-3 text-green-400 absolute inset-0 z-[var(--z-sticky)]",
+                          clipboard.copied ? "block" : "hidden",
+                        )}
+                        aria-hidden={!clipboard.copied}
+                      />
+                    </div>
                     {currentPR.headRef || "?"}
                   </button>
                   <span className="select-none">→</span>
-                  <button
-                    onClick={() => {
-                      if (currentPR.baseRef) {
-                        navigator.clipboard
-                          .writeText(currentPR.baseRef)
-                          .then(() => {
-                            toast.success(`Copied branch: ${currentPR.baseRef}`);
-                          })
-                          .catch(() => {
-                            toast.error("Failed to copy branch");
-                          });
-                      }
-                    }}
-                    className="hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors cursor-pointer"
-                  >
-                    {currentPR.baseRef || "?"}
-                  </button>
+                  <span className="font-mono">{currentPR.baseRef || "?"}</span>
                 </span>
               </div>
             </div>
