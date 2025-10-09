@@ -5,10 +5,9 @@ import type {
 
 export const CLAUDE_KEY_ENV_VARS_TO_UNSET = [
   "ANTHROPIC_API_KEY",
+  "ANTHROPIC_AUTH_TOKEN",
+  "ANTHROPIC_CUSTOM_HEADERS",
   "CLAUDE_API_KEY",
-  "CLAUDE_CODE_API_KEY",
-  "ANTHROPIC_API_KEY_PATH",
-  "ANTHROPIC_API_KEY_FILE",
 ];
 
 export async function getClaudeEnvironment(
