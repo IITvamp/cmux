@@ -8,7 +8,6 @@ export PATH
 export DISPLAY=:1
 LOG_DIR=/var/log/cmux
 XVFB_LOG_FILE="${LOG_DIR}/xvfb.log"
-FLUXBOX_LOG_FILE="${LOG_DIR}/fluxbox.log"
 X11VNC_LOG_FILE="${LOG_DIR}/x11vnc.log"
 WEBSOCKIFY_LOG_FILE="${LOG_DIR}/websockify.log"
 CHROME_LOG_FILE="${LOG_DIR}/chrome.log"
@@ -17,7 +16,6 @@ CDP_PORT=39381
 mkdir -p "${LOG_DIR}"
 touch \
   "${XVFB_LOG_FILE}" \
-  "${FLUXBOX_LOG_FILE}" \
   "${X11VNC_LOG_FILE}" \
   "${WEBSOCKIFY_LOG_FILE}" \
   "${CHROME_LOG_FILE}"
@@ -31,7 +29,7 @@ start_process() {
 
 cleanup() {
   local status=$?
-  for pid in ${WEBSOCKIFY_PID:-} ${CHROME_PID:-} ${X11VNC_PID:-} ${FLUXBOX_PID:-} ${XVFB_PID:-}; do
+  for pid in ${WEBSOCKIFY_PID:-} ${CHROME_PID:-} ${X11VNC_PID:-} ${XVFB_PID:-}; do
     if [[ -n "${pid:-}" ]] && kill -0 "$pid" >/dev/null 2>&1; then
       kill "$pid" >/dev/null 2>&1 || true
       wait "$pid" >/dev/null 2>&1 || true
@@ -55,7 +53,9 @@ if [[ ! -S /tmp/.X11-unix/X1 ]]; then
   exit 1
 fi
 
-FLUXBOX_PID=$(start_process "${FLUXBOX_LOG_FILE}" env DISPLAY=:1 TERM=xterm-256color /usr/bin/fluxbox)
+# Set a solid background to avoid exposing other UI elements
+env DISPLAY=:1 /usr/bin/xsetroot -solid '#000000'
+
 X11VNC_PID=$(start_process "${X11VNC_LOG_FILE}" env DISPLAY=:1 /usr/bin/x11vnc -display :1 -forever -shared -rfbport 5901 -localhost -nopw -quiet)
 
 CHROME_BIN="${CHROME_BIN:-/usr/bin/google-chrome-stable}"
@@ -70,6 +70,7 @@ if [[ -n "${CHROME_BIN}" && -x "${CHROME_BIN}" ]]; then
   export GOOGLE_DEFAULT_CLIENT_ID="cmux-local"
   export GOOGLE_DEFAULT_CLIENT_SECRET="cmux-local"
   mkdir -p /root/.config/chrome
+  # Launch Chrome fullscreen while keeping the standard UI (tabs + omnibox)
   CHROME_FLAGS=(
     --no-sandbox
     --disable-dev-shm-usage
@@ -86,9 +87,11 @@ if [[ -n "${CHROME_BIN}" && -x "${CHROME_BIN}" ]]; then
     --remote-debugging-port=${CDP_PORT}
     --remote-allow-origins=*
     --test-type
+    --start-maximized
+    --window-position=0,0
+    --window-size=1920,1080
     --user-data-dir=/root/.config/chrome
     --password-store=basic
-    --start-maximized
     about:blank
   )
   printf 'Launching Chrome via %s\n' "${CHROME_BIN}" >>"${CHROME_LOG_FILE}"

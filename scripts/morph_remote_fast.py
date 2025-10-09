@@ -894,7 +894,7 @@ async def task_install_base_packages(ctx: TaskContext) -> None:
             tigervnc-standalone-server tigervnc-common \
             python3-websockify websockify \
             xvfb \
-            x11-xserver-utils xterm fluxbox novnc \
+            x11-xserver-utils xterm novnc \
             x11vnc \
             gh
         
@@ -1508,7 +1508,7 @@ async def task_check_vnc(ctx: TaskContext) -> None:
         echo "ERROR: VNC endpoint not reachable after 30s" >&2
         systemctl status cmux-vnc.service --no-pager || true
         tail -n 60 /var/log/cmux/xvfb.log || true
-        tail -n 40 /var/log/cmux/fluxbox.log || true
+        tail -n 40 /var/log/cmux/chrome.log || true
         tail -n 40 /var/log/cmux/x11vnc.log || true
         tail -n 40 /var/log/cmux/websockify.log || true
         exit 1
