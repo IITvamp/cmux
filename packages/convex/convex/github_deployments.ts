@@ -83,8 +83,7 @@ export const upsertDeploymentFromWebhook = internalMutation({
 
     const existing = await ctx.db
       .query("githubDeployments")
-      .withIndex("by_deploymentId")
-      .filter((q) => q.eq(q.field("deploymentId"), deploymentId))
+      .withIndex("by_deploymentId", (q) => q.eq("deploymentId", deploymentId))
       .unique();
 
     if (existing) {
@@ -141,8 +140,7 @@ export const updateDeploymentStatusFromWebhook = internalMutation({
 
     const existing = await ctx.db
       .query("githubDeployments")
-      .withIndex("by_deploymentId")
-      .filter((q) => q.eq(q.field("deploymentId"), deploymentId))
+      .withIndex("by_deploymentId", (q) => q.eq("deploymentId", deploymentId))
       .unique();
 
     if (existing) {

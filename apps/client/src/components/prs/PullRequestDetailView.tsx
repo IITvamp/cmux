@@ -327,10 +327,19 @@ function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber, headSha }: 
     else key = `status-${run.statusId}`;
 
     const existing = deduped.get(key);
+    if (existing) {
+      console.log('[WorkflowRunsSection] Duplicate found:', { key, name: run.name, existingTime: existing.timestamp, newTime: run.timestamp });
+    }
     if (!existing || (run.timestamp ?? 0) > (existing.timestamp ?? 0)) {
       deduped.set(key, run);
     }
   }
+
+  console.log('[WorkflowRunsSection] After dedup:', {
+    before: filteredRuns.length,
+    after: deduped.size,
+    names: Array.from(deduped.values()).map(r => r.name)
+  });
 
   const sortedRuns = Array.from(deduped.values()).sort((a, b) => {
     return (b.timestamp ?? 0) - (a.timestamp ?? 0);

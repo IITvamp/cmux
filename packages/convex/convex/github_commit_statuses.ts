@@ -86,8 +86,7 @@ export const upsertCommitStatusFromWebhook = internalMutation({
 
     const existing = await ctx.db
       .query("githubCommitStatuses")
-      .withIndex("by_statusId")
-      .filter((q) => q.eq(q.field("statusId"), statusId))
+      .withIndex("by_statusId", (q) => q.eq("statusId", statusId))
       .unique();
 
     if (existing) {

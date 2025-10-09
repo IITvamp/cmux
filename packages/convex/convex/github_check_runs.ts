@@ -117,41 +117,36 @@ export const upsertCheckRunFromWebhook = internalMutation({
     });
 
     // Upsert the check run
-    await ctx.db
+    const existing = await ctx.db
       .query("githubCheckRuns")
-      .withIndex("by_checkRunId")
-      .filter((q) => q.eq(q.field("checkRunId"), checkRunId))
-      .unique()
-      .then(async (existing) => {
-        if (existing) {
-          // Update existing check run
-          await ctx.db.patch(existing._id, {
-            ...checkRunDoc,
-            _id: existing._id,
-          });
-          console.log("[upsertCheckRun] Updated check run", {
-            _id: existing._id,
-            checkRunId,
-            repoFullName,
-            name,
-            status,
-            conclusion,
-            triggeringPrNumber,
-          });
-        } else {
-          // Insert new check run
-          const newId = await ctx.db.insert("githubCheckRuns", checkRunDoc);
-          console.log("[upsertCheckRun] Inserted check run", {
-            _id: newId,
-            checkRunId,
-            repoFullName,
-            name,
-            status,
-            conclusion,
-            triggeringPrNumber,
-          });
-        }
+      .withIndex("by_checkRunId", (q) => q.eq("checkRunId", checkRunId))
+      .unique();
+
+    if (existing) {
+      // Update existing check run
+      await ctx.db.patch(existing._id, checkRunDoc);
+      console.log("[upsertCheckRun] Updated check run", {
+        _id: existing._id,
+        checkRunId,
+        repoFullName,
+        name,
+        status,
+        conclusion,
+        triggeringPrNumber,
       });
+    } else {
+      // Insert new check run
+      const newId = await ctx.db.insert("githubCheckRuns", checkRunDoc);
+      console.log("[upsertCheckRun] Inserted check run", {
+        _id: newId,
+        checkRunId,
+        repoFullName,
+        name,
+        status,
+        conclusion,
+        triggeringPrNumber,
+      });
+    }
   },
 });
 

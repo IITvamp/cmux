@@ -138,41 +138,36 @@ export const upsertWorkflowRunFromWebhook = internalMutation({
     });
 
     // Upsert the workflow run
-    await ctx.db
+    const existing = await ctx.db
       .query("githubWorkflowRuns")
-      .withIndex("by_runId")
-      .filter((q) => q.eq(q.field("runId"), runId))
-      .unique()
-      .then(async (existing) => {
-        if (existing) {
-          // Update existing run
-          await ctx.db.patch(existing._id, {
-            ...workflowRunDoc,
-            _id: existing._id,
-          });
-          console.log("[upsertWorkflowRun] Updated workflow run", {
-            _id: existing._id,
-            runId,
-            repoFullName,
-            runNumber,
-            status,
-            conclusion,
-            triggeringPrNumber,
-          });
-        } else {
-          // Insert new run
-          const newId = await ctx.db.insert("githubWorkflowRuns", workflowRunDoc);
-          console.log("[upsertWorkflowRun] Inserted workflow run", {
-            _id: newId,
-            runId,
-            repoFullName,
-            runNumber,
-            status,
-            conclusion,
-            triggeringPrNumber,
-          });
-        }
+      .withIndex("by_runId", (q) => q.eq("runId", runId))
+      .unique();
+
+    if (existing) {
+      // Update existing run
+      await ctx.db.patch(existing._id, workflowRunDoc);
+      console.log("[upsertWorkflowRun] Updated workflow run", {
+        _id: existing._id,
+        runId,
+        repoFullName,
+        runNumber,
+        status,
+        conclusion,
+        triggeringPrNumber,
       });
+    } else {
+      // Insert new run
+      const newId = await ctx.db.insert("githubWorkflowRuns", workflowRunDoc);
+      console.log("[upsertWorkflowRun] Inserted workflow run", {
+        _id: newId,
+        runId,
+        repoFullName,
+        runNumber,
+        status,
+        conclusion,
+        triggeringPrNumber,
+      });
+    }
   },
 });
 
