@@ -567,26 +567,8 @@ async def task_install_uv_python(ctx: TaskContext) -> None:
         """
         set -eux
         ARCH="$(uname -m)"
-        case "${ARCH}" in
-          x86_64)
-            UV_ASSET_SUFFIX="x86_64-unknown-linux-gnu"
-            ;;
-          aarch64|arm64)
-            UV_ASSET_SUFFIX="aarch64-unknown-linux-gnu"
-            ;;
-          *)
-            echo "Unsupported architecture: ${ARCH}" >&2
-            exit 1
-            ;;
-        esac
-        UV_VERSION_RAW="$(curl -fsSL https://api.github.com/repos/astral-sh/uv/releases/latest | jq -r '.tag_name')"
-        UV_VERSION="$(printf '%s' "${UV_VERSION_RAW}" | tr -d ' \\t\\r\\n')"
-        curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-${UV_ASSET_SUFFIX}.tar.gz" -o /tmp/uv.tar.gz
-        tar -xzf /tmp/uv.tar.gz -C /tmp
-        install -m 0755 /tmp/uv-${UV_ASSET_SUFFIX}/uv /usr/local/bin/uv
-        install -m 0755 /tmp/uv-${UV_ASSET_SUFFIX}/uvx /usr/local/bin/uvx
-        rm -rf /tmp/uv.tar.gz /tmp/uv-${UV_ASSET_SUFFIX}
-        export PATH="/root/.local/bin:/usr/local/cargo/bin:${PATH}"
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        export PATH="${HOME}/.local/bin:/usr/local/cargo/bin:${PATH}"
         uv python install --default
         PIP_VERSION="$(curl -fsSL https://pypi.org/pypi/pip/json | jq -r '.info.version')"
         python3 -m pip install --break-system-packages --upgrade "pip==${PIP_VERSION}"
@@ -617,15 +599,12 @@ async def task_install_rust_toolchain(ctx: TaskContext) -> None:
             exit 1
             ;;
         esac
-        RUST_VERSION_RAW="$(curl -fsSL https://static.rust-lang.org/dist/channel-rust-stable.toml \
-          | awk '/\\[pkg.rust\\]/{flag=1;next}/\\[pkg\\./{flag=0}flag && /^version =/ {gsub(/\"/,"",$3); split($3, parts, \" \"); print parts[1]; exit}')"
-        RUST_VERSION="$(printf '%s' "${RUST_VERSION_RAW}" | tr -d ' \\t\\r\\n')"
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
-          sh -s -- -y --no-modify-path --profile minimal --default-toolchain "${RUST_VERSION}"
+          sh -s -- -y --no-modify-path --profile minimal
         source /root/.cargo/env
-        rustup component add rustfmt --toolchain "${RUST_VERSION}"
-        rustup target add "${RUST_HOST_TARGET}" --toolchain "${RUST_VERSION}"
-        rustup default "${RUST_VERSION}"
+        rustup component add rustfmt
+        rustup target add "${RUST_HOST_TARGET}"
+        rustup default stable
         """
     )
     await ctx.run("install-rust-toolchain", cmd)
