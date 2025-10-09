@@ -15,7 +15,11 @@ export async function getClaudeEnvironment(
   // const execAsync = promisify(exec);
 
   const files: EnvironmentResult["files"] = [];
-  const env: Record<string, string> = {};
+  const env: Record<string, string> = {
+    // Explicitly unset ANTHROPIC_API_KEY to avoid conflicts with repo env vars
+    // Claude Code will use the apiKeyHelper script in settings.json instead
+    ANTHROPIC_API_KEY: "",
+  };
   const startupCommands: string[] = [];
   const claudeLifecycleDir = "/root/lifecycle/claude";
   const claudeSecretsDir = `${claudeLifecycleDir}/secrets`;
@@ -176,6 +180,9 @@ exit 0`;
       CLAUDE_CODE_ENABLE_TELEMETRY: 0,
       ANTHROPIC_BASE_URL: "https://www.cmux.dev/api/anthropic",
       ANTHROPIC_CUSTOM_HEADERS: `x-cmux-token:${ctx.taskRunJwt}`,
+      // Explicitly unset ANTHROPIC_API_KEY to force using apiKeyHelper
+      // This prevents conflicts when repo has an existing ANTHROPIC_API_KEY
+      ANTHROPIC_API_KEY: "",
     },
   };
 
