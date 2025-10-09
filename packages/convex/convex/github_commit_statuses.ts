@@ -136,7 +136,7 @@ export const getCommitStatusesForPr = authQuery({
       return [];
     }
 
-    const statuses = await ctx.db
+    const allStatuses = await ctx.db
       .query("githubCommitStatuses")
       .withIndex("by_sha", (q) => q.eq("sha", headSha))
       .filter((q) =>
@@ -146,7 +146,17 @@ export const getCommitStatusesForPr = authQuery({
         ),
       )
       .order("desc")
-      .take(limit);
+      .collect();
+
+    // Deduplicate by context (status name), keeping the most recently updated one
+    const dedupMap = new Map<string, typeof allStatuses[number]>();
+    for (const status of allStatuses) {
+      const existing = dedupMap.get(status.context);
+      if (!existing || (status.updatedAt ?? 0) > (existing.updatedAt ?? 0)) {
+        dedupMap.set(status.context, status);
+      }
+    }
+    const statuses = Array.from(dedupMap.values()).slice(0, limit);
 
     console.log("[getCommitStatusesForPr] Found commit statuses", {
       teamId,

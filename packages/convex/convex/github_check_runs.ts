@@ -1,3 +1,14 @@
+/**
+ * GitHub Check Runs
+ *
+ * Handles check_run webhooks from GitHub Checks API.
+ * These are checks from third-party apps like Vercel, Bugbot, etc.
+ *
+ * NOT to be confused with:
+ * - workflow_run events (see github_workflows.ts) - GitHub Actions workflows
+ * - deployment events (see github_deployments.ts) - deployment records
+ * - status events (see github_commit_statuses.ts) - legacy commit statuses
+ */
 import { v } from "convex/values";
 import { getTeamId } from "../_shared/team";
 import { internalMutation } from "./_generated/server";
@@ -172,6 +183,7 @@ export const getCheckRunsForPr = authQuery({
       limit,
     });
 
+    // Source: check_run webhooks from third-party GitHub Apps (e.g., Vercel, Bugbot)
     const allRunsForRepo = await ctx.db
       .query("githubCheckRuns")
       .withIndex("by_team_repo", (q) =>
@@ -188,12 +200,23 @@ export const getCheckRunsForPr = authQuery({
     });
 
     // Filter by either triggeringPrNumber or headSha
-    const runs = allRunsForRepo
-      .filter((run) => {
-        const matchesPrNumber = run.triggeringPrNumber === prNumber;
-        const matchesHeadSha = headSha && run.headSha === headSha;
-        return matchesPrNumber || matchesHeadSha;
-      })
+    const filtered = allRunsForRepo.filter((run) => {
+      const matchesPrNumber = run.triggeringPrNumber === prNumber;
+      const matchesHeadSha = headSha && run.headSha === headSha;
+      return matchesPrNumber || matchesHeadSha;
+    });
+
+    // Deduplicate by name (for same app), keeping the most recently updated one
+    const dedupMap = new Map<string, typeof filtered[number]>();
+    for (const run of filtered) {
+      const key = `${run.appSlug || run.appName || 'unknown'}-${run.name}`;
+      const existing = dedupMap.get(key);
+      if (!existing || (run.updatedAt ?? 0) > (existing.updatedAt ?? 0)) {
+        dedupMap.set(key, run);
+      }
+    }
+
+    const runs = Array.from(dedupMap.values())
       .sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0))
       .slice(0, limit);
 

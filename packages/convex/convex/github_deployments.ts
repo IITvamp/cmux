@@ -232,14 +232,24 @@ export const getDeploymentsForPr = authQuery({
       )
       .collect();
 
-    const deployments = allDeploymentsForRepo
+    const filtered = allDeploymentsForRepo
       .filter((deployment) => {
         const matchesSha = headSha && deployment.sha === headSha;
         const matchesPr = deployment.triggeringPrNumber === args.prNumber;
         return matchesSha || matchesPr;
       })
-      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
-      .slice(0, limit);
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+
+    // Deduplicate by environment, keeping the most recently updated one
+    const dedupMap = new Map<string, typeof filtered[number]>();
+    for (const deployment of filtered) {
+      const key = deployment.environment || deployment.task || 'default';
+      const existing = dedupMap.get(key);
+      if (!existing || (deployment.updatedAt ?? 0) > (existing.updatedAt ?? 0)) {
+        dedupMap.set(key, deployment);
+      }
+    }
+    const deployments = Array.from(dedupMap.values()).slice(0, limit);
 
     console.log("[getDeploymentsForPr] Found deployments", {
       teamId,

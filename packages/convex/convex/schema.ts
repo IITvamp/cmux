@@ -542,7 +542,7 @@ const convexSchema = defineSchema({
     // Identity within provider and repo context
     provider: v.literal("github"),
     installationId: v.number(),
-    repositoryId: v.number(),
+    repositoryId: v.optional(v.number()),
     repoFullName: v.string(), // owner/repo
 
     // Workflow run identity

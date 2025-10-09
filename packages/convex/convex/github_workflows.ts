@@ -1,3 +1,14 @@
+/**
+ * GitHub Actions Workflow Runs
+ *
+ * Handles workflow_run webhooks from GitHub Actions.
+ * These are runs of .github/workflows/*.yml files.
+ *
+ * NOT to be confused with:
+ * - check_run events (see github_check_runs.ts) - third-party checks like Vercel
+ * - deployment events (see github_deployments.ts) - deployment records
+ * - status events (see github_commit_statuses.ts) - legacy commit statuses
+ */
 import { v } from "convex/values";
 import { getTeamId } from "../_shared/team";
 import { internalMutation } from "./_generated/server";
@@ -255,6 +266,7 @@ export const getWorkflowRunsForPr = authQuery({
     });
 
     // Fetch runs by headSha if provided (more efficient index lookup)
+    // Source: workflow_run webhooks from GitHub Actions (NOT check_run events)
     let runs;
     if (headSha) {
       const shaRuns = await ctx.db
@@ -263,10 +275,21 @@ export const getWorkflowRunsForPr = authQuery({
           q.eq("repoFullName", repoFullName).eq("headSha", headSha)
         )
         .order("desc")
-        .take(limit);
+        .take(100); // Fetch extra to account for potential duplicates
 
       // Filter by teamId in memory (index doesn't include it)
-      runs = shaRuns.filter(r => r.teamId === teamId);
+      const filtered = shaRuns.filter(r => r.teamId === teamId);
+
+      // Deduplicate by workflow name, keeping the most recently updated one
+      const dedupMap = new Map<string, typeof filtered[number]>();
+      for (const run of filtered) {
+        const key = run.workflowName;
+        const existing = dedupMap.get(key);
+        if (!existing || (run.updatedAt ?? 0) > (existing.updatedAt ?? 0)) {
+          dedupMap.set(key, run);
+        }
+      }
+      runs = Array.from(dedupMap.values()).slice(0, limit);
     } else {
       // Fallback: fetch all for repo and filter (less efficient)
       const allRuns = await ctx.db
@@ -275,11 +298,20 @@ export const getWorkflowRunsForPr = authQuery({
           q.eq("teamId", teamId).eq("repoFullName", repoFullName)
         )
         .order("desc")
-        .take(100); // Limit to recent 100
+        .take(200); // Fetch extra to account for potential duplicates
 
-      runs = allRuns
-        .filter(r => r.triggeringPrNumber === prNumber)
-        .slice(0, limit);
+      const filtered = allRuns.filter(r => r.triggeringPrNumber === prNumber);
+
+      // Deduplicate by workflow name, keeping the most recently updated one
+      const dedupMap = new Map<string, typeof filtered[number]>();
+      for (const run of filtered) {
+        const key = run.workflowName;
+        const existing = dedupMap.get(key);
+        if (!existing || (run.updatedAt ?? 0) > (existing.updatedAt ?? 0)) {
+          dedupMap.set(key, run);
+        }
+      }
+      runs = Array.from(dedupMap.values()).slice(0, limit);
     }
 
     console.log("[getWorkflowRunsForPr] Filtered runs for PR", {

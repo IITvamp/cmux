@@ -84,12 +84,16 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
   // Record delivery for idempotency/auditing
   if (delivery) {
     const payloadHash = await sha256Hex(payload);
-    await _ctx.runMutation(internal.github_app.recordWebhookDelivery, {
+    const result = await _ctx.runMutation(internal.github_app.recordWebhookDelivery, {
       provider: "github",
       deliveryId: delivery,
       installationId,
       payloadHash,
     });
+    if (!result.created) {
+      console.log("[webhook] Skipping duplicate delivery", { delivery, event });
+      return new Response("ok (duplicate)", { status: 200 });
+    }
   }
 
   // Handle ping quickly

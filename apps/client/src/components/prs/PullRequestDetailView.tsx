@@ -46,6 +46,8 @@ type WorkflowRunsProps = {
 };
 
 function WorkflowRuns({ teamSlugOrId, repoFullName, prNumber, headSha }: WorkflowRunsProps) {
+  // Fetch all types of CI/CD status from GitHub webhooks:
+  // 1. workflow_run: GitHub Actions workflows (.github/workflows/*.yml)
   const workflowRuns = useConvexQuery(api.github_workflows.getWorkflowRunsForPr, {
     teamSlugOrId,
     repoFullName,
@@ -54,6 +56,7 @@ function WorkflowRuns({ teamSlugOrId, repoFullName, prNumber, headSha }: Workflo
     limit: 50,
   });
 
+  // 2. check_run: Third-party checks (Vercel, Bugbot, GitGuardian, etc.)
   const checkRuns = useConvexQuery(api.github_check_runs.getCheckRunsForPr, {
     teamSlugOrId,
     repoFullName,
@@ -62,6 +65,7 @@ function WorkflowRuns({ teamSlugOrId, repoFullName, prNumber, headSha }: Workflo
     limit: 50,
   });
 
+  // 3. deployment: Deployment records (Vercel, etc.)
   const deployments = useConvexQuery(api.github_deployments.getDeploymentsForPr, {
     teamSlugOrId,
     repoFullName,
@@ -70,6 +74,7 @@ function WorkflowRuns({ teamSlugOrId, repoFullName, prNumber, headSha }: Workflo
     limit: 50,
   });
 
+  // 4. status: Legacy commit statuses (deprecated GitHub API)
   const commitStatuses = useConvexQuery(api.github_commit_statuses.getCommitStatusesForPr, {
     teamSlugOrId,
     repoFullName,
@@ -80,7 +85,7 @@ function WorkflowRuns({ teamSlugOrId, repoFullName, prNumber, headSha }: Workflo
 
   const isLoading = workflowRuns === undefined || checkRuns === undefined || deployments === undefined || commitStatuses === undefined;
 
-  // Combine all types of runs
+  // Combine all types of runs (deduplication happens in Convex queries + client-side Map below)
   const allRuns = [
     ...(workflowRuns || []).map(run => ({ ...run, type: 'workflow' as const, name: run.workflowName, timestamp: run.runStartedAt })),
     ...(checkRuns || []).map(run => ({ ...run, type: 'check' as const, timestamp: run.startedAt })),
@@ -110,14 +115,14 @@ function WorkflowRuns({ teamSlugOrId, repoFullName, prNumber, headSha }: Workflo
   // Filter out Preview deployments (they go in sidebar Preview tab instead)
   const filteredRuns = allRuns.filter(run => !(run.type === 'deployment' && run.environment === 'Preview'));
 
-  // Deduplicate by GitHub ID
+  // Deduplicate by name/type combination, keeping the most recent
   const deduped = new Map<string, typeof filteredRuns[number]>();
   for (const run of filteredRuns) {
     let key: string;
-    if (run.type === 'workflow') key = `workflow-${run.runId}`;
-    else if (run.type === 'check') key = `check-${run.checkRunId}`;
-    else if (run.type === 'deployment') key = `deployment-${run.deploymentId}`;
-    else key = `status-${run.statusId}`;
+    if (run.type === 'workflow') key = `workflow-${run.name}`;
+    else if (run.type === 'check') key = `check-${run.appSlug || run.appName || 'unknown'}-${run.name}`;
+    else if (run.type === 'deployment') key = `deployment-${run.environment || run.task || 'default'}`;
+    else key = `status-${run.context}`;
 
     const existing = deduped.get(key);
     if (!existing || (run.timestamp ?? 0) > (existing.timestamp ?? 0)) {
@@ -317,14 +322,14 @@ function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber, headSha }: 
   // Filter out Preview deployments (they go in sidebar Preview tab instead)
   const filteredRuns = allRuns.filter(run => !(run.type === 'deployment' && run.environment === 'Preview'));
 
-  // Deduplicate by GitHub ID (checkRunId, runId, deploymentId, statusId) + name
+  // Deduplicate by name/type combination, keeping the most recent
   const deduped = new Map<string, typeof filteredRuns[number]>();
   for (const run of filteredRuns) {
     let key: string;
-    if (run.type === 'workflow') key = `workflow-${run.runId}`;
-    else if (run.type === 'check') key = `check-${run.checkRunId}`;
-    else if (run.type === 'deployment') key = `deployment-${run.deploymentId}`;
-    else key = `status-${run.statusId}`;
+    if (run.type === 'workflow') key = `workflow-${run.name}`;
+    else if (run.type === 'check') key = `check-${run.appSlug || run.appName || 'unknown'}-${run.name}`;
+    else if (run.type === 'deployment') key = `deployment-${run.environment || run.task || 'default'}`;
+    else key = `status-${run.context}`;
 
     const existing = deduped.get(key);
     if (existing) {
