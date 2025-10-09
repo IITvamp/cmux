@@ -1,10 +1,4 @@
-use std::{
-    convert::Infallible,
-    future::Future,
-    net::SocketAddr,
-    str::FromStr,
-    time::Duration,
-};
+use std::{convert::Infallible, future::Future, net::SocketAddr, str::FromStr, time::Duration};
 
 use futures_util::future;
 use hyper::client::HttpConnector;
@@ -16,17 +10,18 @@ use hyper::{
     client::Client,
     http::{HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Uri},
 };
+use std::sync::Arc;
 use tokio::io::{copy_bidirectional, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::task::{JoinHandle, JoinSet};
 use tokio::sync::Notify;
-use std::sync::Arc;
+use tokio::task::{JoinHandle, JoinSet};
 use tracing::{error, info, warn};
 
 #[derive(Clone, Debug)]
 pub struct ProxyConfig {
     pub listen: SocketAddr,
     pub upstream_host: String,
+    pub allow_default_upstream: bool,
 }
 
 pub fn spawn_proxy<S>(cfg: ProxyConfig, shutdown: S) -> (SocketAddr, JoinHandle<()>)
@@ -36,7 +31,8 @@ where
     // Hyper client for proxying HTTP/1.1
     let mut connector = HttpConnector::new();
     connector.set_connect_timeout(Some(Duration::from_secs(5)));
-    let client: Client<HttpConnector, Body> = Client::builder().pool_max_idle_per_host(8).build(connector);
+    let client: Client<HttpConnector, Body> =
+        Client::builder().pool_max_idle_per_host(8).build(connector);
 
     let listen = cfg.listen;
     let make_cfg = cfg;
@@ -51,7 +47,9 @@ where
         }
     });
 
-    let builder = hyper::Server::bind(&listen).http1_only(true).serve(make_svc);
+    let builder = hyper::Server::bind(&listen)
+        .http1_only(true)
+        .serve(make_svc);
     let listen_addr = builder.local_addr();
     let server = builder.with_graceful_shutdown(shutdown);
 
@@ -66,14 +64,20 @@ where
 
 /// Start the proxy on multiple addresses. Returns the bound addresses actually used and a handle
 /// that completes when all servers exit (after shutdown is signaled).
-pub fn spawn_proxy_multi<S>(listens: Vec<SocketAddr>, upstream_host: String, shutdown: S) -> (Vec<SocketAddr>, JoinHandle<()>)
+pub fn spawn_proxy_multi<S>(
+    listens: Vec<SocketAddr>,
+    upstream_host: String,
+    allow_default_upstream: bool,
+    shutdown: S,
+) -> (Vec<SocketAddr>, JoinHandle<()>)
 where
     S: Future<Output = ()> + Send + 'static,
 {
     // Prepare shared client and shutdown notifier
     let mut connector = HttpConnector::new();
     connector.set_connect_timeout(Some(Duration::from_secs(5)));
-    let client: Client<HttpConnector, Body> = Client::builder().pool_max_idle_per_host(8).build(connector);
+    let client: Client<HttpConnector, Body> =
+        Client::builder().pool_max_idle_per_host(8).build(connector);
 
     let notify = Arc::new(Notify::new());
     let notify_clone = notify.clone();
@@ -89,20 +93,29 @@ where
         let client = client.clone();
         let upstream = upstream_host.clone();
         let notify = notify.clone();
+        let allow_default = allow_default_upstream;
+        let listen_addr = addr;
 
         let make_svc = make_service_fn(move |conn: &AddrStream| {
             let remote_addr = conn.remote_addr();
             let client = client.clone();
             let upstream = upstream.clone();
+            let allow_default = allow_default;
             async move {
                 Ok::<_, Infallible>(service_fn(move |req| {
-                    let cfg = ProxyConfig { listen: addr, upstream_host: upstream.clone() };
+                    let cfg = ProxyConfig {
+                        listen: listen_addr,
+                        upstream_host: upstream.clone(),
+                        allow_default_upstream: allow_default,
+                    };
                     handle(client.to_owned(), cfg, remote_addr, req)
                 }))
             }
         });
 
-        let builder = hyper::Server::bind(&addr).http1_only(true).serve(make_svc);
+        let builder = hyper::Server::bind(&listen_addr)
+            .http1_only(true)
+            .serve(make_svc);
         let local = builder.local_addr();
         bound_addrs.push(local);
         let server = builder.with_graceful_shutdown(async move {
@@ -116,9 +129,7 @@ where
         });
     }
 
-    let handle = tokio::spawn(async move {
-        while let Some(_res) = join_set.join_next().await {}
-    });
+    let handle = tokio::spawn(async move { while let Some(_res) = join_set.join_next().await {} });
 
     (bound_addrs, handle)
 }
@@ -127,7 +138,10 @@ fn get_port_from_header(headers: &HeaderMap) -> Result<u16, Response<Body>> {
     const HDR: &str = "X-Cmux-Port-Internal";
     if let Some(val) = headers.get(HDR) {
         let s = val.to_str().map_err(|_| {
-            response_with(StatusCode::BAD_REQUEST, "invalid header value (not UTF-8)".to_string())
+            response_with(
+                StatusCode::BAD_REQUEST,
+                "invalid header value (not UTF-8)".to_string(),
+            )
         })?;
 
         let s = s.trim();
@@ -192,19 +206,37 @@ pub fn workspace_ip_from_name(name: &str) -> Option<std::net::Ipv4Addr> {
     Some(Ipv4Addr::new(127, 18, b2, b3))
 }
 
-fn upstream_host_from_headers(headers: &HeaderMap, default_host: &str) -> Result<String, Response<Body>> {
+fn upstream_host_from_headers(
+    headers: &HeaderMap,
+    default_host: &str,
+    allow_default_without_workspace: bool,
+) -> Result<String, Response<Body>> {
     const HDR_WS: &str = "X-Cmux-Workspace-Internal";
     if let Some(val) = headers.get(HDR_WS) {
         let v = val.to_str().map_err(|_| {
-            response_with(StatusCode::BAD_REQUEST, format!("invalid header value (not UTF-8): {}", HDR_WS))
+            response_with(
+                StatusCode::BAD_REQUEST,
+                format!("invalid header value (not UTF-8): {}", HDR_WS),
+            )
         })?;
         let ws = v.trim();
         if ws.is_empty() {
-            return Err(response_with(StatusCode::BAD_REQUEST, format!("{} cannot be empty", HDR_WS)));
+            return Err(response_with(
+                StatusCode::BAD_REQUEST,
+                format!("{} cannot be empty", HDR_WS),
+            ));
         }
-        let ip = workspace_ip_from_name(ws)
-            .ok_or_else(|| response_with(StatusCode::BAD_REQUEST, format!("invalid workspace name: {}", ws)))?;
+        let ip = workspace_ip_from_name(ws).ok_or_else(|| {
+            response_with(
+                StatusCode::BAD_REQUEST,
+                format!("invalid workspace name: {}", ws),
+            )
+        })?;
         return Ok(ip.to_string());
+    }
+
+    if allow_default_without_workspace {
+        return Ok(default_host.to_string());
     }
 
     // Fallback: try parsing from subdomain pattern if present
@@ -257,7 +289,11 @@ fn strip_hop_by_hop_headers(h: &mut HeaderMap) {
     }
 
     // Also remove headers listed in Connection: <header-names>
-    if let Some(conn_val) = h.get(CONNECTION).and_then(|v| v.to_str().ok()).map(|s| s.to_string()) {
+    if let Some(conn_val) = h
+        .get(CONNECTION)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+    {
         for token in conn_val.split(',') {
             let name = token.trim().to_ascii_lowercase();
             if !name.is_empty() {
@@ -268,19 +304,19 @@ fn strip_hop_by_hop_headers(h: &mut HeaderMap) {
 }
 
 fn build_upstream_uri(upstream_host: &str, port: u16, orig: &Uri) -> Result<Uri, Response<Body>> {
-    let path_and_query = orig
-        .path_and_query()
-        .map(|pq| pq.as_str())
-        .unwrap_or("/");
+    let path_and_query = orig.path_and_query().map(|pq| pq.as_str()).unwrap_or("/");
     let uri_str = format!("http://{}:{}{}", upstream_host, port, path_and_query);
-    Uri::from_str(&uri_str).map_err(|_| response_with(StatusCode::BAD_GATEWAY, "invalid upstream uri".into()))
+    Uri::from_str(&uri_str)
+        .map_err(|_| response_with(StatusCode::BAD_GATEWAY, "invalid upstream uri".into()))
 }
 
 // Attempt to parse a pattern like: <workspace>-<port>.localhost[:...]
 // Returns (workspace, port) if found and valid.
 fn parse_workspace_port_from_host(headers: &HeaderMap) -> Option<(String, u16)> {
     let host_val = headers.get("host")?.to_str().ok()?.trim();
-    if host_val.is_empty() { return None; }
+    if host_val.is_empty() {
+        return None;
+    }
 
     // Strip optional :port from Host header
     let host_only = host_val.split_once(':').map(|(h, _)| h).unwrap_or(host_val);
@@ -301,8 +337,13 @@ fn parse_workspace_port_from_host(headers: &HeaderMap) -> Option<(String, u16)> 
     let (ws_part, port_part) = label.split_at(dash_idx);
     // port_part still has leading '-' from split_at
     let port_str = &port_part[1..];
-    if ws_part.is_empty() || port_str.is_empty() { return None; }
-    let port: u16 = match port_str.parse() { Ok(p) => p, Err(_) => return None };
+    if ws_part.is_empty() || port_str.is_empty() {
+        return None;
+    }
+    let port: u16 = match port_str.parse() {
+        Ok(p) => p,
+        Err(_) => return None,
+    };
     Some((ws_part.to_string(), port))
 }
 
@@ -351,7 +392,11 @@ async fn handle_http(
     req: &mut Request<Body>,
 ) -> Result<Response<Body>, Response<Body>> {
     let port = get_port_from_header(req.headers())?;
-    let upstream_host = upstream_host_from_headers(req.headers(), &cfg.upstream_host)?;
+    let upstream_host = upstream_host_from_headers(
+        req.headers(),
+        &cfg.upstream_host,
+        cfg.allow_default_upstream,
+    )?;
     let uri = build_upstream_uri(&upstream_host, port, req.uri())?;
 
     // Build proxied request
@@ -361,11 +406,20 @@ async fn handle_http(
         .uri(uri)
         .version(req.version())
         .body(body)
-        .map_err(|_| response_with(StatusCode::INTERNAL_SERVER_ERROR, "failed to build request".into()))?;
+        .map_err(|_| {
+            response_with(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to build request".into(),
+            )
+        })?;
 
     // Copy headers
     for (name, value) in req.headers().iter() {
-        if name.as_str().eq_ignore_ascii_case("x-cmux-port-internal") || name.as_str().eq_ignore_ascii_case("x-cmux-workspace-internal") {
+        if name.as_str().eq_ignore_ascii_case("x-cmux-port-internal")
+            || name
+                .as_str()
+                .eq_ignore_ascii_case("x-cmux-workspace-internal")
+        {
             continue;
         }
         new_req.headers_mut().insert(name, value.clone());
@@ -383,10 +437,12 @@ async fn handle_http(
         "proxy http"
     );
 
-    let upstream_resp = client
-        .request(new_req)
-        .await
-        .map_err(|e| response_with(StatusCode::BAD_GATEWAY, format!("upstream request error: {}", e)))?;
+    let upstream_resp = client.request(new_req).await.map_err(|e| {
+        response_with(
+            StatusCode::BAD_GATEWAY,
+            format!("upstream request error: {}", e),
+        )
+    })?;
 
     // Map upstream response back to client, stripping hop-by-hop headers
     let mut client_resp_builder = Response::builder().status(upstream_resp.status());
@@ -400,9 +456,12 @@ async fn handle_http(
     strip_hop_by_hop_headers(headers);
 
     let body = upstream_resp.into_body();
-    let resp = client_resp_builder
-        .body(body)
-        .map_err(|_| response_with(StatusCode::INTERNAL_SERVER_ERROR, "failed to build response".into()))?;
+    let resp = client_resp_builder.body(body).map_err(|_| {
+        response_with(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to build response".into(),
+        )
+    })?;
     Ok(resp)
 }
 
@@ -415,7 +474,11 @@ async fn handle_upgrade(
     // Treat as reverse-proxied upgrade (e.g., WebSocket). We forward the request to upstream,
     // then mirror the 101 response headers to the client and tunnel bytes between both upgrades.
     let port = get_port_from_header(req.headers())?;
-    let upstream_host = upstream_host_from_headers(req.headers(), &cfg.upstream_host)?;
+    let upstream_host = upstream_host_from_headers(
+        req.headers(),
+        &cfg.upstream_host,
+        cfg.allow_default_upstream,
+    )?;
     let upstream_uri = build_upstream_uri(&upstream_host, port, req.uri())?;
 
     // Build proxied request for upstream
@@ -425,11 +488,20 @@ async fn handle_upgrade(
         .uri(upstream_uri)
         .version(req.version())
         .body(body)
-        .map_err(|_| response_with(StatusCode::INTERNAL_SERVER_ERROR, "failed to build upgrade request".into()))?;
+        .map_err(|_| {
+            response_with(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to build upgrade request".into(),
+            )
+        })?;
 
     // Copy headers (keep upgrade headers)
     for (name, value) in req.headers().iter() {
-        if name.as_str().eq_ignore_ascii_case("x-cmux-port-internal") || name.as_str().eq_ignore_ascii_case("x-cmux-workspace-internal") {
+        if name.as_str().eq_ignore_ascii_case("x-cmux-port-internal")
+            || name
+                .as_str()
+                .eq_ignore_ascii_case("x-cmux-workspace-internal")
+        {
             continue;
         }
         proxied_req.headers_mut().insert(name, value.clone());
@@ -444,10 +516,12 @@ async fn handle_upgrade(
     info!(client = %remote_addr, port = port, upstream = %upstream_host, "proxy upgrade (e.g. websocket)");
 
     // Send to upstream and get its response (should be 101)
-    let upstream_resp = client
-        .request(proxied_req)
-        .await
-        .map_err(|e| response_with(StatusCode::BAD_GATEWAY, format!("upstream upgrade error: {}", e)))?;
+    let upstream_resp = client.request(proxied_req).await.map_err(|e| {
+        response_with(
+            StatusCode::BAD_GATEWAY,
+            format!("upstream upgrade error: {}", e),
+        )
+    })?;
 
     if upstream_resp.status() != StatusCode::SWITCHING_PROTOCOLS {
         // Return upstream status (probably 4xx/5xx) to client with body
@@ -458,14 +532,19 @@ async fn handle_upgrade(
             headers.insert(k, v.clone());
         }
         let body = upstream_resp.into_body();
-        return builder
-            .body(body)
-            .map_err(|_| response_with(StatusCode::INTERNAL_SERVER_ERROR, "failed to build response".into()));
+        return builder.body(body).map_err(|_| {
+            response_with(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to build response".into(),
+            )
+        });
     }
 
     // Clone headers to send to client, but we must keep upstream_resp for upgrade
     let mut client_resp_builder = Response::builder().status(StatusCode::SWITCHING_PROTOCOLS);
-    let out_headers = client_resp_builder.headers_mut().expect("headers_mut available");
+    let out_headers = client_resp_builder
+        .headers_mut()
+        .expect("headers_mut available");
     for (k, v) in upstream_resp.headers().iter() {
         out_headers.insert(k, v.clone());
     }
@@ -473,15 +552,25 @@ async fn handle_upgrade(
     out_headers.insert(CONNECTION, HeaderValue::from_static("upgrade"));
 
     // Prepare response to client (empty body; the connection upgrades)
-    let client_resp = client_resp_builder
-        .body(Body::empty())
-        .map_err(|_| response_with(StatusCode::INTERNAL_SERVER_ERROR, "failed to build upgrade response".into()))?;
+    let client_resp = client_resp_builder.body(Body::empty()).map_err(|_| {
+        response_with(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to build upgrade response".into(),
+        )
+    })?;
 
     // Spawn tunnel after returning the 101 to the client
     tokio::spawn(async move {
-        match future::try_join(hyper::upgrade::on(&mut req), hyper::upgrade::on(upstream_resp)).await {
+        match future::try_join(
+            hyper::upgrade::on(&mut req),
+            hyper::upgrade::on(upstream_resp),
+        )
+        .await
+        {
             Ok((mut client_upgraded, mut upstream_upgraded)) => {
-                if let Err(e) = copy_bidirectional(&mut client_upgraded, &mut upstream_upgraded).await {
+                if let Err(e) =
+                    copy_bidirectional(&mut client_upgraded, &mut upstream_upgraded).await
+                {
                     warn!(%e, "upgrade tunnel error");
                 }
                 // Try to shutdown both sides
@@ -503,7 +592,11 @@ async fn handle_connect(
     remote_addr: SocketAddr,
 ) -> Result<Response<Body>, Response<Body>> {
     let port = get_port_from_header(req.headers())?;
-    let upstream_host = upstream_host_from_headers(req.headers(), &cfg.upstream_host)?;
+    let upstream_host = upstream_host_from_headers(
+        req.headers(),
+        &cfg.upstream_host,
+        cfg.allow_default_upstream,
+    )?;
     let target = format!("{}:{}", upstream_host, port);
     info!(client = %remote_addr, %target, "tcp tunnel via CONNECT");
 
@@ -512,26 +605,31 @@ async fn handle_connect(
         .status(StatusCode::OK)
         .header(CONNECTION, HeaderValue::from_static("upgrade"))
         .body(Body::empty())
-        .map_err(|_| response_with(StatusCode::INTERNAL_SERVER_ERROR, "failed to build CONNECT response".into()))?;
+        .map_err(|_| {
+            response_with(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to build CONNECT response".into(),
+            )
+        })?;
 
     tokio::spawn(async move {
         match hyper::upgrade::on(&mut req).await {
-            Ok(mut upgraded) => {
-                match TcpStream::connect(&target).await {
-                    Ok(mut upstream) => {
-                        if let Err(e) = copy_bidirectional(&mut upgraded, &mut upstream).await {
-                            warn!(%e, "tcp tunnel error");
-                        }
-                        let _ = upgraded.shutdown().await;
-                        let _ = upstream.shutdown().await;
+            Ok(mut upgraded) => match TcpStream::connect(&target).await {
+                Ok(mut upstream) => {
+                    if let Err(e) = copy_bidirectional(&mut upgraded, &mut upstream).await {
+                        warn!(%e, "tcp tunnel error");
                     }
-                    Err(e) => {
-                        warn!(%e, "failed to connect to upstream for CONNECT");
-                        let _ = upgraded.write_all(b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n").await;
-                        let _ = upgraded.shutdown().await;
-                    }
+                    let _ = upgraded.shutdown().await;
+                    let _ = upstream.shutdown().await;
                 }
-            }
+                Err(e) => {
+                    warn!(%e, "failed to connect to upstream for CONNECT");
+                    let _ = upgraded
+                        .write_all(b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n")
+                        .await;
+                    let _ = upgraded.shutdown().await;
+                }
+            },
             Err(e) => warn!("CONNECT upgrade error: {:?}", e),
         }
     });

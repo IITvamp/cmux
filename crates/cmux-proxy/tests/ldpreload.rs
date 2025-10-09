@@ -1,17 +1,17 @@
 #[cfg(target_os = "linux")]
 mod linux_only {
+    use std::env;
     use std::io::{Read, Write};
     use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
-    use std::env;
     use std::path::Path;
     use std::process::{Command, Stdio};
     use std::time::Duration;
 
     use cmux_proxy::workspace_ip_from_name;
-    use tokio::time::timeout;
-    use tokio::time::sleep;
     use hyper::service::{make_service_fn, service_fn};
     use hyper::{Body, Request, Response, Server};
+    use tokio::time::sleep;
+    use tokio::time::timeout;
 
     async fn ensure_loopback(ip: Ipv4Addr) {
         // Attempt to add the IP to loopback; ignore errors if already present
@@ -25,7 +25,9 @@ mod linux_only {
             async move {
                 Ok::<_, std::convert::Infallible>(service_fn(move |_req: Request<Body>| {
                     let body_text = body_text;
-                    async move { Ok::<_, std::convert::Infallible>(Response::new(Body::from(body_text))) }
+                    async move {
+                        Ok::<_, std::convert::Infallible>(Response::new(Body::from(body_text)))
+                    }
                 }))
             }
         });
@@ -54,10 +56,17 @@ mod linux_only {
         });
 
         // Build LD_PRELOAD path
-        let lib_path = format!("{}/ldpreload/libworkspace_net.so", env!("CARGO_MANIFEST_DIR"));
+        let lib_path = format!(
+            "{}/ldpreload/libworkspace_net.so",
+            env!("CARGO_MANIFEST_DIR")
+        );
         if !Path::new(&lib_path).exists() {
             // Try to build it if missing
-            let status = Command::new("make").arg("-C").arg(format!("{}/ldpreload", env!("CARGO_MANIFEST_DIR"))).status().expect("spawn make");
+            let status = Command::new("make")
+                .arg("-C")
+                .arg(format!("{}/ldpreload", env!("CARGO_MANIFEST_DIR")))
+                .status()
+                .expect("spawn make");
             assert!(status.success(), "failed to build ldpreload library");
         }
 
@@ -80,7 +89,11 @@ mod linux_only {
         let mut out = Vec::new();
         let mut stdout = child.stdout.take().unwrap();
         let read = tokio::task::spawn_blocking(move || stdout.read_to_end(&mut out).map(|_| out));
-        let out = timeout(Duration::from_secs(5), read).await.expect("read timeout").expect("read join").expect("read ok");
+        let out = timeout(Duration::from_secs(5), read)
+            .await
+            .expect("read timeout")
+            .expect("read join")
+            .expect("read ok");
 
         let status = child.wait().expect("wait child");
         assert!(status.success(), "child failed");
@@ -108,9 +121,16 @@ mod linux_only {
         });
 
         // Build LD_PRELOAD path
-        let lib_path = format!("{}/ldpreload/libworkspace_net.so", env!("CARGO_MANIFEST_DIR"));
+        let lib_path = format!(
+            "{}/ldpreload/libworkspace_net.so",
+            env!("CARGO_MANIFEST_DIR")
+        );
         if !Path::new(&lib_path).exists() {
-            let status = Command::new("make").arg("-C").arg(format!("{}/ldpreload", env!("CARGO_MANIFEST_DIR"))).status().expect("spawn make");
+            let status = Command::new("make")
+                .arg("-C")
+                .arg(format!("{}/ldpreload", env!("CARGO_MANIFEST_DIR")))
+                .status()
+                .expect("spawn make");
             assert!(status.success(), "failed to build ldpreload library");
         }
 
@@ -123,8 +143,7 @@ mod linux_only {
             addr.port()
         );
         let mut cmd = Command::new("bash");
-        cmd
-            .arg("-lc")
+        cmd.arg("-lc")
             .arg(script)
             .current_dir(ws_dir)
             // No CMUX_WORKSPACE_INTERNAL on purpose; rely on CWD detection
@@ -144,7 +163,11 @@ mod linux_only {
         let mut out = Vec::new();
         let mut stdout = child.stdout.take().unwrap();
         let read = tokio::task::spawn_blocking(move || stdout.read_to_end(&mut out).map(|_| out));
-        let out = timeout(Duration::from_secs(5), read).await.expect("read timeout").expect("read join").expect("read ok");
+        let out = timeout(Duration::from_secs(5), read)
+            .await
+            .expect("read timeout")
+            .expect("read join")
+            .expect("read ok");
 
         let status = child.wait().expect("wait child");
         assert!(status.success(), "child failed");
@@ -166,9 +189,16 @@ mod linux_only {
         start_upstream_http_on_fixed(ip_a, port, "ok-from-A").await;
 
         // Build LD_PRELOAD path (compile if missing)
-        let lib_path = format!("{}/ldpreload/libworkspace_net.so", env!("CARGO_MANIFEST_DIR"));
+        let lib_path = format!(
+            "{}/ldpreload/libworkspace_net.so",
+            env!("CARGO_MANIFEST_DIR")
+        );
         if !Path::new(&lib_path).exists() {
-            let status = Command::new("make").arg("-C").arg(format!("{}/ldpreload", env!("CARGO_MANIFEST_DIR"))).status().expect("spawn make");
+            let status = Command::new("make")
+                .arg("-C")
+                .arg(format!("{}/ldpreload", env!("CARGO_MANIFEST_DIR")))
+                .status()
+                .expect("spawn make");
             assert!(status.success(), "failed to build ldpreload library");
         }
 
@@ -179,7 +209,12 @@ mod linux_only {
         let _ = std::fs::create_dir_all(ws_dir_b);
 
         // Verify curl exists for clearer error if missing
-        let curl_ok = Command::new("sh").arg("-lc").arg("command -v curl >/dev/null 2>&1").status().expect("spawn sh").success();
+        let curl_ok = Command::new("sh")
+            .arg("-lc")
+            .arg("command -v curl >/dev/null 2>&1")
+            .status()
+            .expect("spawn sh")
+            .success();
         assert!(curl_ok, "curl binary not found in PATH");
 
         // A: curl should succeed via LD_PRELOAD routing to A IP
@@ -195,12 +230,19 @@ mod linux_only {
             Ok(v) => !v.contains("libworkspace_net.so"),
             Err(_) => true,
         };
-        if need_set { cmd_a.env("LD_PRELOAD", &lib_path); }
+        if need_set {
+            cmd_a.env("LD_PRELOAD", &lib_path);
+        }
         let mut child_a = cmd_a.spawn().expect("spawn curl A");
         let mut out_a = Vec::new();
         let mut stdout_a = child_a.stdout.take().unwrap();
-        let read_a = tokio::task::spawn_blocking(move || stdout_a.read_to_end(&mut out_a).map(|_| out_a));
-        let out_a = timeout(Duration::from_secs(10), read_a).await.expect("read A timeout").expect("read A join").expect("read A ok");
+        let read_a =
+            tokio::task::spawn_blocking(move || stdout_a.read_to_end(&mut out_a).map(|_| out_a));
+        let out_a = timeout(Duration::from_secs(10), read_a)
+            .await
+            .expect("read A timeout")
+            .expect("read A join")
+            .expect("read A ok");
         let status_a = child_a.wait().expect("wait curl A");
         assert!(status_a.success(), "curl in workspace-a failed");
         assert_eq!(String::from_utf8_lossy(&out_a), "ok-from-A");
@@ -213,9 +255,17 @@ mod linux_only {
             .current_dir(ws_dir_b)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        if need_set { cmd_b.env("LD_PRELOAD", &lib_path); }
+        if need_set {
+            cmd_b.env("LD_PRELOAD", &lib_path);
+        }
         let mut child_b = cmd_b.spawn().expect("spawn curl B");
-        let status_b = timeout(Duration::from_secs(10), async { child_b.wait() }).await.expect("wait B timeout").expect("wait B ok");
-        assert!(!status_b.success(), "curl from workspace-b unexpectedly succeeded");
+        let status_b = timeout(Duration::from_secs(10), async { child_b.wait() })
+            .await
+            .expect("wait B timeout")
+            .expect("wait B ok");
+        assert!(
+            !status_b.success(),
+            "curl from workspace-b unexpectedly succeeded"
+        );
     }
 }

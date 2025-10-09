@@ -30,6 +30,11 @@ enum Commands {
         #[arg(long)]
         dir: Option<PathBuf>,
     },
+    /// Reset environment variables, optionally scoped to a directory.
+    Reset {
+        #[arg(long)]
+        dir: Option<PathBuf>,
+    },
     /// Get effective value for KEY at PWD
     Get {
         key: String,
@@ -99,6 +104,16 @@ impl ShellType {
     }
 }
 
+fn obfuscate_value(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| match ch {
+            '\n' | '\r' => ch,
+            _ => '*',
+        })
+        .collect()
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
@@ -143,6 +158,14 @@ fn main() -> Result<()> {
             let _ = client_send_autostart(&Request::Unset { key, scope })?;
             Ok(())
         }
+        Commands::Reset { dir } => {
+            let scope = dir.map(Scope::Dir);
+            let resp = client_send_autostart(&Request::Reset { scope })?;
+            match resp {
+                Response::Ok => Ok(()),
+                _ => Err(anyhow!("unexpected response")),
+            }
+        }
         Commands::Get { key, pwd } => {
             let pwd = match pwd {
                 Some(pwd) => pwd,
@@ -178,7 +201,7 @@ fn main() -> Result<()> {
                     } else {
                         println!("Active environment variables ({}):", pairs.len());
                         for (key, value) in pairs {
-                            println!("  - {}={}", key, value);
+                            println!("  - {}={}", key, obfuscate_value(&value));
                         }
                     }
                     Ok(())

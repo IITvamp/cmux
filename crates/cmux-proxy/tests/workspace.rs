@@ -1,15 +1,17 @@
+#![cfg(target_os = "linux")]
+
 use std::convert::Infallible;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 
-use cmux_proxy::{ProxyConfig, workspace_ip_from_name};
+use cmux_proxy::{workspace_ip_from_name, ProxyConfig};
 use hyper::body::to_bytes;
+use hyper::client::HttpConnector;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Client, Method, Request, Response, Server, StatusCode};
-use hyper::client::HttpConnector;
 use tokio::sync::oneshot;
-use tokio::time::timeout;
 use tokio::time::sleep;
+use tokio::time::timeout;
 
 async fn start_upstream_http_on(ip: Ipv4Addr) -> SocketAddr {
     let make_svc = make_service_fn(|_conn| async move {
@@ -40,10 +42,20 @@ async fn start_upstream_http_on_fixed(ip: Ipv4Addr, port: u16, body: &'static st
     sleep(Duration::from_millis(50)).await;
 }
 
-async fn start_proxy(listen: SocketAddr, upstream_host: &str) -> (SocketAddr, oneshot::Sender<()>, tokio::task::JoinHandle<()>) {
-    let cfg = ProxyConfig { listen, upstream_host: upstream_host.to_string() };
+async fn start_proxy(
+    listen: SocketAddr,
+    upstream_host: &str,
+    allow_default_upstream: bool,
+) -> (SocketAddr, oneshot::Sender<()>, tokio::task::JoinHandle<()>) {
+    let cfg = ProxyConfig {
+        listen,
+        upstream_host: upstream_host.to_string(),
+        allow_default_upstream,
+    };
     let (tx, rx) = oneshot::channel::<()>();
-    let (bound, handle) = cmux_proxy::spawn_proxy(cfg, async move { let _ = rx.await; });
+    let (bound, handle) = cmux_proxy::spawn_proxy(cfg, async move {
+        let _ = rx.await;
+    });
     (bound, tx, handle)
 }
 
@@ -58,7 +70,12 @@ async fn test_http_proxy_routes_by_workspace_header() {
     let upstream_addr = start_upstream_http_on(ws_ip).await;
 
     // Start proxy on localhost
-    let (proxy_addr, shutdown, handle) = start_proxy(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)), "127.0.0.1").await;
+    let (proxy_addr, shutdown, handle) = start_proxy(
+        SocketAddr::from((Ipv4Addr::LOCALHOST, 0)),
+        "127.0.0.1",
+        false,
+    )
+    .await;
 
     // HTTP client
     let client: Client<HttpConnector, Body> = Client::new();
@@ -71,8 +88,10 @@ async fn test_http_proxy_routes_by_workspace_header() {
         .body(Body::empty())
         .unwrap();
 
-        
-    let resp = timeout(Duration::from_secs(5), client.request(req)).await.expect("resp timeout").unwrap();
+    let resp = timeout(Duration::from_secs(5), client.request(req))
+        .await
+        .expect("resp timeout")
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     // fail on purpose
     let body = to_bytes(resp.into_body()).await.unwrap();
@@ -95,7 +114,12 @@ async fn test_http_proxy_routes_by_subdomain_workspace() {
     start_upstream_http_on_fixed(ws_ip, port, "ok-subdomain").await;
 
     // Start proxy
-    let (proxy_addr, shutdown, handle) = start_proxy(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)), "127.0.0.1").await;
+    let (proxy_addr, shutdown, handle) = start_proxy(
+        SocketAddr::from((Ipv4Addr::LOCALHOST, 0)),
+        "127.0.0.1",
+        false,
+    )
+    .await;
 
     // HTTP client. Connect to proxy by address, but send Host: <workspace>-<port>.localhost
     let client: Client<HttpConnector, Body> = Client::new();
@@ -122,6 +146,73 @@ async fn test_http_proxy_routes_by_subdomain_workspace() {
 
 #[cfg(target_os = "linux")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_default_upstream_mode_without_workspace_header() {
+    // Start upstream on default loopback host
+    let upstream_addr = start_upstream_http_on(Ipv4Addr::LOCALHOST).await;
+    let ws_name = "workspace-a";
+    let ws_ip = workspace_ip_from_name(ws_name).expect("workspace ip");
+    let ws_upstream_addr = start_upstream_http_on(ws_ip).await;
+
+    // Start proxy with allow_default_upstream enabled
+    let (proxy_addr, shutdown, handle) = start_proxy(
+        SocketAddr::from((Ipv4Addr::LOCALHOST, 0)),
+        "127.0.0.1",
+        true,
+    )
+    .await;
+
+    // Send request without workspace header but with workspace-looking host
+    let client: Client<HttpConnector, Body> = Client::new();
+    let url = format!("http://{}:{}/default", proxy_addr.ip(), proxy_addr.port());
+    let req = Request::builder()
+        .method(Method::GET)
+        .uri(url)
+        .header("X-Cmux-Port-Internal", upstream_addr.port().to_string())
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = timeout(Duration::from_secs(5), client.request(req))
+        .await
+        .expect("resp timeout")
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = to_bytes(resp.into_body()).await.unwrap();
+    let s = String::from_utf8(body.to_vec()).unwrap();
+    assert!(
+        s.contains("ok:GET:/default"),
+        "unexpected body from default upstream: {}",
+        s
+    );
+
+    // Workspace-specific request still honors per-workspace routing
+    let ws_url = format!("http://{}:{}/workspace", proxy_addr.ip(), proxy_addr.port());
+    let ws_req = Request::builder()
+        .method(Method::GET)
+        .uri(ws_url)
+        .header("X-Cmux-Workspace-Internal", ws_name)
+        .header("X-Cmux-Port-Internal", ws_upstream_addr.port().to_string())
+        .body(Body::empty())
+        .unwrap();
+
+    let ws_resp = timeout(Duration::from_secs(5), client.request(ws_req))
+        .await
+        .expect("workspace resp timeout")
+        .unwrap();
+    assert_eq!(ws_resp.status(), StatusCode::OK);
+    let ws_body = to_bytes(ws_resp.into_body()).await.unwrap();
+    let ws_text = String::from_utf8(ws_body.to_vec()).unwrap();
+    assert!(
+        ws_text.contains("ok:GET:/workspace"),
+        "unexpected body from workspace upstream: {}",
+        ws_text
+    );
+
+    let _ = shutdown.send(());
+    let _ = handle.await;
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_http_proxy_routes_by_workspace_non_numeric() {
     // workspace-c -> hashed mapping
     let ws_name = "workspace-c";
@@ -131,7 +222,12 @@ async fn test_http_proxy_routes_by_workspace_non_numeric() {
     let upstream_addr = start_upstream_http_on(ws_ip).await;
 
     // Start proxy on localhost
-    let (proxy_addr, shutdown, handle) = start_proxy(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)), "127.0.0.1").await;
+    let (proxy_addr, shutdown, handle) = start_proxy(
+        SocketAddr::from((Ipv4Addr::LOCALHOST, 0)),
+        "127.0.0.1",
+        false,
+    )
+    .await;
 
     // HTTP client
     let client: Client<HttpConnector, Body> = Client::new();
@@ -144,7 +240,10 @@ async fn test_http_proxy_routes_by_workspace_non_numeric() {
         .body(Body::empty())
         .unwrap();
 
-    let resp = timeout(Duration::from_secs(5), client.request(req)).await.expect("resp timeout").unwrap();
+    let resp = timeout(Duration::from_secs(5), client.request(req))
+        .await
+        .expect("resp timeout")
+        .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = to_bytes(resp.into_body()).await.unwrap();
     let s = String::from_utf8(body.to_vec()).unwrap();
@@ -162,7 +261,12 @@ async fn test_workspace_dynamic_server_then_success() {
     let port = 3000u16;
 
     // Start proxy
-    let (proxy_addr, shutdown, handle) = start_proxy(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)), "127.0.0.1").await;
+    let (proxy_addr, shutdown, handle) = start_proxy(
+        SocketAddr::from((Ipv4Addr::LOCALHOST, 0)),
+        "127.0.0.1",
+        false,
+    )
+    .await;
     let client: Client<HttpConnector, Body> = Client::new();
     let url = format!("http://{}:{}/hello", proxy_addr.ip(), proxy_addr.port());
 
@@ -174,7 +278,10 @@ async fn test_workspace_dynamic_server_then_success() {
         .header("X-Cmux-Port-Internal", port.to_string())
         .body(Body::empty())
         .unwrap();
-    let resp1 = timeout(Duration::from_secs(5), client.request(req1)).await.expect("resp1 timeout").unwrap();
+    let resp1 = timeout(Duration::from_secs(5), client.request(req1))
+        .await
+        .expect("resp1 timeout")
+        .unwrap();
     assert_eq!(resp1.status(), StatusCode::BAD_GATEWAY);
 
     // Create workspace dir and start upstream bound to workspace IP:port
@@ -189,7 +296,10 @@ async fn test_workspace_dynamic_server_then_success() {
         .header("X-Cmux-Port-Internal", port.to_string())
         .body(Body::empty())
         .unwrap();
-    let resp2 = timeout(Duration::from_secs(5), client.request(req2)).await.expect("resp2 timeout").unwrap();
+    let resp2 = timeout(Duration::from_secs(5), client.request(req2))
+        .await
+        .expect("resp2 timeout")
+        .unwrap();
     assert_eq!(resp2.status(), StatusCode::OK);
     let body2 = to_bytes(resp2.into_body()).await.unwrap();
     assert_eq!(String::from_utf8_lossy(&body2), "ok-from-a");
@@ -211,7 +321,12 @@ async fn test_same_port_isolation_across_workspaces() {
     start_upstream_http_on_fixed(ip_a, port, "hello-from-A").await;
     start_upstream_http_on_fixed(ip_b, port, "hello-from-B").await;
 
-    let (proxy_addr, shutdown, handle) = start_proxy(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)), "127.0.0.1").await;
+    let (proxy_addr, shutdown, handle) = start_proxy(
+        SocketAddr::from((Ipv4Addr::LOCALHOST, 0)),
+        "127.0.0.1",
+        false,
+    )
+    .await;
     let client: Client<HttpConnector, Body> = Client::new();
     let url = format!("http://{}:{}/check", proxy_addr.ip(), proxy_addr.port());
 
@@ -223,7 +338,10 @@ async fn test_same_port_isolation_across_workspaces() {
         .header("X-Cmux-Port-Internal", port.to_string())
         .body(Body::empty())
         .unwrap();
-    let resp_a = timeout(Duration::from_secs(5), client.request(req_a)).await.expect("resp a timeout").unwrap();
+    let resp_a = timeout(Duration::from_secs(5), client.request(req_a))
+        .await
+        .expect("resp a timeout")
+        .unwrap();
     assert_eq!(resp_a.status(), StatusCode::OK);
     let body_a = to_bytes(resp_a.into_body()).await.unwrap();
     assert_eq!(String::from_utf8_lossy(&body_a), "hello-from-A");
@@ -236,7 +354,10 @@ async fn test_same_port_isolation_across_workspaces() {
         .header("X-Cmux-Port-Internal", port.to_string())
         .body(Body::empty())
         .unwrap();
-    let resp_b = timeout(Duration::from_secs(5), client.request(req_b)).await.expect("resp b timeout").unwrap();
+    let resp_b = timeout(Duration::from_secs(5), client.request(req_b))
+        .await
+        .expect("resp b timeout")
+        .unwrap();
     assert_eq!(resp_b.status(), StatusCode::OK);
     let body_b = to_bytes(resp_b.into_body()).await.unwrap();
     assert_eq!(String::from_utf8_lossy(&body_b), "hello-from-B");

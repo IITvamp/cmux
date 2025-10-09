@@ -86,6 +86,9 @@ pub enum Request {
         entries: Vec<(String, String)>,
         scope: Scope,
     },
+    Reset {
+        scope: Option<Scope>,
+    },
     Export {
         shell: ShellKind,
         since: u64,
@@ -219,6 +222,48 @@ impl State {
         for (k, v) in entries {
             self.set(scope.clone(), k, v);
         }
+    }
+
+    pub fn reset_globals(&mut self) -> bool {
+        if self.globals.is_empty() {
+            return false;
+        }
+        let keys: Vec<String> = self.globals.keys().cloned().collect();
+        let mut changed = false;
+        for key in keys {
+            if self.globals.remove(&key).is_some() {
+                self.bump(key, Scope::Global);
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    pub fn reset_dir<P: AsRef<Path>>(&mut self, dir: P) -> bool {
+        let dir_c = canon(dir);
+        match self.scoped.remove(&dir_c) {
+            Some(map) => {
+                let scope = Scope::Dir(dir_c);
+                let mut changed = false;
+                for key in map.into_keys() {
+                    self.bump(key, scope.clone());
+                    changed = true;
+                }
+                changed
+            }
+            None => false,
+        }
+    }
+
+    pub fn reset_all(&mut self) -> bool {
+        let mut changed = self.reset_globals();
+        let scoped_dirs: Vec<PathBuf> = self.scoped.keys().cloned().collect();
+        for dir in scoped_dirs {
+            if self.reset_dir(dir) {
+                changed = true;
+            }
+        }
+        changed
     }
 
     pub fn effective_for_pwd(&self, pwd: &Path) -> HashMap<String, String> {
@@ -425,6 +470,20 @@ fn handle_request(req: Request, state: &Arc<Mutex<State>>) -> Response {
         }
         Request::Load { entries, scope } => {
             st.load(scope, entries);
+            Response::Ok
+        }
+        Request::Reset { scope } => {
+            match scope {
+                Some(Scope::Global) => {
+                    st.reset_globals();
+                }
+                Some(Scope::Dir(dir)) => {
+                    st.reset_dir(dir);
+                }
+                None => {
+                    st.reset_all();
+                }
+            }
             Response::Ok
         }
         Request::Export { shell, since, pwd } => {

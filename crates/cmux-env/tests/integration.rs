@@ -209,6 +209,89 @@ fn get_and_list_default_to_client_pwd() {
 }
 
 #[test]
+fn list_obfuscates_values() {
+    let tmp = TempDir::new().unwrap();
+    let mut child = start_envd_with_runtime(&tmp);
+
+    run_envctl(&tmp, &["set", "SECRET=shhh"]).success();
+
+    run_envctl(&tmp, &["list"])
+        .success()
+        .stdout(predicate::str::contains(
+            "Active environment variables (1):",
+        ))
+        .stdout(predicate::str::contains("SECRET=****"))
+        .stdout(predicate::str::contains("shhh").not());
+
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+#[test]
+fn reset_all_clears_globals_and_scopes() {
+    let tmp = TempDir::new().unwrap();
+    let mut child = start_envd_with_runtime(&tmp);
+
+    run_envctl(&tmp, &["set", "FOO=bar"]).success();
+
+    let base = tmp.path().join("proj");
+    std::fs::create_dir_all(&base).unwrap();
+    run_envctl(&tmp, &["set", "BAR=baz", "--dir", base.to_str().unwrap()]).success();
+
+    run_envctl(&tmp, &["reset"]).success();
+
+    run_envctl(&tmp, &["list", "--pwd", base.to_str().unwrap()])
+        .success()
+        .stdout(predicate::str::contains("No environment variables found."));
+
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+#[test]
+fn reset_dir_clears_only_that_scope() {
+    let tmp = TempDir::new().unwrap();
+    let mut child = start_envd_with_runtime(&tmp);
+
+    run_envctl(&tmp, &["set", "FOO=bar"]).success();
+
+    let base = tmp.path().join("proj");
+    std::fs::create_dir_all(&base).unwrap();
+    run_envctl(&tmp, &["set", "BAR=local", "--dir", base.to_str().unwrap()]).success();
+
+    let other = tmp.path().join("other");
+    std::fs::create_dir_all(&other).unwrap();
+    run_envctl(
+        &tmp,
+        &["set", "BAZ=other", "--dir", other.to_str().unwrap()],
+    )
+    .success();
+
+    run_envctl(&tmp, &["reset", "--dir", base.to_str().unwrap()]).success();
+
+    run_envctl(&tmp, &["list", "--pwd", base.to_str().unwrap()])
+        .success()
+        .stdout(predicate::str::contains(
+            "Active environment variables (1):",
+        ))
+        .stdout(predicate::str::contains("FOO=***"))
+        .stdout(predicate::str::contains("BAZ").not())
+        .stdout(predicate::str::contains("BAR").not());
+
+    run_envctl(&tmp, &["list"])
+        .success()
+        .stdout(predicate::str::contains("FOO=***"))
+        .stdout(predicate::str::contains("BAZ").not());
+
+    run_envctl(&tmp, &["list", "--pwd", other.to_str().unwrap()])
+        .success()
+        .stdout(predicate::str::contains("BAZ=*****"));
+
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+#[test]
 fn export_then_eval_in_bash_updates_env() {
     let tmp = TempDir::new().unwrap();
     let mut child = start_envd_with_runtime(&tmp);
@@ -655,7 +738,9 @@ fn load_from_stdin() {
     // List should include FOO and BAZ
     run_envctl(&tmp, &["list"])
         .success()
-        .stdout(predicate::str::contains("FOO=bar").and(predicate::str::contains("BAZ=qux")));
+        .stdout(predicate::str::contains("FOO=***").and(predicate::str::contains("BAZ=***")))
+        .stdout(predicate::str::contains("bar").not())
+        .stdout(predicate::str::contains("qux").not());
 
     let _ = child.kill();
     let _ = child.wait();
@@ -673,7 +758,9 @@ fn load_from_base64_literal() {
 
     run_envctl(&tmp, &["list"])
         .success()
-        .stdout(predicate::str::contains("FOO=bar").and(predicate::str::contains("BAZ=qux")));
+        .stdout(predicate::str::contains("FOO=***").and(predicate::str::contains("BAZ=***")))
+        .stdout(predicate::str::contains("bar").not())
+        .stdout(predicate::str::contains("qux").not());
 
     let _ = child.kill();
     let _ = child.wait();
@@ -703,7 +790,9 @@ fn load_from_base64_stdin() {
 
     run_envctl(&tmp, &["list"])
         .success()
-        .stdout(predicate::str::contains("FOO=bar").and(predicate::str::contains("BAZ=qux")));
+        .stdout(predicate::str::contains("FOO=***").and(predicate::str::contains("BAZ=***")))
+        .stdout(predicate::str::contains("bar").not())
+        .stdout(predicate::str::contains("qux").not());
 
     let _ = child.kill();
     let _ = child.wait();

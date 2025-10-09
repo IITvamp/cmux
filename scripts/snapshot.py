@@ -234,10 +234,10 @@ async def _await_instance_ready(instance: Instance, *, console: Console) -> None
     console.info(f"Instance {instance.id} is ready")
 
 
-async def _stop_instance(instance: Instance, console: Console) -> None:
+def _stop_instance(instance: Instance, console: Console) -> None:
     try:
         console.info(f"Stopping instance {instance.id}...")
-        await instance.astop()
+        instance.stop()
         console.info(f"Instance {instance.id} stopped")
     except Exception as exc:  # noqa: BLE001
         console.always(f"Failed to stop instance {instance.id}: {exc}")
@@ -1799,16 +1799,13 @@ async def provision_and_snapshot(args: argparse.Namespace) -> None:
     client = MorphCloudClient()
     started_instances: list[Instance] = []
 
-    async def _cleanup() -> None:
+    def _cleanup() -> None:
         while started_instances:
             inst = started_instances.pop()
-            await _stop_instance(inst, console)
-
-    async def _atexit_cleanup() -> None:
-        await _cleanup()
+            _stop_instance(inst, console)
 
     def _sync_cleanup() -> None:
-        asyncio.run(_atexit_cleanup())
+        _cleanup()
 
     atexit.register(_sync_cleanup)
 
