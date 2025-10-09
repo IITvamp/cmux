@@ -132,27 +132,27 @@ function WorkflowRuns({ allRuns, isLoading }: { allRuns: CombinedRun[]; isLoadin
 
   const { icon, colorClass, statusText } = hasAnyRunning
     ? {
-        icon: <Clock className="w-[10px] h-[10px] animate-pulse" />,
-        colorClass: "text-yellow-600 dark:text-yellow-400",
-        statusText: "Running" as const,
-      }
+      icon: <Clock className="w-[10px] h-[10px] animate-pulse" />,
+      colorClass: "text-yellow-600 dark:text-yellow-400",
+      statusText: "Running",
+    }
     : hasAnyFailure
       ? {
-          icon: <X className="w-[10px] h-[10px]" />,
-          colorClass: "text-red-600 dark:text-red-400",
-          statusText: "Failed" as const,
-        }
+        icon: <X className="w-[10px] h-[10px]" />,
+        colorClass: "text-red-600 dark:text-red-400",
+        statusText: "Failed",
+      }
       : allPassed
         ? {
-            icon: <Check className="w-[10px] h-[10px]" />,
-            colorClass: "text-green-600 dark:text-green-400",
-            statusText: "Passed" as const,
-          }
+          icon: <Check className="w-[10px] h-[10px]" />,
+          colorClass: "text-green-600 dark:text-green-400",
+          statusText: "Passed",
+        }
         : {
-            icon: <Circle className="w-[10px] h-[10px]" />,
-            colorClass: "text-neutral-500 dark:text-neutral-400",
-            statusText: "Checks" as const,
-          };
+          icon: <Circle className="w-[10px] h-[10px]" />,
+          colorClass: "text-neutral-500 dark:text-neutral-400",
+          statusText: "Checks",
+        };
 
   return (
     <div className={`flex items-center gap-1 ml-2 shrink-0 ${colorClass}`}>
@@ -225,27 +225,27 @@ function WorkflowRunsSection({
 
   const { summaryIcon, summaryText, summaryColorClass } = hasAnyRunning
     ? {
-        summaryIcon: <Loader2 className="w-3 h-3 animate-spin" strokeWidth={2} />,
-        summaryText: `${sortedRuns.length} ${sortedRuns.length === 1 ? "check" : "checks"} running`,
-        summaryColorClass: "text-yellow-600 dark:text-yellow-500",
-      }
+      summaryIcon: <Loader2 className="w-3 h-3 animate-spin" strokeWidth={2} />,
+      summaryText: `${sortedRuns.length} ${sortedRuns.length === 1 ? "check" : "checks"} running`,
+      summaryColorClass: "text-yellow-600 dark:text-yellow-500",
+    }
     : hasAnyFailure
       ? {
-          summaryIcon: <X className="w-3 h-3" strokeWidth={2} />,
-          summaryText: `${failedRuns.length} ${failedRuns.length === 1 ? "check" : "checks"} failed`,
-          summaryColorClass: "text-red-600 dark:text-red-500",
-        }
+        summaryIcon: <X className="w-3 h-3" strokeWidth={2} />,
+        summaryText: `${failedRuns.length} ${failedRuns.length === 1 ? "check" : "checks"} failed`,
+        summaryColorClass: "text-red-600 dark:text-red-500",
+      }
       : allPassed
         ? {
-            summaryIcon: <Check className="w-3 h-3" strokeWidth={2} />,
-            summaryText: "All checks passed",
-            summaryColorClass: "text-green-600 dark:text-green-500",
-          }
+          summaryIcon: <Check className="w-3 h-3" strokeWidth={2} />,
+          summaryText: "All checks passed",
+          summaryColorClass: "text-green-600 dark:text-green-500",
+        }
         : {
-            summaryIcon: <Circle className="w-3 h-3" strokeWidth={2} />,
-            summaryText: `${sortedRuns.length} ${sortedRuns.length === 1 ? "check" : "checks"}`,
-            summaryColorClass: "text-neutral-500 dark:text-neutral-400",
-          };
+          summaryIcon: <Circle className="w-3 h-3" strokeWidth={2} />,
+          summaryText: `${sortedRuns.length} ${sortedRuns.length === 1 ? "check" : "checks"}`,
+          summaryColorClass: "text-neutral-500 dark:text-neutral-400",
+        };
 
   const getStatusIcon = (status?: string, conclusion?: string) => {
     if (conclusion === "success") {
