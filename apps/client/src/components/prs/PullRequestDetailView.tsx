@@ -87,14 +87,14 @@ function useCombinedWorkflowData({ teamSlugOrId, repoFullName, prNumber, headSha
   const isLoading = workflowRuns === undefined || checkRuns === undefined || deployments === undefined || commitStatuses === undefined;
 
   const allRuns = useMemo(() => [
-    ...(workflowRuns || []).map(run => ({ ...run, type: 'workflow' as const, name: run.workflowName, timestamp: run.runStartedAt, url: run.htmlUrl })),
+    ...(workflowRuns || []).map(run => ({ ...run, type: 'workflow', name: run.workflowName, timestamp: run.runStartedAt, url: run.htmlUrl })),
     ...(checkRuns || []).map(run => {
       const url = run.htmlUrl || `https://github.com/${repoFullName}/pull/${prNumber}/checks?check_run_id=${run.checkRunId}`;
-      return { ...run, type: 'check' as const, timestamp: run.startedAt, url };
+      return { ...run, type: 'check', timestamp: run.startedAt, url };
     }),
     ...(deployments || []).filter(dep => dep.environment !== 'Preview').map(dep => ({
       ...dep,
-      type: 'deployment' as const,
+      type: 'deployment',
       name: dep.description || dep.environment || 'Deployment',
       timestamp: dep.createdAt,
       status: dep.state === 'pending' || dep.state === 'queued' || dep.state === 'in_progress' ? 'in_progress' : 'completed',
@@ -103,7 +103,7 @@ function useCombinedWorkflowData({ teamSlugOrId, repoFullName, prNumber, headSha
     })),
     ...(commitStatuses || []).map(status => ({
       ...status,
-      type: 'status' as const,
+      type: 'status',
       name: status.context,
       timestamp: status.updatedAt,
       status: status.state === 'pending' ? 'in_progress' : 'completed',
@@ -130,27 +130,29 @@ function WorkflowRuns({ allRuns, isLoading }: { allRuns: CombinedRun[]; isLoadin
     (run) => run.conclusion === "success" || run.conclusion === "neutral" || run.conclusion === "skipped"
   );
 
-  let icon;
-  let colorClass;
-  let statusText;
-
-  if (hasAnyRunning) {
-    icon = <Clock className="w-[10px] h-[10px] animate-pulse" />;
-    colorClass = "text-yellow-600 dark:text-yellow-400";
-    statusText = "Running";
-  } else if (hasAnyFailure) {
-    icon = <X className="w-[10px] h-[10px]" />;
-    colorClass = "text-red-600 dark:text-red-400";
-    statusText = "Failed";
-  } else if (allPassed) {
-    icon = <Check className="w-[10px] h-[10px]" />;
-    colorClass = "text-green-600 dark:text-green-400";
-    statusText = "Passed";
-  } else {
-    icon = <Circle className="w-[10px] h-[10px]" />;
-    colorClass = "text-neutral-500 dark:text-neutral-400";
-    statusText = "Checks";
-  }
+  const { icon, colorClass, statusText } = hasAnyRunning
+    ? {
+        icon: <Clock className="w-[10px] h-[10px] animate-pulse" />,
+        colorClass: "text-yellow-600 dark:text-yellow-400",
+        statusText: "Running" as const,
+      }
+    : hasAnyFailure
+      ? {
+          icon: <X className="w-[10px] h-[10px]" />,
+          colorClass: "text-red-600 dark:text-red-400",
+          statusText: "Failed" as const,
+        }
+      : allPassed
+        ? {
+            icon: <Check className="w-[10px] h-[10px]" />,
+            colorClass: "text-green-600 dark:text-green-400",
+            statusText: "Passed" as const,
+          }
+        : {
+            icon: <Circle className="w-[10px] h-[10px]" />,
+            colorClass: "text-neutral-500 dark:text-neutral-400",
+            statusText: "Checks" as const,
+          };
 
   return (
     <div className={`flex items-center gap-1 ml-2 shrink-0 ${colorClass}`}>
@@ -221,27 +223,29 @@ function WorkflowRunsSection({
     return null;
   }
 
-  let summaryIcon;
-  let summaryText;
-  let summaryColorClass;
-
-  if (hasAnyRunning) {
-    summaryIcon = <Loader2 className="w-3 h-3 animate-spin" strokeWidth={2} />;
-    summaryText = `${sortedRuns.length} ${sortedRuns.length === 1 ? 'check' : 'checks'} running`;
-    summaryColorClass = "text-yellow-600 dark:text-yellow-500";
-  } else if (hasAnyFailure) {
-    summaryIcon = <X className="w-3 h-3" strokeWidth={2} />;
-    summaryText = `${failedRuns.length} ${failedRuns.length === 1 ? 'check' : 'checks'} failed`;
-    summaryColorClass = "text-red-600 dark:text-red-500";
-  } else if (allPassed) {
-    summaryIcon = <Check className="w-3 h-3" strokeWidth={2} />;
-    summaryText = "All checks passed";
-    summaryColorClass = "text-green-600 dark:text-green-500";
-  } else {
-    summaryIcon = <Circle className="w-3 h-3" strokeWidth={2} />;
-    summaryText = `${sortedRuns.length} ${sortedRuns.length === 1 ? 'check' : 'checks'}`;
-    summaryColorClass = "text-neutral-500 dark:text-neutral-400";
-  }
+  const { summaryIcon, summaryText, summaryColorClass } = hasAnyRunning
+    ? {
+        summaryIcon: <Loader2 className="w-3 h-3 animate-spin" strokeWidth={2} />,
+        summaryText: `${sortedRuns.length} ${sortedRuns.length === 1 ? "check" : "checks"} running`,
+        summaryColorClass: "text-yellow-600 dark:text-yellow-500",
+      }
+    : hasAnyFailure
+      ? {
+          summaryIcon: <X className="w-3 h-3" strokeWidth={2} />,
+          summaryText: `${failedRuns.length} ${failedRuns.length === 1 ? "check" : "checks"} failed`,
+          summaryColorClass: "text-red-600 dark:text-red-500",
+        }
+      : allPassed
+        ? {
+            summaryIcon: <Check className="w-3 h-3" strokeWidth={2} />,
+            summaryText: "All checks passed",
+            summaryColorClass: "text-green-600 dark:text-green-500",
+          }
+        : {
+            summaryIcon: <Circle className="w-3 h-3" strokeWidth={2} />,
+            summaryText: `${sortedRuns.length} ${sortedRuns.length === 1 ? "check" : "checks"}`,
+            summaryColorClass: "text-neutral-500 dark:text-neutral-400",
+          };
 
   const getStatusIcon = (status?: string, conclusion?: string) => {
     if (conclusion === "success") {
@@ -548,7 +552,7 @@ export function PullRequestDetailView({
 
   const gitDiffViewerClassNames = {
     fileDiffRow: { button: "top-[56px]" },
-  } as const;
+  };
 
   return (
     <div className="flex flex-1 min-h-0 flex-col">
