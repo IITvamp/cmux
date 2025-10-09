@@ -1119,7 +1119,7 @@ export function MonacoGitDiffViewer({
   return (
     <div className="grow bg-white dark:bg-neutral-900">
       <div className="flex flex-col -space-y-[2px]">
-        {fileGroups.map((file) => (
+        {fileGroups.map((file, index) => (
           <MemoMonacoFileDiffRow
             key={`monaco:${file.filePath}`}
             file={file}
@@ -1127,7 +1127,13 @@ export function MonacoGitDiffViewer({
             onToggle={() => toggleFile(file.filePath)}
             editorTheme={editorTheme}
             diffOptions={diffOptions}
-            classNames={classNames?.fileDiffRow}
+            classNames={{
+              ...classNames?.fileDiffRow,
+              button: cn(
+                classNames?.fileDiffRow?.button,
+                index === 0 && "!border-t-0"
+              ),
+            }}
           />
         ))}
         <hr className="border-neutral-200 dark:border-neutral-800" />

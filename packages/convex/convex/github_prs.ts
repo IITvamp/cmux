@@ -158,6 +158,8 @@ async function upsertCore(
       state: "open" | "closed";
       merged?: boolean;
       draft?: boolean;
+      mergeable?: boolean;
+      mergeableState?: string;
       authorLogin?: string;
       authorId?: number;
       htmlUrl?: string;
@@ -220,6 +222,8 @@ export const upsertPullRequestInternal = internalMutation({
       state: v.union(v.literal("open"), v.literal("closed")),
       merged: v.optional(v.boolean()),
       draft: v.optional(v.boolean()),
+      mergeable: v.optional(v.boolean()),
+      mergeableState: v.optional(v.string()),
       authorLogin: v.optional(v.string()),
       authorId: v.optional(v.number()),
       htmlUrl: v.optional(v.string()),
@@ -282,6 +286,26 @@ export const listPullRequests = authQuery({
   },
 });
 
+export const getPullRequest = authQuery({
+  args: {
+    teamSlugOrId: v.string(),
+    repoFullName: v.string(),
+    number: v.number(),
+  },
+  handler: async (ctx, { teamSlugOrId, repoFullName, number }) => {
+    const teamId = await getTeamId(ctx, teamSlugOrId);
+
+    const pr = await ctx.db
+      .query("pullRequests")
+      .withIndex("by_team_repo_number", (q) =>
+        q.eq("teamId", teamId).eq("repoFullName", repoFullName).eq("number", number)
+      )
+      .first();
+
+    return pr ?? null;
+  },
+});
+
 // Helper to look up a provider connection for a repository owner
 export const getConnectionForOwnerInternal = internalQuery({
   args: { owner: v.string() },
@@ -300,7 +324,7 @@ export const upsertFromWebhookPayload = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(),
+    payload: v.object({}),
   },
   handler: async (ctx, { installationId, repoFullName, teamId, payload }) => {
     try {
@@ -312,6 +336,8 @@ export const upsertFromWebhookPayload = internalMutation({
         typeof value === "string" ? value : undefined;
       const mapNum = (value: unknown) =>
         typeof value === "number" ? value : undefined;
+      const mapBool = (value: unknown) =>
+        typeof value === "boolean" ? value : undefined;
       const ts = (s: unknown) => {
         if (typeof s !== "string") return undefined;
         const n = Date.parse(s);
@@ -340,6 +366,8 @@ export const upsertFromWebhookPayload = internalMutation({
           state: mapStr(pr.state) === "closed" ? "closed" : "open",
           merged: Boolean(pr.merged),
           draft: Boolean(pr.draft),
+          mergeable: mapBool((pr as { mergeable?: boolean | null }).mergeable),
+          mergeableState: mapStr((pr as { mergeable_state?: string }).mergeable_state),
           authorLogin: mapStr(pr.user?.login),
           authorId: mapNum(pr.user?.id),
           htmlUrl: mapStr(pr.html_url),
@@ -400,6 +428,8 @@ export const upsertFromServer = authMutation({
       state: v.union(v.literal("open"), v.literal("closed")),
       merged: v.optional(v.boolean()),
       draft: v.optional(v.boolean()),
+      mergeable: v.optional(v.boolean()),
+      mergeableState: v.optional(v.string()),
       authorLogin: v.optional(v.string()),
       authorId: v.optional(v.number()),
       htmlUrl: v.optional(v.string()),

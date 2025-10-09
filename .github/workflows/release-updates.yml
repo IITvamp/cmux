@@ -187,8 +187,12 @@ jobs:
           fi
           repo="${REPO}"
           for artifact in "${artifacts[@]}"; do
-            echo "Uploading $artifact to $repo@$release_tag"
-            gh release upload "$release_tag" "$artifact" --repo "$repo" --clobber
+            basename="${artifact##*/}"
+            extension="${basename##*.}"
+            name="${basename%.*}"
+            renamed="${name}-x64.${extension}"
+            echo "Uploading $artifact as $renamed to $repo@$release_tag"
+            gh release upload "$release_tag" "$artifact#$renamed" --repo "$repo" --clobber
           done
 
   mac-arm64:
