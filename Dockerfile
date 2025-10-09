@@ -246,6 +246,8 @@ RUN CMUX_ENV_VERSION=0.0.8 && \
 
 # Install tmux configuration for better mouse scrolling behavior
 COPY configs/tmux.conf /etc/tmux.conf
+COPY configs/tmux-on-attach.sh /etc/tmux-on-attach.sh
+RUN chmod +x /etc/tmux-on-attach.sh
 
 # Install Claude Code extension v2.0.0 from VS Code Marketplace
 # The vspackage endpoint returns a gzipped vsix, so we need to decompress it first
