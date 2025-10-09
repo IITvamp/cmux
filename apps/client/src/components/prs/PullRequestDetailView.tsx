@@ -47,26 +47,6 @@ type WorkflowRunsProps = {
 
 type CombinedRun = ReturnType<typeof useCombinedWorkflowData>['allRuns'][number];
 
-function deduplicateRuns<T extends { type: string; name?: string; timestamp?: number; environment?: string; task?: string; context?: string; appSlug?: string; appName?: string }>(runs: T[]): T[] {
-  const filteredRuns = runs.filter(run => !(run.type === 'deployment' && run.environment === 'Preview'));
-
-  const deduped = new Map<string, T>();
-  for (const run of filteredRuns) {
-    let key: string;
-    if (run.type === 'workflow') key = `workflow-${run.name}`;
-    else if (run.type === 'check') key = `check-${run.appSlug || run.appName || 'unknown'}-${run.name}`;
-    else if (run.type === 'deployment') key = `deployment-${run.environment || run.task || 'default'}`;
-    else key = `status-${run.context}`;
-
-    const existing = deduped.get(key);
-    if (!existing || (run.timestamp ?? 0) > (existing.timestamp ?? 0)) {
-      deduped.set(key, run);
-    }
-  }
-
-  return Array.from(deduped.values());
-}
-
 function useCombinedWorkflowData({ teamSlugOrId, repoFullName, prNumber, headSha }: WorkflowRunsProps) {
   const workflowRuns = useConvexQuery(api.github_workflows.getWorkflowRunsForPr, {
     teamSlugOrId,
@@ -102,35 +82,31 @@ function useCombinedWorkflowData({ teamSlugOrId, repoFullName, prNumber, headSha
 
   const isLoading = workflowRuns === undefined || checkRuns === undefined || deployments === undefined || commitStatuses === undefined;
 
-  const allRuns = useMemo(() => {
-    const combined = [
-      ...(workflowRuns || []).map(run => ({ ...run, type: 'workflow' as const, name: run.workflowName, timestamp: run.runStartedAt, url: run.htmlUrl })),
-      ...(checkRuns || []).map(run => {
-        const url = run.htmlUrl || `https://github.com/${repoFullName}/pull/${prNumber}/checks?check_run_id=${run.checkRunId}`;
-        return { ...run, type: 'check' as const, timestamp: run.startedAt, url };
-      }),
-      ...(deployments || []).map(dep => ({
-        ...dep,
-        type: 'deployment' as const,
-        name: dep.description || dep.environment || 'Deployment',
-        timestamp: dep.createdAt,
-        status: dep.state === 'pending' || dep.state === 'queued' || dep.state === 'in_progress' ? 'in_progress' : 'completed',
-        conclusion: dep.state === 'success' ? 'success' : dep.state === 'failure' || dep.state === 'error' ? 'failure' : undefined,
-        url: dep.logUrl || dep.targetUrl || dep.environmentUrl || `https://github.com/${repoFullName}/pull/${prNumber}/checks`
-      })),
-      ...(commitStatuses || []).map(status => ({
-        ...status,
-        type: 'status' as const,
-        name: status.context,
-        timestamp: status.updatedAt,
-        status: status.state === 'pending' ? 'in_progress' : 'completed',
-        conclusion: status.state === 'success' ? 'success' : status.state === 'failure' || status.state === 'error' ? 'failure' : undefined,
-        url: status.targetUrl || `https://github.com/${repoFullName}/pull/${prNumber}/checks`
-      })),
-    ];
-
-    return deduplicateRuns(combined);
-  }, [workflowRuns, checkRuns, deployments, commitStatuses, repoFullName, prNumber]);
+  const allRuns = useMemo(() => [
+    ...(workflowRuns || []).map(run => ({ ...run, type: 'workflow' as const, name: run.workflowName, timestamp: run.runStartedAt, url: run.htmlUrl })),
+    ...(checkRuns || []).map(run => {
+      const url = run.htmlUrl || `https://github.com/${repoFullName}/pull/${prNumber}/checks?check_run_id=${run.checkRunId}`;
+      return { ...run, type: 'check' as const, timestamp: run.startedAt, url };
+    }),
+    ...(deployments || []).filter(dep => dep.environment !== 'Preview').map(dep => ({
+      ...dep,
+      type: 'deployment' as const,
+      name: dep.description || dep.environment || 'Deployment',
+      timestamp: dep.createdAt,
+      status: dep.state === 'pending' || dep.state === 'queued' || dep.state === 'in_progress' ? 'in_progress' : 'completed',
+      conclusion: dep.state === 'success' ? 'success' : dep.state === 'failure' || dep.state === 'error' ? 'failure' : undefined,
+      url: dep.logUrl || dep.targetUrl || dep.environmentUrl || `https://github.com/${repoFullName}/pull/${prNumber}/checks`
+    })),
+    ...(commitStatuses || []).map(status => ({
+      ...status,
+      type: 'status' as const,
+      name: status.context,
+      timestamp: status.updatedAt,
+      status: status.state === 'pending' ? 'in_progress' : 'completed',
+      conclusion: status.state === 'success' ? 'success' : status.state === 'failure' || status.state === 'error' ? 'failure' : undefined,
+      url: status.targetUrl || `https://github.com/${repoFullName}/pull/${prNumber}/checks`
+    })),
+  ], [workflowRuns, checkRuns, deployments, commitStatuses, repoFullName, prNumber]);
 
   return { allRuns, isLoading };
 }
@@ -155,27 +131,27 @@ function WorkflowRuns({ allRuns, isLoading }: { allRuns: CombinedRun[]; isLoadin
   let statusText;
 
   if (hasAnyRunning) {
-    icon = <Clock className="w-3.5 h-3.5 animate-pulse" />;
+    icon = <Clock className="w-[7px] h-[7px] animate-pulse" />;
     colorClass = "text-yellow-600 dark:text-yellow-400";
     statusText = "Running";
   } else if (hasAnyFailure) {
-    icon = <X className="w-3.5 h-3.5" />;
+    icon = <X className="w-[7px] h-[7px]" />;
     colorClass = "text-red-600 dark:text-red-400";
     statusText = "Failed";
   } else if (allPassed) {
-    icon = <Check className="w-3.5 h-3.5" />;
+    icon = <Check className="w-[7px] h-[7px]" />;
     colorClass = "text-green-600 dark:text-green-400";
     statusText = "Passed";
   } else {
-    icon = <Circle className="w-3.5 h-3.5" />;
+    icon = <Circle className="w-[7px] h-[7px]" />;
     colorClass = "text-neutral-500 dark:text-neutral-400";
     statusText = "Checks";
   }
 
   return (
-    <div className={`flex items-center gap-1.5 ml-2 shrink-0 ${colorClass}`}>
+    <div className={`flex items-center gap-1 ml-2 shrink-0 ${colorClass}`}>
       {icon}
-      <span className="text-[11px] font-medium select-none">{statusText}</span>
+      <span className="text-[9px] font-medium select-none">{statusText}</span>
     </div>
   );
 }
@@ -187,18 +163,18 @@ function WorkflowRunsSection({ allRuns, isLoading }: { allRuns: CombinedRun[]; i
 
   const getStatusIcon = (status?: string, conclusion?: string) => {
     if (conclusion === "success") {
-      return <Check className="w-4 h-4 text-green-600 dark:text-green-400" strokeWidth={2.5} />;
+      return <Check className="w-2 h-2 text-green-600 dark:text-green-400" strokeWidth={2.5} />;
     }
     if (conclusion === "failure") {
-      return <X className="w-4 h-4 text-red-600 dark:text-red-400" strokeWidth={2.5} />;
+      return <X className="w-2 h-2 text-red-600 dark:text-red-400" strokeWidth={2.5} />;
     }
     if (conclusion === "cancelled") {
-      return <Circle className="w-4 h-4 text-neutral-500 dark:text-neutral-400" />;
+      return <Circle className="w-2 h-2 text-neutral-500 dark:text-neutral-400" />;
     }
     if (status === "in_progress" || status === "queued") {
-      return <Loader2 className="w-4 h-4 text-yellow-600 dark:text-yellow-500 animate-spin" />;
+      return <Loader2 className="w-2 h-2 text-yellow-600 dark:text-yellow-500 animate-spin" />;
     }
-    return <AlertCircle className="w-4 h-4 text-neutral-500 dark:text-neutral-400" />;
+    return <AlertCircle className="w-2 h-2 text-neutral-500 dark:text-neutral-400" />;
   };
 
   const formatTimeAgo = (timestamp?: number) => {
@@ -282,18 +258,18 @@ function WorkflowRunsSection({ allRuns, isLoading }: { allRuns: CombinedRun[]; i
             href={run.url || '#'}
             target="_blank"
             rel="noreferrer"
-            className="flex items-center justify-between gap-2 px-3 py-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors group"
+            className="flex items-center justify-between gap-2 px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors group"
           >
-            <div className="flex items-center gap-2.5 flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 flex-1 min-w-0">
               <div className="shrink-0">
                 {getStatusIcon(run.status, run.conclusion)}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-sm text-neutral-900 dark:text-neutral-100">
+                <div className="text-[11px] text-neutral-900 dark:text-neutral-100">
                   {run.name}
                 </div>
               </div>
-              <div className="text-xs text-neutral-600 dark:text-neutral-400 shrink-0">
+              <div className="text-[9px] text-neutral-600 dark:text-neutral-400 shrink-0">
                 {getStatusDescription(run)}
               </div>
             </div>

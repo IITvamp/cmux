@@ -301,21 +301,68 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
           const checkRunPayload = body as any; // CheckRunEvent
           const repoFullName = String(checkRunPayload.repository?.full_name ?? "");
           const installation = Number(checkRunPayload.installation?.id ?? 0);
-          if (!repoFullName || !installation) break;
+
+          console.log("[check_run] Received webhook", {
+            delivery,
+            repoFullName,
+            installation,
+            action: checkRunPayload.action,
+            checkRunId: checkRunPayload.check_run?.id,
+            name: checkRunPayload.check_run?.name,
+            status: checkRunPayload.check_run?.status,
+            conclusion: checkRunPayload.check_run?.conclusion,
+            prNumbers: checkRunPayload.check_run?.pull_requests?.map((pr: any) => pr.number),
+          });
+
+          if (!repoFullName || !installation) {
+            console.warn("[check_run] Missing repoFullName or installation", {
+              repoFullName,
+              installation,
+              delivery,
+            });
+            break;
+          }
+
           const conn = await _ctx.runQuery(
             internal.github_app.getProviderConnectionByInstallationId,
             { installationId: installation },
           );
           const teamId = conn?.teamId;
-          if (!teamId) break;
+
+          if (!teamId) {
+            console.warn("[check_run] No teamId found for installation", {
+              installation,
+              delivery,
+              connectionFound: !!conn,
+            });
+            break;
+          }
+
+          console.log("[check_run] Processing check run", {
+            delivery,
+            teamId,
+            repoFullName,
+            checkRunId: checkRunPayload.check_run?.id,
+          });
+
           await _ctx.runMutation(internal.github_check_runs.upsertCheckRunFromWebhook, {
             installationId: installation,
             repoFullName,
             teamId,
             payload: checkRunPayload,
           });
-        } catch (error) {
-          console.error("Failed to process check_run event:", error);
+
+          console.log("[check_run] Successfully processed", {
+            delivery,
+            checkRunId: checkRunPayload.check_run?.id,
+          });
+        } catch (err) {
+          console.error("[check_run] Handler failed", {
+            err,
+            delivery,
+            message: err instanceof Error ? err.message : String(err),
+            stack: err instanceof Error ? err.stack : undefined,
+          });
         }
         break;
       }
