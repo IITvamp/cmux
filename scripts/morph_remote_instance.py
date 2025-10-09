@@ -980,7 +980,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--disk-size",
         type=int,
-        default=262_144,
+        default=65_536,
         help="Disk size (MiB) for instance",
     )
     parser.add_argument(
