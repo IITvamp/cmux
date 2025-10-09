@@ -845,7 +845,6 @@ interface MonacoFileDiffRowProps {
   editorTheme: string;
   diffOptions: editor.IDiffEditorConstructionOptions;
   classNames?: FileDiffRowClassNames;
-  isFirstFile?: boolean;
 }
 
 function MonacoFileDiffRow({
@@ -855,7 +854,6 @@ function MonacoFileDiffRow({
   editorTheme,
   diffOptions,
   classNames,
-  isFirstFile,
 }: MonacoFileDiffRowProps) {
   const canRenderEditor =
     !file.isBinary &&
@@ -908,7 +906,7 @@ function MonacoFileDiffRow({
         deletions={file.deletions}
         isExpanded={isExpanded}
         onToggle={onToggle}
-        className={cn(classNames?.button, isFirstFile && "!border-t-0")}
+        className={classNames?.button}
       />
 
       <div
@@ -1127,10 +1125,15 @@ export function MonacoGitDiffViewer({
             file={file}
             isExpanded={expandedFiles.has(file.filePath)}
             onToggle={() => toggleFile(file.filePath)}
-            isFirstFile={index === 0}
             editorTheme={editorTheme}
             diffOptions={diffOptions}
-            classNames={classNames?.fileDiffRow}
+            classNames={{
+              ...classNames?.fileDiffRow,
+              button: cn(
+                classNames?.fileDiffRow?.button,
+                index === 0 && "!border-t-0"
+              ),
+            }}
           />
         ))}
         <hr className="border-neutral-200 dark:border-neutral-800" />
