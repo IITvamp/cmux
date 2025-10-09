@@ -265,7 +265,7 @@ export async function spawnAgent(
     let unsetEnvVars: string[] = [];
 
     // Fetch API keys from Convex BEFORE calling agent.environment()
-    // so we can pass the Anthropic API key to the environment context
+    // so agents can access them in their environment configuration
     const apiKeys = await getConvex().query(api.apiKeys.getAllForAgents, {
       teamSlugOrId,
     });
@@ -276,10 +276,7 @@ export async function spawnAgent(
         taskRunId: taskRunId,
         prompt: processedTaskDescription,
         taskRunJwt,
-        // Pass the Anthropic API key so it can be written to settings.json
-        // This ensures Claude Code always uses the key from cmux settings,
-        // bypassing any ANTHROPIC_API_KEY environment variables in the repo
-        anthropicApiKey: apiKeys.ANTHROPIC_API_KEY,
+        apiKeys,
       });
       envVars = {
         ...envVars,

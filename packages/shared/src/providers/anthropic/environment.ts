@@ -161,7 +161,9 @@ exit 0`;
     // Use the Anthropic API key from cmux settings.json instead of env vars
     // This ensures Claude Code always uses the key from cmux, bypassing any
     // ANTHROPIC_API_KEY environment variables in the repo
-    ...(ctx.anthropicApiKey ? { anthropicApiKey: ctx.anthropicApiKey } : {}),
+    ...(ctx.apiKeys?.ANTHROPIC_API_KEY
+      ? { anthropicApiKey: ctx.apiKeys.ANTHROPIC_API_KEY }
+      : {}),
     // Configure helper to avoid env-var based prompting
     apiKeyHelper: claudeApiKeyHelperPath,
     hooks: {
