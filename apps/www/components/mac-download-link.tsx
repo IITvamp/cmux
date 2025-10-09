@@ -58,7 +58,7 @@ const detectMacArchitecture = async (): Promise<MacArchitecture | null> => {
   }
 
   const navigatorWithUAData = navigator as Navigator & {
-    userAgentData?: NavigatorUAData & {
+    userAgentData?: {
       architecture?: string;
       getHighEntropyValues?: (
         hints: readonly string[],
