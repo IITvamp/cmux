@@ -230,6 +230,14 @@ function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber, headSha }: 
     })),
   ];
 
+  console.log('[WorkflowRunsSection] All runs:', {
+    workflows: workflowRuns?.length,
+    checks: checkRuns?.length,
+    deployments: deployments?.map(d => ({ env: d.environment, desc: d.description, state: d.state })),
+    statuses: commitStatuses?.map(s => ({ context: s.context, state: s.state })),
+    total: allRuns.length
+  });
+
   const getStatusIcon = (status?: string, conclusion?: string) => {
     if (conclusion === "success") {
       return <Check className="w-4 h-4 text-green-600 dark:text-green-400" strokeWidth={2.5} />;

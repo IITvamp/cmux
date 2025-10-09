@@ -10,6 +10,7 @@
 
 import type * as apiKeys from "../apiKeys.js";
 import type * as backfill from "../backfill.js";
+import type * as cleanup_duplicates from "../cleanup_duplicates.js";
 import type * as comments from "../comments.js";
 import type * as containerSettings from "../containerSettings.js";
 import type * as crown_actions from "../crown/actions.js";
@@ -58,6 +59,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   apiKeys: typeof apiKeys;
   backfill: typeof backfill;
+  cleanup_duplicates: typeof cleanup_duplicates;
   comments: typeof comments;
   containerSettings: typeof containerSettings;
   "crown/actions": typeof crown_actions;
