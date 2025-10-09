@@ -1521,5 +1521,67 @@ ${title}`;
         serverLogger.error("Error spawning standalone VSCode:", error);
       }
     });
+
+    socket.on("spawn-dashboard-vscode", async (data: {
+      repoUrl?: string;
+      branch?: string;
+      projectFullName?: string;
+    }) => {
+      try {
+        serverLogger.info("Spawning dashboard VSCode instance", data);
+
+        // Clone repository if provided - just use the main repo directly
+        let workspacePath: string;
+        if (data.repoUrl && data.projectFullName) {
+          // Get the project paths
+          const paths = await getProjectPaths(data.repoUrl, safeTeam);
+          serverLogger.info(`Project paths:`, paths);
+
+          // Ensure repository exists
+          const repoManager = RepositoryManager.getInstance();
+          await repoManager.ensureRepository(data.repoUrl, paths.originPath);
+
+          // Use the origin path as workspace
+          workspacePath = paths.originPath;
+          serverLogger.info(`Dashboard VSCode workspace path: ${workspacePath}`);
+
+          // Verify the path exists and is readable
+          try {
+            const stats = await fs.stat(workspacePath);
+            serverLogger.info(`Workspace exists: ${stats.isDirectory() ? 'directory' : 'file'}`);
+          } catch (error) {
+            serverLogger.error(`Workspace path does not exist or is not accessible: ${error}`);
+          }
+        } else {
+          // Create a temporary workspace
+          workspacePath = await fs.mkdtemp(path.join(os.tmpdir(), "cmux-dashboard-"));
+        }
+
+        // Create fake IDs for the container
+        const instanceId = `dashboard-${Date.now()}` as any;
+
+        // Spawn VSCode container
+        const vscodeInstance = new DockerVSCodeInstance({
+          taskRunId: instanceId,
+          taskId: instanceId,
+          teamSlugOrId: safeTeam,
+          workspacePath,
+        });
+
+        const info = await vscodeInstance.start();
+
+        serverLogger.info("Dashboard VSCode spawned:", info);
+
+        // Emit dashboard-vscode-spawned event
+        socket.emit("dashboard-vscode-spawned", {
+          instanceId,
+          url: info.url,
+          workspaceUrl: info.workspaceUrl,
+          provider: "docker",
+        });
+      } catch (error) {
+        serverLogger.error("Error spawning dashboard VSCode:", error);
+      }
+    });
   });
 }

@@ -141,14 +141,13 @@ export function ResizableRows({
       >
         {top}
       </div>
-      <div className="w-full block bg-blue-500 dark:bg-blue-500 h-1 relative z-[9999]"></div>
       <div className="flex-1 w-full min-h-0">{bottom}</div>
       <div
         role="separator"
         aria-orientation="horizontal"
         onMouseDown={startResizing}
         className={clsx(
-          "absolute inset-x-0 cursor-row-resize bg-blue-400/80 dark:bg-blue-600/80 hover:bg-blue-500 dark:hover:bg-blue-500 active:bg-blue-600 dark:active:bg-blue-400",
+          "absolute inset-x-0 cursor-row-resize bg-neutral-200 dark:bg-neutral-800 hover:bg-neutral-300 dark:hover:bg-neutral-700 border-t border-b border-neutral-300 dark:border-neutral-700",
           separatorClassName
         )}
         style={{

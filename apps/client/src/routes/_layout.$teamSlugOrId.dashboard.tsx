@@ -8,6 +8,8 @@ import { DashboardStartTaskButton } from "@/components/dashboard/DashboardStartT
 import { TaskList } from "@/components/dashboard/TaskList";
 import { FloatingPane } from "@/components/floating-pane";
 import { GitHubIcon } from "@/components/icons/github";
+import { PersistentWebView } from "@/components/persistent-webview";
+import { ResizableRows } from "@/components/ResizableRows";
 import { useTheme } from "@/components/theme/use-theme";
 import { TitleBar } from "@/components/TitleBar";
 import type { SelectOption } from "@/components/ui/searchable-select";
@@ -28,6 +30,7 @@ import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import clsx from "clsx";
 import { useMutation } from "convex/react";
 import { Server as ServerIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -108,6 +111,11 @@ function DashboardComponent() {
   }, [setSelectedAgentsState]);
 
   const [taskDescription, setTaskDescription] = useState<string>("");
+  const [showDashboardVscode, setShowDashboardVscode] = useState(false);
+  const [dashboardVscodeUrl, setDashboardVscodeUrl] = useState<string | null>(null);
+  const [dashboardVscodeLoaded, setDashboardVscodeLoaded] = useState(false);
+  const [dashboardVscodeError, setDashboardVscodeError] = useState<string | null>(null);
+  const [isDashboardVscodeSpawning, setIsDashboardVscodeSpawning] = useState(false);
   const [isCloudMode, setIsCloudMode] = useState<boolean>(() => {
     const stored = localStorage.getItem("isCloudMode");
     return stored ? JSON.parse(stored) : true;
@@ -698,6 +706,11 @@ function DashboardComponent() {
   // Global keydown handler for autofocus
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Don't autofocus if VSCode is visible - user might be typing in VSCode
+      if (showDashboardVscode) {
+        return;
+      }
+
       // Skip if already focused on an input, textarea, or contenteditable that's NOT the editor
       const activeElement = document.activeElement;
       const isEditor =
@@ -762,7 +775,7 @@ function DashboardComponent() {
     return () => {
       document.removeEventListener("keydown", handleGlobalKeyDown);
     };
-  }, []);
+  }, [showDashboardVscode]);
 
   // Do not pre-disable UI on Docker status; handle fresh check on submit
 
@@ -804,42 +817,270 @@ function DashboardComponent() {
     effectiveSelectedBranch,
   ]);
 
+  const onDashboardVscodeLoad = useCallback(() => {
+    console.log("Dashboard VSCode loaded");
+    setDashboardVscodeLoaded(true);
+    setDashboardVscodeError(null);
+    setIsDashboardVscodeSpawning(false);
+  }, []);
+
+  const onDashboardVscodeError = useCallback((error: Error) => {
+    console.error("Failed to load dashboard VSCode:", error);
+    setDashboardVscodeError(error.message);
+    setDashboardVscodeLoaded(false);
+    setIsDashboardVscodeSpawning(false);
+  }, []);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleDashboardVscodeSpawned = (data: {
+      instanceId: string;
+      url: string;
+      workspaceUrl: string;
+      provider: string;
+    }) => {
+      console.log("Dashboard VSCode spawned:", data);
+      setDashboardVscodeUrl(data.workspaceUrl);
+      setIsDashboardVscodeSpawning(false);
+    };
+
+    socket.on("dashboard-vscode-spawned", handleDashboardVscodeSpawned);
+
+    return () => {
+      socket.off("dashboard-vscode-spawned", handleDashboardVscodeSpawned);
+    };
+  }, [socket]);
+
+  const spawnDashboardVscodeRef = useRef<{
+    projectFullName: string;
+    branch: string;
+  } | null>(null);
+
+  const spawnDashboardVscode = useCallback(() => {
+    const projectFullName = selectedProject[0];
+    if (!projectFullName || projectFullName.startsWith("env:")) {
+      console.warn("Cannot spawn VSCode: invalid project", { projectFullName });
+      return;
+    }
+
+    const branch = effectiveSelectedBranch[0];
+    if (!socket) {
+      console.warn("Cannot spawn VSCode: no socket connection");
+      return;
+    }
+
+    setIsDashboardVscodeSpawning(true);
+    setDashboardVscodeLoaded(false);
+    setDashboardVscodeUrl(null);
+
+    const repoUrl = `https://github.com/${projectFullName}.git`;
+    console.log("=== Spawning dashboard VSCode ===");
+    console.log("Selected project:", selectedProject);
+    console.log("Project full name:", projectFullName);
+    console.log("Branch:", branch);
+    console.log("Repo URL:", repoUrl);
+
+    spawnDashboardVscodeRef.current = { projectFullName, branch };
+
+    socket.emit("spawn-dashboard-vscode", {
+      repoUrl,
+      branch,
+      projectFullName,
+    });
+  }, [socket, selectedProject, effectiveSelectedBranch]);
+
+  const handleToggleDashboardVscode = useCallback(() => {
+    if (showDashboardVscode) {
+      setShowDashboardVscode(false);
+      return;
+    }
+
+    const projectFullName = selectedProject[0];
+    if (!projectFullName) {
+      toast.error("Please select a repository first");
+      return;
+    }
+
+    const isEnv = projectFullName.startsWith("env:");
+    if (isEnv) {
+      toast.error("Cannot open VSCode for environments, please select a repository");
+      return;
+    }
+
+    setShowDashboardVscode(true);
+
+    // Only spawn if we don't have a URL yet
+    if (!dashboardVscodeUrl) {
+      spawnDashboardVscode();
+    }
+  }, [showDashboardVscode, selectedProject, dashboardVscodeUrl, spawnDashboardVscode]);
+
+  // Watch for repository/branch changes and respawn VSCode if it's open
+  useEffect(() => {
+    if (!showDashboardVscode) return;
+
+    const projectFullName = selectedProject[0];
+    const branch = effectiveSelectedBranch[0];
+
+    // Check if repository or branch changed
+    const prev = spawnDashboardVscodeRef.current;
+    if (prev && (prev.projectFullName !== projectFullName || prev.branch !== branch)) {
+      console.log("Repository or branch changed, respawning VSCode");
+      spawnDashboardVscode();
+    }
+  }, [showDashboardVscode, selectedProject, effectiveSelectedBranch, spawnDashboardVscode]);
+
   return (
     <FloatingPane header={<TitleBar title="cmux" />}>
-      <div className="flex flex-col grow overflow-y-auto">
-        <div className="flex-1 flex justify-center px-4 pt-4 pb-4">
-          <div className="w-full max-w-4xl min-w-0">
-            <DashboardMainCard
-              editorApiRef={editorApiRef}
-              onTaskDescriptionChange={handleTaskDescriptionChange}
-              onSubmit={handleSubmit}
-              lexicalRepoUrl={lexicalRepoUrl}
-              lexicalEnvironmentId={lexicalEnvironmentId}
-              lexicalBranch={lexicalBranch}
-              projectOptions={projectOptions}
-              selectedProject={selectedProject}
-              onProjectChange={handleProjectChange}
-              branchOptions={branchOptions}
-              selectedBranch={effectiveSelectedBranch}
-              onBranchChange={handleBranchChange}
-              selectedAgents={selectedAgents}
-              onAgentChange={handleAgentChange}
-              isCloudMode={isCloudMode}
-              onCloudModeToggle={handleCloudModeToggle}
-              isLoadingProjects={reposByOrgQuery.isLoading}
-              isLoadingBranches={branchesQuery.isPending}
-              teamSlugOrId={teamSlugOrId}
-              cloudToggleDisabled={isEnvSelected}
-              branchDisabled={isEnvSelected || !selectedProject[0]}
-              providerStatus={providerStatus}
-              canSubmit={canSubmit}
-              onStartTask={handleStartTask}
-            />
+      {showDashboardVscode ? (
+        <ResizableRows
+          storageKey="dashboard-vscode-split"
+          defaultTopHeight={80}
+          minTop={20}
+          maxTop={90}
+          separatorHeight={12}
+          className="flex-1 min-h-0"
+          top={
+            <div className="relative w-full h-full flex bg-neutral-50 dark:bg-black">
+              {dashboardVscodeUrl ? (
+                <PersistentWebView
+                  persistKey="dashboard-vscode"
+                  src={dashboardVscodeUrl}
+                  className="grow flex h-full"
+                  iframeClassName="select-none h-full w-full"
+                  sandbox="allow-downloads allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation allow-top-navigation-by-user-activation"
+                  allow="accelerometer; camera; encrypted-media; fullscreen; geolocation; gyroscope; magnetometer; microphone; midi; payment; usb; xr-spatial-tracking"
+                  retainOnUnmount
+                  onLoad={onDashboardVscodeLoad}
+                  onError={onDashboardVscodeError}
+                />
+              ) : (
+                <div className="grow" />
+              )}
+              <div
+                className={clsx(
+                  "absolute inset-0 flex items-center justify-center transition pointer-events-none bg-neutral-50 dark:bg-black",
+                  {
+                    "opacity-100": !dashboardVscodeLoaded || isDashboardVscodeSpawning,
+                    "opacity-0": dashboardVscodeLoaded && !isDashboardVscodeSpawning,
+                  }
+                )}
+              >
+                <div className="flex flex-col items-center gap-3">
+                  {dashboardVscodeError ? (
+                    <>
+                      <span className="text-sm text-red-500 dark:text-red-400">
+                        Failed to load VSCode
+                      </span>
+                      <span className="text-xs text-neutral-500">
+                        {dashboardVscodeError}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex gap-1">
+                        <div
+                          className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
+                          style={{ animationDelay: "0ms" }}
+                        />
+                        <div
+                          className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
+                          style={{ animationDelay: "150ms" }}
+                        />
+                        <div
+                          className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
+                          style={{ animationDelay: "300ms" }}
+                        />
+                      </div>
+                      <span className="text-sm text-neutral-500">
+                        {isDashboardVscodeSpawning
+                          ? "Spawning VSCode container..."
+                          : "Loading VSCode..."}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          }
+          bottom={
+            <div className="flex flex-col grow overflow-y-auto">
+              <div className="flex-1 flex justify-center px-4 pt-4 pb-4">
+                <div className="w-full max-w-4xl min-w-0">
+                  <DashboardMainCard
+                    editorApiRef={editorApiRef}
+                    onTaskDescriptionChange={handleTaskDescriptionChange}
+                    onSubmit={handleSubmit}
+                    lexicalRepoUrl={lexicalRepoUrl}
+                    lexicalEnvironmentId={lexicalEnvironmentId}
+                    lexicalBranch={lexicalBranch}
+                    projectOptions={projectOptions}
+                    selectedProject={selectedProject}
+                    onProjectChange={handleProjectChange}
+                    branchOptions={branchOptions}
+                    selectedBranch={effectiveSelectedBranch}
+                    onBranchChange={handleBranchChange}
+                    selectedAgents={selectedAgents}
+                    onAgentChange={handleAgentChange}
+                    isCloudMode={isCloudMode}
+                    onCloudModeToggle={handleCloudModeToggle}
+                    isLoadingProjects={reposByOrgQuery.isLoading}
+                    isLoadingBranches={branchesQuery.isPending}
+                    teamSlugOrId={teamSlugOrId}
+                    cloudToggleDisabled={isEnvSelected}
+                    branchDisabled={isEnvSelected || !selectedProject[0]}
+                    providerStatus={providerStatus}
+                    canSubmit={canSubmit}
+                    onStartTask={handleStartTask}
+                    onToggleVscode={handleToggleDashboardVscode}
+                    showVscode={showDashboardVscode}
+                  />
 
-            <TaskList teamSlugOrId={teamSlugOrId} />
+                  <TaskList teamSlugOrId={teamSlugOrId} />
+                </div>
+              </div>
+            </div>
+          }
+        />
+      ) : (
+        <div className="flex flex-col grow overflow-y-auto">
+          <div className="flex-1 flex justify-center px-4 pt-4 pb-4">
+            <div className="w-full max-w-4xl min-w-0">
+              <DashboardMainCard
+                editorApiRef={editorApiRef}
+                onTaskDescriptionChange={handleTaskDescriptionChange}
+                onSubmit={handleSubmit}
+                lexicalRepoUrl={lexicalRepoUrl}
+                lexicalEnvironmentId={lexicalEnvironmentId}
+                lexicalBranch={lexicalBranch}
+                projectOptions={projectOptions}
+                selectedProject={selectedProject}
+                onProjectChange={handleProjectChange}
+                branchOptions={branchOptions}
+                selectedBranch={effectiveSelectedBranch}
+                onBranchChange={handleBranchChange}
+                selectedAgents={selectedAgents}
+                onAgentChange={handleAgentChange}
+                isCloudMode={isCloudMode}
+                onCloudModeToggle={handleCloudModeToggle}
+                isLoadingProjects={reposByOrgQuery.isLoading}
+                isLoadingBranches={branchesQuery.isPending}
+                teamSlugOrId={teamSlugOrId}
+                cloudToggleDisabled={isEnvSelected}
+                branchDisabled={isEnvSelected || !selectedProject[0]}
+                providerStatus={providerStatus}
+                canSubmit={canSubmit}
+                onStartTask={handleStartTask}
+                onToggleVscode={handleToggleDashboardVscode}
+                showVscode={showDashboardVscode}
+              />
+
+              <TaskList teamSlugOrId={teamSlugOrId} />
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </FloatingPane>
   );
 }
@@ -869,6 +1110,8 @@ type DashboardMainCardProps = {
   providerStatus: ProviderStatusResponse | null;
   canSubmit: boolean;
   onStartTask: () => void;
+  onToggleVscode: () => void;
+  showVscode: boolean;
 };
 
 function DashboardMainCard({
@@ -896,6 +1139,8 @@ function DashboardMainCard({
   providerStatus,
   canSubmit,
   onStartTask,
+  onToggleVscode,
+  showVscode,
 }: DashboardMainCardProps) {
   return (
     <div className="relative bg-white dark:bg-neutral-700/50 border border-neutral-500/15 dark:border-neutral-500/15 rounded-2xl transition-all">
@@ -908,27 +1153,36 @@ function DashboardMainCard({
         branch={lexicalBranch}
         persistenceKey="dashboard-task-description"
         maxHeight="300px"
+        disableAutoFocus={showVscode}
       />
 
       <DashboardInputFooter>
-        <DashboardInputControls
-          projectOptions={projectOptions}
-          selectedProject={selectedProject}
-          onProjectChange={onProjectChange}
-          branchOptions={branchOptions}
-          selectedBranch={selectedBranch}
-          onBranchChange={onBranchChange}
-          selectedAgents={selectedAgents}
-          onAgentChange={onAgentChange}
-          isCloudMode={isCloudMode}
-          onCloudModeToggle={onCloudModeToggle}
-          isLoadingProjects={isLoadingProjects}
-          isLoadingBranches={isLoadingBranches}
-          teamSlugOrId={teamSlugOrId}
-          cloudToggleDisabled={cloudToggleDisabled}
-          branchDisabled={branchDisabled}
-          providerStatus={providerStatus}
-        />
+        <div className="flex items-center gap-2">
+          <DashboardInputControls
+            projectOptions={projectOptions}
+            selectedProject={selectedProject}
+            onProjectChange={onProjectChange}
+            branchOptions={branchOptions}
+            selectedBranch={selectedBranch}
+            onBranchChange={onBranchChange}
+            selectedAgents={selectedAgents}
+            onAgentChange={onAgentChange}
+            isCloudMode={isCloudMode}
+            onCloudModeToggle={onCloudModeToggle}
+            isLoadingProjects={isLoadingProjects}
+            isLoadingBranches={isLoadingBranches}
+            teamSlugOrId={teamSlugOrId}
+            cloudToggleDisabled={cloudToggleDisabled}
+            branchDisabled={branchDisabled}
+            providerStatus={providerStatus}
+          />
+          <button
+            onClick={onToggleVscode}
+            className="px-3 py-1.5 bg-neutral-700 dark:bg-neutral-600 text-white text-xs rounded hover:bg-neutral-600 dark:hover:bg-neutral-500"
+          >
+            {showVscode ? "Hide VSCode" : "Show VSCode"}
+          </button>
+        </div>
         <DashboardStartTaskButton
           canSubmit={canSubmit}
           onStartTask={onStartTask}

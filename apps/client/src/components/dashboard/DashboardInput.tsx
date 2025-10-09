@@ -32,6 +32,7 @@ interface DashboardInputProps {
   environmentId?: Id<"environments">;
   persistenceKey?: string;
   maxHeight?: string;
+  disableAutoFocus?: boolean;
 }
 
 export const DashboardInput = memo(
@@ -44,6 +45,7 @@ export const DashboardInput = memo(
       environmentId,
       persistenceKey,
       maxHeight = "600px",
+      disableAutoFocus = false,
     },
     ref
   ) {
@@ -110,6 +112,7 @@ export const DashboardInput = memo(
       };
 
       const scheduleRefocus = () => {
+        if (disableAutoFocus) return;
         clearPendingRefocus();
         pendingRefocusTimeoutRef.current = window.setTimeout(() => {
           pendingRefocusTimeoutRef.current = null;
@@ -289,7 +292,7 @@ export const DashboardInput = memo(
         document.removeEventListener("keydown", handleKeyEvent, true);
         document.removeEventListener("keyup", handleKeyEvent, true);
       };
-    }, []);
+    }, [disableAutoFocus]);
 
     const lexicalPlaceholder = useMemo(() => "Describe a task", []);
 
