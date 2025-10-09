@@ -158,8 +158,6 @@ async function upsertCore(
       state: "open" | "closed";
       merged?: boolean;
       draft?: boolean;
-      mergeable?: boolean;
-      mergeableState?: string;
       authorLogin?: string;
       authorId?: number;
       htmlUrl?: string;
@@ -222,8 +220,6 @@ export const upsertPullRequestInternal = internalMutation({
       state: v.union(v.literal("open"), v.literal("closed")),
       merged: v.optional(v.boolean()),
       draft: v.optional(v.boolean()),
-      mergeable: v.optional(v.boolean()),
-      mergeableState: v.optional(v.string()),
       authorLogin: v.optional(v.string()),
       authorId: v.optional(v.number()),
       htmlUrl: v.optional(v.string()),
@@ -366,8 +362,6 @@ export const upsertFromWebhookPayload = internalMutation({
           state: mapStr(pr.state) === "closed" ? "closed" : "open",
           merged: Boolean(pr.merged),
           draft: Boolean(pr.draft),
-          mergeable: mapBool((pr as { mergeable?: boolean | null }).mergeable),
-          mergeableState: mapStr((pr as { mergeable_state?: string }).mergeable_state),
           authorLogin: mapStr(pr.user?.login),
           authorId: mapNum(pr.user?.id),
           htmlUrl: mapStr(pr.html_url),
@@ -428,8 +422,6 @@ export const upsertFromServer = authMutation({
       state: v.union(v.literal("open"), v.literal("closed")),
       merged: v.optional(v.boolean()),
       draft: v.optional(v.boolean()),
-      mergeable: v.optional(v.boolean()),
-      mergeableState: v.optional(v.string()),
       authorLogin: v.optional(v.string()),
       authorId: v.optional(v.number()),
       htmlUrl: v.optional(v.string()),
