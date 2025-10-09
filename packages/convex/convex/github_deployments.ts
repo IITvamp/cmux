@@ -1,11 +1,51 @@
 import { v } from "convex/values";
-import { getTeamId } from "../_shared/team";
-import { internalMutation } from "./_generated/server";
-import { authQuery } from "./users/utils";
 import type {
   DeploymentEvent,
   DeploymentStatusEvent,
 } from "@octokit/webhooks-types";
+
+import { getTeamId } from "../_shared/team";
+import { internalMutation } from "./_generated/server";
+import { authQuery } from "./users/utils";
+
+const nullableTimestamp = v.union(v.string(), v.number(), v.null());
+const nullableString = v.union(v.string(), v.null());
+
+const deploymentInfoValidator = v.object({
+  id: v.number(),
+  sha: v.string(),
+  ref: v.optional(nullableString),
+  task: v.optional(nullableString),
+  environment: v.optional(nullableString),
+  description: v.optional(nullableString),
+  created_at: v.optional(nullableTimestamp),
+  updated_at: v.optional(nullableTimestamp),
+  creator: v.optional(
+    v.object({
+      login: v.optional(v.string()),
+    }),
+  ),
+});
+
+const deploymentStatusValidator = v.object({
+  state: v.optional(v.string()),
+  updated_at: v.optional(nullableTimestamp),
+  description: v.optional(nullableString),
+  log_url: v.optional(nullableString),
+  target_url: v.optional(nullableString),
+  environment_url: v.optional(nullableString),
+});
+
+const deploymentEventValidator = v.object({
+  action: v.optional(v.string()),
+  deployment: v.optional(deploymentInfoValidator),
+  deployment_status: v.optional(deploymentStatusValidator),
+  repository: v.optional(
+    v.object({
+      id: v.optional(v.number()),
+    }),
+  ),
+});
 
 function normalizeTimestamp(
   value: string | number | null | undefined,
@@ -23,7 +63,7 @@ export const upsertDeploymentFromWebhook = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(),
+    payload: deploymentEventValidator,
   },
   handler: async (ctx, args) => {
     const payload = args.payload as DeploymentEvent;
@@ -120,7 +160,7 @@ export const updateDeploymentStatusFromWebhook = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(),
+    payload: deploymentEventValidator,
   },
   handler: async (ctx, args) => {
     const payload = args.payload as DeploymentStatusEvent;

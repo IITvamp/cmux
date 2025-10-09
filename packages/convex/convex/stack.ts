@@ -7,6 +7,10 @@ import {
 } from "../_shared/teamSlug";
 import { internalMutation, type MutationCtx } from "./_generated/server";
 import { authMutation } from "./users/utils";
+import {
+  stackMetadataValidator,
+  type StackMetadata,
+} from "../_shared/stackMetadata";
 
 type UpsertUserArgs = {
   id: string;
@@ -23,9 +27,9 @@ type UpsertUserArgs = {
   hasPassword: boolean;
   otpAuthEnabled: boolean;
   passkeyAuthEnabled: boolean;
-  clientMetadata?: unknown;
-  clientReadOnlyMetadata?: unknown;
-  serverMetadata?: unknown;
+  clientMetadata?: StackMetadata;
+  clientReadOnlyMetadata?: StackMetadata;
+  serverMetadata?: StackMetadata;
   isAnonymous: boolean;
   oauthProviders?: Array<{ id: string; accountId: string; email?: string }>;
 };
@@ -101,9 +105,9 @@ export const upsertUser = internalMutation({
     hasPassword: v.boolean(),
     otpAuthEnabled: v.boolean(),
     passkeyAuthEnabled: v.boolean(),
-    clientMetadata: v.optional(v.any()),
-    clientReadOnlyMetadata: v.optional(v.any()),
-    serverMetadata: v.optional(v.any()),
+    clientMetadata: v.optional(stackMetadataValidator),
+    clientReadOnlyMetadata: v.optional(stackMetadataValidator),
+    serverMetadata: v.optional(stackMetadataValidator),
     isAnonymous: v.boolean(),
     oauthProviders: v.optional(
       v.array(
@@ -161,9 +165,9 @@ export const upsertUserPublic = authMutation({
     hasPassword: v.boolean(),
     otpAuthEnabled: v.boolean(),
     passkeyAuthEnabled: v.boolean(),
-    clientMetadata: v.optional(v.any()),
-    clientReadOnlyMetadata: v.optional(v.any()),
-    serverMetadata: v.optional(v.any()),
+    clientMetadata: v.optional(stackMetadataValidator),
+    clientReadOnlyMetadata: v.optional(stackMetadataValidator),
+    serverMetadata: v.optional(stackMetadataValidator),
     isAnonymous: v.boolean(),
     oauthProviders: v.optional(
       v.array(v.object({ id: v.string(), accountId: v.string(), email: v.optional(v.string()) }))
@@ -181,9 +185,9 @@ type UpsertTeamArgs = {
   id: string;
   displayName?: string;
   profileImageUrl?: string;
-  clientMetadata?: unknown;
-  clientReadOnlyMetadata?: unknown;
-  serverMetadata?: unknown;
+  clientMetadata?: StackMetadata;
+  clientReadOnlyMetadata?: StackMetadata;
+  serverMetadata?: StackMetadata;
   createdAtMillis: number;
 };
 
@@ -256,9 +260,9 @@ async function upsertTeamCore(ctx: MutationCtx, args: UpsertTeamArgs) {
   const patch: {
     displayName?: string;
     profileImageUrl?: string;
-    clientMetadata?: unknown;
-    clientReadOnlyMetadata?: unknown;
-    serverMetadata?: unknown;
+    clientMetadata?: StackMetadata;
+    clientReadOnlyMetadata?: StackMetadata;
+    serverMetadata?: StackMetadata;
     createdAtMillis: number;
     updatedAt: number;
     slug?: string;
@@ -290,9 +294,9 @@ export const upsertTeam = internalMutation({
     id: v.string(),
     displayName: v.optional(v.string()),
     profileImageUrl: v.optional(v.string()),
-    clientMetadata: v.optional(v.any()),
-    clientReadOnlyMetadata: v.optional(v.any()),
-    serverMetadata: v.optional(v.any()),
+    clientMetadata: v.optional(stackMetadataValidator),
+    clientReadOnlyMetadata: v.optional(stackMetadataValidator),
+    serverMetadata: v.optional(stackMetadataValidator),
     createdAtMillis: v.number(),
   },
   handler: async (ctx, args) => upsertTeamCore(ctx, args),
@@ -329,9 +333,9 @@ export const upsertTeamPublic = authMutation({
     id: v.string(),
     displayName: v.optional(v.string()),
     profileImageUrl: v.optional(v.string()),
-    clientMetadata: v.optional(v.any()),
-    clientReadOnlyMetadata: v.optional(v.any()),
-    serverMetadata: v.optional(v.any()),
+    clientMetadata: v.optional(stackMetadataValidator),
+    clientReadOnlyMetadata: v.optional(stackMetadataValidator),
+    serverMetadata: v.optional(stackMetadataValidator),
     createdAtMillis: v.number(),
   },
   handler: async (ctx, args) => upsertTeamCore(ctx, args),

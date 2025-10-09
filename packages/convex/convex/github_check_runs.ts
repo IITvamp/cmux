@@ -10,10 +10,49 @@
  * - status events (see github_commit_statuses.ts) - legacy commit statuses
  */
 import { v } from "convex/values";
+import type { CheckRunEvent } from "@octokit/webhooks-types";
+
 import { getTeamId } from "../_shared/team";
 import { internalMutation } from "./_generated/server";
 import { authQuery } from "./users/utils";
-import type { CheckRunEvent } from "@octokit/webhooks-types";
+
+const nullableTimestamp = v.union(v.string(), v.number(), v.null());
+const nullableString = v.union(v.string(), v.null());
+
+const checkRunPayloadValidator = v.object({
+  action: v.optional(v.string()),
+  check_run: v.optional(
+    v.object({
+      id: v.number(),
+      name: v.string(),
+      head_sha: v.string(),
+      status: v.optional(v.string()),
+      conclusion: v.optional(v.union(v.string(), v.null())),
+      html_url: v.optional(nullableString),
+      app: v.optional(
+        v.object({
+          name: v.optional(v.string()),
+          slug: v.optional(v.string()),
+        }),
+      ),
+      pull_requests: v.optional(
+        v.array(
+          v.object({
+            number: v.optional(v.number()),
+          }),
+        ),
+      ),
+      updated_at: v.optional(nullableTimestamp),
+      started_at: v.optional(nullableTimestamp),
+      completed_at: v.optional(nullableTimestamp),
+    }),
+  ),
+  repository: v.optional(
+    v.object({
+      id: v.optional(v.number()),
+    }),
+  ),
+});
 
 function normalizeTimestamp(
   value: string | number | null | undefined,
@@ -31,7 +70,7 @@ export const upsertCheckRunFromWebhook = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(), // CheckRunEvent from webhook
+    payload: checkRunPayloadValidator,
   },
   handler: async (ctx, args) => {
     const payload = args.payload as CheckRunEvent;

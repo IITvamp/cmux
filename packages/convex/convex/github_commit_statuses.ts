@@ -1,8 +1,33 @@
 import { v } from "convex/values";
+import type { StatusEvent } from "@octokit/webhooks-types";
+
 import { getTeamId } from "../_shared/team";
 import { internalMutation } from "./_generated/server";
 import { authQuery } from "./users/utils";
-import type { StatusEvent } from "@octokit/webhooks-types";
+
+const nullableTimestamp = v.union(v.string(), v.number(), v.null());
+const nullableString = v.union(v.string(), v.null());
+
+const statusEventValidator = v.object({
+  id: v.number(),
+  sha: v.string(),
+  state: v.string(),
+  context: v.string(),
+  description: v.optional(nullableString),
+  target_url: v.optional(nullableString),
+  created_at: v.optional(nullableTimestamp),
+  updated_at: v.optional(nullableTimestamp),
+  repository: v.optional(
+    v.object({
+      id: v.optional(v.number()),
+    }),
+  ),
+  sender: v.optional(
+    v.object({
+      login: v.optional(v.string()),
+    }),
+  ),
+});
 
 function normalizeTimestamp(
   value: string | number | null | undefined,
@@ -20,7 +45,7 @@ export const upsertCommitStatusFromWebhook = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(),
+    payload: statusEventValidator,
   },
   handler: async (ctx, args) => {
     const payload = args.payload as StatusEvent;

@@ -10,10 +10,59 @@
  * - status events (see github_commit_statuses.ts) - legacy commit statuses
  */
 import { v } from "convex/values";
+import type { WorkflowRunEvent } from "@octokit/webhooks-types";
+
 import { getTeamId } from "../_shared/team";
 import { internalMutation } from "./_generated/server";
 import { authQuery } from "./users/utils";
-import type { WorkflowRunEvent } from "@octokit/webhooks-types";
+
+const nullableTimestamp = v.union(v.string(), v.number(), v.null());
+const nullableString = v.union(v.string(), v.null());
+
+const workflowRunValidator = v.object({
+  id: v.number(),
+  run_number: v.number(),
+  workflow_id: v.number(),
+  name: v.optional(nullableString),
+  event: v.optional(v.string()),
+  status: v.optional(v.string()),
+  conclusion: v.optional(v.union(v.string(), v.null())),
+  head_branch: v.optional(nullableString),
+  head_sha: v.optional(v.string()),
+  html_url: v.optional(nullableString),
+  created_at: v.optional(nullableTimestamp),
+  updated_at: v.optional(nullableTimestamp),
+  run_started_at: v.optional(nullableTimestamp),
+  completed_at: v.optional(nullableTimestamp),
+  actor: v.optional(
+    v.object({
+      login: v.optional(v.string()),
+      id: v.optional(v.number()),
+    }),
+  ),
+  pull_requests: v.optional(
+    v.array(
+      v.object({
+        number: v.optional(v.number()),
+      }),
+    ),
+  ),
+});
+
+const workflowSummaryValidator = v.object({
+  name: v.optional(v.string()),
+});
+
+const workflowRunEventValidator = v.object({
+  action: v.optional(v.string()),
+  workflow_run: v.optional(workflowRunValidator),
+  workflow: v.optional(workflowSummaryValidator),
+  repository: v.optional(
+    v.object({
+      id: v.optional(v.number()),
+    }),
+  ),
+});
 
 type WorkflowRunWithCompletedAt = NonNullable<WorkflowRunEvent["workflow_run"]> & {
   completed_at?: string | null;
@@ -35,7 +84,7 @@ export const upsertWorkflowRunFromWebhook = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(), // WorkflowRunEvent from webhook
+    payload: workflowRunEventValidator,
   },
   handler: async (ctx, args) => {
     const payload = args.payload as WorkflowRunEvent;

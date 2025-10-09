@@ -54,6 +54,55 @@ type PullRequestWebhookEnvelope = {
   number?: number;
 };
 
+const nullableString = v.union(v.string(), v.null());
+const stringNumberOrNull = v.union(v.string(), v.number(), v.null());
+const nullableBoolean = v.union(v.boolean(), v.null());
+
+const pullRequestRepoValidator = v.object({
+  id: v.optional(v.number()),
+  pushed_at: v.optional(stringNumberOrNull),
+});
+
+const pullRequestBranchValidator = v.object({
+  ref: v.optional(v.string()),
+  sha: v.optional(v.string()),
+  repo: v.optional(v.union(pullRequestRepoValidator, v.null())),
+});
+
+const pullRequestUserValidator = v.object({
+  login: v.optional(v.string()),
+  id: v.optional(v.number()),
+});
+
+const pullRequestObjectValidator = v.object({
+  number: v.optional(v.number()),
+  id: v.optional(v.number()),
+  title: v.optional(v.string()),
+  state: v.optional(v.string()),
+  merged: v.optional(nullableBoolean),
+  draft: v.optional(v.boolean()),
+  html_url: v.optional(nullableString),
+  merge_commit_sha: v.optional(nullableString),
+  created_at: v.optional(nullableString),
+  updated_at: v.optional(nullableString),
+  closed_at: v.optional(nullableString),
+  merged_at: v.optional(nullableString),
+  comments: v.optional(v.number()),
+  review_comments: v.optional(v.number()),
+  commits: v.optional(v.number()),
+  additions: v.optional(v.number()),
+  deletions: v.optional(v.number()),
+  changed_files: v.optional(v.number()),
+  user: v.optional(pullRequestUserValidator),
+  base: v.optional(pullRequestBranchValidator),
+  head: v.optional(pullRequestBranchValidator),
+});
+
+const pullRequestWebhookValidator = v.object({
+  pull_request: v.optional(pullRequestObjectValidator),
+  number: v.optional(v.number()),
+});
+
 async function upsertBranchMetadata(
   ctx: MutationCtx,
   {
@@ -320,7 +369,7 @@ export const upsertFromWebhookPayload = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(),
+    payload: pullRequestWebhookValidator,
   },
   handler: async (ctx, { installationId, repoFullName, teamId, payload }) => {
     try {
