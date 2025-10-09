@@ -1394,6 +1394,7 @@ async def task_install_systemd_units(ctx: TaskContext) -> None:
         install -Dm0644 {repo}/configs/systemd/cmux.target /usr/lib/systemd/system/cmux.target
         install -Dm0644 {repo}/configs/systemd/cmux-openvscode.service /usr/lib/systemd/system/cmux-openvscode.service
         install -Dm0644 {repo}/configs/systemd/cmux-worker.service /usr/lib/systemd/system/cmux-worker.service
+        install -Dm0644 {repo}/configs/systemd/cmux-proxy.service /usr/lib/systemd/system/cmux-proxy.service
         install -Dm0644 {repo}/configs/systemd/cmux-dockerd.service /usr/lib/systemd/system/cmux-dockerd.service
         install -Dm0644 {repo}/configs/systemd/cmux-vnc.service /usr/lib/systemd/system/cmux-vnc.service
         install -Dm0755 {repo}/configs/systemd/bin/configure-openvscode /usr/local/lib/cmux/configure-openvscode
@@ -1404,6 +1405,7 @@ async def task_install_systemd_units(ctx: TaskContext) -> None:
         ln -sf /usr/lib/systemd/system/cmux.target /etc/systemd/system/multi-user.target.wants/cmux.target
         ln -sf /usr/lib/systemd/system/cmux-openvscode.service /etc/systemd/system/cmux.target.wants/cmux-openvscode.service
         ln -sf /usr/lib/systemd/system/cmux-worker.service /etc/systemd/system/cmux.target.wants/cmux-worker.service
+        ln -sf /usr/lib/systemd/system/cmux-proxy.service /etc/systemd/system/cmux.target.wants/cmux-proxy.service
         ln -sf /usr/lib/systemd/system/cmux-dockerd.service /etc/systemd/system/cmux.target.wants/cmux-dockerd.service
         ln -sf /usr/lib/systemd/system/cmux-vnc.service /etc/systemd/system/cmux.target.wants/cmux-vnc.service
         systemctl daemon-reload
@@ -1698,7 +1700,6 @@ async def task_check_ssh_service(ctx: TaskContext) -> None:
 async def task_check_vscode(ctx: TaskContext) -> None:
     cmd = textwrap.dedent(
         """
-        sleep 3
         for attempt in $(seq 1 15); do
           if curl -fsS -o /dev/null http://127.0.0.1:39378/; then
             echo "VS Code endpoint is reachable"
@@ -1712,6 +1713,32 @@ async def task_check_vscode(ctx: TaskContext) -> None:
         """
     )
     await ctx.run("check-vscode", cmd)
+
+
+@registry.task(
+    name="check-vscode-via-proxy",
+    deps=("install-systemd-units",),
+    description="Verify VS Code endpoint is accessible through cmux-proxy",
+)
+async def task_check_vscode_via_proxy(ctx: TaskContext) -> None:
+    cmd = textwrap.dedent(
+        """
+        for attempt in $(seq 1 15); do
+          if curl -fsS -H 'X-Cmux-Port-Internal: 39378' http://127.0.0.1:39379/ >/dev/null; then
+            echo "VS Code endpoint is reachable via cmux-proxy"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "ERROR: VS Code endpoint via cmux-proxy not reachable after 30s" >&2
+        systemctl status cmux-proxy.service --no-pager || true
+        systemctl status cmux-openvscode.service --no-pager || true
+        tail -n 80 /var/log/cmux/cmux-proxy.log || true
+        tail -n 80 /var/log/cmux/openvscode.log || true
+        exit 1
+        """
+    )
+    await ctx.run("check-vscode-via-proxy", cmd)
 
 
 @registry.task(
