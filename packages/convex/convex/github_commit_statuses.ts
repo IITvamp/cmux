@@ -89,7 +89,7 @@ export const upsertCommitStatusFromWebhook = internalMutation({
         }
       }
     } else {
-      const newId = await ctx.db.insert("githubCommitStatuses", statusDoc);
+      await ctx.db.insert("githubCommitStatuses", statusDoc);
     }
   },
 });

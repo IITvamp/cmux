@@ -132,7 +132,7 @@ export const upsertCheckRunFromWebhook = internalMutation({
       }
     } else {
       // Insert new check run
-      const newId = await ctx.db.insert("githubCheckRuns", checkRunDoc);
+      await ctx.db.insert("githubCheckRuns", checkRunDoc);
     }
   },
 });

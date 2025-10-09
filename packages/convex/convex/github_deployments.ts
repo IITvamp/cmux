@@ -88,7 +88,7 @@ export const upsertDeploymentFromWebhook = internalMutation({
         }
       }
     } else {
-      const newId = await ctx.db.insert("githubDeployments", deploymentDoc);
+      await ctx.db.insert("githubDeployments", deploymentDoc);
     }
   },
 });
@@ -184,7 +184,7 @@ export const updateDeploymentStatusFromWebhook = internalMutation({
         triggeringPrNumber: undefined,
       };
 
-      const newId = await ctx.db.insert("githubDeployments", deploymentDoc);
+      await ctx.db.insert("githubDeployments", deploymentDoc);
     }
   },
 });

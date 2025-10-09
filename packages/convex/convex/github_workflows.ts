@@ -155,7 +155,7 @@ export const upsertWorkflowRunFromWebhook = internalMutation({
       }
     } else {
       // Insert new run
-      const newId = await ctx.db.insert("githubWorkflowRuns", workflowRunDoc);
+      await ctx.db.insert("githubWorkflowRuns", workflowRunDoc);
     }
   },
 });
