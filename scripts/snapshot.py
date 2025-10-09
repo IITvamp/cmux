@@ -896,7 +896,9 @@ async def task_install_base_packages(ctx: TaskContext) -> None:
             xvfb \
             x11-xserver-utils xterm novnc \
             x11vnc \
-            gh
+            gh \
+            zsh \
+            zsh-autosuggestions
         
         # Download and install Chrome
         arch="$(dpkg --print-architecture)"
@@ -1054,6 +1056,7 @@ async def task_install_uv_python(ctx: TaskContext) -> None:
         uv python install --default
         PIP_VERSION="$(curl -fsSL https://pypi.org/pypi/pip/json | jq -r '.info.version')"
         python3 -m pip install --break-system-packages --upgrade "pip==${PIP_VERSION}"
+        ln -sf /usr/bin/python3 /usr/bin/python
         """
     )
     await ctx.run("install-uv-python", cmd)
@@ -1125,6 +1128,65 @@ async def task_install_openvscode(ctx: TaskContext) -> None:
 
 
 @registry.task(
+    name="install-openvscode-extensions",
+    deps=("install-openvscode",),
+    description="Preinstall language extensions for OpenVSCode",
+)
+async def task_install_openvscode_extensions(ctx: TaskContext) -> None:
+    cmd = textwrap.dedent(
+        """
+        set -eux
+        server_root="/app/openvscode-server"
+        bin_path="${server_root}/bin/openvscode-server"
+        if [ ! -x "${bin_path}" ]; then
+          echo "OpenVSCode binary not found at ${bin_path}" >&2
+          exit 1
+        fi
+        export HOME=/root
+        extensions_dir="/root/.openvscode-server/extensions"
+        user_data_dir="/root/.openvscode-server/data"
+        mkdir -p "${extensions_dir}" "${user_data_dir}"
+        install_marketplace_extension() {
+          local publisher="$1"
+          local name="$2"
+          local version="${3:-latest}"
+          local tmp_dir
+          tmp_dir="$(mktemp -d)"
+          local download_path="${tmp_dir}/${name}.vsixpackage"
+          local package_path="${tmp_dir}/${name}.vsix"
+          local url="https://marketplace.visualstudio.com/_apis/public/gallery/publishers/${publisher}/vsextensions/${name}/${version}/vspackage"
+          curl -fSL --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o "${download_path}" "${url}" || {
+            rm -rf "${tmp_dir}"
+            echo "Failed to download ${publisher}.${name} from marketplace" >&2
+            return 1
+          }
+          if gzip -t "${download_path}" >/dev/null 2>&1; then
+            gunzip -c "${download_path}" > "${package_path}"
+          else
+            mv "${download_path}" "${package_path}"
+          fi
+          rm -f "${download_path}"
+          if [ ! -f "${package_path}" ]; then
+            echo "Failed to prepare VSIX for ${publisher}.${name}" >&2
+            rm -rf "${tmp_dir}"
+            return 1
+          fi
+          "${bin_path}" \
+            --install-extension "${package_path}" \
+            --force \
+            --extensions-dir "${extensions_dir}" \
+            --user-data-dir "${user_data_dir}"
+          rm -rf "${tmp_dir}"
+        }
+        install_marketplace_extension "ms-python" "python" "latest"
+        install_marketplace_extension "ms-python" "vscode-pylance" "latest"
+        install_marketplace_extension "ms-vscode" "vscode-typescript-next" "latest"
+        """
+    )
+    await ctx.run("install-openvscode-extensions", cmd)
+
+
+@registry.task(
     name="install-cursor-cli",
     deps=("apt-bootstrap",),
     description="Install Cursor CLI",
@@ -1155,6 +1217,106 @@ async def task_install_global_cli(ctx: TaskContext) -> None:
         """
     )
     await ctx.run("install-global-cli", cmd)
+
+
+@registry.task(
+    name="configure-hostname",
+    deps=("apt-bootstrap",),
+    description="Ensure the instance reports the cmux hostname",
+)
+async def task_configure_hostname(ctx: TaskContext) -> None:
+    cmd = textwrap.dedent(
+        """
+        set -eux
+        desired="cmux"
+        current="$(hostnamectl --static || hostname)"
+        if [ "${current}" != "${desired}" ]; then
+          hostnamectl set-hostname "${desired}"
+        fi
+        if grep -qE '^127\\.0\\.1\\.1\\s' /etc/hosts; then
+          sed -i "s/^127\\.0\\.1\\.1\\s.*/127.0.1.1 ${desired}/" /etc/hosts
+        elif ! grep -qE "127\\.0\\.1\\.1\\s+${desired}(\\s|$)" /etc/hosts; then
+          printf '127.0.1.1 %s\n' "${desired}" >> /etc/hosts
+        fi
+        """
+    )
+    await ctx.run("configure-hostname", cmd)
+
+
+@registry.task(
+    name="configure-zsh",
+    deps=("install-base-packages",),
+    description="Install zsh configuration and default prompt",
+)
+async def task_configure_zsh(ctx: TaskContext) -> None:
+    cmd = textwrap.dedent(
+        r"""
+        set -eux
+        zsh_path="$(command -v zsh)"
+        if [ -z "${zsh_path}" ]; then
+          echo "zsh not found" >&2
+          exit 1
+        fi
+        current_shell="$(getent passwd root | cut -d: -f7 || true)"
+        if [ "${current_shell}" != "${zsh_path}" ]; then
+          if command -v chsh >/dev/null 2>&1; then
+            chsh -s "${zsh_path}" root
+          else
+            usermod -s "${zsh_path}" root
+          fi
+        fi
+        mkdir -p /root
+        autosuggestions="/usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh"
+        cat > /root/.zshrc <<EOF
+export SHELL="${zsh_path}"
+export PATH="/usr/local/bin:/usr/local/cargo/bin:\$HOME/.local/bin:\$PATH"
+export XDG_RUNTIME_DIR="/run/user/0"
+
+alias code='/app/openvscode-server/bin/openvscode-server'
+alias c='code'
+alias g='git'
+
+autoload -Uz colors vcs_info
+colors
+setopt PROMPT_SUBST
+
+zstyle ':vcs_info:*' enable git
+zstyle ':vcs_info:*' check-for-changes true
+zstyle ':vcs_info:git*:*' formats '%F{yellow}git:%b%f'
+zstyle ':vcs_info:git*:*' actionformats '%F{yellow}git:%b*%f'
+
+precmd() {
+  vcs_info
+}
+
+PROMPT='%F{cyan}%n@%m%f %F{green}%~%f\${vcs_info_msg_0_:+ \${vcs_info_msg_0_}} %# '
+EOF
+        if [ -f "${autosuggestions}" ]; then
+          cat >> /root/.zshrc <<'EOF'
+
+if [ -f "${autosuggestions}" ]; then
+  source "${autosuggestions}"
+  bindkey '^ ' autosuggest-accept
+fi
+EOF
+        fi
+        cat >> /root/.zshrc <<'EOF'
+HISTFILE=~/.zsh_history
+setopt HIST_IGNORE_DUPS HIST_VERIFY
+EOF
+        cat > /root/.zprofile <<'EOF'
+[[ -f ~/.zshrc ]] && source ~/.zshrc
+EOF
+        mkdir -p /etc/profile.d
+        cat <<'EOF' > /etc/profile.d/cmux-paths.sh
+export PATH="/usr/local/bin:/usr/local/cargo/bin:$HOME/.local/bin:$PATH"
+EOF
+        if ! grep -q "alias g='git'" /root/.bashrc 2>/dev/null; then
+          echo "alias g='git'" >> /root/.bashrc
+        fi
+        """
+    )
+    await ctx.run("configure-zsh", cmd)
 
 
 @registry.task(
@@ -1213,7 +1375,13 @@ async def task_install_service_scripts(ctx: TaskContext) -> None:
 
 @registry.task(
     name="install-systemd-units",
-    deps=("upload-repo", "install-openvscode", "install-service-scripts"),
+    deps=(
+        "upload-repo",
+        "install-openvscode",
+        "install-openvscode-extensions",
+        "install-service-scripts",
+        "configure-zsh",
+    ),
     description="Install cmux systemd units and helpers",
 )
 async def task_install_systemd_units(ctx: TaskContext) -> None:
@@ -1346,19 +1514,41 @@ async def task_link_rust_binaries(ctx: TaskContext) -> None:
 
 @registry.task(
     name="configure-envctl",
-    deps=("link-rust-binaries",),
+    deps=("link-rust-binaries", "configure-zsh"),
     description="Configure envctl defaults",
 )
 async def task_configure_envctl(ctx: TaskContext) -> None:
     cmd = textwrap.dedent(
         """
+        set -eux
         envctl --version
         envctl install-hook bash
-        echo '[ -f ~/.bashrc ] && . ~/.bashrc' > /root/.profile
-        echo '[ -f ~/.bashrc ] && . ~/.bashrc' > /root/.bash_profile
+        envctl install-hook zsh
+        cat <<'PROFILE' > /root/.profile
+if [ -f ~/.zshrc ]; then
+  . ~/.zshrc
+elif [ -f ~/.bashrc ]; then
+  . ~/.bashrc
+fi
+PROFILE
+        cat <<'PROFILE' > /root/.bash_profile
+if [ -f ~/.zshrc ]; then
+  . ~/.zshrc
+elif [ -f ~/.bashrc ]; then
+  . ~/.bashrc
+fi
+PROFILE
         mkdir -p /run/user/0
         chmod 700 /run/user/0
-        echo 'export XDG_RUNTIME_DIR=/run/user/0' >> /root/.bashrc
+        if ! grep -q 'XDG_RUNTIME_DIR=/run/user/0' /root/.bashrc 2>/dev/null; then
+          echo 'export XDG_RUNTIME_DIR=/run/user/0' >> /root/.bashrc
+        fi
+        if ! grep -q 'cmux-paths.sh' /root/.bashrc 2>/dev/null; then
+          echo '[ -f /etc/profile.d/cmux-paths.sh ] && . /etc/profile.d/cmux-paths.sh' >> /root/.bashrc
+        fi
+        if ! grep -q 'XDG_RUNTIME_DIR=/run/user/0' /root/.zshrc 2>/dev/null; then
+          echo 'export XDG_RUNTIME_DIR=/run/user/0' >> /root/.zshrc
+        fi
         """
     )
     await ctx.run("configure-envctl", cmd)

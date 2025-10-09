@@ -30,33 +30,40 @@ type execEvent struct {
 	Message string `json:"message,omitempty"`
 }
 
-func writeJSONLine(w io.Writer, flusher http.Flusher, event execEvent) {
+func writeJSONLine(w io.Writer, flusher http.Flusher, event execEvent) error {
 	payload, err := json.Marshal(event)
 	if err != nil {
 		log.Printf("failed to serialize event: %v", err)
-		return
+		return err
 	}
 	if _, err = w.Write(append(payload, '\n')); err != nil {
-		log.Printf("failed to write event: %v", err)
-		return
+		return err
 	}
 	flusher.Flush()
+	return nil
 }
 
-func readPipe(reader io.Reader, eventType string, wg *sync.WaitGroup, w io.Writer, flusher http.Flusher) {
+func readPipe(ctx context.Context, reader io.Reader, eventType string, wg *sync.WaitGroup, w io.Writer, flusher http.Flusher) {
 	defer wg.Done()
 	scanner := bufio.NewScanner(reader)
 	buf := make([]byte, 0, 64*1024)
 	scanner.Buffer(buf, 1024*1024)
 	for scanner.Scan() {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
 		line := strings.TrimRight(scanner.Text(), "\r")
 		if line == "" {
 			continue
 		}
-		writeJSONLine(w, flusher, execEvent{Type: eventType, Data: line})
+		if err := writeJSONLine(w, flusher, execEvent{Type: eventType, Data: line}); err != nil {
+			return
+		}
 	}
 	if err := scanner.Err(); err != nil {
-		writeJSONLine(w, flusher, execEvent{
+		_ = writeJSONLine(w, flusher, execEvent{
 			Type:    "error",
 			Message: fmt.Sprintf("%s read failed: %v", eventType, err),
 		})
@@ -129,39 +136,39 @@ func execHandler(w http.ResponseWriter, r *http.Request) {
 	cmd := exec.CommandContext(baseCtx, "/bin/sh", "-c", command)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		writeJSONLine(w, flusher, execEvent{
+		_ = writeJSONLine(w, flusher, execEvent{
 			Type:    "error",
 			Message: fmt.Sprintf("stdout pipe failed: %v", err),
 		})
 		exitCode := 127
-		writeJSONLine(w, flusher, execEvent{Type: "exit", Code: &exitCode})
+		_ = writeJSONLine(w, flusher, execEvent{Type: "exit", Code: &exitCode})
 		return
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		writeJSONLine(w, flusher, execEvent{
+		_ = writeJSONLine(w, flusher, execEvent{
 			Type:    "error",
 			Message: fmt.Sprintf("stderr pipe failed: %v", err),
 		})
 		exitCode := 127
-		writeJSONLine(w, flusher, execEvent{Type: "exit", Code: &exitCode})
+		_ = writeJSONLine(w, flusher, execEvent{Type: "exit", Code: &exitCode})
 		return
 	}
 
 	if err := cmd.Start(); err != nil {
-		writeJSONLine(w, flusher, execEvent{
+		_ = writeJSONLine(w, flusher, execEvent{
 			Type:    "error",
 			Message: fmt.Sprintf("spawn failed: %v", err),
 		})
 		exitCode := 127
-		writeJSONLine(w, flusher, execEvent{Type: "exit", Code: &exitCode})
+		_ = writeJSONLine(w, flusher, execEvent{Type: "exit", Code: &exitCode})
 		return
 	}
 
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go readPipe(stdout, "stdout", &wg, w, flusher)
-	go readPipe(stderr, "stderr", &wg, w, flusher)
+	go readPipe(clientCtx, stdout, "stdout", &wg, w, flusher)
+	go readPipe(clientCtx, stderr, "stderr", &wg, w, flusher)
 
 	waitErr := cmd.Wait()
 	wg.Wait()
@@ -173,10 +180,10 @@ func execHandler(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(ctxErr, context.DeadlineExceeded):
 			message := fmt.Sprintf("timeout after %dms", timeoutMs)
-			writeJSONLine(w, flusher, execEvent{Type: "error", Message: message})
+			_ = writeJSONLine(w, flusher, execEvent{Type: "error", Message: message})
 			exitCode = 124
 		case errors.Is(ctxErr, context.Canceled) && clientCtx.Err() != nil:
-			writeJSONLine(w, flusher, execEvent{
+			_ = writeJSONLine(w, flusher, execEvent{
 				Type:    "error",
 				Message: "request canceled by client",
 			})
@@ -184,7 +191,7 @@ func execHandler(w http.ResponseWriter, r *http.Request) {
 		case errors.As(waitErr, &exitErr):
 			exitCode = exitErr.ExitCode()
 		default:
-			writeJSONLine(w, flusher, execEvent{
+			_ = writeJSONLine(w, flusher, execEvent{
 				Type:    "error",
 				Message: fmt.Sprintf("wait failed: %v", waitErr),
 			})
@@ -192,7 +199,7 @@ func execHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSONLine(w, flusher, execEvent{Type: "exit", Code: &exitCode})
+	_ = writeJSONLine(w, flusher, execEvent{Type: "exit", Code: &exitCode})
 }
 
 func healthHandler(w http.ResponseWriter, _ *http.Request) {
