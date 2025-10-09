@@ -1,4 +1,3 @@
-import { VSCodeIcon } from "@/components/icons/VSCodeIcon";
 import { GitHubIcon } from "@/components/icons/github";
 import { api } from "@cmux/convex/api";
 import { Link } from "@tanstack/react-router";
@@ -9,7 +8,7 @@ import {
   GitPullRequestClosed,
   GitPullRequestDraft,
 } from "lucide-react";
-import { useMemo, useState, type ComponentType, type MouseEvent } from "react";
+import { useMemo, useState, type MouseEvent } from "react";
 import { SidebarListItem } from "./SidebarListItem";
 import { SIDEBAR_PRS_DEFAULT_LIMIT } from "./const";
 import type { Doc } from "@cmux/convex/dataModel";
@@ -99,25 +98,6 @@ function PullRequestListItem({ pr, teamSlugOrId, expanded, setExpanded }: PullRe
     <GitPullRequest className="w-3 h-3 text-[#1f883d] dark:text-[#238636]" />
   );
 
-  const actionButtons: ReadonlyArray<{
-    key: string;
-    label: string;
-    icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
-    href?: string;
-  }> = [
-    {
-      key: "vscode",
-      label: "VS Code",
-      icon: VSCodeIcon,
-    },
-    {
-      key: "github",
-      label: "GitHub",
-      icon: GitHubIcon,
-      href: pr.htmlUrl,
-    },
-  ];
-
   const handleToggle = (
     _event?: MouseEvent<HTMLButtonElement | HTMLAnchorElement>
   ) => {
@@ -164,47 +144,26 @@ function PullRequestListItem({ pr, teamSlugOrId, expanded, setExpanded }: PullRe
           meta={leadingIcon}
         />
       </Link>
-      {isExpanded ? (
+      {isExpanded && pr.htmlUrl ? (
         <div className="mt-px flex flex-col" role="group">
-          {actionButtons.map((action) => {
-            const Icon = action.icon;
-            const Element = action.href ? "a" : "button";
-            const elementProps = action.href
-              ? {
-                  href: action.href,
-                  target: "_blank",
-                  rel: "noreferrer",
-                }
-              : {
-                  type: "button" as const,
-                };
-
-            return (
-              <div key={action.key}>
-                <Element
-                  {...elementProps}
-                  onClick={(event) => {
-                    if (!action.href) {
-                      event.preventDefault();
-                      event.stopPropagation();
-                    } else {
-                      event.stopPropagation();
-                    }
-                  }}
-                  className="mt-px flex w-full items-center rounded-md pr-2 py-1 text-xs transition-colors hover:bg-neutral-200/45 dark:hover:bg-neutral-800/45 cursor-default"
-                  style={{ paddingLeft: "32px" }}
-                >
-                  <Icon
-                    className="mr-2 h-3 w-3 text-neutral-400 grayscale opacity-60"
-                    aria-hidden
-                  />
-                  <span className="text-neutral-600 dark:text-neutral-400">
-                    {action.label}
-                  </span>
-                </Element>
-              </div>
-            );
-          })}
+          <a
+            href={pr.htmlUrl}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(event) => {
+              event.stopPropagation();
+            }}
+            className="mt-px flex w-full items-center rounded-md pr-2 py-1 text-xs transition-colors hover:bg-neutral-200/45 dark:hover:bg-neutral-800/45"
+            style={{ paddingLeft: "32px" }}
+          >
+            <GitHubIcon
+              className="mr-2 h-3 w-3 text-neutral-400 grayscale opacity-60"
+              aria-hidden
+            />
+            <span className="text-neutral-600 dark:text-neutral-400">
+              GitHub
+            </span>
+          </a>
         </div>
       ) : null}
     </li>
