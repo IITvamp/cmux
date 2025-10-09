@@ -12,6 +12,7 @@ import { useClipboard } from "@mantine/hooks";
 import clsx from "clsx";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { postApiIntegrationsGithubPrsCloseMutation, postApiIntegrationsGithubPrsMergeSimpleMutation } from "@cmux/www-openapi-client/react-query";
+import type { PostApiIntegrationsGithubPrsCloseData, PostApiIntegrationsGithubPrsCloseResponse, PostApiIntegrationsGithubPrsMergeSimpleData, PostApiIntegrationsGithubPrsMergeSimpleResponse, Options } from "@cmux/www-openapi-client";
 
 type PullRequestDetailViewProps = {
   teamSlugOrId: string;
@@ -489,7 +490,11 @@ export function PullRequestDetailView({
     } : null);
   };
 
-  const closePrMutation = useMutation({
+  const closePrMutation = useMutation<
+    PostApiIntegrationsGithubPrsCloseResponse,
+    Error,
+    Options<PostApiIntegrationsGithubPrsCloseData>
+  >({
     ...postApiIntegrationsGithubPrsCloseMutation(),
     onSuccess: (data) => {
       toast.success(data.message || `PR #${currentPR?.number} closed successfully`);
@@ -499,7 +504,11 @@ export function PullRequestDetailView({
     },
   });
 
-  const mergePrMutation = useMutation({
+  const mergePrMutation = useMutation<
+    PostApiIntegrationsGithubPrsMergeSimpleResponse,
+    Error,
+    Options<PostApiIntegrationsGithubPrsMergeSimpleData>
+  >({
     ...postApiIntegrationsGithubPrsMergeSimpleMutation(),
     onSuccess: (data) => {
       toast.success(data.message || `PR #${currentPR?.number} merged successfully`);
@@ -576,22 +585,6 @@ export function PullRequestDetailView({
                     isLoading={workflowData.isLoading}
                   />
                 </Suspense>
-                {currentPR.mergeable === false && (
-                  <div className="flex items-center gap-1 ml-2 shrink-0">
-                    <AlertCircle className="w-[10px] h-[10px] text-red-600 dark:text-red-400" />
-                    <span className="text-[9px] font-medium text-red-600 dark:text-red-400 select-none">
-                      Conflicts
-                    </span>
-                  </div>
-                )}
-                {currentPR.mergeableState === "blocked" && currentPR.mergeable !== false && (
-                  <div className="flex items-center gap-1 ml-2 shrink-0">
-                    <Circle className="w-[10px] h-[10px] text-orange-600 dark:text-orange-400" />
-                    <span className="text-[9px] font-medium text-orange-600 dark:text-orange-400 select-none">
-                      Blocked
-                    </span>
-                  </div>
-                )}
               </div>
 
               <div className="col-start-3 row-start-1 row-span-2 self-center flex items-center gap-2 shrink-0">
@@ -602,9 +595,7 @@ export function PullRequestDetailView({
                       isOpen={true}
                       disabled={
                         mergePrMutation.isPending ||
-                        closePrMutation.isPending ||
-                        currentPR.mergeable === false ||
-                        currentPR.mergeableState === "blocked"
+                        closePrMutation.isPending
                       }
                       isLoading={mergePrMutation.isPending}
                     />
