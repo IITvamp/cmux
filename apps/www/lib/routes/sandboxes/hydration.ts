@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { MorphInstance } from "./git";
-import { execInRootfs, maskSensitive, singleQuote } from "./shell";
+import { maskSensitive, singleQuote } from "./shell";
 
 export interface HydrateRepoConfig {
   owner: string;
@@ -69,10 +69,8 @@ exit $EXIT_CODE
 `;
 
   console.log("[sandboxes.start] Starting hydration with Bun script");
-  const hydrateRes = await execInRootfs(
-    instance,
-    `bash -c ${singleQuote(command.trim())}`,
-    { forceRootfs: true }
+  const hydrateRes = await instance.exec(
+    `bash -c ${singleQuote(command.trim())}`
   );
 
   // Log the full output for debugging

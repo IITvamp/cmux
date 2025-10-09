@@ -19,12 +19,14 @@ import {
 import type { HydrateRepoConfig } from "./sandboxes/hydration";
 import { hydrateWorkspace } from "./sandboxes/hydration";
 import { resolveTeamAndSnapshot } from "./sandboxes/snapshot";
-import { runMaintenanceScript, startDevScript } from "./sandboxes/startDevAndMaintenanceScript";
+import {
+  runMaintenanceScript,
+  startDevScript,
+} from "./sandboxes/startDevAndMaintenanceScript";
 import {
   encodeEnvContentForEnvctl,
   envctlLoadCommand,
 } from "./utils/ensure-env-vars";
-import { execInRootfs } from "./sandboxes/shell";
 
 export const sandboxesRouter = new OpenAPIHono();
 
@@ -176,7 +178,7 @@ sandboxesRouter.openapi(
             throw new Error("GitHub access token not found");
           }
           return fetchGitIdentityInputs(convex, githubAccessToken);
-        },
+        }
       );
 
       const client = new MorphCloudClient({ apiKey: env.MORPH_API_KEY });
@@ -197,7 +199,7 @@ sandboxesRouter.openapi(
       const vscodeService = exposed.find((s) => s.port === 39378);
       const workerService = exposed.find((s) => s.port === 39377);
       if (!vscodeService || !workerService) {
-        await instance.stop().catch(() => { });
+        await instance.stop().catch(() => {});
         return c.text("VSCode or worker service not found", 500);
       }
 
@@ -219,10 +221,11 @@ sandboxesRouter.openapi(
       if (envVarsToApply.trim().length > 0) {
         try {
           const encodedEnv = encodeEnvContentForEnvctl(envVarsToApply);
-          const loadRes = await execInRootfs(
-            instance,
-            ['/bin/bash', '-lc', envctlLoadCommand(encodedEnv)],
-          );
+          const loadRes = await instance.exec([
+            "/bin/bash",
+            "-lc",
+            envctlLoadCommand(encodedEnv),
+          ]);
           if (loadRes.exit_code === 0) {
             console.log(
               `[sandboxes.start] Applied environment variables via envctl`,
@@ -230,17 +233,17 @@ sandboxesRouter.openapi(
                 hasEnvironmentVars: Boolean(environmentEnvVarsContent),
                 hasTaskRunId: Boolean(body.taskRunId),
                 hasTaskRunJwt: Boolean(body.taskRunJwt),
-              },
+              }
             );
           } else {
             console.error(
-              `[sandboxes.start] Env var bootstrap failed exit=${loadRes.exit_code} stderr=${(loadRes.stderr || "").slice(0, 200)}`,
+              `[sandboxes.start] Env var bootstrap failed exit=${loadRes.exit_code} stderr=${(loadRes.stderr || "").slice(0, 200)}`
             );
           }
         } catch (error) {
           console.error(
             "[sandboxes.start] Failed to apply environment variables",
-            error,
+            error
           );
         }
       }
@@ -253,7 +256,7 @@ sandboxesRouter.openapi(
         .catch((error) => {
           console.log(
             `[sandboxes.start] Failed to configure git identity; continuing...`,
-            error,
+            error
           );
         });
 
@@ -261,7 +264,7 @@ sandboxesRouter.openapi(
         await githubAccessTokenPromise;
       if (githubAccessTokenError) {
         console.error(
-          `[sandboxes.start] GitHub access token error: ${githubAccessTokenError}`,
+          `[sandboxes.start] GitHub access token error: ${githubAccessTokenError}`
         );
         return c.text("Failed to resolve GitHub credentials", 401);
       }
@@ -273,7 +276,7 @@ sandboxesRouter.openapi(
       if (body.repoUrl) {
         console.log(`[sandboxes.start] Hydrating repo for ${instance.id}`);
         const match = body.repoUrl.match(
-          /github\.com\/?([^\s/]+)\/([^\s/.]+)(?:\.git)?/i,
+          /github\.com\/?([^\s/]+)\/([^\s/.]+)(?:\.git)?/i
         );
         if (!match) {
           return c.text("Unsupported repo URL; expected GitHub URL", 400);
@@ -302,7 +305,7 @@ sandboxesRouter.openapi(
         });
       } catch (error) {
         console.error(`[sandboxes.start] Hydration failed:`, error);
-        await instance.stop().catch(() => { });
+        await instance.stop().catch(() => {});
         return c.text("Failed to hydrate sandbox", 500);
       }
 
@@ -310,9 +313,9 @@ sandboxesRouter.openapi(
         (async () => {
           const maintenanceScriptResult = maintenanceScript
             ? await runMaintenanceScript({
-              instance,
-              script: maintenanceScript,
-            })
+                instance,
+                script: maintenanceScript,
+              })
             : undefined;
           const devScriptResult = devScript
             ? await startDevScript({ instance, script: devScript })
@@ -331,14 +334,14 @@ sandboxesRouter.openapi(
             } catch (mutationError) {
               console.error(
                 "[sandboxes.start] Failed to record environment error to taskRun",
-                mutationError,
+                mutationError
               );
             }
           }
         })().catch((error) => {
           console.error(
             "[sandboxes.start] Background script execution failed:",
-            error,
+            error
           );
         });
       }
@@ -362,7 +365,7 @@ sandboxesRouter.openapi(
       console.error("Failed to start sandbox:", error);
       return c.text("Failed to start sandbox", 500);
     }
-  },
+  }
 );
 
 sandboxesRouter.openapi(
@@ -434,10 +437,10 @@ sandboxesRouter.openapi(
 
       const encodedEnv = encodeEnvContentForEnvctl(envVarsContent);
       const command = envctlLoadCommand(encodedEnv);
-      const execResult = await execInRootfs(instance, ['/bin/bash', '-lc', command]);
+      const execResult = await instance.exec(["/bin/bash", "-lc", command]);
       if (execResult.exit_code !== 0) {
         console.error(
-          `[sandboxes.env] envctl load failed exit=${execResult.exit_code} stderr=${(execResult.stderr || "").slice(0, 200)}`,
+          `[sandboxes.env] envctl load failed exit=${execResult.exit_code} stderr=${(execResult.stderr || "").slice(0, 200)}`
         );
         return c.text("Failed to apply environment variables", 500);
       }
@@ -446,11 +449,11 @@ sandboxesRouter.openapi(
     } catch (error) {
       console.error(
         "[sandboxes.env] Failed to apply environment variables",
-        error,
+        error
       );
       return c.text("Failed to apply environment variables", 500);
     }
-  },
+  }
 );
 
 // Stop/pause a sandbox
@@ -484,7 +487,7 @@ sandboxesRouter.openapi(
       console.error("Failed to stop sandbox:", error);
       return c.text("Failed to stop sandbox", 500);
     }
-  },
+  }
 );
 
 // Query status of sandbox
@@ -523,10 +526,10 @@ sandboxesRouter.openapi(
       const client = new MorphCloudClient({ apiKey: env.MORPH_API_KEY });
       const instance = await client.instances.get({ instanceId: id });
       const vscodeService = instance.networking.httpServices.find(
-        (s) => s.port === 39378,
+        (s) => s.port === 39378
       );
       const workerService = instance.networking.httpServices.find(
-        (s) => s.port === 39377,
+        (s) => s.port === 39377
       );
       const running = Boolean(vscodeService);
       return c.json({
@@ -539,7 +542,7 @@ sandboxesRouter.openapi(
       console.error("Failed to get sandbox status:", error);
       return c.text("Failed to get status", 500);
     }
-  },
+  }
 );
 
 // Publish devcontainer forwarded ports (read devcontainer.json inside instance, expose, persist to Convex)
@@ -573,7 +576,7 @@ sandboxesRouter.openapi(
                 status: z.enum(["running"]).default("running"),
                 port: z.number(),
                 url: z.string(),
-              }),
+              })
             ),
           },
         },
@@ -595,15 +598,16 @@ sandboxesRouter.openapi(
       const reservedPorts = RESERVED_CMUX_PORT_SET;
 
       // Attempt to read devcontainer.json for declared forwarded ports
-      const devcontainerJson = await execInRootfs(
-        instance,
-        ['/bin/bash', '-lc', 'cat /root/workspace/.devcontainer/devcontainer.json'],
-      );
+      const devcontainerJson = await instance.exec([
+        "/bin/bash",
+        "-lc",
+        "cat /root/workspace/.devcontainer/devcontainer.json",
+      ]);
       const parsed =
         devcontainerJson.exit_code === 0
           ? (JSON.parse(devcontainerJson.stdout || "{}") as {
-            forwardPorts?: number[];
-          })
+              forwardPorts?: number[];
+            })
           : { forwardPorts: [] as number[] };
 
       const devcontainerPorts = Array.isArray(parsed.forwardPorts)
@@ -649,7 +653,7 @@ sandboxesRouter.openapi(
       ).forEach(addAllowed);
 
       const desiredPorts = Array.from(allowedPorts.values()).sort(
-        (a, b) => a - b,
+        (a, b) => a - b
       );
       const serviceNameForPort = (port: number) => `port-${port}`;
 
@@ -679,7 +683,7 @@ sandboxesRouter.openapi(
       for (const port of desiredPorts) {
         const serviceName = serviceNameForPort(port);
         const alreadyExposed = workingInstance.networking.httpServices.some(
-          (service) => service.name === serviceName,
+          (service) => service.name === serviceName
         );
         if (alreadyExposed) {
           continue;
@@ -689,7 +693,7 @@ sandboxesRouter.openapi(
         } catch (error) {
           console.error(
             `[sandboxes.publishNetworking] Failed to expose ${serviceName}`,
-            error,
+            error
           );
         }
       }
@@ -712,5 +716,5 @@ sandboxesRouter.openapi(
       console.error("Failed to publish devcontainer networking:", error);
       return c.text("Failed to publish devcontainer networking", 500);
     }
-  },
+  }
 );

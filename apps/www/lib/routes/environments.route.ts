@@ -11,7 +11,6 @@ import { HTTPException } from "hono/http-exception";
 import { MorphCloudClient } from "morphcloud";
 import { randomBytes } from "node:crypto";
 import { determineHttpServiceUpdates } from "./determine-http-service-updates";
-import { execInRootfs } from "./sandboxes/shell";
 
 export const environmentsRouter = new OpenAPIHono();
 
@@ -93,7 +92,7 @@ const UpdateEnvironmentBody = z
       value.description !== undefined ||
       value.maintenanceScript !== undefined ||
       value.devScript !== undefined,
-    "At least one field must be provided",
+    "At least one field must be provided"
   )
   .openapi("UpdateEnvironmentBody");
 
@@ -240,16 +239,17 @@ environmentsRouter.openapi(
         return { dataVaultKey };
       })();
 
-      await execInRootfs(
-        instance,
-        ['/bin/bash', '-lc', [
+      await instance.exec([
+        "/bin/bash",
+        "-lc",
+        [
           "git config --global --unset user.name 2>/dev/null || true",
           "git config --global --unset user.email 2>/dev/null || true",
           "git config --global --unset credential.helper 2>/dev/null || true",
           "git credential-cache exit 2>/dev/null || true",
           "gh auth logout 2>/dev/null || true",
-        ].join(" && ")],
-      );
+        ].join(" && "),
+      ]);
 
       const snapshot = await instance.snapshot();
 

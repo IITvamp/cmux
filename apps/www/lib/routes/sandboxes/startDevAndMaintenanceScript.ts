@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { MorphInstance } from "./git";
-import { execInRootfs, maskSensitive, singleQuote } from "./shell";
+import { maskSensitive, singleQuote } from "./shell";
 
 const WORKSPACE_ROOT = "/root/workspace";
 const CMUX_RUNTIME_DIR = "/var/tmp/cmux-scripts";
@@ -9,7 +9,7 @@ const LOG_DIR = "/var/log/cmux";
 
 const previewOutput = (
   value: string | undefined,
-  maxLength = 2500,
+  maxLength = 2500
 ): string | null => {
   if (!value) {
     return null;
@@ -72,7 +72,7 @@ bash -eu -o pipefail ${maintenanceScriptPath}
 `;
 
   try {
-    const result = await execInRootfs(instance, command.trim());
+    const result = await instance.exec(command.trim());
 
     if (result.exit_code !== 0) {
       const stderrPreview = previewOutput(result.stderr, 2000);
@@ -117,7 +117,7 @@ echo $! > ${pidFile}
 `;
 
   try {
-    const result = await execInRootfs(instance, command.trim());
+    const result = await instance.exec(command.trim());
 
     if (result.exit_code !== 0) {
       const stderrPreview = previewOutput(result.stderr, 2000);
@@ -146,9 +146,8 @@ if [ -f ${pidFile} ]; then
 fi
 `;
 
-    const checkResult = await execInRootfs(
-      instance,
-      `bash -c ${singleQuote(checkCommand)}`,
+    const checkResult = await instance.exec(
+      `bash -c ${singleQuote(checkCommand)}`
     );
 
     if (checkResult.exit_code !== 0) {

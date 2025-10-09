@@ -4,7 +4,7 @@ import { api } from "@cmux/convex/api";
 import type { MorphCloudClient } from "morphcloud";
 
 import type { ConvexClient } from "./snapshot";
-import { execInRootfs, maskSensitive, singleQuote } from "./shell";
+import { maskSensitive, singleQuote } from "./shell";
 
 export type MorphInstance = Awaited<
   ReturnType<MorphCloudClient["instances"]["start"]>
@@ -30,7 +30,7 @@ export const configureGitIdentity = async (
   ];
 
   for (const command of commands) {
-    const result = await execInRootfs(instance, command);
+    const result = await instance.exec(command);
     if (result.exit_code !== 0) {
       console.error(
         `[sandboxes.start] GIT CONFIG: Failed to run ${command.join(" ")}, exit=${result.exit_code}`
@@ -39,14 +39,14 @@ export const configureGitIdentity = async (
     }
   }
 
-  const verifyName = await execInRootfs(instance, [
+  const verifyName = await instance.exec([
     "/usr/bin/git",
     "config",
     "--global",
     "--get",
     "user.name",
   ]);
-  const verifyEmail = await execInRootfs(instance, [
+  const verifyEmail = await instance.exec([
     "/usr/bin/git",
     "config",
     "--global",
@@ -57,7 +57,9 @@ export const configureGitIdentity = async (
     console.log(`[sandboxes.start] git user.name=${verifyName.stdout.trim()}`);
   }
   if (verifyEmail.exit_code === 0) {
-    console.log(`[sandboxes.start] git user.email=${verifyEmail.stdout.trim()}`);
+    console.log(
+      `[sandboxes.start] git user.email=${verifyEmail.stdout.trim()}`
+    );
   }
 };
 
@@ -93,7 +95,7 @@ export const configureGithubAccess = async (
         "gh auth setup-git",
       ].join("\n");
 
-      const ghAuthRes = await execInRootfs(instance, [
+      const ghAuthRes = await instance.exec([
         "/bin/bash",
         "-lc",
         toAnsiCQuoted(ghAuthCommand),
@@ -109,8 +111,11 @@ export const configureGithubAccess = async (
         return;
       }
 
-      const errorMessage = ghAuthRes.stderr || ghAuthRes.stdout || "Unknown error";
-      lastError = new Error(`GitHub auth failed: ${maskSensitive(errorMessage).slice(0, 500)}`);
+      const errorMessage =
+        ghAuthRes.stderr || ghAuthRes.stdout || "Unknown error";
+      lastError = new Error(
+        `GitHub auth failed: ${maskSensitive(errorMessage).slice(0, 500)}`
+      );
 
       console.error(
         `[sandboxes.start] GIT AUTH: Attempt ${attempt}/${maxRetries} failed: exit=${ghAuthRes.exit_code} stderr=${maskSensitive(
@@ -120,7 +125,7 @@ export const configureGithubAccess = async (
 
       if (attempt < maxRetries) {
         const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
@@ -131,7 +136,7 @@ export const configureGithubAccess = async (
 
       if (attempt < maxRetries) {
         const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
   }

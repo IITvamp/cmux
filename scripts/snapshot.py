@@ -1289,7 +1289,7 @@ precmd() {
   vcs_info
 }
 
-PROMPT='%F{cyan}%n@%m%f %F{green}%~%f\${vcs_info_msg_0_:+ \${vcs_info_msg_0_}} %# '
+PROMPT='%F{cyan}%n%f %F{green}%~%f\${vcs_info_msg_0_:+ \${vcs_info_msg_0_}} %# '
 EOF
         if [ -f "${autosuggestions}" ]; then
           cat >> /root/.zshrc <<'EOF'
@@ -1537,15 +1537,27 @@ async def task_configure_envctl(ctx: TaskContext) -> None:
         envctl install-hook bash
         envctl install-hook zsh
         cat <<'PROFILE' > /root/.profile
-if [ -f ~/.zshrc ]; then
-  . ~/.zshrc
+if [ -n "${ZSH_VERSION:-}" ]; then
+  if [ -f ~/.zshrc ]; then
+    . ~/.zshrc
+  fi
+elif [ -n "${BASH_VERSION:-}" ]; then
+  if [ -f ~/.bashrc ]; then
+    . ~/.bashrc
+  fi
 elif [ -f ~/.bashrc ]; then
   . ~/.bashrc
 fi
 PROFILE
         cat <<'PROFILE' > /root/.bash_profile
-if [ -f ~/.zshrc ]; then
-  . ~/.zshrc
+if [ -n "${ZSH_VERSION:-}" ]; then
+  if [ -f ~/.zshrc ]; then
+    . ~/.zshrc
+  fi
+elif [ -n "${BASH_VERSION:-}" ]; then
+  if [ -f ~/.bashrc ]; then
+    . ~/.bashrc
+  fi
 elif [ -f ~/.bashrc ]; then
   . ~/.bashrc
 fi
@@ -1656,6 +1668,26 @@ async def task_check_gh(ctx: TaskContext) -> None:
 )
 async def task_check_envctl(ctx: TaskContext) -> None:
     await ctx.run("check-envctl", "envctl --version && command -v envd")
+
+
+@registry.task(
+    name="check-ssh-service",
+    deps=("install-systemd-units",),
+    description="Verify SSH service is active",
+)
+async def task_check_ssh_service(ctx: TaskContext) -> None:
+    cmd = textwrap.dedent(
+        """
+        set -euo pipefail
+        status_output="$(systemctl status ssh --no-pager)"
+        printf '%s\n' "$status_output"
+        if ! printf '%s\n' "$status_output" | grep -Fq "active (running)"; then
+          echo "ERROR: ssh service status did not report active (running)" >&2
+          exit 1
+        fi
+        """
+    )
+    await ctx.run("check-ssh-service", cmd)
 
 
 @registry.task(

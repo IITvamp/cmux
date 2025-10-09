@@ -11,7 +11,6 @@ import {
   configureGitIdentity,
   fetchGitIdentityInputs,
 } from "./sandboxes/git";
-import { execInRootfs } from "./sandboxes/shell";
 
 export const morphRouter = new OpenAPIHono();
 
@@ -222,8 +221,7 @@ morphRouter.openapi(
         }
 
         // First, get list of existing repos with their remote URLs
-        const listReposCmd = await execInRootfs(
-          instance,
+        const listReposCmd = await instance.exec(
           "for dir in /root/workspace/*/; do " +
             'if [ -d "$dir/.git" ]; then ' +
             'basename "$dir"; ' +
@@ -251,20 +249,14 @@ morphRouter.openapi(
           if (!selectedRepo) {
             // Repo not in selected list, remove it
             console.log(`Removing repository: ${existingName}`);
-            await execInRootfs(
-              instance,
-              `rm -rf /root/workspace/${existingName}`
-            );
+            await instance.exec(`rm -rf /root/workspace/${existingName}`);
             removedRepos.push(existingName);
           } else if (existingUrl && !existingUrl.includes(selectedRepo)) {
             // Repo exists but points to different remote, remove and re-clone
             console.log(
               `Repository ${existingName} points to different remote, removing for re-clone`
             );
-            await execInRootfs(
-              instance,
-              `rm -rf /root/workspace/${existingName}`
-            );
+            await instance.exec(`rm -rf /root/workspace/${existingName}`);
             removedRepos.push(existingName);
             existingRepos.delete(existingName); // Mark for re-cloning
           }
@@ -283,8 +275,7 @@ morphRouter.openapi(
               let isAuthError = false;
 
               for (let attempt = 1; attempt <= maxRetries; attempt++) {
-                const cloneCmd = await execInRootfs(
-                  instance,
+                const cloneCmd = await instance.exec(
                   `mkdir -p /root/workspace && cd /root/workspace && git clone https://github.com/${repo}.git ${repoName} 2>&1`
                 );
 
@@ -316,10 +307,7 @@ morphRouter.openapi(
                       `Clone attempt ${attempt} failed for ${repo}, retrying...`
                     );
                     // Clean up partial clone if it exists
-                    await execInRootfs(
-                      instance,
-                      `rm -rf /root/workspace/${repoName}`
-                    );
+                    await instance.exec(`rm -rf /root/workspace/${repoName}`);
                     // Wait before retry with exponential backoff
                     await new Promise((resolve) =>
                       setTimeout(resolve, attempt * 1000)
