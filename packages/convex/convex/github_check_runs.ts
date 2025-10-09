@@ -60,10 +60,10 @@ export const upsertCheckRunFromWebhook = internalMutation({
       return;
     }
 
-    // Map GitHub status to our schema status (filter out unsupported statuses)
     const githubStatus = payload.check_run?.status;
     const validStatuses = ["queued", "in_progress", "completed", "pending", "waiting"] as const;
-    const status = validStatuses.includes(githubStatus as any) ? (githubStatus as typeof validStatuses[number]) : undefined;
+    type ValidStatus = typeof validStatuses[number];
+    const status = githubStatus && validStatuses.includes(githubStatus as ValidStatus) ? githubStatus : undefined;
 
     // Map GitHub conclusion to our schema conclusion
     const githubConclusion = payload.check_run?.conclusion;
@@ -72,7 +72,6 @@ export const upsertCheckRunFromWebhook = internalMutation({
         ? undefined
         : githubConclusion;
 
-    // Normalize timestamps
     const updatedAt = normalizeTimestamp((payload.check_run as any)?.updated_at);
     const startedAt = normalizeTimestamp((payload.check_run as any)?.started_at);
     const completedAt = normalizeTimestamp((payload.check_run as any)?.completed_at);

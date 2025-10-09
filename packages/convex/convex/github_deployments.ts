@@ -134,7 +134,8 @@ export const updateDeploymentStatusFromWebhook = internalMutation({
     }
 
     const validStates = ["error", "failure", "pending", "in_progress", "queued", "success"] as const;
-    const normalizedState = validStates.includes(state as any) ? (state as typeof validStates[number]) : undefined;
+    type ValidState = typeof validStates[number];
+    const normalizedState: ValidState | undefined = state && validStates.includes(state as any) ? (state as ValidState) : undefined;
 
     const updatedAt = normalizeTimestamp(payload.deployment_status?.updated_at);
 

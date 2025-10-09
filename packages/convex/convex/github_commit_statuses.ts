@@ -50,8 +50,9 @@ export const upsertCommitStatusFromWebhook = internalMutation({
     }
 
     const validStates = ["error", "failure", "pending", "success"] as const;
-    const state = validStates.includes(payload.state as any)
-      ? (payload.state as typeof validStates[number])
+    type ValidState = typeof validStates[number];
+    const state = validStates.includes(payload.state as ValidState)
+      ? payload.state
       : "pending";
 
     const createdAt = normalizeTimestamp(payload.created_at);

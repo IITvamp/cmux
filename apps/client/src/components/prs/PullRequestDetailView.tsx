@@ -45,78 +45,12 @@ type WorkflowRunsProps = {
   headSha?: string;
 };
 
-function WorkflowRuns({ teamSlugOrId, repoFullName, prNumber, headSha }: WorkflowRunsProps) {
-  // Fetch all types of CI/CD status from GitHub webhooks:
-  // 1. workflow_run: GitHub Actions workflows (.github/workflows/*.yml)
-  const workflowRuns = useConvexQuery(api.github_workflows.getWorkflowRunsForPr, {
-    teamSlugOrId,
-    repoFullName,
-    prNumber,
-    headSha,
-    limit: 50,
-  });
+type CombinedRun = ReturnType<typeof useCombinedWorkflowData>['allRuns'][number];
 
-  // 2. check_run: Third-party checks (Vercel, Bugbot, GitGuardian, etc.)
-  const checkRuns = useConvexQuery(api.github_check_runs.getCheckRunsForPr, {
-    teamSlugOrId,
-    repoFullName,
-    prNumber,
-    headSha,
-    limit: 50,
-  });
+function deduplicateRuns<T extends { type: string; name?: string; timestamp?: number; environment?: string; task?: string; context?: string; appSlug?: string; appName?: string }>(runs: T[]): T[] {
+  const filteredRuns = runs.filter(run => !(run.type === 'deployment' && run.environment === 'Preview'));
 
-  // 3. deployment: Deployment records (Vercel, etc.)
-  const deployments = useConvexQuery(api.github_deployments.getDeploymentsForPr, {
-    teamSlugOrId,
-    repoFullName,
-    prNumber,
-    headSha,
-    limit: 50,
-  });
-
-  // 4. status: Legacy commit statuses (deprecated GitHub API)
-  const commitStatuses = useConvexQuery(api.github_commit_statuses.getCommitStatusesForPr, {
-    teamSlugOrId,
-    repoFullName,
-    prNumber,
-    headSha,
-    limit: 50,
-  });
-
-  const isLoading = workflowRuns === undefined || checkRuns === undefined || deployments === undefined || commitStatuses === undefined;
-
-  // Combine all types of runs (deduplication happens in Convex queries + client-side Map below)
-  const allRuns = [
-    ...(workflowRuns || []).map(run => ({ ...run, type: 'workflow' as const, name: run.workflowName, timestamp: run.runStartedAt })),
-    ...(checkRuns || []).map(run => ({ ...run, type: 'check' as const, timestamp: run.startedAt })),
-    ...(deployments || []).map(dep => ({
-      ...dep,
-      type: 'deployment' as const,
-      name: dep.description || dep.environment || 'Deployment',
-      timestamp: dep.createdAt,
-      status: dep.state === 'pending' || dep.state === 'queued' || dep.state === 'in_progress' ? 'in_progress' : 'completed',
-      conclusion: dep.state === 'success' ? 'success' : dep.state === 'failure' || dep.state === 'error' ? 'failure' : undefined
-    })),
-    ...(commitStatuses || []).map(status => ({
-      ...status,
-      type: 'status' as const,
-      name: status.context,
-      timestamp: status.updatedAt,
-      status: status.state === 'pending' ? 'in_progress' : 'completed',
-      conclusion: status.state === 'success' ? 'success' : status.state === 'failure' || status.state === 'error' ? 'failure' : undefined
-    })),
-  ];
-
-  // Don't show anything while loading or if no runs
-  if (isLoading || allRuns.length === 0) {
-    return null;
-  }
-
-  // Filter out Preview deployments (they go in sidebar Preview tab instead)
-  const filteredRuns = allRuns.filter(run => !(run.type === 'deployment' && run.environment === 'Preview'));
-
-  // Deduplicate by name/type combination, keeping the most recent
-  const deduped = new Map<string, typeof filteredRuns[number]>();
+  const deduped = new Map<string, T>();
   for (const run of filteredRuns) {
     let key: string;
     if (run.type === 'workflow') key = `workflow-${run.name}`;
@@ -130,15 +64,89 @@ function WorkflowRuns({ teamSlugOrId, repoFullName, prNumber, headSha }: Workflo
     }
   }
 
-  const latestRuns = Array.from(deduped.values());
+  return Array.from(deduped.values());
+}
 
-  const hasAnyRunning = latestRuns.some(
+function useCombinedWorkflowData({ teamSlugOrId, repoFullName, prNumber, headSha }: WorkflowRunsProps) {
+  const workflowRuns = useConvexQuery(api.github_workflows.getWorkflowRunsForPr, {
+    teamSlugOrId,
+    repoFullName,
+    prNumber,
+    headSha,
+    limit: 50,
+  });
+
+  const checkRuns = useConvexQuery(api.github_check_runs.getCheckRunsForPr, {
+    teamSlugOrId,
+    repoFullName,
+    prNumber,
+    headSha,
+    limit: 50,
+  });
+
+  const deployments = useConvexQuery(api.github_deployments.getDeploymentsForPr, {
+    teamSlugOrId,
+    repoFullName,
+    prNumber,
+    headSha,
+    limit: 50,
+  });
+
+  const commitStatuses = useConvexQuery(api.github_commit_statuses.getCommitStatusesForPr, {
+    teamSlugOrId,
+    repoFullName,
+    prNumber,
+    headSha,
+    limit: 50,
+  });
+
+  const isLoading = workflowRuns === undefined || checkRuns === undefined || deployments === undefined || commitStatuses === undefined;
+
+  const allRuns = useMemo(() => {
+    const combined = [
+      ...(workflowRuns || []).map(run => ({ ...run, type: 'workflow' as const, name: run.workflowName, timestamp: run.runStartedAt, url: run.htmlUrl })),
+      ...(checkRuns || []).map(run => {
+        const url = run.htmlUrl || `https://github.com/${repoFullName}/pull/${prNumber}/checks?check_run_id=${run.checkRunId}`;
+        return { ...run, type: 'check' as const, timestamp: run.startedAt, url };
+      }),
+      ...(deployments || []).map(dep => ({
+        ...dep,
+        type: 'deployment' as const,
+        name: dep.description || dep.environment || 'Deployment',
+        timestamp: dep.createdAt,
+        status: dep.state === 'pending' || dep.state === 'queued' || dep.state === 'in_progress' ? 'in_progress' : 'completed',
+        conclusion: dep.state === 'success' ? 'success' : dep.state === 'failure' || dep.state === 'error' ? 'failure' : undefined,
+        url: dep.logUrl || dep.targetUrl || dep.environmentUrl || `https://github.com/${repoFullName}/pull/${prNumber}/checks`
+      })),
+      ...(commitStatuses || []).map(status => ({
+        ...status,
+        type: 'status' as const,
+        name: status.context,
+        timestamp: status.updatedAt,
+        status: status.state === 'pending' ? 'in_progress' : 'completed',
+        conclusion: status.state === 'success' ? 'success' : status.state === 'failure' || status.state === 'error' ? 'failure' : undefined,
+        url: status.targetUrl || `https://github.com/${repoFullName}/pull/${prNumber}/checks`
+      })),
+    ];
+
+    return deduplicateRuns(combined);
+  }, [workflowRuns, checkRuns, deployments, commitStatuses, repoFullName, prNumber]);
+
+  return { allRuns, isLoading };
+}
+
+function WorkflowRuns({ allRuns, isLoading }: { allRuns: CombinedRun[]; isLoading: boolean }) {
+  if (isLoading || allRuns.length === 0) {
+    return null;
+  }
+
+  const hasAnyRunning = allRuns.some(
     (run) => run.status === "in_progress" || run.status === "queued" || run.status === "waiting" || run.status === "pending"
   );
-  const hasAnyFailure = latestRuns.some(
+  const hasAnyFailure = allRuns.some(
     (run) => run.conclusion === "failure" || run.conclusion === "timed_out" || run.conclusion === "action_required"
   );
-  const allPassed = latestRuns.length > 0 && latestRuns.every(
+  const allPassed = allRuns.length > 0 && allRuns.every(
     (run) => run.conclusion === "success" || run.conclusion === "neutral" || run.conclusion === "skipped"
   );
 
@@ -172,76 +180,10 @@ function WorkflowRuns({ teamSlugOrId, repoFullName, prNumber, headSha }: Workflo
   );
 }
 
-function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber, headSha }: WorkflowRunsProps) {
-  const workflowRuns = useConvexQuery(api.github_workflows.getWorkflowRunsForPr, {
-    teamSlugOrId,
-    repoFullName,
-    prNumber,
-    headSha,
-    limit: 50,
-  });
-
-  const checkRuns = useConvexQuery(api.github_check_runs.getCheckRunsForPr, {
-    teamSlugOrId,
-    repoFullName,
-    prNumber,
-    headSha,
-    limit: 50,
-  });
-
-  const deployments = useConvexQuery(api.github_deployments.getDeploymentsForPr, {
-    teamSlugOrId,
-    repoFullName,
-    prNumber,
-    headSha,
-    limit: 50,
-  });
-
-  const commitStatuses = useConvexQuery(api.github_commit_statuses.getCommitStatusesForPr, {
-    teamSlugOrId,
-    repoFullName,
-    prNumber,
-    headSha,
-    limit: 50,
-  });
-
-  // Check if any queries are still loading
-  const isLoading = workflowRuns === undefined || checkRuns === undefined || deployments === undefined || commitStatuses === undefined;
-
-  // Combine all types of runs - group Vercel deployments with their statuses
-  const allRuns = [
-    ...(workflowRuns || []).map(run => ({ ...run, type: 'workflow' as const, name: run.workflowName, timestamp: run.runStartedAt, url: run.htmlUrl })),
-    ...(checkRuns || []).map(run => {
-      const url = run.htmlUrl || `https://github.com/${repoFullName}/pull/${prNumber}/checks?check_run_id=${run.checkRunId}`;
-      return { ...run, type: 'check' as const, timestamp: run.startedAt, url };
-    }),
-    ...(deployments || []).map(dep => ({
-      ...dep,
-      type: 'deployment' as const,
-      name: dep.description || dep.environment || 'Deployment',
-      timestamp: dep.createdAt,
-      status: dep.state === 'pending' || dep.state === 'queued' || dep.state === 'in_progress' ? 'in_progress' : 'completed',
-      conclusion: dep.state === 'success' ? 'success' : dep.state === 'failure' || dep.state === 'error' ? 'failure' : undefined,
-      url: dep.logUrl || dep.targetUrl || dep.environmentUrl || `https://github.com/${repoFullName}/pull/${prNumber}/checks`
-    })),
-    ...(commitStatuses || []).map(status => ({
-      ...status,
-      type: 'status' as const,
-      name: status.context,
-      timestamp: status.updatedAt,
-      status: status.state === 'pending' ? 'in_progress' : 'completed',
-      conclusion: status.state === 'success' ? 'success' : status.state === 'failure' || status.state === 'error' ? 'failure' : undefined,
-      url: status.targetUrl || `https://github.com/${repoFullName}/pull/${prNumber}/checks`
-    })),
-  ];
-
-  console.log('[WorkflowRunsSection] All runs:', {
-    workflows: workflowRuns?.length,
-    checks: checkRuns?.length,
-    deployments: deployments?.map(d => ({ env: d.environment, desc: d.description, state: d.state })),
-    statuses: commitStatuses?.map(s => ({ context: s.context, state: s.state })),
-    total: allRuns.length
-  });
+function WorkflowRunsSection({ allRuns, isLoading }: { allRuns: CombinedRun[]; isLoading: boolean }) {
+  if (isLoading || allRuns.length === 0) {
+    return null;
+  }
 
   const getStatusIcon = (status?: string, conclusion?: string) => {
     if (conclusion === "success") {
@@ -258,7 +200,6 @@ function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber, headSha }: 
     }
     return <AlertCircle className="w-4 h-4 text-neutral-500 dark:text-neutral-400" />;
   };
-
 
   const formatTimeAgo = (timestamp?: number) => {
     if (!timestamp) return "";
@@ -313,40 +254,7 @@ function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber, headSha }: 
     return parts.join(" — ");
   };
 
-
-  // Don't show anything while loading or if no runs
-  if (isLoading || allRuns.length === 0) {
-    return null;
-  }
-
-  // Filter out Preview deployments (they go in sidebar Preview tab instead)
-  const filteredRuns = allRuns.filter(run => !(run.type === 'deployment' && run.environment === 'Preview'));
-
-  // Deduplicate by name/type combination, keeping the most recent
-  const deduped = new Map<string, typeof filteredRuns[number]>();
-  for (const run of filteredRuns) {
-    let key: string;
-    if (run.type === 'workflow') key = `workflow-${run.name}`;
-    else if (run.type === 'check') key = `check-${run.appSlug || run.appName || 'unknown'}-${run.name}`;
-    else if (run.type === 'deployment') key = `deployment-${run.environment || run.task || 'default'}`;
-    else key = `status-${run.context}`;
-
-    const existing = deduped.get(key);
-    if (existing) {
-      console.log('[WorkflowRunsSection] Duplicate found:', { key, name: run.name, existingTime: existing.timestamp, newTime: run.timestamp });
-    }
-    if (!existing || (run.timestamp ?? 0) > (existing.timestamp ?? 0)) {
-      deduped.set(key, run);
-    }
-  }
-
-  console.log('[WorkflowRunsSection] After dedup:', {
-    before: filteredRuns.length,
-    after: deduped.size,
-    names: Array.from(deduped.values()).map(r => r.name)
-  });
-
-  const sortedRuns = Array.from(deduped.values()).sort((a, b) => {
+  const sortedRuns = allRuns.slice().sort((a, b) => {
     const getStatusPriority = (run: typeof a) => {
       if (run.conclusion === "failure" || run.conclusion === "timed_out" || run.conclusion === "action_required") return 0;
       if (run.status === "in_progress" || run.status === "queued" || run.status === "waiting" || run.status === "pending") return 1;
@@ -466,6 +374,13 @@ export function PullRequestDetailView({
     );
   }, [prs, owner, repo, number]);
 
+  const workflowData = useCombinedWorkflowData({
+    teamSlugOrId,
+    repoFullName: currentPR?.repoFullName || '',
+    prNumber: currentPR?.number || 0,
+    headSha: currentPR?.headSha,
+  });
+
   const [diffControls, setDiffControls] = useState<DiffControls | null>(null);
 
   const closePrMutation = useMutation<
@@ -564,10 +479,8 @@ export function PullRequestDetailView({
                 </Suspense>
                 <Suspense fallback={null}>
                   <WorkflowRuns
-                    teamSlugOrId={teamSlugOrId}
-                    repoFullName={currentPR.repoFullName}
-                    prNumber={currentPR.number}
-                    headSha={currentPR.headSha}
+                    allRuns={workflowData.allRuns}
+                    isLoading={workflowData.isLoading}
                   />
                 </Suspense>
               </div>
@@ -668,10 +581,8 @@ export function PullRequestDetailView({
           <div className="bg-white dark:bg-neutral-950">
             <Suspense fallback={null}>
               <WorkflowRunsSection
-                teamSlugOrId={teamSlugOrId}
-                repoFullName={currentPR.repoFullName}
-                prNumber={currentPR.number}
-                headSha={currentPR.headSha}
+                allRuns={workflowData.allRuns}
+                isLoading={workflowData.isLoading}
               />
             </Suspense>
             <Suspense

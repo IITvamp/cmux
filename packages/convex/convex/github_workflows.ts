@@ -80,13 +80,10 @@ export const upsertWorkflowRunFromWebhook = internalMutation({
       payload.workflow_run?.run_started_at,
     );
 
-    // Handle completed_at - it might not exist on the base WorkflowRun type
-    let runCompletedAt: number | undefined;
-    if (payload.workflow_run?.status === "completed") {
-      // For completed runs, try to get the completed_at from the payload
-      const completedAtRaw = (payload.workflow_run as any)?.completed_at;
-      runCompletedAt = normalizeTimestamp(completedAtRaw);
-    }
+    const runCompletedAt =
+      payload.workflow_run?.status === "completed"
+        ? normalizeTimestamp((payload.workflow_run as any).completed_at)
+        : undefined;
 
     // Calculate run duration if we have both start and completion times
     let runDuration: number | undefined;
