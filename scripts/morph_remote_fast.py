@@ -25,6 +25,7 @@ import shlex
 import socket
 import ssl
 import subprocess
+import sys
 import tarfile
 import tempfile
 import textwrap
@@ -60,6 +61,8 @@ EXEC_BUILD_TARGET_ENV = "CMUX_EXEC_TARGET"
 DEFAULT_EXEC_BUILD_TARGET = "linux/amd64"
 EXEC_SOURCE_PATH = Path("scripts/execd/main.go")
 EXEC_BUILD_OUTPUT_DIR = Path("scripts/execd/dist")
+VSCODE_HTTP_PORT = 39378
+VNC_HTTP_PORT = 39380
 
 
 @dataclass(slots=True)
@@ -134,6 +137,18 @@ class TimingsCollector:
         return lines
 
 
+def send_macos_notification(console: Console, title: str, message: str) -> None:
+    if sys.platform != "darwin":
+        return
+    if shutil.which("osascript") is None:
+        return
+    script = f"display notification {json.dumps(message)} with title {json.dumps(title)}"
+    try:
+        subprocess.run(["osascript", "-e", script], check=False)
+    except Exception as exc:  # noqa: BLE001
+        console.info(f"Failed to send macOS notification: {exc}")
+
+
 def _exec_git(repo_root: Path, args: list[str]) -> str | None:
     env = dict(os.environ)
     env.setdefault("LC_ALL", "C")
@@ -198,7 +213,7 @@ async def _expose_standard_ports(
     instance: Instance,
     console: Console,
 ) -> dict[int, str]:
-    ports = [EXEC_HTTP_PORT, 39376, 39377, 39378, 39379, 39380, 39381]
+    ports = [EXEC_HTTP_PORT, 39376, 39377, VSCODE_HTTP_PORT, 39379, VNC_HTTP_PORT, 39381]
     console.info("Exposing standard HTTP services...")
 
     async def _expose(port: int) -> tuple[int, str]:
@@ -829,6 +844,14 @@ async def task_apt_bootstrap(ctx: TaskContext) -> None:
         """
         set -eux
         
+        # Configure APT for parallel downloads (16 parallel to saturate 2gbps)
+        cat > /etc/apt/apt.conf.d/99parallel << 'EOF'
+        Acquire::Queue-Mode "host";
+        APT::Acquire::Max-Parallel-Downloads "16";
+        Acquire::http::Pipeline-Depth "10";
+        Acquire::https::Pipeline-Depth "10";
+        EOF
+        
         # Update and install core utilities needed for source setup
         DEBIAN_FRONTEND=noninteractive apt-get update
         DEBIAN_FRONTEND=noninteractive apt-get install -y \
@@ -1000,7 +1023,7 @@ async def task_install_nvm(ctx: TaskContext) -> None:
 
 @registry.task(
     name="install-bun",
-    deps=("install-node-runtime",),
+    deps=("install-base-packages",),
     description="Install Bun runtime",
 )
 async def task_install_bun(ctx: TaskContext) -> None:
@@ -1120,7 +1143,7 @@ async def task_install_cursor(ctx: TaskContext) -> None:
 
 @registry.task(
     name="install-global-cli",
-    deps=("install-bun",),
+    deps=("install-bun", "install-node-runtime"),
     description="Install global agent CLIs with bun",
 )
 async def task_install_global_cli(ctx: TaskContext) -> None:
@@ -1158,7 +1181,7 @@ async def task_upload_repo(ctx: TaskContext) -> None:
 
 @registry.task(
     name="install-repo-dependencies",
-    deps=("upload-repo", "install-bun"),
+    deps=("upload-repo", "install-bun", "install-node-runtime"),
     description="Install workspace dependencies via bun",
 )
 async def task_install_repo_dependencies(ctx: TaskContext) -> None:
@@ -1268,11 +1291,11 @@ async def task_install_collect_scripts(ctx: TaskContext) -> None:
 
 
 @registry.task(
-    name="build-rust-binaries",
-    deps=("upload-repo", "install-uv-python", "install-rust-toolchain"),
-    description="Build envd/envctl and cmux-proxy via cargo install",
+    name="build-env-binaries",
+    deps=("upload-repo", "install-rust-toolchain"),
+    description="Build envd/envctl binaries via cargo install",
 )
-async def task_build_rust_binaries(ctx: TaskContext) -> None:
+async def task_build_env_binaries(ctx: TaskContext) -> None:
     repo = shlex.quote(ctx.remote_repo_root)
     cmd = textwrap.dedent(
         f"""
@@ -1281,15 +1304,33 @@ async def task_build_rust_binaries(ctx: TaskContext) -> None:
         export PATH="${{CARGO_HOME}}/bin:$PATH"
         cd {repo}
         cargo install --path crates/cmux-env --locked --force
+        """
+    )
+    await ctx.run("build-env-binaries", cmd, timeout=60 * 30)
+
+
+@registry.task(
+    name="build-cmux-proxy",
+    deps=("upload-repo", "install-rust-toolchain"),
+    description="Build cmux-proxy binary via cargo install",
+)
+async def task_build_cmux_proxy(ctx: TaskContext) -> None:
+    repo = shlex.quote(ctx.remote_repo_root)
+    cmd = textwrap.dedent(
+        f"""
+        export RUSTUP_HOME=/usr/local/rustup
+        export CARGO_HOME=/usr/local/cargo
+        export PATH="${{CARGO_HOME}}/bin:$PATH"
+        cd {repo}
         cargo install --path crates/cmux-proxy --locked --force
         """
     )
-    await ctx.run("build-rust-binaries", cmd, timeout=60 * 30)
+    await ctx.run("build-cmux-proxy", cmd, timeout=60 * 30)
 
 
 @registry.task(
     name="link-rust-binaries",
-    deps=("build-rust-binaries",),
+    deps=("build-env-binaries", "build-cmux-proxy"),
     description="Symlink built Rust binaries into /usr/local/bin",
 )
 async def task_link_rust_binaries(ctx: TaskContext) -> None:
@@ -1518,34 +1559,6 @@ async def snapshot_instance(
     return snapshot
 
 
-async def start_instance_from_snapshot(
-    client: MorphCloudClient,
-    snapshot_id: str,
-    *,
-    vcpus: int,
-    memory: int,
-    disk_size: int,
-    ttl_seconds: int,
-    ttl_action: t.Literal["stop", "pause"],
-    console: Console,
-) -> tuple[Instance, dict[int, str]]:
-    console.info(
-        f"Booting new instance from snapshot {snapshot_id} "
-        f"(vcpus={vcpus}, memory={memory}, disk={disk_size})"
-    )
-    instance = await client.instances.aboot(
-        snapshot_id,
-        vcpus=vcpus,
-        memory=memory,
-        disk_size=disk_size,
-        ttl_seconds=ttl_seconds,
-        ttl_action=ttl_action,
-    )
-    await _await_instance_ready(instance, console=console)
-    port_map = await _expose_standard_ports(instance, console)
-    return instance, port_map
-
-
 async def provision_and_snapshot(args: argparse.Namespace) -> None:
     console = Console()
     timings = TimingsCollector()
@@ -1618,81 +1631,45 @@ async def provision_and_snapshot(args: argparse.Namespace) -> None:
     )
     await run_task_graph(registry, ctx)
 
-    snapshot = await snapshot_instance(instance, console=console)
-
-    new_instance, new_port_map = await start_instance_from_snapshot(
-        client,
-        snapshot.id,
-        vcpus=args.vcpus,
-        memory=args.memory,
-        disk_size=args.disk_size,
-        ttl_seconds=args.ttl_seconds,
-        ttl_action=args.ttl_action,
-        console=console,
-    )
-    started_instances.append(new_instance)
-
-    console.always(
-        f"Dashboard: https://cloud.morph.so/web/instances/{new_instance.id}?ssh=true"
-    )
-    new_exec_service_url = new_port_map.get(EXEC_HTTP_PORT)
-    if new_exec_service_url is None:
-        raise RuntimeError("Failed to expose exec service port on validation instance")
-    new_ctx = TaskContext(
-        instance=new_instance,
-        repo_root=repo_root,
-        remote_repo_root="/cmux",
-        remote_repo_tar="/tmp/cmux-repo.tar",
-        console=console,
-        timings=timings,
-        resource_profile=resource_profile,
-    )
-    await setup_exec_service(
-        new_ctx,
-        binary_path=exec_binary_path,
-        service_url=new_exec_service_url,
-    )
-    for attempt in range(5):
-        try:
-            await configure_provisioning_cgroup(new_ctx)
-            break
-        except (ApiError, httpx.HTTPError, OSError) as exc:
-            if attempt == 4:
-                raise
-            delay = 1.5 * (attempt + 1)
-            console.info(
-                f"Retrying provisioning cgroup setup on validation instance "
-                f"(attempt {attempt + 1}/5) after error: {exc}"
-            )
-            await asyncio.sleep(delay)
-
-    # Re-run checks on the snapshot-booted instance
-    console.info("Running post-snapshot validation checks...")
-    check_tasks = [
-        "check-cargo",
-        "check-node",
-        "check-bun",
-        "check-uv",
-        "check-gh",
-        "check-envctl",
-        "check-vscode",
-        "check-vnc",
-        "check-devtools",
-    ]
-    for task_name in check_tasks:
-        task_def = registry.tasks.get(task_name)
-        if task_def:
-            await task_def.func(new_ctx)
-
-    console.always(f"Provisioning complete. Snapshot id: {snapshot.id}")
-    console.always(f"Primary instance: {instance.id}")
-    console.always(f"Validation instance: {new_instance.id}")
+    graph = format_dependency_graph(registry)
+    if graph:
+        console.always("\nDependency Graph")
+        for line in graph.splitlines():
+            console.always(line)
 
     summary = timings.summary()
     if summary:
         console.always("\nTiming Summary")
         for line in summary:
             console.always(line)
+
+    vscode_url = port_map.get(VSCODE_HTTP_PORT)
+    if vscode_url is None:
+        raise RuntimeError("Failed to expose VS Code service URL")
+    vnc_base_url = port_map.get(VNC_HTTP_PORT)
+    if vnc_base_url is None:
+        raise RuntimeError("Failed to expose VNC service URL")
+    vnc_url = urllib.parse.urljoin(vnc_base_url.rstrip("/") + "/", "vnc.html")
+
+    console.always(f"VS Code is at this URL: {vscode_url}")
+    console.always(f"VNC is at this URL: {vnc_url}")
+
+    send_macos_notification(
+        console,
+        "Verify cmux workspace",
+        f"VS Code: {vscode_url} / VNC: {vnc_url}",
+    )
+    console.info("Sent verification notification (macOS only).")
+    console.always(
+        "Review the workspace URLs above, then press Enter to create the snapshot."
+    )
+    await asyncio.to_thread(input, "")
+
+    snapshot = await snapshot_instance(instance, console=console)
+
+    console.always(f"Snapshot created: {snapshot.id}")
+    console.always(f"Provisioning complete. Snapshot id: {snapshot.id}")
+    console.always(f"Primary instance: {instance.id}")
 
 
 def format_dependency_graph(registry: TaskRegistry) -> str:
