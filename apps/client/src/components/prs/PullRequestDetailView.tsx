@@ -5,7 +5,7 @@ import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
 import { useQuery as useRQ, useMutation, type DefaultError } from "@tanstack/react-query";
 import { useQuery as useConvexQuery } from "convex/react";
-import { ExternalLink, X, Check, Circle, Clock, AlertCircle, Loader2, ChevronRight } from "lucide-react";
+import { ExternalLink, X, Check, Circle, Clock, AlertCircle, Loader2, ChevronRight, ChevronDown } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
@@ -189,7 +189,23 @@ function WorkflowRunsSection({ allRuns, isLoading }: { allRuns: CombinedRun[]; i
     (run) => run.conclusion === "success" || run.conclusion === "neutral" || run.conclusion === "skipped"
   );
 
-  if (isLoading || allRuns.length === 0) {
+  if (isLoading) {
+    return (
+      <div>
+        <div className="w-full flex items-center pl-3 pr-2.5 py-1.5 border-y border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900">
+          <div className="flex items-center" style={{ width: '20px' }}>
+            <div className="w-3.5 h-3.5 bg-neutral-200 dark:bg-neutral-700 rounded animate-pulse" />
+          </div>
+          <div className="flex items-center" style={{ width: '20px' }}>
+            <div className="w-3 h-3 bg-neutral-200 dark:bg-neutral-700 rounded animate-pulse" />
+          </div>
+          <div className="h-3 w-24 bg-neutral-200 dark:bg-neutral-700 rounded animate-pulse" />
+        </div>
+      </div>
+    );
+  }
+
+  if (allRuns.length === 0) {
     return null;
   }
 
@@ -288,15 +304,16 @@ function WorkflowRunsSection({ allRuns, isLoading }: { allRuns: CombinedRun[]; i
     <div>
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center pl-3 pr-2.5 py-1.5 border-y border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900"
+        className="w-full flex items-center pl-3 pr-2.5 py-1.5 border-y border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 transition-colors group"
       >
         <div className="flex items-center" style={{ width: '20px' }}>
-          <ChevronRight
-            className={`w-3.5 h-3.5 text-neutral-600 dark:text-neutral-400 transition-transform ${
-              isExpanded ? "rotate-90" : ""
-            }`}
-            strokeWidth={1.5}
-          />
+          <div className="text-neutral-400 dark:text-neutral-500 group-hover:text-neutral-600 dark:group-hover:text-neutral-400">
+            {isExpanded ? (
+              <ChevronDown className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronRight className="w-3.5 h-3.5" />
+            )}
+          </div>
         </div>
         <div className="flex items-center" style={{ width: '20px' }}>
           <div className={`${summaryColorClass}`}>
@@ -313,7 +330,7 @@ function WorkflowRunsSection({ allRuns, isLoading }: { allRuns: CombinedRun[]; i
             href={run.url || '#'}
             target="_blank"
             rel="noreferrer"
-            className="flex items-center justify-between gap-2 pl-8 pr-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors group"
+            className="flex items-center justify-between gap-2 pl-8 pr-3 py-1 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors group"
           >
             <div className="flex items-center gap-1.5 flex-1 min-w-0">
               <div className="shrink-0">
@@ -597,8 +614,42 @@ export function PullRequestDetailView({
                 <span className="text-neutral-500 dark:text-neutral-600 select-none">
                   •
                 </span>
-                <span className="text-[11px] text-neutral-600 dark:text-neutral-300 select-none">
-                  {currentPR.headRef || "?"} → {currentPR.baseRef || "?"}
+                <span className="text-[11px] text-neutral-600 dark:text-neutral-300 flex items-center gap-1">
+                  <button
+                    onClick={() => {
+                      if (currentPR.headRef) {
+                        navigator.clipboard
+                          .writeText(currentPR.headRef)
+                          .then(() => {
+                            toast.success(`Copied branch: ${currentPR.headRef}`);
+                          })
+                          .catch(() => {
+                            toast.error("Failed to copy branch");
+                          });
+                      }
+                    }}
+                    className="hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors cursor-pointer"
+                  >
+                    {currentPR.headRef || "?"}
+                  </button>
+                  <span className="select-none">→</span>
+                  <button
+                    onClick={() => {
+                      if (currentPR.baseRef) {
+                        navigator.clipboard
+                          .writeText(currentPR.baseRef)
+                          .then(() => {
+                            toast.success(`Copied branch: ${currentPR.baseRef}`);
+                          })
+                          .catch(() => {
+                            toast.error("Failed to copy branch");
+                          });
+                      }
+                    }}
+                    className="hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors cursor-pointer"
+                  >
+                    {currentPR.baseRef || "?"}
+                  </button>
                 </span>
               </div>
             </div>
