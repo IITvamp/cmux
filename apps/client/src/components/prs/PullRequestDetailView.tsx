@@ -347,6 +347,21 @@ function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber, headSha }: 
   });
 
   const sortedRuns = Array.from(deduped.values()).sort((a, b) => {
+    const getStatusPriority = (run: typeof a) => {
+      if (run.conclusion === "failure" || run.conclusion === "timed_out" || run.conclusion === "action_required") return 0;
+      if (run.status === "in_progress" || run.status === "queued" || run.status === "waiting" || run.status === "pending") return 1;
+      if (run.conclusion === "success" || run.conclusion === "neutral" || run.conclusion === "skipped") return 2;
+      if (run.conclusion === "cancelled") return 3;
+      return 4;
+    };
+
+    const priorityA = getStatusPriority(a);
+    const priorityB = getStatusPriority(b);
+
+    if (priorityA !== priorityB) {
+      return priorityA - priorityB;
+    }
+
     return (b.timestamp ?? 0) - (a.timestamp ?? 0);
   });
 
