@@ -1,4 +1,5 @@
 import type {
+  CheckRunEvent,
   DeploymentEvent,
   DeploymentStatusEvent,
   InstallationEvent,
@@ -298,7 +299,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
       }
       case "check_run": {
         try {
-          const checkRunPayload = body as any; // CheckRunEvent
+          const checkRunPayload = body as CheckRunEvent;
           const repoFullName = String(checkRunPayload.repository?.full_name ?? "");
           const installation = Number(checkRunPayload.installation?.id ?? 0);
 
@@ -311,7 +312,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             name: checkRunPayload.check_run?.name,
             status: checkRunPayload.check_run?.status,
             conclusion: checkRunPayload.check_run?.conclusion,
-            prNumbers: checkRunPayload.check_run?.pull_requests?.map((pr: any) => pr.number),
+            prNumbers: checkRunPayload.check_run?.pull_requests?.map((pr) => pr.number),
           });
 
           if (!repoFullName || !installation) {

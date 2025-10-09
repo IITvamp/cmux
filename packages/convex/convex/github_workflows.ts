@@ -15,6 +15,10 @@ import { internalMutation } from "./_generated/server";
 import { authQuery } from "./users/utils";
 import type { WorkflowRunEvent } from "@octokit/webhooks-types";
 
+type WorkflowRunWithCompletedAt = NonNullable<WorkflowRunEvent["workflow_run"]> & {
+  completed_at?: string | null;
+};
+
 function normalizeTimestamp(
   value: string | number | null | undefined,
 ): number | undefined {
@@ -82,7 +86,7 @@ export const upsertWorkflowRunFromWebhook = internalMutation({
 
     const runCompletedAt =
       payload.workflow_run?.status === "completed"
-        ? normalizeTimestamp((payload.workflow_run as any).completed_at)
+        ? normalizeTimestamp((payload.workflow_run as WorkflowRunWithCompletedAt).completed_at)
         : undefined;
 
     // Calculate run duration if we have both start and completion times

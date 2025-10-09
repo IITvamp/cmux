@@ -72,9 +72,9 @@ export const upsertCheckRunFromWebhook = internalMutation({
         ? undefined
         : githubConclusion;
 
-    const updatedAt = normalizeTimestamp((payload.check_run as any)?.updated_at);
-    const startedAt = normalizeTimestamp((payload.check_run as any)?.started_at);
-    const completedAt = normalizeTimestamp((payload.check_run as any)?.completed_at);
+    const updatedAt = normalizeTimestamp((payload.check_run as { updated_at?: string | null })?.updated_at);
+    const startedAt = normalizeTimestamp((payload.check_run as { started_at?: string | null })?.started_at);
+    const completedAt = normalizeTimestamp((payload.check_run as { completed_at?: string | null })?.completed_at);
 
     // Extract app info
     const appName = payload.check_run?.app?.name;
