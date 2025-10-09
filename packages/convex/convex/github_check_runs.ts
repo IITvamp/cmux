@@ -11,10 +11,12 @@
  */
 import { v } from "convex/values";
 import { getTeamId } from "../_shared/team";
-import { checkRunWebhookPayload } from "../_shared/github_webhook_validators";
+import {
+  checkRunWebhookPayload,
+  type GithubCheckRunEventPayload,
+} from "../_shared/github_webhook_validators";
 import { internalMutation } from "./_generated/server";
 import { authQuery } from "./users/utils";
-import type { CheckRunEvent } from "@octokit/webhooks-types";
 
 function normalizeTimestamp(
   value: string | number | null | undefined,
@@ -35,7 +37,7 @@ export const upsertCheckRunFromWebhook = internalMutation({
     payload: checkRunWebhookPayload,
   },
   handler: async (ctx, args) => {
-    const payload = args.payload as CheckRunEvent;
+    const payload: GithubCheckRunEventPayload = args.payload;
     const { installationId, repoFullName, teamId } = args;
 
 
@@ -57,15 +59,33 @@ export const upsertCheckRunFromWebhook = internalMutation({
 
     const githubStatus = payload.check_run?.status;
     const validStatuses = ["queued", "in_progress", "completed", "pending", "waiting"] as const;
-    type ValidStatus = typeof validStatuses[number];
-    const status = githubStatus && validStatuses.includes(githubStatus as ValidStatus) ? githubStatus : undefined;
+    type ValidStatus = (typeof validStatuses)[number];
+    const isValidStatus = (value: string | null | undefined): value is ValidStatus =>
+      typeof value === "string" && (validStatuses as readonly string[]).includes(value);
+    const status: ValidStatus | undefined = isValidStatus(githubStatus) ? githubStatus : undefined;
 
     // Map GitHub conclusion to our schema conclusion
     const githubConclusion = payload.check_run?.conclusion;
-    const conclusion =
+    const validConclusions = [
+      "success",
+      "failure",
+      "neutral",
+      "cancelled",
+      "skipped",
+      "timed_out",
+      "action_required",
+    ] as const;
+    type ValidConclusion = (typeof validConclusions)[number];
+    const isValidConclusion = (
+      value: string | null | undefined,
+    ): value is ValidConclusion =>
+      typeof value === "string" && (validConclusions as readonly string[]).includes(value);
+    const conclusion: ValidConclusion | undefined =
       githubConclusion === "stale" || githubConclusion === null
         ? undefined
-        : githubConclusion;
+        : isValidConclusion(githubConclusion)
+          ? githubConclusion
+          : undefined;
 
     const updatedAt = normalizeTimestamp((payload.check_run as { updated_at?: string | null })?.updated_at);
     const startedAt = normalizeTimestamp((payload.check_run as { started_at?: string | null })?.started_at);

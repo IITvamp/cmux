@@ -1,9 +1,11 @@
 import { v } from "convex/values";
 import { getTeamId } from "../_shared/team";
-import { commitStatusWebhookPayload } from "../_shared/github_webhook_validators";
+import {
+  commitStatusWebhookPayload,
+  type GithubCommitStatusEventPayload,
+} from "../_shared/github_webhook_validators";
 import { internalMutation } from "./_generated/server";
 import { authQuery } from "./users/utils";
-import type { StatusEvent } from "@octokit/webhooks-types";
 
 function normalizeTimestamp(
   value: string | number | null | undefined,
@@ -24,7 +26,7 @@ export const upsertCommitStatusFromWebhook = internalMutation({
     payload: commitStatusWebhookPayload,
   },
   handler: async (ctx, args) => {
-    const payload = args.payload as StatusEvent;
+    const payload: GithubCommitStatusEventPayload = args.payload;
     const { installationId, repoFullName, teamId } = args;
 
 
@@ -44,10 +46,12 @@ export const upsertCommitStatusFromWebhook = internalMutation({
     }
 
     const validStates = ["error", "failure", "pending", "success"] as const;
-    type ValidState = typeof validStates[number];
-    const state = validStates.includes(payload.state as ValidState)
-      ? payload.state
-      : "pending";
+    type ValidState = (typeof validStates)[number];
+    const isValidState = (
+      value: string | null | undefined,
+    ): value is ValidState =>
+      typeof value === "string" && (validStates as readonly string[]).includes(value);
+    const state: ValidState = isValidState(payload.state) ? payload.state : "pending";
 
     const createdAt = normalizeTimestamp(payload.created_at);
     const updatedAt = normalizeTimestamp(payload.updated_at);

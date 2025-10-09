@@ -617,15 +617,22 @@ sandboxesRouter.openapi(
       let environmentPorts: number[] | undefined;
       if (instanceMeta?.environmentId) {
         try {
-          const envDoc = await convex.query(api.environments.get, {
+          const environmentsForTeam = await convex.query(api.environments.list, {
             teamSlugOrId,
-            id: instanceMeta.environmentId as string & {
-              __tableName: "environments";
-            },
           });
-          environmentPorts = envDoc?.exposedPorts ?? undefined;
-        } catch {
-          // ignore lookup errors; fall back to devcontainer ports
+          const matchedEnvironment = environmentsForTeam.find(
+            (environment) => environment._id === instanceMeta.environmentId,
+          );
+          environmentPorts = matchedEnvironment?.exposedPorts ?? undefined;
+        } catch (error) {
+          console.warn(
+            "[sandboxes.publishNetworking] Failed to resolve environment ports",
+            {
+              teamSlugOrId,
+              environmentId: instanceMeta.environmentId,
+              error,
+            },
+          );
         }
       }
 

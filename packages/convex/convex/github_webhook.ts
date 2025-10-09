@@ -14,6 +14,13 @@ import { env } from "../_shared/convex-env";
 import { hmacSha256, safeEqualHex, sha256Hex } from "../_shared/crypto";
 import { bytesToHex } from "../_shared/encoding";
 import { streamInstallationRepositories } from "../_shared/githubApp";
+import {
+  sanitizeCheckRunEvent,
+  sanitizeDeploymentEvent,
+  sanitizeDeploymentStatusEvent,
+  sanitizeCommitStatusEvent,
+  sanitizeWorkflowRunEvent,
+} from "../_shared/github_webhook_validators";
 import { internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 
@@ -249,13 +256,15 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
           }
 
 
+          const sanitizedPayload = sanitizeWorkflowRunEvent(workflowRunPayload);
+
           await _ctx.runMutation(
             internal.github_workflows.upsertWorkflowRunFromWebhook,
             {
               installationId: installation,
               repoFullName,
               teamId,
-              payload: workflowRunPayload,
+              payload: sanitizedPayload,
             },
           );
 
@@ -306,11 +315,13 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
           }
 
 
+          const sanitizedPayload = sanitizeCheckRunEvent(checkRunPayload);
+
           await _ctx.runMutation(internal.github_check_runs.upsertCheckRunFromWebhook, {
             installationId: installation,
             repoFullName,
             teamId,
-            payload: checkRunPayload,
+            payload: sanitizedPayload,
           });
 
         } catch (err) {
@@ -357,13 +368,15 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             break;
           }
 
+          const sanitizedPayload = sanitizeDeploymentEvent(deploymentPayload);
+
           await _ctx.runMutation(
             internal.github_deployments.upsertDeploymentFromWebhook,
             {
               installationId: installation,
               repoFullName,
               teamId,
-              payload: deploymentPayload,
+              payload: sanitizedPayload,
             },
           );
 
@@ -407,13 +420,15 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             break;
           }
 
+          const sanitizedPayload = sanitizeDeploymentStatusEvent(deploymentStatusPayload);
+
           await _ctx.runMutation(
             internal.github_deployments.updateDeploymentStatusFromWebhook,
             {
               installationId: installation,
               repoFullName,
               teamId,
-              payload: deploymentStatusPayload,
+              payload: sanitizedPayload,
             },
           );
 
@@ -457,13 +472,15 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             break;
           }
 
+          const sanitizedPayload = sanitizeCommitStatusEvent(statusPayload);
+
           await _ctx.runMutation(
             internal.github_commit_statuses.upsertCommitStatusFromWebhook,
             {
               installationId: installation,
               repoFullName,
               teamId,
-              payload: statusPayload,
+              payload: sanitizedPayload,
             },
           );
 

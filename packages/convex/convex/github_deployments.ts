@@ -1,12 +1,13 @@
 import { v } from "convex/values";
 import { getTeamId } from "../_shared/team";
-import { deploymentWebhookPayload, deploymentStatusWebhookPayload } from "../_shared/github_webhook_validators";
+import {
+  deploymentWebhookPayload,
+  deploymentStatusWebhookPayload,
+  type GithubDeploymentEventPayload,
+  type GithubDeploymentStatusEventPayload,
+} from "../_shared/github_webhook_validators";
 import { internalMutation } from "./_generated/server";
 import { authQuery } from "./users/utils";
-import type {
-  DeploymentEvent,
-  DeploymentStatusEvent,
-} from "@octokit/webhooks-types";
 
 function normalizeTimestamp(
   value: string | number | null | undefined,
@@ -27,7 +28,7 @@ export const upsertDeploymentFromWebhook = internalMutation({
     payload: deploymentWebhookPayload,
   },
   handler: async (ctx, args) => {
-    const payload = args.payload as DeploymentEvent;
+    const payload: GithubDeploymentEventPayload = args.payload;
     const { installationId, repoFullName, teamId } = args;
 
 
@@ -102,7 +103,7 @@ export const updateDeploymentStatusFromWebhook = internalMutation({
     payload: deploymentStatusWebhookPayload,
   },
   handler: async (ctx, args) => {
-    const payload = args.payload as DeploymentStatusEvent;
+    const payload: GithubDeploymentStatusEventPayload = args.payload;
     const { installationId, repoFullName, teamId } = args;
 
 
