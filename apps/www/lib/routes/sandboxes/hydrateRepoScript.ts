@@ -263,13 +263,16 @@ async function main() {
         clearWorkspace(config.workspacePath);
       }
 
-      if (!hasGit || needsClear) {
+      const needsClone = !hasGit || needsClear;
+
+      if (needsClone) {
         // Clone repository
         cloneRepository(config);
-      } else {
-        // Fetch updates
-        fetchUpdates(config.workspacePath);
       }
+
+      // Always fetch after ensuring the repository exists so the selected
+      // base branch is available (especially on the first hydration).
+      fetchUpdates(config.workspacePath);
 
       // Checkout branch
       if (config.baseBranch) {
