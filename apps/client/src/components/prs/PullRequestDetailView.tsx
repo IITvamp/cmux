@@ -99,7 +99,7 @@ function useCombinedWorkflowData({ teamSlugOrId, repoFullName, prNumber, headSha
       timestamp: dep.createdAt,
       status: dep.state === 'pending' || dep.state === 'queued' || dep.state === 'in_progress' ? 'in_progress' : 'completed',
       conclusion: dep.state === 'success' ? 'success' : dep.state === 'failure' || dep.state === 'error' ? 'failure' : undefined,
-      url: dep.logUrl || dep.targetUrl || dep.environmentUrl || `https://github.com/${repoFullName}/pull/${prNumber}/checks`
+      url: dep.targetUrl
     })),
     ...(commitStatuses || []).map(status => ({
       ...status,
@@ -108,7 +108,7 @@ function useCombinedWorkflowData({ teamSlugOrId, repoFullName, prNumber, headSha
       timestamp: status.updatedAt,
       status: status.state === 'pending' ? 'in_progress' : 'completed',
       conclusion: status.state === 'success' ? 'success' : status.state === 'failure' || status.state === 'error' ? 'failure' : undefined,
-      url: status.targetUrl || `https://github.com/${repoFullName}/pull/${prNumber}/checks`
+      url: status.targetUrl
     })),
   ], [workflowRuns, checkRuns, deployments, commitStatuses, repoFullName, prNumber]);
 
@@ -340,12 +340,12 @@ function WorkflowRunsSection({
             const appLabel = run.type === 'check' && 'appSlug' in run && run.appSlug
               ? `[${run.appSlug}]`
               : run.type === 'check' && 'appName' in run && run.appName
-              ? `[${run.appName}]`
-              : run.type === 'deployment'
-              ? '[deployment]'
-              : run.type === 'status'
-              ? '[status]'
-              : null;
+                ? `[${run.appName}]`
+                : run.type === 'deployment'
+                  ? '[deployment]'
+                  : run.type === 'status'
+                    ? '[status]'
+                    : null;
 
             return (
               <a
