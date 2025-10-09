@@ -38,6 +38,15 @@ mod linux_only {
         sleep(Duration::from_millis(50)).await;
     }
 
+    fn temp_workspace_dir(name: &str) -> std::path::PathBuf {
+        let base = std::env::temp_dir()
+            .join("cmux-ldpreload-tests")
+            .join(std::process::id().to_string());
+        let dir = base.join(name);
+        std::fs::create_dir_all(&dir).expect("create temporary workspace dir");
+        dir
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_ld_preload_connect_rewrite() {
         let ws_ip = workspace_ip_from_name("workspace-1").expect("mapping");
@@ -135,8 +144,7 @@ mod linux_only {
         }
 
         // Prepare workspace directory and run child with that CWD
-        let ws_dir = "/root/workspace-c";
-        let _ = std::fs::create_dir_all(ws_dir);
+        let ws_dir = temp_workspace_dir(ws_name);
 
         let script = format!(
             "exec 3<>/dev/tcp/127.0.0.1/{}; echo -n ping >&3; dd bs=4 count=1 <&3 status=none",
@@ -145,7 +153,7 @@ mod linux_only {
         let mut cmd = Command::new("bash");
         cmd.arg("-lc")
             .arg(script)
-            .current_dir(ws_dir)
+            .current_dir(&ws_dir)
             // No CMUX_WORKSPACE_INTERNAL on purpose; rely on CWD detection
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit());
@@ -203,10 +211,8 @@ mod linux_only {
         }
 
         // Create workspace directories for CWD-based detection
-        let ws_dir_a = "/root/workspace-a";
-        let ws_dir_b = "/root/workspace-b";
-        let _ = std::fs::create_dir_all(ws_dir_a);
-        let _ = std::fs::create_dir_all(ws_dir_b);
+        let ws_dir_a = temp_workspace_dir(ws_a);
+        let ws_dir_b = temp_workspace_dir(ws_b);
 
         // Verify curl exists for clearer error if missing
         let curl_ok = Command::new("sh")
@@ -223,7 +229,7 @@ mod linux_only {
         cmd_a
             .arg("-lc")
             .arg(format!("curl -sS -m 5 {}", url))
-            .current_dir(ws_dir_a)
+            .current_dir(&ws_dir_a)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         let need_set = match env::var("LD_PRELOAD") {
@@ -252,7 +258,7 @@ mod linux_only {
         cmd_b
             .arg("-lc")
             .arg(format!("curl -sS -m 3 {}", url))
-            .current_dir(ws_dir_b)
+            .current_dir(&ws_dir_b)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         if need_set {
