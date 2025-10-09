@@ -36,6 +36,7 @@ async function spawnVSCodeContainer(docker: Docker): Promise<ContainerInfo> {
       AutoRemove: true,
       Privileged: true,
       PortBindings: {
+        "39375/tcp": [{ HostPort: "0" }],
         "39378/tcp": [{ HostPort: "0" }],
         "39377/tcp": [{ HostPort: "0" }],
         "39376/tcp": [{ HostPort: "0" }],
@@ -45,6 +46,7 @@ async function spawnVSCodeContainer(docker: Docker): Promise<ContainerInfo> {
       },
     },
     ExposedPorts: {
+      "39375/tcp": {},
       "39378/tcp": {},
       "39377/tcp": {},
       "39376/tcp": {},

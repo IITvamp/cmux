@@ -175,6 +175,9 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       }
 
       // Also cache other known ports while we're at it
+      if (ports["39375/tcp"]?.[0]?.HostPort) {
+        portMapping["39375"] = ports["39375/tcp"][0].HostPort;
+      }
       if (ports["39378/tcp"]?.[0]?.HostPort) {
         portMapping["39378"] = ports["39378/tcp"][0].HostPort;
       }
@@ -264,6 +267,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         AutoRemove: true,
         Privileged: true,
         PortBindings: {
+          "39375/tcp": [{ HostPort: "0" }], // Exec service port
           "39378/tcp": [{ HostPort: "0" }], // VS Code port
           "39377/tcp": [{ HostPort: "0" }], // Worker port
           "39376/tcp": [{ HostPort: "0" }], // Extension socket port
@@ -273,6 +277,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         },
       },
       ExposedPorts: {
+        "39375/tcp": {},
         "39378/tcp": {},
         "39377/tcp": {},
         "39376/tcp": {},

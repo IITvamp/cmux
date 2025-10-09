@@ -37,9 +37,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import dotenv
+import httpx
 from morphcloud.api import Instance, InstanceExecResponse, MorphCloudClient, Snapshot
-from morphcloud._ssh import SSHError
-from paramiko import SSHException
 
 from morph_common import (
     ensure_docker as docker_install_script,
@@ -309,9 +308,11 @@ class HttpExecClient:
                     continue
                 try:
                     event = json.loads(line)
-                except json.JSONDecodeError as exc:
+                except json.JSONDecodeError:
                     stderr_parts.append(f"invalid exec response: {line}")
-                    self._console.info(f"[{label}][stderr] invalid exec response: {line}")
+                    self._console.info(
+                        f"[{label}][stderr] invalid exec response: {line}"
+                    )
                     continue
                 event_type = event.get("type")
                 if event_type == "stdout":
@@ -453,12 +454,19 @@ async def setup_exec_service(
         set -euo pipefail
         install -Dm0755 {remote_temp} {remote_binary}
         rm -f {remote_temp}
-        pkill -f {remote_binary} || true
+        if command -v pkill >/dev/null 2>&1; then
+            pkill -x {EXEC_BINARY_NAME} || true
+        else
+            pids=$(ps -eo pid,comm | awk '$2 == "{EXEC_BINARY_NAME}" {{print $1}}')
+            if [ -n "$pids" ]; then
+                kill $pids || true
+            fi
+        fi
         mkdir -p /var/log
         nohup {remote_binary} --port {EXEC_HTTP_PORT} >{shlex.quote(log_path)} 2>&1 &
         if command -v pgrep >/dev/null 2>&1; then
             sleep 1
-            if ! pgrep -f {remote_binary} >/dev/null 2>&1; then
+            if ! pgrep -x {EXEC_BINARY_NAME} >/dev/null 2>&1; then
                 echo "cmux-execd failed to start" >&2
                 if [ -f {shlex.quote(log_path)} ]; then
                     tail -n 50 {shlex.quote(log_path)} >&2 || true
@@ -479,6 +487,7 @@ async def setup_exec_service(
     ctx.console.info("Exec service ready")
     return client
 
+
 async def _run_command(
     ctx: "TaskContext",
     label: str,
@@ -488,23 +497,21 @@ async def _run_command(
 ) -> InstanceExecResponse:
     ctx.console.info(f"[{label}] running...")
     exec_cmd = _shell_command(command)
-    command_str = exec_cmd if isinstance(exec_cmd, str) else shlex.join(exec_cmd)
+    command_parts = exec_cmd if isinstance(exec_cmd, list) else [exec_cmd]
     attempts = 0
     max_attempts = 3
     while True:
         attempts += 1
         try:
-            result = await asyncio.to_thread(
-                _ssh_run_command,
-                ctx.instance,
-                command_str,
-                timeout,
+            result = await ctx.instance.aexec(
+                command_parts,
+                timeout=timeout,
             )
-        except (SSHError, SSHException, OSError, socket.error) as exc:
+        except (httpx.HTTPError, OSError, socket.error) as exc:
             if attempts < max_attempts:
                 delay = min(2**attempts, 8)
                 ctx.console.info(
-                    f"[{label}] retrying after SSH failure ({exc}) "
+                    f"[{label}] retrying after remote exec failure ({exc}) "
                     f"(attempt {attempts}/{max_attempts}) in {delay}s"
                 )
                 await asyncio.sleep(delay)
@@ -516,23 +523,10 @@ async def _run_command(
             ctx.console.info(f"[{label}] {line}")
         for line in stderr_lines:
             ctx.console.info(f"[{label}][stderr] {line}")
-        exit_code = result.returncode
+        exit_code = result.exit_code
         if exit_code not in (0, None):
             raise RuntimeError(f"{label} failed with exit code {exit_code}")
-        return InstanceExecResponse(
-            exit_code=exit_code or 0,
-            stdout=result.stdout,
-            stderr=result.stderr,
-        )
-
-
-def _ssh_run_command(
-    instance: Instance,
-    command: str,
-    timeout: float | None,
-):
-    with instance.ssh() as ssh_client:
-        return ssh_client.run(command, timeout=timeout)
+        return result
 
 
 @dataclass(slots=True)
@@ -546,6 +540,17 @@ class TaskContext:
     resource_profile: ResourceProfile | None = None
     cgroup_path: str | None = None
     exec_client: HttpExecClient | None = field(default=None, init=False)
+    environment_prelude: str = field(default="", init=False)
+
+    def __post_init__(self) -> None:
+        exports = textwrap.dedent(
+            """
+            export RUSTUP_HOME=/usr/local/rustup
+            export CARGO_HOME=/usr/local/cargo
+            export PATH="/root/.local/bin:/usr/local/cargo/bin:/usr/local/bin:$PATH"
+            """
+        ).strip()
+        self.environment_prelude = exports
 
     async def run(
         self,
@@ -554,10 +559,11 @@ class TaskContext:
         *,
         timeout: float | None = None,
     ) -> InstanceExecResponse:
+        command_with_env = self._apply_environment(command)
         command_to_run = (
-            _wrap_command_with_cgroup(self.cgroup_path, command)
+            _wrap_command_with_cgroup(self.cgroup_path, command_with_env)
             if self.cgroup_path
-            else command
+            else command_with_env
         )
         if self.exec_client is not None:
             return await self.exec_client.run(
@@ -575,12 +581,21 @@ class TaskContext:
         timeout: float | None = None,
         use_cgroup: bool = True,
     ) -> InstanceExecResponse:
+        command_with_env = self._apply_environment(command)
         command_to_run = (
-            _wrap_command_with_cgroup(self.cgroup_path, command)
+            _wrap_command_with_cgroup(self.cgroup_path, command_with_env)
             if use_cgroup and self.cgroup_path
-            else command
+            else command_with_env
         )
         return await _run_command(self, label, command_to_run, timeout=timeout)
+
+    def _apply_environment(self, command: Command) -> Command:
+        if not self.environment_prelude:
+            return command
+        if isinstance(command, str):
+            return f"{self.environment_prelude}\n{command}"
+        quoted = " ".join(shlex.quote(str(part)) for part in command)
+        return f"{self.environment_prelude}\n{quoted}"
 
 
 @dataclass(frozen=True)
@@ -896,6 +911,11 @@ async def task_install_rust_toolchain(ctx: TaskContext) -> None:
     cmd = textwrap.dedent(
         """
         set -eux
+        export RUSTUP_HOME=/usr/local/rustup
+        export CARGO_HOME=/usr/local/cargo
+        install -d -m 0755 "${RUSTUP_HOME}" "${CARGO_HOME}"
+        install -d -m 0755 "${CARGO_HOME}/bin"
+        export PATH="${CARGO_HOME}/bin:${PATH}"
         ARCH="$(uname -m)"
         case "${ARCH}" in
           x86_64)
@@ -911,7 +931,7 @@ async def task_install_rust_toolchain(ctx: TaskContext) -> None:
         esac
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
           sh -s -- -y --no-modify-path --profile minimal
-        source /root/.cargo/env
+        source "${CARGO_HOME}/env"
         rustup component add rustfmt
         rustup target add "${RUST_HOST_TARGET}"
         rustup default stable
@@ -1130,7 +1150,9 @@ async def task_build_rust_binaries(ctx: TaskContext) -> None:
     repo = shlex.quote(ctx.remote_repo_root)
     cmd = textwrap.dedent(
         f"""
-        export PATH="/usr/local/cargo/bin:$PATH"
+        export RUSTUP_HOME=/usr/local/rustup
+        export CARGO_HOME=/usr/local/cargo
+        export PATH="${{CARGO_HOME}}/bin:$PATH"
         cd {repo}
         cargo install --path crates/cmux-env --locked --force
         cargo install --path crates/cmux-proxy --locked --force
@@ -1219,7 +1241,7 @@ async def run_sanity_checks(
         (f"{label}-bunx", "bunx --version"),
         (f"{label}-uv", "uv --version"),
         (f"{label}-uvx", "uvx --version"),
-        (f"{label}-envd", "command -v envd && envd --help >/dev/null"),
+        (f"{label}-envd", "command -v envd"),
         (f"{label}-envctl", "envctl --version"),
         (
             f"{label}-curl-vscode",

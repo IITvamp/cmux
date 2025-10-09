@@ -213,6 +213,7 @@ run_checks_for_platform() {
     --tmpfs /run/lock \
     -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
     -v "$volume_name":/var/lib/docker \
+    -p 39375:39375 \
     -p 39376:39376 \
     -p 39377:39377 \
     -p 39378:39378 \

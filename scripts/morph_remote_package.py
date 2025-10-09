@@ -809,7 +809,7 @@ def main() -> None:
         if instance is None:
             raise RuntimeError("Failed to obtain instance for validation steps")
 
-        expose_ports = [39376, 39377, 39378, 39379, 39380, 39381]
+        expose_ports = [39375, 39376, 39377, 39378, 39379, 39380, 39381]
         with timings.section("instance:expose_http_services"):
             for port in expose_ports:
                 instance.expose_http_service(port=port, name=f"port-{port}")

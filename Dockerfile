@@ -561,13 +561,14 @@ RUN mkdir -p /root/.openvscode-server/data/User && \
     echo '{\"workbench.startupEditor\": \"none\", \"terminal.integrated.macOptionClickForcesSelection\": true, \"terminal.integrated.shell.linux\": \"bash\", \"terminal.integrated.shellArgs.linux\": [\"-l\"]}' > /root/.openvscode-server/data/Machine/settings.json
 
 # Ports
+# 39375: Exec service (HTTP)
 # 39376: VS Code Extension Socket Server
 # 39377: Worker service
 # 39378: OpenVSCode server
 # 39379: cmux-proxy
 # 39380: VNC over Websockify (noVNC)
 # 39381: Chrome DevTools (CDP)
-EXPOSE 39376 39377 39378 39379 39380 39381
+EXPOSE 39375 39376 39377 39378 39379 39380 39381
 
 ENV container=docker
 STOPSIGNAL SIGRTMIN+3
