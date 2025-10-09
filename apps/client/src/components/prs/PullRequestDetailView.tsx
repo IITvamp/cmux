@@ -326,34 +326,51 @@ function WorkflowRunsSection({ allRuns, isLoading }: { allRuns: CombinedRun[]; i
       </button>
       {isExpanded && (
         <div className="divide-y divide-neutral-200 dark:divide-neutral-800 border-b border-neutral-200 dark:border-neutral-800">
-          {sortedRuns.map((run) => (
-          <a
-            key={`${run.type}-${run._id}`}
-            href={run.url || '#'}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center justify-between gap-2 pl-8 pr-3 py-1 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors group"
-          >
-            <div className="flex items-center gap-1.5 flex-1 min-w-0">
-              <div className="shrink-0">
-                {getStatusIcon(run.status, run.conclusion)}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-[11px] text-neutral-900 dark:text-neutral-100 font-normal">
-                  {run.name}
+          {sortedRuns.map((run) => {
+            const appLabel = run.type === 'check' && 'appSlug' in run && run.appSlug
+              ? `[${run.appSlug}]`
+              : run.type === 'check' && 'appName' in run && run.appName
+              ? `[${run.appName}]`
+              : run.type === 'deployment'
+              ? '[deployment]'
+              : run.type === 'status'
+              ? '[status]'
+              : null;
+
+            return (
+              <a
+                key={`${run.type}-${run._id}`}
+                href={run.url || '#'}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-between gap-2 pl-8 pr-3 py-1 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors group"
+              >
+                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                  <div className="shrink-0">
+                    {getStatusIcon(run.status, run.conclusion)}
+                  </div>
+                  <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                    <div className="text-[11px] text-neutral-900 dark:text-neutral-100 font-normal truncate">
+                      {run.name}
+                    </div>
+                    {appLabel && (
+                      <span className="text-[10px] text-neutral-500 dark:text-neutral-500 shrink-0">
+                        {appLabel}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-neutral-600 dark:text-neutral-400 shrink-0">
+                    {getStatusDescription(run)}
+                  </div>
                 </div>
-              </div>
-              <div className="text-[11px] text-neutral-600 dark:text-neutral-400 shrink-0">
-                {getStatusDescription(run)}
-              </div>
-            </div>
-            {run.url && (
-              <div className="p-1 shrink-0">
-                <ExternalLink className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-400" />
-              </div>
-            )}
-          </a>
-          ))}
+                {run.url && (
+                  <div className="p-1 shrink-0">
+                    <ExternalLink className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-400" />
+                  </div>
+                )}
+              </a>
+            );
+          })}
         </div>
       )}
     </div>

@@ -85,20 +85,31 @@ export const upsertCommitStatusFromWebhook = internalMutation({
       repoFullName,
     });
 
-    const existing = await ctx.db
+    const existingRecords = await ctx.db
       .query("githubCommitStatuses")
       .withIndex("by_statusId", (q) => q.eq("statusId", statusId))
-      .unique();
+      .collect();
 
-    if (existing) {
-      await ctx.db.patch(existing._id, statusDoc);
+    if (existingRecords.length > 0) {
+      await ctx.db.patch(existingRecords[0]._id, statusDoc);
       console.log("[upsertCommitStatus] Updated commit status", {
-        _id: existing._id,
+        _id: existingRecords[0]._id,
         statusId,
         context,
         state,
         repoFullName,
       });
+
+      if (existingRecords.length > 1) {
+        console.warn("[upsertCommitStatus] Found duplicates, cleaning up", {
+          statusId,
+          count: existingRecords.length,
+          duplicateIds: existingRecords.slice(1).map(r => r._id),
+        });
+        for (const duplicate of existingRecords.slice(1)) {
+          await ctx.db.delete(duplicate._id);
+        }
+      }
     } else {
       const newId = await ctx.db.insert("githubCommitStatuses", statusDoc);
       console.log("[upsertCommitStatus] Inserted commit status", {

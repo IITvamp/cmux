@@ -81,18 +81,29 @@ export const upsertDeploymentFromWebhook = internalMutation({
       repoFullName,
     });
 
-    const existing = await ctx.db
+    const existingRecords = await ctx.db
       .query("githubDeployments")
       .withIndex("by_deploymentId", (q) => q.eq("deploymentId", deploymentId))
-      .unique();
+      .collect();
 
-    if (existing) {
-      await ctx.db.patch(existing._id, deploymentDoc);
+    if (existingRecords.length > 0) {
+      await ctx.db.patch(existingRecords[0]._id, deploymentDoc);
       console.log("[upsertDeployment] Updated deployment", {
-        _id: existing._id,
+        _id: existingRecords[0]._id,
         deploymentId,
         repoFullName,
       });
+
+      if (existingRecords.length > 1) {
+        console.warn("[upsertDeployment] Found duplicates, cleaning up", {
+          deploymentId,
+          count: existingRecords.length,
+          duplicateIds: existingRecords.slice(1).map(r => r._id),
+        });
+        for (const duplicate of existingRecords.slice(1)) {
+          await ctx.db.delete(duplicate._id);
+        }
+      }
     } else {
       const newId = await ctx.db.insert("githubDeployments", deploymentDoc);
       console.log("[upsertDeployment] Inserted deployment", {
@@ -139,13 +150,13 @@ export const updateDeploymentStatusFromWebhook = internalMutation({
 
     const updatedAt = normalizeTimestamp(payload.deployment_status?.updated_at);
 
-    const existing = await ctx.db
+    const existingRecords = await ctx.db
       .query("githubDeployments")
       .withIndex("by_deploymentId", (q) => q.eq("deploymentId", deploymentId))
-      .unique();
+      .collect();
 
-    if (existing) {
-      await ctx.db.patch(existing._id, {
+    if (existingRecords.length > 0) {
+      await ctx.db.patch(existingRecords[0]._id, {
         state: normalizedState,
         statusDescription: payload.deployment_status?.description ?? undefined,
         logUrl: payload.deployment_status?.log_url ?? undefined,
@@ -154,11 +165,22 @@ export const updateDeploymentStatusFromWebhook = internalMutation({
         updatedAt,
       });
       console.log("[updateDeploymentStatus] Updated deployment status", {
-        _id: existing._id,
+        _id: existingRecords[0]._id,
         deploymentId,
         state: normalizedState,
         repoFullName,
       });
+
+      if (existingRecords.length > 1) {
+        console.warn("[updateDeploymentStatus] Found duplicates, cleaning up", {
+          deploymentId,
+          count: existingRecords.length,
+          duplicateIds: existingRecords.slice(1).map(r => r._id),
+        });
+        for (const duplicate of existingRecords.slice(1)) {
+          await ctx.db.delete(duplicate._id);
+        }
+      }
     } else {
       const sha = payload.deployment?.sha;
       if (!sha) {

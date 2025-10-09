@@ -126,17 +126,17 @@ export const upsertCheckRunFromWebhook = internalMutation({
       repoFullName,
     });
 
-    // Upsert the check run
-    const existing = await ctx.db
+    // Upsert the check run - fetch all matching records to handle duplicates
+    const existingRecords = await ctx.db
       .query("githubCheckRuns")
       .withIndex("by_checkRunId", (q) => q.eq("checkRunId", checkRunId))
-      .unique();
+      .collect();
 
-    if (existing) {
-      // Update existing check run
-      await ctx.db.patch(existing._id, checkRunDoc);
+    if (existingRecords.length > 0) {
+      // Update the first record
+      await ctx.db.patch(existingRecords[0]._id, checkRunDoc);
       console.log("[upsertCheckRun] Updated check run", {
-        _id: existing._id,
+        _id: existingRecords[0]._id,
         checkRunId,
         repoFullName,
         name,
@@ -144,6 +144,18 @@ export const upsertCheckRunFromWebhook = internalMutation({
         conclusion,
         triggeringPrNumber,
       });
+
+      // Delete any duplicates
+      if (existingRecords.length > 1) {
+        console.warn("[upsertCheckRun] Found duplicates, cleaning up", {
+          checkRunId,
+          count: existingRecords.length,
+          duplicateIds: existingRecords.slice(1).map(r => r._id),
+        });
+        for (const duplicate of existingRecords.slice(1)) {
+          await ctx.db.delete(duplicate._id);
+        }
+      }
     } else {
       // Insert new check run
       const newId = await ctx.db.insert("githubCheckRuns", checkRunDoc);
