@@ -35,7 +35,7 @@ export const upsertWorkflowRunFromWebhook = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.object({}),
+    payload: v.any(),
   },
   handler: async (ctx, args) => {
     const payload = args.payload as WorkflowRunEvent;
