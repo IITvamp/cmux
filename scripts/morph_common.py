@@ -85,6 +85,12 @@ def ensure_docker_cli_plugins(
     )
 
     docker_plugin_cmds = [
+        "set -euo pipefail",
+        "export PATH=/usr/bin:/usr/local/bin:/usr/sbin:/sbin:$PATH",
+        "if ! command -v docker >/dev/null 2>&1; then",
+        "  echo 'Error: docker command not found in PATH' >&2",
+        "  exit 1",
+        "fi",
         "mkdir -p /usr/local/lib/docker/cli-plugins",
         "mkdir -p /usr/local/bin",
         "arch=$(uname -m)",

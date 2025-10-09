@@ -1,0 +1,15 @@
+[Unit]
+Description=Cmux Chrome DevTools service
+After=network.target
+Requires=network.target
+
+[Service]
+Type=simple
+Environment=CHROME_PORT=39381
+ExecStart=/usr/local/lib/cmux/cmux-start-chrome
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=cmux.target

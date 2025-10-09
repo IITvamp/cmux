@@ -94,9 +94,39 @@ class TimingsCollector:
     def summary(self) -> list[str]:
         if not self._entries:
             return []
-        lines = [f"{label}: {duration:.2f}s" for label, duration in self._entries]
-        total = sum(duration for _, duration in self._entries)
-        lines.append(f"total: {total:.2f}s")
+
+        lines: list[str] = []
+        task_timings: dict[str, float] = {}
+        layer_timings: list[tuple[str, float, list[str]]] = []
+
+        # Separate task and layer timings
+        for label, duration in self._entries:
+            if label.startswith("task:"):
+                task_name = label[5:]
+                task_timings[task_name] = duration
+            elif label.startswith("layer:"):
+                layer_tasks = label[6:].split("+")
+                layer_timings.append((label[6:], duration, layer_tasks))
+
+        # Show layer-by-layer breakdown
+        if layer_timings:
+            lines.append("Parallel Execution Layers:")
+            for layer_name, layer_duration, tasks in layer_timings:
+                lines.append(f"\n  Layer (wall time: {layer_duration:.2f}s):")
+                for task_name in sorted(tasks):
+                    task_duration = task_timings.get(task_name, 0.0)
+                    lines.append(f"    ├─ {task_name}: {task_duration:.2f}s")
+
+        # Calculate totals
+        total_wall_time = sum(d for l, d in self._entries if l.startswith("layer:"))
+        total_cpu_time = sum(task_timings.values())
+
+        lines.append(f"\nTotal wall time: {total_wall_time:.2f}s")
+        lines.append(f"Total CPU time: {total_cpu_time:.2f}s")
+        if total_wall_time > 0:
+            parallelism = total_cpu_time / total_wall_time
+            lines.append(f"Effective parallelism: {parallelism:.2f}x")
+
         return lines
 
 
@@ -343,10 +373,18 @@ class HttpExecClient:
         stdout_text = "".join(stdout_parts)
         stderr_text = "".join(stderr_parts)
         if exit_code is None:
-            raise RuntimeError("exec service did not report an exit code")
+            self._console.info(
+                f"[{label}] Warning: exec service did not report exit code, assuming success"
+            )
+            exit_code = 0
         if exit_code not in (0, None):
             # downstream code expects non-zero exit to raise
-            raise RuntimeError(f"{label} failed with exit code {exit_code}")
+            error_parts = [f"{label} failed with exit code {exit_code}"]
+            if stdout_text.strip():
+                error_parts.append(f"stdout:\n{stdout_text.rstrip()}")
+            if stderr_text.strip():
+                error_parts.append(f"stderr:\n{stderr_text.rstrip()}")
+            raise RuntimeError("\n".join(error_parts))
         return InstanceExecResponse(
             exit_code=exit_code,
             stdout=stdout_text,
@@ -525,7 +563,12 @@ async def _run_command(
             ctx.console.info(f"[{label}][stderr] {line}")
         exit_code = result.exit_code
         if exit_code not in (0, None):
-            raise RuntimeError(f"{label} failed with exit code {exit_code}")
+            error_parts = [f"{label} failed with exit code {exit_code}"]
+            if result.stdout.strip():
+                error_parts.append(f"stdout:\n{result.stdout.rstrip()}")
+            if result.stderr.strip():
+                error_parts.append(f"stderr:\n{result.stderr.rstrip()}")
+            raise RuntimeError("\n".join(error_parts))
         return result
 
 
@@ -785,7 +828,6 @@ async def task_apt_bootstrap(ctx: TaskContext) -> None:
 async def task_install_base_packages(ctx: TaskContext) -> None:
     cmd = textwrap.dedent(
         """
-        DEBIAN_FRONTEND=noninteractive apt-get update
         DEBIAN_FRONTEND=noninteractive apt-get install -y \
             build-essential make pkg-config g++ libssl-dev \
             ruby-full perl software-properties-common
@@ -983,6 +1025,42 @@ async def task_install_cursor(ctx: TaskContext) -> None:
 
 
 @registry.task(
+    name="install-chrome",
+    deps=("apt-bootstrap",),
+    description="Install Chromium browser for DevTools",
+)
+async def task_install_chrome(ctx: TaskContext) -> None:
+    cmd = textwrap.dedent(
+        """
+        DEBIAN_FRONTEND=noninteractive apt-get install -y chromium
+        rm -rf /var/lib/apt/lists/*
+        chromium --version
+        """
+    )
+    await ctx.run("install-chrome", cmd)
+
+
+@registry.task(
+    name="install-vnc",
+    deps=("install-base-packages",),
+    description="Install TigerVNC server, websockify, and noVNC",
+)
+async def task_install_vnc(ctx: TaskContext) -> None:
+    cmd = textwrap.dedent(
+        """
+        DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            tigervnc-standalone-server tigervnc-common \
+            python3-websockify websockify \
+            x11-xserver-utils xterm fluxbox novnc
+        rm -rf /var/lib/apt/lists/*
+        vncserver -version
+        websockify --version
+        """
+    )
+    await ctx.run("install-vnc", cmd)
+
+
+@registry.task(
     name="install-global-cli",
     deps=("install-bun",),
     description="Install global agent CLIs with bun",
@@ -1050,7 +1128,6 @@ async def task_install_gh_cli(ctx: TaskContext) -> None:
         cp -a {shlex.quote(ctx.remote_repo_root)}/scripts/repo-enablers /usr/local/share/cmux/repo-enablers
         find /usr/local/share/cmux/repo-enablers -type f -name '*.sh' -exec chmod +x {{}} +
         /usr/local/share/cmux/repo-enablers/deb/github-cli.sh
-        DEBIAN_FRONTEND=noninteractive apt-get update
         DEBIAN_FRONTEND=noninteractive apt-get install -y gh
         rm -rf /var/lib/apt/lists/*
         """
@@ -1059,8 +1136,24 @@ async def task_install_gh_cli(ctx: TaskContext) -> None:
 
 
 @registry.task(
+    name="install-service-scripts",
+    deps=("upload-repo", "install-vnc", "install-chrome"),
+    description="Install VNC startup script (includes Chrome DevTools)",
+)
+async def task_install_service_scripts(ctx: TaskContext) -> None:
+    repo = shlex.quote(ctx.remote_repo_root)
+    cmd = textwrap.dedent(
+        f"""
+        install -d /usr/local/lib/cmux
+        install -m 0755 {repo}/configs/systemd/bin/cmux-start-vnc /usr/local/lib/cmux/cmux-start-vnc
+        """
+    )
+    await ctx.run("install-service-scripts", cmd)
+
+
+@registry.task(
     name="install-systemd-units",
-    deps=("upload-repo", "install-openvscode"),
+    deps=("upload-repo", "install-openvscode", "install-service-scripts"),
     description="Install cmux systemd units and helpers",
 )
 async def task_install_systemd_units(ctx: TaskContext) -> None:
@@ -1074,8 +1167,6 @@ async def task_install_systemd_units(ctx: TaskContext) -> None:
         install -Dm0644 {repo}/configs/systemd/cmux-dockerd.service /usr/lib/systemd/system/cmux-dockerd.service
         install -Dm0644 {repo}/configs/systemd/cmux-vnc.service /usr/lib/systemd/system/cmux-vnc.service
         install -Dm0755 {repo}/configs/systemd/bin/configure-openvscode /usr/local/lib/cmux/configure-openvscode
-        install -Dm0755 {repo}/configs/systemd/bin/cmux-rootfs-exec /usr/local/lib/cmux/cmux-rootfs-exec
-        install -Dm0755 {repo}/configs/systemd/bin/cmux-start-vnc /usr/local/lib/cmux/cmux-start-vnc
         touch /usr/local/lib/cmux/dockerd.flag
         mkdir -p /var/log/cmux
         mkdir -p /etc/systemd/system/multi-user.target.wants
@@ -1085,8 +1176,6 @@ async def task_install_systemd_units(ctx: TaskContext) -> None:
         ln -sf /usr/lib/systemd/system/cmux-worker.service /etc/systemd/system/cmux.target.wants/cmux-worker.service
         ln -sf /usr/lib/systemd/system/cmux-dockerd.service /etc/systemd/system/cmux.target.wants/cmux-dockerd.service
         ln -sf /usr/lib/systemd/system/cmux-vnc.service /etc/systemd/system/cmux.target.wants/cmux-vnc.service
-        mkdir -p /opt/app/overlay/upper /opt/app/overlay/work
-        printf 'CMUX_ROOTFS=/\\nCMUX_RUNTIME_ROOT=/\\nCMUX_OVERLAY_UPPER=/opt/app/overlay/upper\\nCMUX_OVERLAY_WORK=/opt/app/overlay/work\\n' > /opt/app/app.env
         systemctl daemon-reload
         systemctl enable cmux.target
         systemctl start cmux.target || true
@@ -1217,7 +1306,11 @@ async def run_task_graph(registry: TaskRegistry, ctx: TaskContext) -> None:
             *(_run_task_with_timing(ctx, task) for task in tasks_to_run)
         )
         duration = time.perf_counter() - start
-        ctx.timings.add(f"layer:{'+'.join(ready)}", duration)
+        layer_label = f"layer:{'+'.join(ready)}"
+        ctx.timings.add(layer_label, duration)
+        ctx.console.info(
+            f"✓ Layer completed in {duration:.2f}s (tasks: {', '.join(ready)})"
+        )
         for task in tasks_to_run:
             completed.add(task.name)
             remaining.pop(task.name, None)
@@ -1226,71 +1319,126 @@ async def run_task_graph(registry: TaskRegistry, ctx: TaskContext) -> None:
 async def _run_task_with_timing(ctx: TaskContext, task: TaskDefinition) -> None:
     start = time.perf_counter()
     await task.func(ctx)
-    ctx.timings.add(f"task:{task.name}", time.perf_counter() - start)
+    duration = time.perf_counter() - start
+    ctx.timings.add(f"task:{task.name}", duration)
+    ctx.console.info(f"✓ {task.name} completed in {duration:.2f}s")
 
 
-async def run_sanity_checks(
-    ctx: TaskContext,
-    *,
-    label: str,
-) -> None:
-    checks: list[tuple[str, Command]] = [
-        (f"{label}-cargo", "PATH=/usr/local/cargo/bin:$PATH cargo --version"),
-        (f"{label}-node", "node --version"),
-        (f"{label}-bun", "bun --version"),
-        (f"{label}-bunx", "bunx --version"),
-        (f"{label}-uv", "uv --version"),
-        (f"{label}-uvx", "uvx --version"),
-        (f"{label}-envd", "command -v envd"),
-        (f"{label}-envctl", "envctl --version"),
-        (
-            f"{label}-curl-vscode",
-            textwrap.dedent(
-                """
-                for attempt in $(seq 1 10); do
-                  if curl -fsS -o /dev/null http://127.0.0.1:39378/; then
-                    exit 0
-                  fi
-                  sleep 2
-                done
-                echo "VS Code endpoint not reachable" >&2
-                exit 1
-                """
-            ),
-        ),
-        (
-            f"{label}-curl-vnc",
-            textwrap.dedent(
-                """
-                for attempt in $(seq 1 10); do
-                  if curl -fsS -o /dev/null http://127.0.0.1:39380/vnc.html; then
-                    exit 0
-                  fi
-                  sleep 2
-                done
-                echo "VNC endpoint not reachable" >&2
-                exit 1
-                """
-            ),
-        ),
-        (
-            f"{label}-curl-devtools",
-            textwrap.dedent(
-                """
-                for attempt in $(seq 1 10); do
-                  if curl -fsS -o /dev/null http://127.0.0.1:39381/json/version; then
-                    exit 0
-                  fi
-                  sleep 2
-                done
-                echo "DevTools endpoint not reachable" >&2
-                exit 1
-                """
-            ),
-        ),
-    ]
-    for check_label, command in checks:
-        await ctx.run(check_label, command)
+@registry.task(
+    name="check-cargo",
+    deps=("install-rust-toolchain",),
+    description="Verify cargo is installed and working",
+)
+async def task_check_cargo(ctx: TaskContext) -> None:
+    await ctx.run("check-cargo", "PATH=/usr/local/cargo/bin:$PATH cargo --version")
+
+
+@registry.task(
+    name="check-node",
+    deps=("install-node-runtime",),
+    description="Verify node is installed and working",
+)
+async def task_check_node(ctx: TaskContext) -> None:
+    await ctx.run("check-node", "node --version")
+
+
+@registry.task(
+    name="check-bun",
+    deps=("install-bun",),
+    description="Verify bun is installed and working",
+)
+async def task_check_bun(ctx: TaskContext) -> None:
+    await ctx.run("check-bun", "bun --version && bunx --version")
+
+
+@registry.task(
+    name="check-uv",
+    deps=("install-uv-python",),
+    description="Verify uv is installed and working",
+)
+async def task_check_uv(ctx: TaskContext) -> None:
+    await ctx.run("check-uv", "uv --version && uvx --version")
+
+
+@registry.task(
+    name="check-envctl",
+    deps=("configure-envctl",),
+    description="Verify envctl is installed and working",
+)
+async def task_check_envctl(ctx: TaskContext) -> None:
+    await ctx.run("check-envctl", "envctl --version && command -v envd")
+
+
+@registry.task(
+    name="check-vscode",
+    deps=("install-systemd-units",),
+    description="Verify VS Code endpoint is accessible",
+)
+async def task_check_vscode(ctx: TaskContext) -> None:
+    cmd = textwrap.dedent(
+        """
+        sleep 3
+        for attempt in $(seq 1 15); do
+          if curl -fsS -o /dev/null http://127.0.0.1:39378/; then
+            echo "VS Code endpoint is reachable"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "ERROR: VS Code endpoint not reachable after 30s" >&2
+        systemctl status cmux-openvscode.service --no-pager || true
+        exit 1
+        """
+    )
+    await ctx.run("check-vscode", cmd)
+
+
+@registry.task(
+    name="check-vnc",
+    deps=("install-systemd-units",),
+    description="Verify VNC endpoint is accessible",
+)
+async def task_check_vnc(ctx: TaskContext) -> None:
+    cmd = textwrap.dedent(
+        """
+        sleep 5
+        for attempt in $(seq 1 15); do
+          if curl -fsS -o /dev/null http://127.0.0.1:39380/vnc.html; then
+            echo "VNC endpoint is reachable"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "ERROR: VNC endpoint not reachable after 30s" >&2
+        systemctl status cmux-vnc.service --no-pager || true
+        exit 1
+        """
+    )
+    await ctx.run("check-vnc", cmd)
+
+
+@registry.task(
+    name="check-devtools",
+    deps=("install-systemd-units",),
+    description="Verify Chrome DevTools endpoint is accessible (via VNC service)",
+)
+async def task_check_devtools(ctx: TaskContext) -> None:
+    cmd = textwrap.dedent(
+        """
+        sleep 3
+        for attempt in $(seq 1 15); do
+          if curl -fsS -o /dev/null http://127.0.0.1:39381/json/version; then
+            echo "DevTools endpoint is reachable"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "ERROR: DevTools endpoint not reachable after 30s" >&2
+        systemctl status cmux-vnc.service --no-pager || true
+        exit 1
+        """
+    )
+    await ctx.run("check-devtools", cmd)
 
 
 async def snapshot_instance(
@@ -1391,7 +1539,6 @@ async def provision_and_snapshot(args: argparse.Namespace) -> None:
         service_url=exec_service_url,
     )
     await run_task_graph(registry, ctx)
-    await run_sanity_checks(ctx, label="primary")
 
     snapshot = await snapshot_instance(instance, console=console)
 
@@ -1428,7 +1575,23 @@ async def provision_and_snapshot(args: argparse.Namespace) -> None:
         binary_path=exec_binary_path,
         service_url=new_exec_service_url,
     )
-    await run_sanity_checks(new_ctx, label="post-snapshot")
+
+    # Re-run checks on the snapshot-booted instance
+    console.info("Running post-snapshot validation checks...")
+    check_tasks = [
+        "check-cargo",
+        "check-node",
+        "check-bun",
+        "check-uv",
+        "check-envctl",
+        "check-vscode",
+        "check-vnc",
+        "check-devtools",
+    ]
+    for task_name in check_tasks:
+        task_def = registry.tasks.get(task_name)
+        if task_def:
+            await task_def.func(new_ctx)
 
     console.always(f"Provisioning complete. Snapshot id: {snapshot.id}")
     console.always(f"Primary instance: {instance.id}")

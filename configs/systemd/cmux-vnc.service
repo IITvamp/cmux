@@ -5,8 +5,10 @@ Requires=network.target
 
 [Service]
 Type=simple
-EnvironmentFile=-/opt/app/app.env
-ExecStart=/usr/local/lib/cmux/cmux-rootfs-exec /usr/local/lib/cmux/cmux-start-vnc
+Environment=DISPLAY=:1
+Environment=VNC_PORT=5901
+Environment=WEBSOCKIFY_PORT=39380
+ExecStart=/usr/local/lib/cmux/cmux-start-vnc
 Restart=always
 RestartSec=5
 TimeoutStopSec=30
