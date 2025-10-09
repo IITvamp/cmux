@@ -103,7 +103,13 @@ githubWorkflowsRouter.openapi(
     const accessToken = await getAccessTokenFromRequest(c.req.raw);
     if (!accessToken) return c.text("Unauthorized", 401);
 
-    const { team, repoFullName, workflowId, limit = 50 } = c.req.valid("query");
+    const {
+      team,
+      repoFullName,
+      workflowId,
+      limit = 50,
+      installationId,
+    } = c.req.valid("query");
 
     const convex = getConvex({ accessToken });
 
@@ -116,9 +122,13 @@ githubWorkflowsRouter.openapi(
         limit: Math.min(limit, 100), // Cap at 100
       });
 
+      const filteredRuns = installationId
+        ? (runs || []).filter((run) => run.installationId === installationId)
+        : runs;
+
       return c.json({
-        runs: runs || [],
-        total: runs?.length || 0,
+        runs: filteredRuns || [],
+        total: filteredRuns?.length || 0,
       });
     } catch (error) {
       console.error("Error fetching workflow runs:", error);

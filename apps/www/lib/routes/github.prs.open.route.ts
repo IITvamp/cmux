@@ -703,14 +703,8 @@ githubPrsOpenRouter.openapi(
     },
   }),
   async (c) => {
-    console.log("[close PR] Request received", {
-      path: c.req.path,
-      method: c.req.method,
-    });
-
     const user = await stackServerAppJs.getUser({ tokenStore: c.req.raw });
     if (!user) {
-      console.log("[close PR] No user found");
       return c.text("Unauthorized", 401);
     }
 
@@ -720,12 +714,10 @@ githubPrsOpenRouter.openapi(
     ]);
 
     if (!accessToken) {
-      console.log("[close PR] No access token");
       return c.text("Unauthorized", 401);
     }
 
     if (!githubAccount) {
-      console.log("[close PR] No GitHub account");
       return c.json(
         {
           success: false,
@@ -737,7 +729,6 @@ githubPrsOpenRouter.openapi(
 
     const { accessToken: githubAccessToken } = await githubAccount.getAccessToken();
     if (!githubAccessToken) {
-      console.log("[close PR] No GitHub access token");
       return c.json(
         {
           success: false,
@@ -750,8 +741,6 @@ githubPrsOpenRouter.openapi(
     const body = c.req.valid("json");
     const { teamSlugOrId, owner, repo, number } = body;
 
-    console.log("[close PR] Closing PR", { teamSlugOrId, owner, repo, number });
-
     await verifyTeamAccess({ req: c.req.raw, teamSlugOrId });
 
     const octokit = createOctokit(githubAccessToken);
@@ -763,8 +752,6 @@ githubPrsOpenRouter.openapi(
         repo,
         number,
       });
-
-      console.log("[close PR] PR closed successfully", { number });
 
       return c.json({
         success: true,
@@ -819,14 +806,8 @@ githubPrsOpenRouter.openapi(
     },
   }),
   async (c) => {
-    console.log("[merge PR] Request received", {
-      path: c.req.path,
-      method: c.req.method,
-    });
-
     const user = await stackServerAppJs.getUser({ tokenStore: c.req.raw });
     if (!user) {
-      console.log("[merge PR] No user found");
       return c.text("Unauthorized", 401);
     }
 
@@ -836,12 +817,10 @@ githubPrsOpenRouter.openapi(
     ]);
 
     if (!accessToken) {
-      console.log("[merge PR] No access token");
       return c.text("Unauthorized", 401);
     }
 
     if (!githubAccount) {
-      console.log("[merge PR] No GitHub account");
       return c.json(
         {
           success: false,
@@ -853,7 +832,6 @@ githubPrsOpenRouter.openapi(
 
     const { accessToken: githubAccessToken } = await githubAccount.getAccessToken();
     if (!githubAccessToken) {
-      console.log("[merge PR] No GitHub access token");
       return c.json(
         {
           success: false,
@@ -865,8 +843,6 @@ githubPrsOpenRouter.openapi(
 
     const body = c.req.valid("json");
     const { teamSlugOrId, owner, repo, number, method } = body;
-
-    console.log("[merge PR] Merging PR", { teamSlugOrId, owner, repo, number, method });
 
     await verifyTeamAccess({ req: c.req.raw, teamSlugOrId });
 
@@ -882,8 +858,6 @@ githubPrsOpenRouter.openapi(
         commitTitle: `Merge pull request #${number}`,
         commitMessage: `Merged via cmux`,
       });
-
-      console.log("[merge PR] PR merged successfully", { number });
 
       return c.json({
         success: true,

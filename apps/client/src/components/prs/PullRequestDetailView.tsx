@@ -583,24 +583,6 @@ export function PullRequestDetailView({
               </div>
 
               <div className="col-start-3 row-start-1 row-span-2 self-center flex items-center gap-2 shrink-0">
-                {/* {currentPR.draft ? (
-                  <span className="text-xs px-2 py-1 rounded-md bg-neutral-200 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 select-none">
-                    Draft
-                  </span>
-                ) : null}
-                {currentPR.merged ? (
-                  <span className="text-xs px-2 py-1 rounded-md bg-purple-200 dark:bg-purple-900/40 text-purple-900 dark:text-purple-200 select-none">
-                    Merged
-                  </span>
-                ) : currentPR.state === "closed" ? (
-                  <span className="text-xs px-2 py-1 rounded-md bg-red-200 dark:bg-red-900/40 text-red-900 dark:text-red-200 select-none">
-                    Closed
-                  </span>
-                ) : (
-                  <span className="text-xs px-2 py-1 rounded-md bg-green-200 dark:bg-green-900/40 text-green-900 dark:text-green-200 select-none">
-                    Open
-                  </span>
-                )} */}
                 {currentPR.state === "open" && !currentPR.merged && (
                   <>
                     <MergeButton
