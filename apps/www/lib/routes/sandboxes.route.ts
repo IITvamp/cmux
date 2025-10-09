@@ -19,7 +19,10 @@ import {
 import type { HydrateRepoConfig } from "./sandboxes/hydration";
 import { hydrateWorkspace } from "./sandboxes/hydration";
 import { resolveTeamAndSnapshot } from "./sandboxes/snapshot";
-import { runMaintenanceScript, startDevScript } from "./sandboxes/startDevAndMaintenanceScript";
+import {
+  syncDevScript,
+  syncMaintenanceScript,
+} from "./sandboxes/startDevAndMaintenanceScript";
 import {
   encodeEnvContentForEnvctl,
   envctlLoadCommand,
@@ -302,41 +305,55 @@ sandboxesRouter.openapi(
         return c.text("Failed to hydrate sandbox", 500);
       }
 
-      if (maintenanceScript || devScript) {
-        (async () => {
-          const maintenanceScriptResult = maintenanceScript
-            ? await runMaintenanceScript({
-              instance,
-              script: maintenanceScript,
-            })
-            : undefined;
-          const devScriptResult = devScript
-            ? await startDevScript({ instance, script: devScript })
-            : undefined;
-          if (
-            taskRunConvexId &&
-            (maintenanceScriptResult?.error || devScriptResult?.error)
-          ) {
-            try {
-              await convex.mutation(api.taskRuns.updateEnvironmentError, {
-                teamSlugOrId: body.teamSlugOrId,
-                id: taskRunConvexId,
-                maintenanceError: maintenanceScriptResult?.error || undefined,
-                devError: devScriptResult?.error || undefined,
-              });
-            } catch (mutationError) {
-              console.error(
-                "[sandboxes.start] Failed to record environment error to taskRun",
-                mutationError,
-              );
-            }
-          }
-        })().catch((error) => {
+      let maintenanceScriptResult: Awaited<ReturnType<typeof syncMaintenanceScript>> =
+        { error: null };
+      let devScriptResult: Awaited<ReturnType<typeof syncDevScript>> = {
+        error: null,
+      };
+
+      try {
+        [maintenanceScriptResult, devScriptResult] = await Promise.all([
+          syncMaintenanceScript({
+            instance,
+            script: maintenanceScript,
+          }),
+          syncDevScript({
+            instance,
+            script: devScript,
+          }),
+        ]);
+      } catch (syncError) {
+        console.error(
+          "[sandboxes.start] Failed to sync dev/maintenance scripts",
+          syncError,
+        );
+        const syncErrorMessage =
+          syncError instanceof Error ? syncError.message : String(syncError);
+        maintenanceScriptResult = {
+          error: maintenanceScriptResult.error ?? syncErrorMessage,
+        };
+        devScriptResult = {
+          error: devScriptResult.error ?? syncErrorMessage,
+        };
+      }
+
+      if (
+        taskRunConvexId &&
+        (maintenanceScriptResult.error || devScriptResult.error)
+      ) {
+        try {
+          await convex.mutation(api.taskRuns.updateEnvironmentError, {
+            teamSlugOrId: body.teamSlugOrId,
+            id: taskRunConvexId,
+            maintenanceError: maintenanceScriptResult.error || undefined,
+            devError: devScriptResult.error || undefined,
+          });
+        } catch (mutationError) {
           console.error(
-            "[sandboxes.start] Background script execution failed:",
-            error,
+            "[sandboxes.start] Failed to record environment error to taskRun",
+            mutationError,
           );
-        });
+        }
       }
 
       await configureGitIdentityTask;
