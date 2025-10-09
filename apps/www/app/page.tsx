@@ -303,31 +303,6 @@ export default async function LandingPage() {
                   </svg>
                   Download for Mac
                 </MacDownloadLink>
-                <MacDownloadLink
-                  architecture="x64"
-                  className="inline-flex h-12 items-center gap-2 text-base font-medium text-white bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-lg px-4 transition-all whitespace-nowrap"
-                  fallbackUrl={fallbackUrl}
-                  title={
-                    latestVersion
-                      ? `Download cmux ${latestVersion} for macOS Intel (x64)`
-                      : "Download cmux for macOS Intel"
-                  }
-                  urls={macDownloadUrls}
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 16 16"
-                    className="h-5 w-5"
-                    aria-hidden="true"
-                  >
-                    <path
-                      fill="currentColor"
-                      d="M12.665 15.358c-.905.844-1.893.711-2.843.311-1.006-.409-1.93-.427-2.991 0-1.33.551-2.03.391-2.825-.31C-.498 10.886.166 4.078 5.28 3.83c1.246.062 2.114.657 2.843.71 1.09-.213 2.133-.826 3.296-.746 1.393.107 2.446.64 3.138 1.6-2.88 1.662-2.197 5.315.443 6.337-.526 1.333-1.21 2.657-2.345 3.635zM8.03 3.778C7.892 1.794 9.563.16 11.483 0c.268 2.293-2.16 4-3.452 3.777"
-                    ></path>
-                  </svg>
-                  Download for Mac Intel
-                </MacDownloadLink>
                 <a
                   href="https://github.com/manaflow-ai/cmux"
                   target="_blank"
