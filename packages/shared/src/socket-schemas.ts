@@ -49,6 +49,10 @@ export const StartTaskSchema = z.object({
   environmentId: typedZid("environments").optional(),
 });
 
+export const SpawnStandaloneVSCodeSchema = z.object({
+  workspaceId: z.string().optional(),
+});
+
 // Server to Client Events
 export const TerminalCreatedSchema = z.object({
   terminalId: z.string(),
@@ -381,6 +385,7 @@ export type TerminalInput = z.infer<typeof TerminalInputSchema>;
 export type Resize = z.infer<typeof ResizeSchema>;
 export type CloseTerminal = z.infer<typeof CloseTerminalSchema>;
 export type StartTask = z.infer<typeof StartTaskSchema>;
+export type SpawnStandaloneVSCode = z.infer<typeof SpawnStandaloneVSCodeSchema>;
 export type TerminalCreated = z.infer<typeof TerminalCreatedSchema>;
 export type TerminalOutput = z.infer<typeof TerminalOutputSchema>;
 export type TerminalExit = z.infer<typeof TerminalExitSchema>;
@@ -507,6 +512,7 @@ export interface ClientToServerEvents {
     data: ArchiveTask,
     callback: (response: { success: boolean; error?: string }) => void
   ) => void;
+  "spawn-standalone-vscode": (data: SpawnStandaloneVSCode) => void;
   "spawn-from-comment": (
     data: SpawnFromComment,
     callback: (response: {

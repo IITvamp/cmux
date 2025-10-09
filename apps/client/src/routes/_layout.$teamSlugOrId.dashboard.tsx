@@ -656,8 +656,6 @@ function DashboardComponent() {
       provider: string;
     }) => {
       console.log("VSCode spawned:", data);
-      // Open in new tab
-      // window.open(data.workspaceUrl, "_blank");
     };
 
     socket.on("vscode-spawned", handleVSCodeSpawned);
@@ -809,8 +807,7 @@ function DashboardComponent() {
   return (
     <FloatingPane header={<TitleBar title="cmux" />}>
       <div className="flex flex-col grow overflow-y-auto">
-        {/* Main content area */}
-        <div className="flex-1 flex justify-center px-4 pt-60 pb-4">
+        <div className="flex-1 flex justify-center px-4 pt-4 pb-4">
           <div className="w-full max-w-4xl min-w-0">
             <DashboardMainCard
               editorApiRef={editorApiRef}
@@ -839,7 +836,6 @@ function DashboardComponent() {
               onStartTask={handleStartTask}
             />
 
-            {/* Task List */}
             <TaskList teamSlugOrId={teamSlugOrId} />
           </div>
         </div>

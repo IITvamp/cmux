@@ -1487,5 +1487,39 @@ ${title}`;
         });
       }
     });
+
+    socket.on("spawn-standalone-vscode", async () => {
+      try {
+        serverLogger.info("Spawning standalone VSCode instance");
+
+        // Create a temporary workspace
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "cmux-standalone-"));
+
+        // Create fake IDs for the container
+        const instanceId = `standalone-${Date.now()}` as any;
+
+        // Spawn VSCode container
+        const vscodeInstance = new DockerVSCodeInstance({
+          taskRunId: instanceId,
+          taskId: instanceId,
+          teamSlugOrId: safeTeam,
+          workspacePath: tempDir,
+        });
+
+        const info = await vscodeInstance.start();
+
+        serverLogger.info("Standalone VSCode spawned:", info);
+
+        // Emit vscode-spawned event
+        rt.emit("vscode-spawned", {
+          instanceId,
+          url: info.url.replace("/?folder=/root/workspace", ""),
+          workspaceUrl: info.url,
+          provider: "docker",
+        });
+      } catch (error) {
+        serverLogger.error("Error spawning standalone VSCode:", error);
+      }
+    });
   });
 }
