@@ -20,6 +20,7 @@ import asyncio
 import atexit
 import os
 import shlex
+import socket
 import subprocess
 import tarfile
 import tempfile
@@ -30,8 +31,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import dotenv
-from morphcloud.api import ApiError, Instance, InstanceExecResponse, MorphCloudClient, Snapshot
-from httpx import HTTPStatusError
+from morphcloud.api import Instance, InstanceExecResponse, MorphCloudClient, Snapshot
+from morphcloud._ssh import SSHError
+from paramiko import SSHException
 
 from morph_common import (
     ensure_docker as docker_install_script,
@@ -40,6 +42,18 @@ from morph_common import (
 
 Command = t.Union[str, t.Sequence[str]]
 TaskFunc = t.Callable[["TaskContext"], t.Awaitable[None]]
+
+
+@dataclass(slots=True)
+class ResourceProfile:
+    name: str
+    cpu_quota: int | None = None
+    cpu_period: int | None = None
+    cpu_weight: int | None = None
+    memory_high: int | None = None
+    memory_max: int | None = None
+    io_weight: int | None = None
+
 
 dotenv.load_dotenv()
 
@@ -164,6 +178,21 @@ def _shell_command(command: Command) -> list[str]:
     return list(command)
 
 
+def _wrap_command_with_cgroup(cgroup_path: str, command: Command) -> Command:
+    cgroup = shlex.quote(cgroup_path)
+    prelude = textwrap.dedent(
+        f"""
+        if [ -d {cgroup} ] && [ -w {cgroup}/cgroup.procs ]; then
+            printf '%d\\n' $$ > {cgroup}/cgroup.procs || true
+        fi
+        """
+    ).strip()
+    if isinstance(command, str):
+        return f"{prelude}\n{command}"
+    quoted = " ".join(shlex.quote(str(part)) for part in command)
+    return f"{prelude}\n{quoted}"
+
+
 async def _run_command(
     ctx: "TaskContext",
     label: str,
@@ -173,106 +202,53 @@ async def _run_command(
 ) -> InstanceExecResponse:
     ctx.console.info(f"[{label}] running...")
     exec_cmd = _shell_command(command)
+    command_str = (
+        exec_cmd if isinstance(exec_cmd, str) else shlex.join(exec_cmd)
+    )
     attempts = 0
     max_attempts = 3
-    response: InstanceExecResponse | None = None
     while True:
         attempts += 1
-        stdout_lines: list[str] = []
-        stderr_lines: list[str] = []
-        stdout_buffer = ""
-        stderr_buffer = ""
-
-        def _emit(text: str, lines: list[str]) -> None:
-            lines.append(text)
-            ctx.console.info(f"[{label}] {text}")
-
-        def _process_chunk(chunk: str, buffer: str, lines: list[str]) -> str:
-            combined = buffer + chunk
-            segments = combined.splitlines(keepends=True)
-            remainder = ""
-            for segment in segments:
-                if segment.endswith(("\n", "\r")):
-                    line = segment.rstrip("\r\n")
-                    _emit(line, lines)
-                else:
-                    remainder = segment
-            return remainder
-
-        def _handle_stdout(chunk: str) -> None:
-            nonlocal stdout_buffer
-            stdout_buffer = _process_chunk(chunk, stdout_buffer, stdout_lines)
-
-        def _handle_stderr(chunk: str) -> None:
-            nonlocal stderr_buffer
-            stderr_buffer = _process_chunk(chunk, stderr_buffer, stderr_lines)
-
         try:
-            response = await ctx.instance.aexec(
-                exec_cmd,
-                timeout=timeout,
-                on_stdout=_handle_stdout,
-                on_stderr=_handle_stderr,
+            result = await asyncio.to_thread(
+                _ssh_run_command,
+                ctx.instance,
+                command_str,
+                timeout,
             )
-            break
-        except (ApiError, HTTPStatusError) as exc:
-            status_code: int | None
-            body: str
-            if isinstance(exc, ApiError):
-                status_code = exc.status_code
-                body = (
-                    exc.response_body
-                    if isinstance(exc.response_body, str)
-                    else ""
-                )
-            else:
-                status_code = (
-                    exc.response.status_code if exc.response is not None else None
-                )
-                try:
-                    body = exc.response.text if exc.response is not None else ""
-                except Exception:  # noqa: BLE001
-                    body = ""
-            is_handshake_failure = (
-                status_code == 502
-                and "ssh: unable to authenticate" in body
-            )
-            is_transient_502 = status_code == 502 and "/exec" in str(
-                getattr(getattr(exc, "request", None), "url", "")
-            )
-            if attempts < max_attempts and (is_handshake_failure or is_transient_502):
+        except (SSHError, SSHException, OSError, socket.error) as exc:
+            if attempts < max_attempts:
                 delay = min(2**attempts, 8)
                 ctx.console.info(
-                    f"[{label}] retrying after transient SSH exec failure "
+                    f"[{label}] retrying after SSH failure ({exc}) "
                     f"(attempt {attempts}/{max_attempts}) in {delay}s"
                 )
                 await asyncio.sleep(delay)
                 continue
             raise
+        stdout_lines = result.stdout.splitlines()
+        stderr_lines = result.stderr.splitlines()
+        for line in stdout_lines:
+            ctx.console.info(f"[{label}] {line}")
+        for line in stderr_lines:
+            ctx.console.info(f"[{label}][stderr] {line}")
+        exit_code = result.returncode
+        if exit_code not in (0, None):
+            raise RuntimeError(f"{label} failed with exit code {exit_code}")
+        return InstanceExecResponse(
+            exit_code=exit_code or 0,
+            stdout=result.stdout,
+            stderr=result.stderr,
+        )
 
-    assert response is not None
-    if stdout_buffer:
-        _emit(stdout_buffer.rstrip("\r\n"), stdout_lines)
-        stdout_buffer = ""
-    if stderr_buffer:
-        _emit(stderr_buffer.rstrip("\r\n"), stderr_lines)
-        stderr_buffer = ""
-    if not stdout_lines and response.stdout:
-        buffer = ""
-        for chunk in response.stdout.splitlines(keepends=True):
-            buffer = _process_chunk(chunk, buffer, stdout_lines)
-        if buffer:
-            _emit(buffer.rstrip("\r\n"), stdout_lines)
-    if not stderr_lines and response.stderr:
-        buffer = ""
-        for chunk in response.stderr.splitlines(keepends=True):
-            buffer = _process_chunk(chunk, buffer, stderr_lines)
-        if buffer:
-            _emit(buffer.rstrip("\r\n"), stderr_lines)
-    exit_code = getattr(response, "exit_code", 0)
-    if exit_code not in (0, None):
-        raise RuntimeError(f"{label} failed with exit code {exit_code}")
-    return response
+
+def _ssh_run_command(
+    instance: Instance,
+    command: str,
+    timeout: float | None,
+):
+    with instance.ssh() as ssh_client:
+        return ssh_client.run(command, timeout=timeout)
 
 
 @dataclass(slots=True)
@@ -283,6 +259,8 @@ class TaskContext:
     remote_repo_tar: str
     console: Console
     timings: TimingsCollector
+    resource_profile: ResourceProfile | None = None
+    cgroup_path: str | None = None
 
     async def run(
         self,
@@ -291,7 +269,12 @@ class TaskContext:
         *,
         timeout: float | None = None,
     ) -> InstanceExecResponse:
-        return await _run_command(self, label, command, timeout=timeout)
+        command_to_run = (
+            _wrap_command_with_cgroup(self.cgroup_path, command)
+            if self.cgroup_path
+            else command
+        )
+        return await _run_command(self, label, command_to_run, timeout=timeout)
 
 
 @dataclass(frozen=True)
@@ -334,15 +317,144 @@ class TaskRegistry:
 registry = TaskRegistry()
 
 
-@registry.task(name="ensure-docker", description="Install Docker engine and CLI plugins")
-async def task_ensure_docker(ctx: TaskContext) -> None:
-    await ctx.run("ensure-docker", docker_install_script())
-    await ctx.run("ensure-docker-plugins", ensure_docker_cli_plugins())
+def _build_resource_profile(args: argparse.Namespace) -> ResourceProfile:
+    cpu_period = 100_000
+    cpu_quota: int | None = None
+    if args.vcpus and args.vcpus > 0:
+        cpu_quota = max(int(args.vcpus * cpu_period * 0.9), cpu_period)
+
+    memory_high: int | None = None
+    memory_max: int | None = None
+    memory_bytes = args.memory * 1024 * 1024
+    if memory_bytes > 0:
+        memory_high = max(memory_bytes * 9 // 10, 1)
+        memory_max = max(memory_bytes * 95 // 100, memory_high)
+
+    return ResourceProfile(
+        name="cmux-provision",
+        cpu_quota=cpu_quota,
+        cpu_period=cpu_quota and cpu_period,
+        cpu_weight=80,
+        memory_high=memory_high,
+        memory_max=memory_max,
+        io_weight=200,
+    )
+
+
+async def configure_provisioning_cgroup(ctx: TaskContext) -> None:
+    profile = ctx.resource_profile
+    if profile is None:
+        ctx.console.info("Resource profile not provided; skipping cgroup configuration")
+        return
+
+    cgroup_path = f"/sys/fs/cgroup/{profile.name}"
+    quoted_cgroup_path = shlex.quote(cgroup_path)
+    cpu_max_value = (
+        f"{profile.cpu_quota} {profile.cpu_period}"
+        if profile.cpu_quota is not None and profile.cpu_period is not None
+        else ""
+    )
+    cpu_quota_value = str(profile.cpu_quota) if profile.cpu_quota is not None else ""
+    cpu_period_value = str(profile.cpu_period) if profile.cpu_period is not None else ""
+    cpu_weight_value = str(profile.cpu_weight) if profile.cpu_weight is not None else ""
+    memory_high_value = str(profile.memory_high) if profile.memory_high is not None else ""
+    memory_max_value = str(profile.memory_max) if profile.memory_max is not None else ""
+    io_weight_value = str(profile.io_weight) if profile.io_weight is not None else ""
+
+    script = textwrap.dedent(
+        f"""
+        set -euo pipefail
+        CG_ROOT="/sys/fs/cgroup"
+        if [ -f "${{CG_ROOT}}/cgroup.controllers" ]; then
+            TARGET={quoted_cgroup_path}
+            mkdir -p "${{TARGET}}"
+            controllers="$(cat "${{CG_ROOT}}/cgroup.controllers")"
+            enable_controller() {{
+                local ctrl="$1"
+                if printf '%s' "${{controllers}}" | grep -qw "$ctrl"; then
+                    if ! grep -qw "$ctrl" "${{CG_ROOT}}/cgroup.subtree_control"; then
+                        echo "+$ctrl" > "${{CG_ROOT}}/cgroup.subtree_control" || true
+                    fi
+                fi
+            }}
+            enable_controller cpu
+            enable_controller io
+            enable_controller memory
+            if [ -n "{cpu_max_value}" ] && [ -w "${{TARGET}}/cpu.max" ]; then
+                echo "{cpu_max_value}" > "${{TARGET}}/cpu.max"
+            fi
+            if [ -n "{cpu_weight_value}" ] && [ -w "${{TARGET}}/cpu.weight" ]; then
+                echo "{cpu_weight_value}" > "${{TARGET}}/cpu.weight"
+            fi
+            if [ -n "{memory_high_value}" ] && [ -w "${{TARGET}}/memory.high" ]; then
+                echo "{memory_high_value}" > "${{TARGET}}/memory.high"
+            fi
+            if [ -n "{memory_max_value}" ] && [ -w "${{TARGET}}/memory.max" ]; then
+                echo "{memory_max_value}" > "${{TARGET}}/memory.max"
+            fi
+            if [ -n "{io_weight_value}" ] && [ -w "${{TARGET}}/io.weight" ]; then
+                echo "{io_weight_value}" > "${{TARGET}}/io.weight"
+            fi
+            exit 0
+        fi
+        if command -v cgcreate >/dev/null 2>&1 && command -v cgset >/dev/null 2>&1; then
+            cgcreate -g cpu,memory,blkio:{profile.name} || true
+            if [ -n "{cpu_period_value}" ] && [ -n "{cpu_quota_value}" ]; then
+                cgset -r cpu.cfs_period_us={cpu_period_value} {profile.name} || true
+                cgset -r cpu.cfs_quota_us={cpu_quota_value} {profile.name} || true
+            fi
+            if [ -n "{memory_max_value}" ]; then
+                cgset -r memory.limit_in_bytes={memory_max_value} {profile.name} || true
+            fi
+            if [ -n "{memory_high_value}" ]; then
+                cgset -r memory.soft_limit_in_bytes={memory_high_value} {profile.name} || true
+            fi
+            if [ -n "{io_weight_value}" ]; then
+                cgset -r blkio.weight={io_weight_value} {profile.name} || true
+            fi
+        fi
+        exit 0
+        """
+    )
+    await ctx.run("configure-resource-cgroup", script)
+    verification = await ctx.run(
+        "verify-resource-cgroup",
+        textwrap.dedent(
+            f"""
+            if [ -d {quoted_cgroup_path} ] && [ -f {quoted_cgroup_path}/cgroup.procs ]; then
+                echo ready
+            fi
+            """
+        ),
+    )
+    if (verification.stdout or "").strip() == "ready":
+        ctx.cgroup_path = cgroup_path
+        ctx.console.info(f"Resource cgroup active at {cgroup_path}")
+    else:
+        ctx.console.info("Cgroup controllers unavailable; continuing without resource isolation")
+
+
+@registry.task(
+    name="apt-bootstrap",
+    description="Install core apt utilities required for early provisioning tasks",
+)
+async def task_apt_bootstrap(ctx: TaskContext) -> None:
+    cmd = textwrap.dedent(
+        """
+        DEBIAN_FRONTEND=noninteractive apt-get update
+        DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            ca-certificates curl wget jq git gnupg lsb-release \
+            python3 python3-venv python3-distutils \
+            tar unzip xz-utils zip bzip2 gzip htop
+        rm -rf /var/lib/apt/lists/*
+        """
+    )
+    await ctx.run("apt-bootstrap", cmd)
 
 
 @registry.task(
     name="install-base-packages",
-    deps=("ensure-docker",),
+    deps=("apt-bootstrap",),
     description="Install build-essential tooling and utilities",
 )
 async def task_install_base_packages(ctx: TaskContext) -> None:
@@ -350,13 +462,22 @@ async def task_install_base_packages(ctx: TaskContext) -> None:
         """
         DEBIAN_FRONTEND=noninteractive apt-get update
         DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            build-essential curl wget git jq python3 python3-venv python3-distutils \
-            make pkg-config g++ gnupg ca-certificates unzip xz-utils zip bzip2 \
-            libssl-dev ruby-full perl software-properties-common
+            build-essential make pkg-config g++ libssl-dev \
+            ruby-full perl software-properties-common
         rm -rf /var/lib/apt/lists/*
         """
     )
     await ctx.run("install-base-packages", cmd)
+
+
+@registry.task(
+    name="ensure-docker",
+    deps=("install-base-packages",),
+    description="Install Docker engine and CLI plugins",
+)
+async def task_ensure_docker(ctx: TaskContext) -> None:
+    await ctx.run("ensure-docker", docker_install_script())
+    await ctx.run("ensure-docker-plugins", ensure_docker_cli_plugins())
 
 
 @registry.task(
@@ -420,7 +541,7 @@ async def task_install_nvm(ctx: TaskContext) -> None:
 
 @registry.task(
     name="install-bun",
-    deps=("install-base-packages",),
+    deps=("apt-bootstrap",),
     description="Install Bun runtime",
 )
 async def task_install_bun(ctx: TaskContext) -> None:
@@ -437,11 +558,11 @@ async def task_install_bun(ctx: TaskContext) -> None:
 
 
 @registry.task(
-    name="install-uv-python-rust",
-    deps=("install-base-packages",),
-    description="Install uv, default Python, and Rust toolchain",
+    name="install-uv-python",
+    deps=("apt-bootstrap",),
+    description="Install uv CLI and provision default Python runtime",
 )
-async def task_install_uv_python_rust(ctx: TaskContext) -> None:
+async def task_install_uv_python(ctx: TaskContext) -> None:
     cmd = textwrap.dedent(
         """
         set -eux
@@ -449,11 +570,9 @@ async def task_install_uv_python_rust(ctx: TaskContext) -> None:
         case "${ARCH}" in
           x86_64)
             UV_ASSET_SUFFIX="x86_64-unknown-linux-gnu"
-            RUST_HOST_TARGET="x86_64-unknown-linux-gnu"
             ;;
           aarch64|arm64)
             UV_ASSET_SUFFIX="aarch64-unknown-linux-gnu"
-            RUST_HOST_TARGET="aarch64-unknown-linux-gnu"
             ;;
           *)
             echo "Unsupported architecture: ${ARCH}" >&2
@@ -471,6 +590,33 @@ async def task_install_uv_python_rust(ctx: TaskContext) -> None:
         uv python install --default
         PIP_VERSION="$(curl -fsSL https://pypi.org/pypi/pip/json | jq -r '.info.version')"
         python3 -m pip install --break-system-packages --upgrade "pip==${PIP_VERSION}"
+        """
+    )
+    await ctx.run("install-uv-python", cmd)
+
+
+@registry.task(
+    name="install-rust-toolchain",
+    deps=("install-base-packages",),
+    description="Install Rust toolchain via rustup",
+)
+async def task_install_rust_toolchain(ctx: TaskContext) -> None:
+    cmd = textwrap.dedent(
+        """
+        set -eux
+        ARCH="$(uname -m)"
+        case "${ARCH}" in
+          x86_64)
+            RUST_HOST_TARGET="x86_64-unknown-linux-gnu"
+            ;;
+          aarch64|arm64)
+            RUST_HOST_TARGET="aarch64-unknown-linux-gnu"
+            ;;
+          *)
+            echo "Unsupported architecture: ${ARCH}" >&2
+            exit 1
+            ;;
+        esac
         RUST_VERSION_RAW="$(curl -fsSL https://static.rust-lang.org/dist/channel-rust-stable.toml \
           | awk '/\\[pkg.rust\\]/{flag=1;next}/\\[pkg\\./{flag=0}flag && /^version =/ {gsub(/\"/,"",$3); split($3, parts, \" \"); print parts[1]; exit}')"
         RUST_VERSION="$(printf '%s' "${RUST_VERSION_RAW}" | tr -d ' \\t\\r\\n')"
@@ -482,12 +628,12 @@ async def task_install_uv_python_rust(ctx: TaskContext) -> None:
         rustup default "${RUST_VERSION}"
         """
     )
-    await ctx.run("install-uv-python-rust", cmd)
+    await ctx.run("install-rust-toolchain", cmd)
 
 
 @registry.task(
     name="install-openvscode",
-    deps=("install-base-packages",),
+    deps=("apt-bootstrap",),
     description="Install OpenVSCode server",
 )
 async def task_install_openvscode(ctx: TaskContext) -> None:
@@ -514,7 +660,7 @@ async def task_install_openvscode(ctx: TaskContext) -> None:
 
 @registry.task(
     name="install-cursor-cli",
-    deps=("install-base-packages",),
+    deps=("apt-bootstrap",),
     description="Install Cursor CLI",
 )
 async def task_install_cursor(ctx: TaskContext) -> None:
@@ -545,7 +691,7 @@ async def task_install_global_cli(ctx: TaskContext) -> None:
 
 @registry.task(
     name="upload-repo",
-    deps=("install-base-packages",),
+    deps=("apt-bootstrap",),
     description="Upload repository to the instance",
 )
 async def task_upload_repo(ctx: TaskContext) -> None:
@@ -583,7 +729,7 @@ async def task_install_repo_dependencies(ctx: TaskContext) -> None:
 
 @registry.task(
     name="install-gh-cli",
-    deps=("upload-repo", "install-base-packages"),
+    deps=("upload-repo", "ensure-docker"),
     description="Install GitHub CLI using repo enabler",
 )
 async def task_install_gh_cli(ctx: TaskContext) -> None:
@@ -688,7 +834,7 @@ async def task_install_collect_scripts(ctx: TaskContext) -> None:
 
 @registry.task(
     name="build-rust-binaries",
-    deps=("upload-repo", "install-uv-python-rust"),
+    deps=("upload-repo", "install-uv-python", "install-rust-toolchain"),
     description="Build envd/envctl and cmux-proxy via cargo install",
 )
 async def task_build_rust_binaries(ctx: TaskContext) -> None:
@@ -907,7 +1053,12 @@ async def provision_and_snapshot(args: argparse.Namespace) -> None:
     )
     started_instances.append(instance)
     await _await_instance_ready(instance, console=console)
+    console.always(
+        f"Dashboard: https://cloud.morph.so/web/instances/{instance.id}?ssh=true"
+    )
     await _expose_standard_ports(instance, console)
+
+    resource_profile = _build_resource_profile(args)
 
     ctx = TaskContext(
         instance=instance,
@@ -916,8 +1067,10 @@ async def provision_and_snapshot(args: argparse.Namespace) -> None:
         remote_repo_tar="/tmp/cmux-repo.tar",
         console=console,
         timings=timings,
+        resource_profile=resource_profile,
     )
 
+    await configure_provisioning_cgroup(ctx)
     await run_task_graph(registry, ctx)
     await run_sanity_checks(ctx, label="primary")
 
@@ -935,6 +1088,9 @@ async def provision_and_snapshot(args: argparse.Namespace) -> None:
     )
     started_instances.append(new_instance)
 
+    console.always(
+        f"Dashboard: https://cloud.morph.so/web/instances/{new_instance.id}?ssh=true"
+    )
     new_ctx = TaskContext(
         instance=new_instance,
         repo_root=Path(args.repo_root).resolve(),
@@ -942,7 +1098,9 @@ async def provision_and_snapshot(args: argparse.Namespace) -> None:
         remote_repo_tar="/tmp/cmux-repo.tar",
         console=console,
         timings=timings,
+        resource_profile=resource_profile,
     )
+    await configure_provisioning_cgroup(new_ctx)
     await run_sanity_checks(new_ctx, label="post-snapshot")
 
     console.always(f"Provisioning complete. Snapshot id: {snapshot.id}")
