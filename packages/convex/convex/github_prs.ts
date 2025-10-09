@@ -9,47 +9,56 @@ import { authMutation, authQuery } from "./users/utils";
 
 const SYSTEM_BRANCH_USER_ID = "__system__";
 
-type WebhookUser = {
+export type WebhookUser = {
   login?: string;
   id?: number;
+  node_id?: string;
+  avatar_url?: string;
+  type?: string;
+  site_admin?: boolean;
 };
 
-type WebhookRepo = {
+export type WebhookRepo = {
   id?: number;
-  pushed_at?: string;
+  node_id?: string;
+  name?: string;
+  full_name?: string;
+  pushed_at?: string | number | null;
 };
 
-type WebhookBranchRef = {
+export type WebhookBranchRef = {
+  label?: string;
   ref?: string;
   sha?: string;
-  repo?: WebhookRepo;
+  user?: WebhookUser | null;
+  repo?: WebhookRepo | null;
 };
 
-type WebhookPullRequest = {
+export type WebhookPullRequest = {
   number?: number;
   id?: number;
   title?: string;
   state?: string;
-  merged?: boolean;
-  draft?: boolean;
-  html_url?: string;
-  merge_commit_sha?: string;
-  created_at?: string;
-  updated_at?: string;
-  closed_at?: string;
-  merged_at?: string;
+  merged?: boolean | null;
+  draft?: boolean | null;
+  html_url?: string | null;
+  merge_commit_sha?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  closed_at?: string | null;
+  merged_at?: string | null;
   comments?: number;
   review_comments?: number;
   commits?: number;
   additions?: number;
   deletions?: number;
   changed_files?: number;
-  user?: WebhookUser;
-  base?: WebhookBranchRef;
-  head?: WebhookBranchRef;
+  user?: WebhookUser | null;
+  base?: WebhookBranchRef | null;
+  head?: WebhookBranchRef | null;
 };
 
-type PullRequestWebhookEnvelope = {
+export type PullRequestWebhookEnvelope = {
   pull_request?: WebhookPullRequest;
   number?: number;
 };
@@ -320,7 +329,76 @@ export const upsertFromWebhookPayload = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(),
+    payload: v.object({
+      number: v.optional(v.number()),
+      pull_request: v.optional(v.object({
+        number: v.optional(v.number()),
+        id: v.optional(v.number()),
+        title: v.optional(v.string()),
+        state: v.optional(v.string()),
+        merged: v.optional(v.union(v.boolean(), v.null())),
+        draft: v.optional(v.union(v.boolean(), v.null())),
+        html_url: v.optional(v.union(v.string(), v.null())),
+        merge_commit_sha: v.optional(v.union(v.string(), v.null())),
+        created_at: v.optional(v.union(v.string(), v.null())),
+        updated_at: v.optional(v.union(v.string(), v.null())),
+        closed_at: v.optional(v.union(v.string(), v.null())),
+        merged_at: v.optional(v.union(v.string(), v.null())),
+        comments: v.optional(v.number()),
+        review_comments: v.optional(v.number()),
+        commits: v.optional(v.number()),
+        additions: v.optional(v.number()),
+        deletions: v.optional(v.number()),
+        changed_files: v.optional(v.number()),
+        user: v.optional(v.union(v.object({
+          login: v.optional(v.string()),
+          id: v.optional(v.number()),
+          node_id: v.optional(v.string()),
+          avatar_url: v.optional(v.string()),
+          type: v.optional(v.string()),
+          site_admin: v.optional(v.boolean()),
+        }), v.null())),
+        base: v.optional(v.union(v.object({
+          label: v.optional(v.string()),
+          ref: v.optional(v.string()),
+          sha: v.optional(v.string()),
+          user: v.optional(v.union(v.object({
+            login: v.optional(v.string()),
+            id: v.optional(v.number()),
+            node_id: v.optional(v.string()),
+            avatar_url: v.optional(v.string()),
+            type: v.optional(v.string()),
+            site_admin: v.optional(v.boolean()),
+          }), v.null())),
+          repo: v.optional(v.union(v.object({
+            id: v.optional(v.number()),
+            node_id: v.optional(v.string()),
+            name: v.optional(v.string()),
+            full_name: v.optional(v.string()),
+            pushed_at: v.optional(v.union(v.string(), v.number(), v.null())),
+          }), v.null())),
+        }), v.null())),
+        head: v.optional(v.union(v.object({
+          label: v.optional(v.string()),
+          ref: v.optional(v.string()),
+          sha: v.optional(v.string()),
+          user: v.optional(v.union(v.object({
+            login: v.optional(v.string()),
+            id: v.optional(v.number()),
+            node_id: v.optional(v.string()),
+            avatar_url: v.optional(v.string()),
+            type: v.optional(v.string()),
+            site_admin: v.optional(v.boolean()),
+          }), v.null())),
+          repo: v.optional(v.union(v.object({
+            id: v.optional(v.number()),
+            node_id: v.optional(v.string()),
+            name: v.optional(v.string()),
+            full_name: v.optional(v.string()),
+          }), v.null())),
+        }), v.null())),
+      })),
+    }),
   },
   handler: async (ctx, { installationId, repoFullName, teamId, payload }) => {
     try {

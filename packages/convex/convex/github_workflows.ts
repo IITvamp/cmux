@@ -35,7 +35,37 @@ export const upsertWorkflowRunFromWebhook = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(),
+    payload: v.object({
+      workflow_run: v.optional(v.object({
+        id: v.optional(v.number()),
+        run_number: v.optional(v.number()),
+        workflow_id: v.optional(v.number()),
+        name: v.optional(v.string()),
+        status: v.optional(v.string()),
+        conclusion: v.optional(v.union(v.string(), v.null())),
+        created_at: v.optional(v.string()),
+        updated_at: v.optional(v.string()),
+        run_started_at: v.optional(v.string()),
+        completed_at: v.optional(v.union(v.string(), v.null())),
+        event: v.optional(v.string()),
+        head_branch: v.optional(v.string()),
+        head_sha: v.optional(v.string()),
+        html_url: v.optional(v.string()),
+        actor: v.optional(v.object({
+          login: v.optional(v.string()),
+          id: v.optional(v.number()),
+        })),
+        pull_requests: v.optional(v.array(v.object({
+          number: v.optional(v.number()),
+        }))),
+      })),
+      workflow: v.optional(v.object({
+        name: v.optional(v.string()),
+      })),
+      repository: v.optional(v.object({
+        id: v.optional(v.number()),
+      })),
+    }),
   },
   handler: async (ctx, args) => {
     const payload = args.payload as WorkflowRunEvent;

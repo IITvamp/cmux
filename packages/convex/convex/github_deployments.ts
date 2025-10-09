@@ -23,7 +23,32 @@ export const upsertDeploymentFromWebhook = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(),
+    payload: v.object({
+      deployment: v.optional(v.object({
+        id: v.optional(v.number()),
+        sha: v.optional(v.string()),
+        created_at: v.optional(v.string()),
+        updated_at: v.optional(v.string()),
+        ref: v.optional(v.union(v.string(), v.null())),
+        task: v.optional(v.union(v.string(), v.null())),
+        environment: v.optional(v.union(v.string(), v.null())),
+        description: v.optional(v.union(v.string(), v.null())),
+        creator: v.optional(v.object({
+          login: v.optional(v.string()),
+          id: v.optional(v.number()),
+          node_id: v.optional(v.string()),
+          avatar_url: v.optional(v.string()),
+          type: v.optional(v.string()),
+          site_admin: v.optional(v.boolean()),
+        })),
+      })),
+      repository: v.optional(v.object({
+        id: v.optional(v.number()),
+        node_id: v.optional(v.string()),
+        name: v.optional(v.string()),
+        full_name: v.optional(v.string()),
+      })),
+    }),
   },
   handler: async (ctx, args) => {
     const payload = args.payload as DeploymentEvent;
@@ -98,7 +123,39 @@ export const updateDeploymentStatusFromWebhook = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(),
+    payload: v.object({
+      deployment: v.optional(v.object({
+        id: v.optional(v.number()),
+        sha: v.optional(v.string()),
+        created_at: v.optional(v.string()),
+        ref: v.optional(v.union(v.string(), v.null())),
+        task: v.optional(v.union(v.string(), v.null())),
+        environment: v.optional(v.union(v.string(), v.null())),
+        description: v.optional(v.union(v.string(), v.null())),
+        creator: v.optional(v.object({
+          login: v.optional(v.string()),
+          id: v.optional(v.number()),
+          node_id: v.optional(v.string()),
+          avatar_url: v.optional(v.string()),
+          type: v.optional(v.string()),
+          site_admin: v.optional(v.boolean()),
+        })),
+      })),
+      deployment_status: v.optional(v.object({
+        state: v.optional(v.string()),
+        updated_at: v.optional(v.string()),
+        description: v.optional(v.union(v.string(), v.null())),
+        log_url: v.optional(v.union(v.string(), v.null())),
+        target_url: v.optional(v.union(v.string(), v.null())),
+        environment_url: v.optional(v.union(v.string(), v.null())),
+      })),
+      repository: v.optional(v.object({
+        id: v.optional(v.number()),
+        node_id: v.optional(v.string()),
+        name: v.optional(v.string()),
+        full_name: v.optional(v.string()),
+      })),
+    }),
   },
   handler: async (ctx, args) => {
     const payload = args.payload as DeploymentStatusEvent;
