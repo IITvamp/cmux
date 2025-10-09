@@ -31,7 +31,7 @@ export const upsertCheckRunFromWebhook = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(), // CheckRunEvent from webhook
+    payload: v.object({}),
   },
   handler: async (ctx, args) => {
     const payload = args.payload as CheckRunEvent;

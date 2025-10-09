@@ -324,7 +324,7 @@ export const upsertFromWebhookPayload = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(),
+    payload: v.object({}),
   },
   handler: async (ctx, { installationId, repoFullName, teamId, payload }) => {
     try {
