@@ -455,9 +455,8 @@ managementIO.on("connection", (socket) => {
     } catch (error) {
       callback({
         ready: false,
-        message: `Error checking Docker: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`,
+        message: `Error checking Docker: ${error instanceof Error ? error.message : "Unknown error"
+          }`,
       });
     }
   });
@@ -933,10 +932,9 @@ async function createTerminal(
     SHELL: "/bin/bash",
     USER: process.env.USER || "root",
     HOME: process.env.HOME || "/root",
-    PATH: `/root/.bun/bin:${
-      process.env.PATH ||
+    PATH: `/root/.bun/bin:${process.env.PATH ||
       "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-    }`,
+      }`,
     // Pass through git config if set
     ...(process.env.GIT_CONFIG_GLOBAL
       ? { GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL }

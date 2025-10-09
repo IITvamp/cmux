@@ -41,7 +41,7 @@ const app = new OpenAPIHono({
           message: "Validation Error",
           errors,
         },
-        422
+        422,
       );
     }
   },
@@ -68,7 +68,7 @@ app.use(
     ],
     credentials: true,
     allowHeaders: ["x-stack-auth", "content-type"],
-  })
+  }),
 );
 
 app.get("/", (c) => {
@@ -132,7 +132,7 @@ app.notFound((c) => {
       code: 404,
       message: `Route ${c.req.path} not found`,
     },
-    404
+    404,
   );
 });
 
@@ -144,7 +144,7 @@ app.onError((err, c) => {
       code: 500,
       message: "Internal Server Error",
     },
-    500
+    500,
   );
 });
 
