@@ -308,6 +308,15 @@ export async function spawnAgent(
       }
     }
 
+    // For Claude agents that use settings.json for API keys, remove ANTHROPIC_API_KEY
+    // from environment to prevent Claude Code from detecting it and prompting
+    if (agent.name.startsWith("claude/") && "ANTHROPIC_API_KEY" in envVars) {
+      delete envVars.ANTHROPIC_API_KEY;
+      serverLogger.info(
+        `[AgentSpawner] Removed ANTHROPIC_API_KEY from environment for ${agent.name} (using settings.json instead)`,
+      );
+    }
+
     // Replace $PROMPT placeholders in args with $CMUX_PROMPT token for shell-time expansion
     const processedArgs = agent.args.map((arg) => {
       if (arg.includes("$PROMPT")) {
@@ -618,7 +627,11 @@ export async function spawnAgent(
         tmuxSessionName,
         "bash",
         "-lc",
-        `exec ${commandString}`,
+        // For Claude agents, explicitly unset ANTHROPIC_API_KEY before exec
+        // to prevent detection from .env files in the workspace
+        agent.name.startsWith("claude/")
+          ? `unset ANTHROPIC_API_KEY; exec ${commandString}`
+          : `exec ${commandString}`,
       ];
 
     const terminalCreationCommand: WorkerCreateTerminal = {
