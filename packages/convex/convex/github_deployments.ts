@@ -29,11 +29,6 @@ export const upsertDeploymentFromWebhook = internalMutation({
     const payload = args.payload as DeploymentEvent;
     const { installationId, repoFullName, teamId } = args;
 
-    console.log("[upsertDeployment] Starting", {
-      teamId,
-      repoFullName,
-      installationId,
-    });
 
     const deploymentId = payload.deployment?.id;
     const sha = payload.deployment?.sha;
@@ -73,13 +68,6 @@ export const upsertDeploymentFromWebhook = internalMutation({
       triggeringPrNumber: undefined,
     };
 
-    console.log("[upsertDeployment] Prepared document", {
-      deploymentId,
-      sha,
-      environment: deploymentDoc.environment,
-      teamId,
-      repoFullName,
-    });
 
     const existingRecords = await ctx.db
       .query("githubDeployments")
@@ -88,11 +76,6 @@ export const upsertDeploymentFromWebhook = internalMutation({
 
     if (existingRecords.length > 0) {
       await ctx.db.patch(existingRecords[0]._id, deploymentDoc);
-      console.log("[upsertDeployment] Updated deployment", {
-        _id: existingRecords[0]._id,
-        deploymentId,
-        repoFullName,
-      });
 
       if (existingRecords.length > 1) {
         console.warn("[upsertDeployment] Found duplicates, cleaning up", {
@@ -106,11 +89,6 @@ export const upsertDeploymentFromWebhook = internalMutation({
       }
     } else {
       const newId = await ctx.db.insert("githubDeployments", deploymentDoc);
-      console.log("[upsertDeployment] Inserted deployment", {
-        _id: newId,
-        deploymentId,
-        repoFullName,
-      });
     }
   },
 });
@@ -126,12 +104,6 @@ export const updateDeploymentStatusFromWebhook = internalMutation({
     const payload = args.payload as DeploymentStatusEvent;
     const { installationId, repoFullName, teamId } = args;
 
-    console.log("[updateDeploymentStatus] Starting", {
-      teamId,
-      repoFullName,
-      installationId,
-      state: payload.deployment_status?.state,
-    });
 
     const deploymentId = payload.deployment?.id;
     const state = payload.deployment_status?.state;
@@ -164,12 +136,6 @@ export const updateDeploymentStatusFromWebhook = internalMutation({
         targetUrl: payload.deployment_status?.target_url ?? undefined,
         environmentUrl: payload.deployment_status?.environment_url ?? undefined,
         updatedAt,
-      });
-      console.log("[updateDeploymentStatus] Updated deployment status", {
-        _id: existingRecords[0]._id,
-        deploymentId,
-        state: normalizedState,
-        repoFullName,
       });
 
       if (existingRecords.length > 1) {
@@ -219,12 +185,6 @@ export const updateDeploymentStatusFromWebhook = internalMutation({
       };
 
       const newId = await ctx.db.insert("githubDeployments", deploymentDoc);
-      console.log("[updateDeploymentStatus] Created deployment with status", {
-        _id: newId,
-        deploymentId,
-        state: normalizedState,
-        repoFullName,
-      });
     }
   },
 });
@@ -241,13 +201,6 @@ export const getDeploymentsForPr = authQuery({
     const { teamSlugOrId, repoFullName, headSha, limit = 20 } = args;
     const teamId = await getTeamId(ctx, teamSlugOrId);
 
-    console.log("[getDeploymentsForPr] Query started", {
-      teamSlugOrId,
-      teamId,
-      repoFullName,
-      headSha,
-      limit,
-    });
 
     const allDeploymentsForRepo = await ctx.db
       .query("githubDeployments")
@@ -276,12 +229,6 @@ export const getDeploymentsForPr = authQuery({
     }
     const deployments = Array.from(dedupMap.values()).slice(0, limit);
 
-    console.log("[getDeploymentsForPr] Found deployments", {
-      teamId,
-      repoFullName,
-      headSha,
-      foundDeployments: deployments.length,
-    });
 
     return deployments;
   },

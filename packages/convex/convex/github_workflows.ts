@@ -41,12 +41,6 @@ export const upsertWorkflowRunFromWebhook = internalMutation({
     const payload = args.payload as WorkflowRunEvent;
     const { installationId, repoFullName, teamId } = args;
 
-    console.log("[upsertWorkflowRun] Starting", {
-      teamId,
-      repoFullName,
-      installationId,
-      action: payload.action,
-    });
 
     // Extract core workflow run data
     const runId = payload.workflow_run?.id;
@@ -137,17 +131,6 @@ export const upsertWorkflowRunFromWebhook = internalMutation({
       triggeringPrNumber,
     };
 
-    console.log("[upsertWorkflowRun] Prepared document", {
-      runId,
-      runNumber,
-      workflowId,
-      workflowName,
-      status,
-      conclusion,
-      triggeringPrNumber,
-      teamId,
-      repoFullName,
-    });
 
     // Upsert the workflow run - fetch all matching records to handle duplicates
     const existingRecords = await ctx.db
@@ -158,15 +141,6 @@ export const upsertWorkflowRunFromWebhook = internalMutation({
     if (existingRecords.length > 0) {
       // Update the first record
       await ctx.db.patch(existingRecords[0]._id, workflowRunDoc);
-      console.log("[upsertWorkflowRun] Updated workflow run", {
-        _id: existingRecords[0]._id,
-        runId,
-        repoFullName,
-        runNumber,
-        status,
-        conclusion,
-        triggeringPrNumber,
-      });
 
       // Delete any duplicates
       if (existingRecords.length > 1) {
@@ -182,15 +156,6 @@ export const upsertWorkflowRunFromWebhook = internalMutation({
     } else {
       // Insert new run
       const newId = await ctx.db.insert("githubWorkflowRuns", workflowRunDoc);
-      console.log("[upsertWorkflowRun] Inserted workflow run", {
-        _id: newId,
-        runId,
-        repoFullName,
-        runNumber,
-        status,
-        conclusion,
-        triggeringPrNumber,
-      });
     }
   },
 });
@@ -269,14 +234,6 @@ export const getWorkflowRunsForPr = authQuery({
     const { teamSlugOrId, repoFullName, prNumber, headSha, limit = 20 } = args;
     const teamId = await getTeamId(ctx, teamSlugOrId);
 
-    console.log("[getWorkflowRunsForPr] Query started", {
-      teamSlugOrId,
-      teamId,
-      repoFullName,
-      prNumber,
-      headSha,
-      limit,
-    });
 
     // Fetch runs by headSha if provided (more efficient index lookup)
     // Source: workflow_run webhooks from GitHub Actions (NOT check_run events)
@@ -327,21 +284,6 @@ export const getWorkflowRunsForPr = authQuery({
       runs = Array.from(dedupMap.values()).slice(0, limit);
     }
 
-    console.log("[getWorkflowRunsForPr] Filtered runs for PR", {
-      teamId,
-      repoFullName,
-      prNumber,
-      headSha,
-      foundRuns: runs.length,
-      runs: runs.map((r) => ({
-        runId: r.runId,
-        workflowName: r.workflowName,
-        status: r.status,
-        conclusion: r.conclusion,
-        triggeringPrNumber: r.triggeringPrNumber,
-        headSha: r.headSha,
-      })),
-    });
 
     return runs;
   },

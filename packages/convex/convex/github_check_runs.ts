@@ -37,12 +37,6 @@ export const upsertCheckRunFromWebhook = internalMutation({
     const payload = args.payload as CheckRunEvent;
     const { installationId, repoFullName, teamId } = args;
 
-    console.log("[upsertCheckRun] Starting", {
-      teamId,
-      repoFullName,
-      installationId,
-      action: payload.action,
-    });
 
     // Extract core check run data
     const checkRunId = payload.check_run?.id;
@@ -114,17 +108,6 @@ export const upsertCheckRunFromWebhook = internalMutation({
       triggeringPrNumber,
     };
 
-    console.log("[upsertCheckRun] Prepared document", {
-      checkRunId,
-      name,
-      status,
-      conclusion,
-      headSha,
-      triggeringPrNumber,
-      appName,
-      teamId,
-      repoFullName,
-    });
 
     // Upsert the check run - fetch all matching records to handle duplicates
     const existingRecords = await ctx.db
@@ -135,15 +118,6 @@ export const upsertCheckRunFromWebhook = internalMutation({
     if (existingRecords.length > 0) {
       // Update the first record
       await ctx.db.patch(existingRecords[0]._id, checkRunDoc);
-      console.log("[upsertCheckRun] Updated check run", {
-        _id: existingRecords[0]._id,
-        checkRunId,
-        repoFullName,
-        name,
-        status,
-        conclusion,
-        triggeringPrNumber,
-      });
 
       // Delete any duplicates
       if (existingRecords.length > 1) {
@@ -159,15 +133,6 @@ export const upsertCheckRunFromWebhook = internalMutation({
     } else {
       // Insert new check run
       const newId = await ctx.db.insert("githubCheckRuns", checkRunDoc);
-      console.log("[upsertCheckRun] Inserted check run", {
-        _id: newId,
-        checkRunId,
-        repoFullName,
-        name,
-        status,
-        conclusion,
-        triggeringPrNumber,
-      });
     }
   },
 });
@@ -185,14 +150,6 @@ export const getCheckRunsForPr = authQuery({
     const { teamSlugOrId, repoFullName, prNumber, headSha, limit = 20 } = args;
     const teamId = await getTeamId(ctx, teamSlugOrId);
 
-    console.log("[getCheckRunsForPr] Query started", {
-      teamSlugOrId,
-      teamId,
-      repoFullName,
-      prNumber,
-      headSha,
-      limit,
-    });
 
     // Source: check_run webhooks from third-party GitHub Apps (e.g., Vercel, Bugbot)
     const allRunsForRepo = await ctx.db
@@ -202,13 +159,6 @@ export const getCheckRunsForPr = authQuery({
       )
       .collect();
 
-    console.log("[getCheckRunsForPr] All check runs for repo", {
-      teamId,
-      repoFullName,
-      totalRuns: allRunsForRepo.length,
-      prNumbers: allRunsForRepo.map((r) => r.triggeringPrNumber),
-      headShas: allRunsForRepo.map((r) => r.headSha),
-    });
 
     // Filter by headSha if provided (more specific), otherwise by triggeringPrNumber
     const filtered = allRunsForRepo.filter((run) => {
@@ -232,22 +182,6 @@ export const getCheckRunsForPr = authQuery({
       .sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0))
       .slice(0, limit);
 
-    console.log("[getCheckRunsForPr] Filtered check runs for PR", {
-      teamId,
-      repoFullName,
-      prNumber,
-      headSha,
-      foundRuns: runs.length,
-      runs: runs.map((r) => ({
-        checkRunId: r.checkRunId,
-        name: r.name,
-        status: r.status,
-        conclusion: r.conclusion,
-        triggeringPrNumber: r.triggeringPrNumber,
-        headSha: r.headSha,
-        appName: r.appName,
-      })),
-    });
 
     return runs;
   },

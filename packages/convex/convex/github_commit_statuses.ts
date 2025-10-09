@@ -26,13 +26,6 @@ export const upsertCommitStatusFromWebhook = internalMutation({
     const payload = args.payload as StatusEvent;
     const { installationId, repoFullName, teamId } = args;
 
-    console.log("[upsertCommitStatus] Starting", {
-      teamId,
-      repoFullName,
-      installationId,
-      state: payload.state,
-      context: payload.context,
-    });
 
     const statusId = payload.id;
     const sha = payload.sha;
@@ -76,14 +69,6 @@ export const upsertCommitStatusFromWebhook = internalMutation({
       triggeringPrNumber: undefined,
     };
 
-    console.log("[upsertCommitStatus] Prepared document", {
-      statusId,
-      sha,
-      context,
-      state,
-      teamId,
-      repoFullName,
-    });
 
     const existingRecords = await ctx.db
       .query("githubCommitStatuses")
@@ -92,13 +77,6 @@ export const upsertCommitStatusFromWebhook = internalMutation({
 
     if (existingRecords.length > 0) {
       await ctx.db.patch(existingRecords[0]._id, statusDoc);
-      console.log("[upsertCommitStatus] Updated commit status", {
-        _id: existingRecords[0]._id,
-        statusId,
-        context,
-        state,
-        repoFullName,
-      });
 
       if (existingRecords.length > 1) {
         console.warn("[upsertCommitStatus] Found duplicates, cleaning up", {
@@ -112,13 +90,6 @@ export const upsertCommitStatusFromWebhook = internalMutation({
       }
     } else {
       const newId = await ctx.db.insert("githubCommitStatuses", statusDoc);
-      console.log("[upsertCommitStatus] Inserted commit status", {
-        _id: newId,
-        statusId,
-        context,
-        state,
-        repoFullName,
-      });
     }
   },
 });
@@ -135,16 +106,8 @@ export const getCommitStatusesForPr = authQuery({
     const { teamSlugOrId, repoFullName, headSha, limit = 20 } = args;
     const teamId = await getTeamId(ctx, teamSlugOrId);
 
-    console.log("[getCommitStatusesForPr] Query started", {
-      teamSlugOrId,
-      teamId,
-      repoFullName,
-      headSha,
-      limit,
-    });
 
     if (!headSha) {
-      console.log("[getCommitStatusesForPr] No headSha provided, returning empty array");
       return [];
     }
 
@@ -170,13 +133,6 @@ export const getCommitStatusesForPr = authQuery({
     }
     const statuses = Array.from(dedupMap.values()).slice(0, limit);
 
-    console.log("[getCommitStatusesForPr] Found commit statuses", {
-      teamId,
-      repoFullName,
-      headSha,
-      foundStatuses: statuses.length,
-      contexts: statuses.map((s) => s.context),
-    });
 
     return statuses;
   },

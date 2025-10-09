@@ -92,7 +92,6 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
       payloadHash,
     });
     if (!result.created) {
-      console.log("[webhook] Skipping duplicate delivery", { delivery, event });
       return new Response("ok (duplicate)", { status: 200 });
     }
   }
@@ -224,18 +223,6 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
           );
           const installation = Number(workflowRunPayload.installation?.id ?? 0);
 
-          console.log("[workflow_run] Received webhook", {
-            delivery,
-            repoFullName,
-            installation,
-            action: workflowRunPayload.action,
-            runId: workflowRunPayload.workflow_run?.id,
-            runNumber: workflowRunPayload.workflow_run?.run_number,
-            workflowName: workflowRunPayload.workflow?.name,
-            status: workflowRunPayload.workflow_run?.status,
-            conclusion: workflowRunPayload.workflow_run?.conclusion,
-            prNumbers: workflowRunPayload.workflow_run?.pull_requests?.map(pr => pr.number),
-          });
 
           if (!repoFullName || !installation) {
             console.warn("[workflow_run] Missing repoFullName or installation", {
@@ -261,12 +248,6 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             break;
           }
 
-          console.log("[workflow_run] Processing workflow run", {
-            delivery,
-            teamId,
-            repoFullName,
-            runId: workflowRunPayload.workflow_run?.id,
-          });
 
           await _ctx.runMutation(
             internal.github_workflows.upsertWorkflowRunFromWebhook,
@@ -278,10 +259,6 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             },
           );
 
-          console.log("[workflow_run] Successfully processed", {
-            delivery,
-            runId: workflowRunPayload.workflow_run?.id,
-          });
         } catch (err) {
           console.error("[workflow_run] Handler failed", {
             err,
@@ -303,17 +280,6 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
           const repoFullName = String(checkRunPayload.repository?.full_name ?? "");
           const installation = Number(checkRunPayload.installation?.id ?? 0);
 
-          console.log("[check_run] Received webhook", {
-            delivery,
-            repoFullName,
-            installation,
-            action: checkRunPayload.action,
-            checkRunId: checkRunPayload.check_run?.id,
-            name: checkRunPayload.check_run?.name,
-            status: checkRunPayload.check_run?.status,
-            conclusion: checkRunPayload.check_run?.conclusion,
-            prNumbers: checkRunPayload.check_run?.pull_requests?.map((pr) => pr.number),
-          });
 
           if (!repoFullName || !installation) {
             console.warn("[check_run] Missing repoFullName or installation", {
@@ -339,12 +305,6 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             break;
           }
 
-          console.log("[check_run] Processing check run", {
-            delivery,
-            teamId,
-            repoFullName,
-            checkRunId: checkRunPayload.check_run?.id,
-          });
 
           await _ctx.runMutation(internal.github_check_runs.upsertCheckRunFromWebhook, {
             installationId: installation,
@@ -353,10 +313,6 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             payload: checkRunPayload,
           });
 
-          console.log("[check_run] Successfully processed", {
-            delivery,
-            checkRunId: checkRunPayload.check_run?.id,
-          });
         } catch (err) {
           console.error("[check_run] Handler failed", {
             err,
@@ -376,14 +332,6 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
           const repoFullName = String(deploymentPayload.repository?.full_name ?? "");
           const installation = Number(deploymentPayload.installation?.id ?? 0);
 
-          console.log("[deployment] Received webhook", {
-            delivery,
-            repoFullName,
-            installation,
-            deploymentId: deploymentPayload.deployment?.id,
-            sha: deploymentPayload.deployment?.sha,
-            environment: deploymentPayload.deployment?.environment,
-          });
 
           if (!repoFullName || !installation) {
             console.warn("[deployment] Missing repoFullName or installation", {
@@ -419,10 +367,6 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             },
           );
 
-          console.log("[deployment] Successfully processed", {
-            delivery,
-            deploymentId: deploymentPayload.deployment?.id,
-          });
         } catch (err) {
           console.error("[deployment] Handler failed", {
             err,
@@ -438,14 +382,6 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
           const repoFullName = String(deploymentStatusPayload.repository?.full_name ?? "");
           const installation = Number(deploymentStatusPayload.installation?.id ?? 0);
 
-          console.log("[deployment_status] Received webhook", {
-            delivery,
-            repoFullName,
-            installation,
-            deploymentId: deploymentStatusPayload.deployment?.id,
-            state: deploymentStatusPayload.deployment_status?.state,
-            environment: deploymentStatusPayload.deployment?.environment,
-          });
 
           if (!repoFullName || !installation) {
             console.warn("[deployment_status] Missing repoFullName or installation", {
@@ -481,11 +417,6 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             },
           );
 
-          console.log("[deployment_status] Successfully processed", {
-            delivery,
-            deploymentId: deploymentStatusPayload.deployment?.id,
-            state: deploymentStatusPayload.deployment_status?.state,
-          });
         } catch (err) {
           console.error("[deployment_status] Handler failed", {
             err,
@@ -501,14 +432,6 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
           const repoFullName = String(statusPayload.repository?.full_name ?? "");
           const installation = Number(statusPayload.installation?.id ?? 0);
 
-          console.log("[status] Received webhook", {
-            delivery,
-            repoFullName,
-            installation,
-            sha: statusPayload.sha,
-            state: statusPayload.state,
-            context: statusPayload.context,
-          });
 
           if (!repoFullName || !installation) {
             console.warn("[status] Missing repoFullName or installation", {
@@ -544,12 +467,6 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             },
           );
 
-          console.log("[status] Successfully processed", {
-            delivery,
-            sha: statusPayload.sha,
-            context: statusPayload.context,
-            state: statusPayload.state,
-          });
         } catch (err) {
           console.error("[status] Handler failed", {
             err,
