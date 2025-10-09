@@ -199,11 +199,12 @@ export const getCheckRunsForPr = authQuery({
       headShas: allRunsForRepo.map((r) => r.headSha),
     });
 
-    // Filter by either triggeringPrNumber or headSha
+    // Filter by headSha if provided (more specific), otherwise by triggeringPrNumber
     const filtered = allRunsForRepo.filter((run) => {
-      const matchesPrNumber = run.triggeringPrNumber === prNumber;
-      const matchesHeadSha = headSha && run.headSha === headSha;
-      return matchesPrNumber || matchesHeadSha;
+      if (headSha) {
+        return run.headSha === headSha;
+      }
+      return run.triggeringPrNumber === prNumber;
     });
 
     // Deduplicate by name (for same app), keeping the most recently updated one

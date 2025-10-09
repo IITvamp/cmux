@@ -234,9 +234,10 @@ export const getDeploymentsForPr = authQuery({
 
     const filtered = allDeploymentsForRepo
       .filter((deployment) => {
-        const matchesSha = headSha && deployment.sha === headSha;
-        const matchesPr = deployment.triggeringPrNumber === args.prNumber;
-        return matchesSha || matchesPr;
+        if (headSha) {
+          return deployment.sha === headSha;
+        }
+        return deployment.triggeringPrNumber === args.prNumber;
       })
       .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
 
