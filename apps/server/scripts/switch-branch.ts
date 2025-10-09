@@ -92,20 +92,38 @@ for (const repoPath of repoPaths) {
 
   try {
     await $`git -C ${repoPath} switch ${branchName}`.quiet();
-    log("repo=", repoPath, "-> switched to existing branch", branchName ?? "(missing)");
+    log("repo=", repoPath, "-> switched to existing local branch", branchName ?? "(missing)");
     continue;
   } catch (switchError) {
     log(
       "repo=",
       repoPath,
-      "-> existing branch missing, attempting to create:",
+      "-> existing local branch missing, checking remote:",
       formatError(switchError),
     );
   }
 
   try {
+    // Fetch the branch from remote to check if it exists
+    await $`git -C ${repoPath} fetch origin ${branchName}`.quiet();
+    log("repo=", repoPath, "-> found remote branch", branchName ?? "(missing)");
+
+    // Create local branch tracking the remote branch
+    await $`git -C ${repoPath} switch -c ${branchName} origin/${branchName}`.quiet();
+    log("repo=", repoPath, "-> checked out branch from remote", branchName ?? "(missing)");
+    continue;
+  } catch (remoteError) {
+    log(
+      "repo=",
+      repoPath,
+      "-> remote branch not found, creating new branch:",
+      formatError(remoteError),
+    );
+  }
+
+  try {
     await $`git -C ${repoPath} switch -c ${branchName}`.quiet();
-    log("repo=", repoPath, "-> created branch", branchName ?? "(missing)");
+    log("repo=", repoPath, "-> created new branch", branchName ?? "(missing)");
   } catch (createError) {
     failureCount += 1;
     log(
