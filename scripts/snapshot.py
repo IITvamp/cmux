@@ -1388,6 +1388,8 @@ async def task_install_systemd_units(ctx: TaskContext) -> None:
     repo = shlex.quote(ctx.remote_repo_root)
     cmd = textwrap.dedent(
         f"""
+        set -euo pipefail
+
         install -d /usr/local/lib/cmux
         install -Dm0644 {repo}/configs/systemd/cmux.target /usr/lib/systemd/system/cmux.target
         install -Dm0644 {repo}/configs/systemd/cmux-openvscode.service /usr/lib/systemd/system/cmux-openvscode.service
@@ -1406,6 +1408,16 @@ async def task_install_systemd_units(ctx: TaskContext) -> None:
         ln -sf /usr/lib/systemd/system/cmux-vnc.service /etc/systemd/system/cmux.target.wants/cmux-vnc.service
         systemctl daemon-reload
         systemctl enable cmux.target
+        chown root:root /usr/local
+        chown root:root /usr/local/bin
+        chmod 0755 /usr/local
+        chmod 0755 /usr/local/bin
+        if [ -f /usr/local/bin/fetch-mmds-keys ]; then
+            chown root:root /usr/local/bin/fetch-mmds-keys
+            chmod 0755 /usr/local/bin/fetch-mmds-keys
+        fi
+        systemctl restart ssh
+        systemctl is-active --quiet ssh
         systemctl start cmux.target || true
         """
     )

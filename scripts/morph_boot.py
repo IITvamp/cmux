@@ -4,7 +4,7 @@ import json
 import sys
 
 
-SNAPSHOT_ID = "snapshot_r6h1zd79"
+SNAPSHOT_ID = "snapshot_4cfe1wgr"
 STREAM_TIMEOUT = httpx.Timeout(timeout=30.0, read=None)
 STREAM_HEADERS = {"Content-Type": "application/json"}
 
@@ -69,11 +69,11 @@ def main() -> None:
     print(f"Status: {health_response.status_code}")
     print(f"Response: {health_response.text}")
 
-    stream_exec(execd_url, "pwd")
-    stream_exec(execd_url, "ls -la")
-    stream_exec(execd_url, "echo stdout && echo stderr >&2")
+    # stream_exec(execd_url, "pwd")
+    # stream_exec(execd_url, "ls -la")
+    # stream_exec(execd_url, "echo stdout && echo stderr >&2")
 
-    print("\n=== Comparing with instance.exec() ===")
+    # print("\n=== Comparing with instance.exec() ===")
     print("executing pwd via instance.exec()...")
     print(instance.exec("pwd"))
 
