@@ -4,7 +4,7 @@ import json
 import sys
 
 
-SNAPSHOT_ID = "snapshot_6uh2qjbk"
+SNAPSHOT_ID = "snapshot_lj5iqb09"
 STREAM_TIMEOUT = httpx.Timeout(timeout=30.0, read=None)
 STREAM_HEADERS = {"Content-Type": "application/json"}
 

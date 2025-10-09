@@ -24,7 +24,7 @@ from morphcloud.api import ApiError, Instance, MorphCloudClient
 CDP_PORT = 39381
 VNC_PORT = 39380
 VSCODE_PORT = 39378
-DEFAULT_SNAPSHOT_ID = "snapshot_mklll3th"
+DEFAULT_SNAPSHOT_ID = "snapshot_lj5iqb09"
 
 
 def parse_args() -> argparse.Namespace:
@@ -37,7 +37,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--vcpus",
         type=int,
-        default=8,
+        default=10,
         help="vCPU count for the instance (default: %(default)s)",
     )
     parser.add_argument(
@@ -240,11 +240,6 @@ async def run() -> None:
         print(f"Booting snapshot {args.snapshot_id}...")
         instance = await client.instances.aboot(
             args.snapshot_id,
-            vcpus=args.vcpus,
-            memory=args.memory,
-            disk_size=args.disk_size,
-            ttl_seconds=args.ttl_seconds,
-            ttl_action=args.ttl_action,
         )
         print(f"Instance {instance.id} is starting; waiting for readiness...")
         await instance.await_until_ready()
@@ -265,9 +260,13 @@ async def run() -> None:
         print(f"VNC URL: {vnc_html}")
         print(f"DevTools version endpoint: {cdp_url}/json/version")
 
+        # press enter to continue
+        input("Press Enter to continue...")
+        
         version_info = await fetch_devtools_version(cdp_url)
         ws_url = build_websocket_url(cdp_url, version_info["webSocketDebuggerUrl"])
         print(f"Using websocket endpoint: {ws_url}")
+
 
         if args.verbose:
             print("DevTools version payload:")
@@ -319,6 +318,8 @@ async def run() -> None:
         should_stop = True
     finally:
         if instance and should_stop:
+            # press enter to stop
+            input("Press Enter to stop instance...")
             print("Stopping instance...")
             try:
                 await asyncio.to_thread(instance.stop)
