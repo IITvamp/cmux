@@ -3,7 +3,7 @@ import { Dropdown } from "@/components/ui/dropdown";
 import { normalizeGitRef } from "@/lib/refWithOrigin";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
-import { useQuery as useRQ, useMutation, type DefaultError } from "@tanstack/react-query";
+import { useQuery as useRQ, useMutation } from "@tanstack/react-query";
 import { useQuery as useConvexQuery } from "convex/react";
 import { ExternalLink, X, Check, Circle, Clock, AlertCircle, Loader2, ChevronRight, ChevronDown, Copy, GitBranch } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
@@ -11,14 +11,7 @@ import { toast } from "sonner";
 import { useClipboard } from "@mantine/hooks";
 import clsx from "clsx";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
-import { postApiIntegrationsGithubPrsCloseMutation } from "@cmux/www-openapi-client/react-query";
-import { postApiIntegrationsGithubPrsMergeSimple } from "@cmux/www-openapi-client";
-import type {
-  Options,
-  PostApiIntegrationsGithubPrsCloseData,
-  PostApiIntegrationsGithubPrsCloseResponse,
-  PostApiIntegrationsGithubPrsMergeSimpleResponse,
-} from "@cmux/www-openapi-client";
+import { postApiIntegrationsGithubPrsCloseMutation, postApiIntegrationsGithubPrsMergeSimpleMutation } from "@cmux/www-openapi-client/react-query";
 
 type PullRequestDetailViewProps = {
   teamSlugOrId: string;
@@ -484,11 +477,7 @@ export function PullRequestDetailView({
     } : null);
   };
 
-  const closePrMutation = useMutation<
-    PostApiIntegrationsGithubPrsCloseResponse,
-    DefaultError,
-    Options<PostApiIntegrationsGithubPrsCloseData>
-  >({
+  const closePrMutation = useMutation({
     ...postApiIntegrationsGithubPrsCloseMutation(),
     onSuccess: (data) => {
       toast.success(data.message || `PR #${currentPR?.number} closed successfully`);
@@ -498,26 +487,8 @@ export function PullRequestDetailView({
     },
   });
 
-  const mergePrMutation = useMutation<
-    PostApiIntegrationsGithubPrsMergeSimpleResponse,
-    DefaultError,
-    MergeMethod
-  >({
-    mutationFn: async (method: MergeMethod) => {
-      if (!currentPR) throw new Error("No PR selected");
-
-      const { data } = await postApiIntegrationsGithubPrsMergeSimple({
-        body: {
-          teamSlugOrId,
-          owner,
-          repo,
-          number: currentPR.number,
-          method,
-        },
-        throwOnError: true,
-      });
-      return data;
-    },
+  const mergePrMutation = useMutation({
+    ...postApiIntegrationsGithubPrsMergeSimpleMutation(),
     onSuccess: (data) => {
       toast.success(data.message || `PR #${currentPR?.number} merged successfully`);
     },
@@ -539,7 +510,16 @@ export function PullRequestDetailView({
   };
 
   const handleMergePR = (method: MergeMethod) => {
-    mergePrMutation.mutate(method);
+    if (!currentPR) return;
+    mergePrMutation.mutate({
+      body: {
+        teamSlugOrId,
+        owner,
+        repo,
+        number: currentPR.number,
+        method,
+      },
+    });
   };
 
   if (!currentPR) {

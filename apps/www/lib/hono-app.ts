@@ -7,7 +7,6 @@ import { githubPrsFilesRouter } from "@/lib/routes/github.prs.files.route";
 import { githubPrsOpenRouter } from "@/lib/routes/github.prs.open.route";
 import { githubPrsPatchRouter } from "@/lib/routes/github.prs.patch.route";
 import { githubPrsRouter } from "@/lib/routes/github.prs.route";
-import { githubWorkflowsRouter } from "@/lib/routes/github.workflows.route";
 import { githubReposRouter } from "@/lib/routes/github.repos.route";
 import {
   booksRouter,
@@ -108,7 +107,6 @@ app.route("/", githubPrsPatchRouter);
 app.route("/", githubPrsFilesRouter);
 app.route("/", githubPrsFileContentsRouter);
 app.route("/", githubPrsFileContentsBatchRouter);
-app.route("/", githubWorkflowsRouter);
 app.route("/", morphRouter);
 app.route("/", environmentsRouter);
 app.route("/", sandboxesRouter);
