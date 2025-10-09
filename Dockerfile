@@ -16,7 +16,7 @@ ARG NODE_VERSION=24.9.0
 FROM --platform=$BUILDPLATFORM ubuntu:24.04 AS builder
 
 ARG VERSION
-ARG CODE_RELEASE
+ARG CODE_RELEASE=1.103.1
 ARG DOCKER_VERSION
 ARG DOCKER_CHANNEL
 ARG BUILDPLATFORM
@@ -29,31 +29,31 @@ ARG NODE_VERSION
 ARG NVM_VERSION
 
 ENV RUSTUP_HOME=/usr/local/rustup \
-    CARGO_HOME=/usr/local/cargo \
-    NVM_DIR=/root/.nvm \
-    PATH="/usr/local/cargo/bin:${PATH}"
+  CARGO_HOME=/usr/local/cargo \
+  NVM_DIR=/root/.nvm \
+  PATH="/usr/local/cargo/bin:${PATH}"
 
 # Install build dependencies + cross-compilation toolchain
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    curl \
-    wget \
-    git \
-    jq \
-    python3 \
-    make \
-    g++ \
-    gcc-x86-64-linux-gnu \
-    g++-x86-64-linux-gnu \
-    libc6-dev-amd64-cross \
-    bash \
-    unzip \
-    xz-utils \
-    gnupg \
-    ruby-full \
-    perl
+  --mount=type=cache,target=/var/lib/apt,sharing=locked \
+  apt-get update && apt-get install -y --no-install-recommends \
+  ca-certificates \
+  curl \
+  wget \
+  git \
+  jq \
+  python3 \
+  make \
+  g++ \
+  gcc-x86-64-linux-gnu \
+  g++-x86-64-linux-gnu \
+  libc6-dev-amd64-cross \
+  bash \
+  unzip \
+  xz-utils \
+  gnupg \
+  ruby-full \
+  perl
 
 # Install Rust toolchain with x86_64 cross-compilation support
 RUN bash <<'EOF'
@@ -114,33 +114,33 @@ EOF
 
 # Install Bun
 RUN curl -fsSL https://bun.sh/install | bash && \
-    mv /root/.bun/bin/bun /usr/local/bin/ && \
-    ln -s /usr/local/bin/bun /usr/local/bin/bunx && \
-    bun --version && \
-    bunx --version
+  mv /root/.bun/bin/bun /usr/local/bin/ && \
+  ln -s /usr/local/bin/bun /usr/local/bin/bunx && \
+  bun --version && \
+  bunx --version
 
 # Install openvscode-server (with retries and IPv4 fallback)
 RUN if [ -z "${CODE_RELEASE}" ]; then \
-    CODE_RELEASE=$(curl -sX GET "https://api.github.com/repos/gitpod-io/openvscode-server/releases/latest" \
-    | awk '/tag_name/{print $4;exit}' FS='["\"]' \
-    | sed 's|^openvscode-server-v||'); \
-    fi && \
-    echo "CODE_RELEASE=${CODE_RELEASE}" && \
-    arch="$(dpkg --print-architecture)" && \
-    if [ "$arch" = "amd64" ]; then \
-    ARCH="x64"; \
-    elif [ "$arch" = "arm64" ]; then \
-    ARCH="arm64"; \
-    fi && \
-    mkdir -p /app/openvscode-server && \
-    url="https://github.com/gitpod-io/openvscode-server/releases/download/openvscode-server-v${CODE_RELEASE}/openvscode-server-v${CODE_RELEASE}-linux-${ARCH}.tar.gz" && \
-    echo "Downloading: $url" && \
-    ( \
-    curl -fSL --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz "$url" \
-    || curl -fSL4 --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz "$url" \
-    ) && \
-    tar xf /tmp/openvscode-server.tar.gz -C /app/openvscode-server/ --strip-components=1 && \
-    rm -rf /tmp/openvscode-server.tar.gz
+  CODE_RELEASE=$(curl -sX GET "https://api.github.com/repos/gitpod-io/openvscode-server/releases/latest" \
+  | awk '/tag_name/{print $4;exit}' FS='["\"]' \
+  | sed 's|^openvscode-server-v||'); \
+  fi && \
+  echo "CODE_RELEASE=${CODE_RELEASE}" && \
+  arch="$(dpkg --print-architecture)" && \
+  if [ "$arch" = "amd64" ]; then \
+  ARCH="x64"; \
+  elif [ "$arch" = "arm64" ]; then \
+  ARCH="arm64"; \
+  fi && \
+  mkdir -p /app/openvscode-server && \
+  url="https://github.com/gitpod-io/openvscode-server/releases/download/openvscode-server-v${CODE_RELEASE}/openvscode-server-v${CODE_RELEASE}-linux-${ARCH}.tar.gz" && \
+  echo "Downloading: $url" && \
+  ( \
+  curl -fSL --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz "$url" \
+  || curl -fSL4 --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz "$url" \
+  ) && \
+  tar xf /tmp/openvscode-server.tar.gz -C /app/openvscode-server/ --strip-components=1 && \
+  rm -rf /tmp/openvscode-server.tar.gz
 
 # Copy package files for monorepo dependency installation
 WORKDIR /cmux
@@ -148,10 +148,10 @@ COPY package.json bun.lock .npmrc ./
 COPY --parents apps/*/package.json packages/*/package.json scripts/package.json ./
 
 RUN --mount=type=cache,target=/root/.bun/install/cache \
-    bun install --frozen-lockfile --production
+  bun install --frozen-lockfile --production
 
 RUN mkdir -p /builtins && \
-    echo '{"name":"builtins","type":"module","version":"1.0.0"}' > /builtins/package.json
+  echo '{"name":"builtins","type":"module","version":"1.0.0"}' > /builtins/package.json
 WORKDIR /builtins
 
 # Copy source files needed for build
@@ -181,32 +181,32 @@ COPY crates ./crates
 # Build Rust binaries for envctl/envd and cmux-proxy
 # Cross-compile to x86_64 only when the target platform requires it
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/cmux/crates/target \
-    if [ "$TARGETPLATFORM" = "linux/amd64" ] && [ "$BUILDPLATFORM" != "linux/amd64" ]; then \
-        # Cross-compile to x86_64 when building on a non-amd64 builder
-        export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc && \
-        export CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc && \
-        export CXX_x86_64_unknown_linux_gnu=x86_64-linux-gnu-g++ && \
-        cargo install --path crates/cmux-env --target x86_64-unknown-linux-gnu --locked --force && \
-        cargo install --path crates/cmux-proxy --target x86_64-unknown-linux-gnu --locked --force; \
-    else \
-        # Build natively for the requested platform (e.g., arm64 on Apple Silicon)
-        cargo install --path crates/cmux-env --locked --force && \
-        cargo install --path crates/cmux-proxy --locked --force; \
-    fi
+  --mount=type=cache,target=/usr/local/cargo/git \
+  --mount=type=cache,target=/cmux/crates/target \
+  if [ "$TARGETPLATFORM" = "linux/amd64" ] && [ "$BUILDPLATFORM" != "linux/amd64" ]; then \
+  # Cross-compile to x86_64 when building on a non-amd64 builder
+  export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc && \
+  export CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc && \
+  export CXX_x86_64_unknown_linux_gnu=x86_64-linux-gnu-g++ && \
+  cargo install --path crates/cmux-env --target x86_64-unknown-linux-gnu --locked --force && \
+  cargo install --path crates/cmux-proxy --target x86_64-unknown-linux-gnu --locked --force; \
+  else \
+  # Build natively for the requested platform (e.g., arm64 on Apple Silicon)
+  cargo install --path crates/cmux-env --locked --force && \
+  cargo install --path crates/cmux-proxy --locked --force; \
+  fi
 
 # Build worker with bundling, using the installed node_modules
 RUN cd /cmux && \
-    bun build ./apps/worker/src/index.ts \
-    --target node \
-    --outdir ./apps/worker/build \
-    --external @cmux/convex \
-    --external node:* && \
-    echo "Built worker" && \
-    cp -r ./apps/worker/build /builtins/build && \
-    cp ./apps/worker/wait-for-docker.sh /usr/local/bin/ && \
-    chmod +x /usr/local/bin/wait-for-docker.sh
+  bun build ./apps/worker/src/index.ts \
+  --target node \
+  --outdir ./apps/worker/build \
+  --external @cmux/convex \
+  --external node:* && \
+  echo "Built worker" && \
+  cp -r ./apps/worker/build /builtins/build && \
+  cp ./apps/worker/wait-for-docker.sh /usr/local/bin/ && \
+  chmod +x /usr/local/bin/wait-for-docker.sh
 
 # Verify bun is still working in builder
 RUN bun --version && bunx --version
@@ -230,66 +230,66 @@ ARG NVM_VERSION
 
 # Install runtime dependencies only
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    curl \
-    wget \
-    git \
-    python3 \
-    bash \
-    nano \
-    net-tools \
-    lsof \
-    sudo \
-    iptables \
-    openssl \
-    pigz \
-    xz-utils \
-    unzip \
-    tmux \
-    htop \
-    ripgrep \
-    jq \
-    systemd \
-    dbus \
-    util-linux \
-    xvfb \
-    x11vnc \
-    fluxbox \
-    websockify \
-    novnc \
-    xauth \
-    xdg-utils \
-    socat \
-    fonts-liberation \
-    libasound2t64 \
-    libatk-bridge2.0-0 \
-    libatspi2.0-0 \
-    libcups2 \
-    libdrm2 \
-    libgbm1 \
-    libgtk-3-0 \
-    libnspr4 \
-    libnss3 \
-    libpango-1.0-0 \
-    libx11-xcb1 \
-    libxcomposite1 \
-    libxcursor1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxi6 \
-    libxkbcommon0 \
-    libxrandr2 \
-    libxrender1 \
-    libxshmfence1 \
-    libxss1 \
-    libxtst6
+  --mount=type=cache,target=/var/lib/apt,sharing=locked \
+  apt-get update && apt-get install -y --no-install-recommends \
+  ca-certificates \
+  curl \
+  wget \
+  git \
+  python3 \
+  bash \
+  nano \
+  net-tools \
+  lsof \
+  sudo \
+  iptables \
+  openssl \
+  pigz \
+  xz-utils \
+  unzip \
+  tmux \
+  htop \
+  ripgrep \
+  jq \
+  systemd \
+  dbus \
+  util-linux \
+  xvfb \
+  x11vnc \
+  fluxbox \
+  websockify \
+  novnc \
+  xauth \
+  xdg-utils \
+  socat \
+  fonts-liberation \
+  libasound2t64 \
+  libatk-bridge2.0-0 \
+  libatspi2.0-0 \
+  libcups2 \
+  libdrm2 \
+  libgbm1 \
+  libgtk-3-0 \
+  libnspr4 \
+  libnss3 \
+  libpango-1.0-0 \
+  libx11-xcb1 \
+  libxcomposite1 \
+  libxcursor1 \
+  libxdamage1 \
+  libxfixes3 \
+  libxi6 \
+  libxkbcommon0 \
+  libxrandr2 \
+  libxrender1 \
+  libxshmfence1 \
+  libxss1 \
+  libxtst6
 
 ENV RUSTUP_HOME=/usr/local/rustup \
-    CARGO_HOME=/usr/local/cargo \
-    NVM_DIR=/root/.nvm \
-    PATH="/root/.local/bin:/usr/local/cargo/bin:/usr/local/bin:${PATH}"
+  CARGO_HOME=/usr/local/cargo \
+  NVM_DIR=/root/.nvm \
+  PATH="/root/.local/bin:/usr/local/cargo/bin:/usr/local/bin:${PATH}"
 
 # Install Chrome (amd64) or Chromium snapshot (arm64) so that VNC sessions have a browser available
 RUN <<'EOF'
@@ -396,11 +396,11 @@ EOF
 COPY scripts/repo-enablers /usr/local/share/cmux/repo-enablers
 RUN find /usr/local/share/cmux/repo-enablers -type f -name '*.sh' -exec chmod +x {} +
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    /usr/local/share/cmux/repo-enablers/deb/github-cli.sh \
-    && DEBIAN_FRONTEND=noninteractive apt-get update \
-    && DEBIAN_FRONTEND=noninteractive apt-get install -y gh \
-    && rm -rf /var/lib/apt/lists/*
+  --mount=type=cache,target=/var/lib/apt,sharing=locked \
+  /usr/local/share/cmux/repo-enablers/deb/github-cli.sh \
+  && DEBIAN_FRONTEND=noninteractive apt-get update \
+  && DEBIAN_FRONTEND=noninteractive apt-get install -y gh \
+  && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 24.x (runtime) and enable pnpm via corepack
 RUN <<EOF
@@ -444,15 +444,15 @@ EOF
 
 # Install Bun natively (since runtime is x86_64, we can't copy from ARM64 builder)
 RUN curl -fsSL https://bun.sh/install | bash && \
-    mv /root/.bun/bin/bun /usr/local/bin/ && \
-    ln -s /usr/local/bin/bun /usr/local/bin/bunx && \
-    bun --version && \
-    bunx --version
+  mv /root/.bun/bin/bun /usr/local/bin/ && \
+  ln -s /usr/local/bin/bun /usr/local/bin/bunx && \
+  bun --version && \
+  bunx --version
 
 ENV PATH="/usr/local/bin:$PATH"
 
 RUN --mount=type=cache,target=/root/.bun/install/cache \
-    bun add -g @openai/codex@0.42.0 @anthropic-ai/claude-code@2.0.0 @google/gemini-cli@0.1.21 opencode-ai@0.6.4 codebuff @devcontainers/cli @sourcegraph/amp
+  bun add -g @openai/codex@0.42.0 @anthropic-ai/claude-code@2.0.0 @google/gemini-cli@0.1.21 opencode-ai@0.6.4 codebuff @devcontainers/cli @sourcegraph/amp
 
 # Install cursor cli
 RUN curl https://cursor.com/install -fsS | bash
@@ -465,36 +465,36 @@ COPY --from=builder /usr/local/bin/wait-for-docker.sh /usr/local/bin/wait-for-do
 COPY apps/worker/scripts/collect-relevant-diff.sh /usr/local/bin/cmux-collect-relevant-diff.sh
 COPY apps/worker/scripts/collect-crown-diff.sh /usr/local/bin/cmux-collect-crown-diff.sh
 RUN chmod +x /usr/local/bin/cmux-collect-relevant-diff.sh \
-    && chmod +x /usr/local/bin/cmux-collect-crown-diff.sh
+  && chmod +x /usr/local/bin/cmux-collect-crown-diff.sh
 
 # Install openvscode-server for x86_64 (target platform)
 ARG CODE_RELEASE
 RUN if [ -z "${CODE_RELEASE}" ]; then \
-    CODE_RELEASE=$(curl -sX GET "https://api.github.com/repos/gitpod-io/openvscode-server/releases/latest" \
-    | awk '/tag_name/{print $4;exit}' FS='["\"]' \
-    | sed 's|^openvscode-server-v||'); \
-    fi && \
-    echo "CODE_RELEASE=${CODE_RELEASE}" && \
-    arch="$(dpkg --print-architecture)" && \
-    if [ "$arch" = "amd64" ]; then \
-    ARCH="x64"; \
-    elif [ "$arch" = "arm64" ]; then \
-    ARCH="arm64"; \
-    fi && \
-    mkdir -p /app/openvscode-server && \
-    url="https://github.com/gitpod-io/openvscode-server/releases/download/openvscode-server-v${CODE_RELEASE}/openvscode-server-v${CODE_RELEASE}-linux-${ARCH}.tar.gz" && \
-    echo "Downloading: $url" && \
-    ( \
-    curl -fSL --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz "$url" \
-    || curl -fSL4 --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz "$url" \
-    ) && \
-    tar xf /tmp/openvscode-server.tar.gz -C /app/openvscode-server/ --strip-components=1 && \
-    rm -rf /tmp/openvscode-server.tar.gz
+  CODE_RELEASE=$(curl -sX GET "https://api.github.com/repos/gitpod-io/openvscode-server/releases/latest" \
+  | awk '/tag_name/{print $4;exit}' FS='["\"]' \
+  | sed 's|^openvscode-server-v||'); \
+  fi && \
+  echo "CODE_RELEASE=${CODE_RELEASE}" && \
+  arch="$(dpkg --print-architecture)" && \
+  if [ "$arch" = "amd64" ]; then \
+  ARCH="x64"; \
+  elif [ "$arch" = "arm64" ]; then \
+  ARCH="arm64"; \
+  fi && \
+  mkdir -p /app/openvscode-server && \
+  url="https://github.com/gitpod-io/openvscode-server/releases/download/openvscode-server-v${CODE_RELEASE}/openvscode-server-v${CODE_RELEASE}-linux-${ARCH}.tar.gz" && \
+  echo "Downloading: $url" && \
+  ( \
+  curl -fSL --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz "$url" \
+  || curl -fSL4 --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz "$url" \
+  ) && \
+  tar xf /tmp/openvscode-server.tar.gz -C /app/openvscode-server/ --strip-components=1 && \
+  rm -rf /tmp/openvscode-server.tar.gz
 
 # Copy the cmux vscode extension from builder (it's just a .vsix file, platform-independent)
 COPY --from=builder /tmp/cmux-vscode-extension-0.0.1.vsix /tmp/cmux-vscode-extension-0.0.1.vsix
 RUN /app/openvscode-server/bin/openvscode-server --install-extension /tmp/cmux-vscode-extension-0.0.1.vsix && \
-    rm /tmp/cmux-vscode-extension-0.0.1.vsix
+  rm /tmp/cmux-vscode-extension-0.0.1.vsix
 
 # Copy vendored Rust binaries from builder
 COPY --from=builder /usr/local/cargo/bin/envctl /usr/local/bin/envctl
@@ -503,13 +503,13 @@ COPY --from=builder /usr/local/cargo/bin/cmux-proxy /usr/local/bin/cmux-proxy
 
 # Configure envctl/envd runtime defaults
 RUN chmod +x /usr/local/bin/envctl /usr/local/bin/envd /usr/local/bin/cmux-proxy && \
-    envctl --version && \
-    envctl install-hook bash && \
-    echo '[ -f ~/.bashrc ] && . ~/.bashrc' > /root/.profile && \
-    echo '[ -f ~/.bashrc ] && . ~/.bashrc' > /root/.bash_profile && \
-    mkdir -p /run/user/0 && \
-    chmod 700 /run/user/0 && \
-    echo 'export XDG_RUNTIME_DIR=/run/user/0' >> /root/.bashrc
+  envctl --version && \
+  envctl install-hook bash && \
+  echo '[ -f ~/.bashrc ] && . ~/.bashrc' > /root/.profile && \
+  echo '[ -f ~/.bashrc ] && . ~/.bashrc' > /root/.bash_profile && \
+  mkdir -p /run/user/0 && \
+  chmod 700 /run/user/0 && \
+  echo 'export XDG_RUNTIME_DIR=/run/user/0' >> /root/.bashrc
 
 # Install tmux configuration for better mouse scrolling behavior
 COPY configs/tmux.conf /etc/tmux.conf
@@ -517,11 +517,11 @@ COPY configs/tmux.conf /etc/tmux.conf
 # Install Claude Code extension v2.0.0 from VS Code Marketplace
 # The vspackage endpoint returns a gzipped vsix, so we need to decompress it first
 RUN wget --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=15 -t 5 \
-    "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/anthropic/vsextensions/claude-code/2.0.0/vspackage" \
-    -O /tmp/claude-code.vsix.gz && \
-    gunzip /tmp/claude-code.vsix.gz && \
-    /app/openvscode-server/bin/openvscode-server --install-extension /tmp/claude-code.vsix && \
-    rm /tmp/claude-code.vsix
+  "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/anthropic/vsextensions/claude-code/2.0.0/vspackage" \
+  -O /tmp/claude-code.vsix.gz && \
+  gunzip /tmp/claude-code.vsix.gz && \
+  /app/openvscode-server/bin/openvscode-server --install-extension /tmp/claude-code.vsix && \
+  rm /tmp/claude-code.vsix
 
 # Create workspace and lifecycle directories
 RUN mkdir -p /workspace /root/workspace /root/lifecycle
@@ -539,25 +539,25 @@ COPY configs/systemd/cmux-vnc.service /usr/lib/systemd/system/cmux-vnc.service
 COPY configs/systemd/bin/configure-openvscode /usr/local/lib/cmux/configure-openvscode
 COPY configs/systemd/bin/cmux-start-vnc /usr/local/lib/cmux/cmux-start-vnc
 RUN chmod +x /usr/local/lib/cmux/configure-openvscode /usr/local/lib/cmux/cmux-start-vnc && \
-    touch /usr/local/lib/cmux/dockerd.flag && \
-    mkdir -p /var/log/cmux && \
-    mkdir -p /etc/systemd/system/multi-user.target.wants && \
-    mkdir -p /etc/systemd/system/cmux.target.wants && \
-    ln -sf /usr/lib/systemd/system/cmux.target /etc/systemd/system/multi-user.target.wants/cmux.target && \
-    ln -sf /usr/lib/systemd/system/cmux-openvscode.service /etc/systemd/system/cmux.target.wants/cmux-openvscode.service && \
-    ln -sf /usr/lib/systemd/system/cmux-worker.service /etc/systemd/system/cmux.target.wants/cmux-worker.service && \
-    ln -sf /usr/lib/systemd/system/cmux-dockerd.service /etc/systemd/system/cmux.target.wants/cmux-dockerd.service && \
-    ln -sf /usr/lib/systemd/system/cmux-vnc.service /etc/systemd/system/cmux.target.wants/cmux-vnc.service && \
-    mkdir -p /opt/app/overlay/upper /opt/app/overlay/work && \
-    printf 'CMUX_ROOTFS=/\nCMUX_RUNTIME_ROOT=/\nCMUX_OVERLAY_UPPER=/opt/app/overlay/upper\nCMUX_OVERLAY_WORK=/opt/app/overlay/work\n' > /opt/app/app.env
+  touch /usr/local/lib/cmux/dockerd.flag && \
+  mkdir -p /var/log/cmux && \
+  mkdir -p /etc/systemd/system/multi-user.target.wants && \
+  mkdir -p /etc/systemd/system/cmux.target.wants && \
+  ln -sf /usr/lib/systemd/system/cmux.target /etc/systemd/system/multi-user.target.wants/cmux.target && \
+  ln -sf /usr/lib/systemd/system/cmux-openvscode.service /etc/systemd/system/cmux.target.wants/cmux-openvscode.service && \
+  ln -sf /usr/lib/systemd/system/cmux-worker.service /etc/systemd/system/cmux.target.wants/cmux-worker.service && \
+  ln -sf /usr/lib/systemd/system/cmux-dockerd.service /etc/systemd/system/cmux.target.wants/cmux-dockerd.service && \
+  ln -sf /usr/lib/systemd/system/cmux-vnc.service /etc/systemd/system/cmux.target.wants/cmux-vnc.service && \
+  mkdir -p /opt/app/overlay/upper /opt/app/overlay/work && \
+  printf 'CMUX_ROOTFS=/\nCMUX_RUNTIME_ROOT=/\nCMUX_OVERLAY_UPPER=/opt/app/overlay/upper\nCMUX_OVERLAY_WORK=/opt/app/overlay/work\n' > /opt/app/app.env
 
 # Create VS Code user settings
 RUN mkdir -p /root/.openvscode-server/data/User && \
-    echo '{\"workbench.startupEditor\": \"none\", \"terminal.integrated.macOptionClickForcesSelection\": true, \"terminal.integrated.shell.linux\": \"bash\", \"terminal.integrated.shellArgs.linux\": [\"-l\"]}' > /root/.openvscode-server/data/User/settings.json && \
-    mkdir -p /root/.openvscode-server/data/User/profiles/default-profile && \
-    echo '{\"workbench.startupEditor\": \"none\", \"terminal.integrated.macOptionClickForcesSelection\": true, \"terminal.integrated.shell.linux\": \"bash\", \"terminal.integrated.shellArgs.linux\": [\"-l\"]}' > /root/.openvscode-server/data/User/profiles/default-profile/settings.json && \
-    mkdir -p /root/.openvscode-server/data/Machine && \
-    echo '{\"workbench.startupEditor\": \"none\", \"terminal.integrated.macOptionClickForcesSelection\": true, \"terminal.integrated.shell.linux\": \"bash\", \"terminal.integrated.shellArgs.linux\": [\"-l\"]}' > /root/.openvscode-server/data/Machine/settings.json
+  echo '{\"workbench.startupEditor\": \"none\", \"terminal.integrated.macOptionClickForcesSelection\": true, \"terminal.integrated.shell.linux\": \"bash\", \"terminal.integrated.shellArgs.linux\": [\"-l\"]}' > /root/.openvscode-server/data/User/settings.json && \
+  mkdir -p /root/.openvscode-server/data/User/profiles/default-profile && \
+  echo '{\"workbench.startupEditor\": \"none\", \"terminal.integrated.macOptionClickForcesSelection\": true, \"terminal.integrated.shell.linux\": \"bash\", \"terminal.integrated.shellArgs.linux\": [\"-l\"]}' > /root/.openvscode-server/data/User/profiles/default-profile/settings.json && \
+  mkdir -p /root/.openvscode-server/data/Machine && \
+  echo '{\"workbench.startupEditor\": \"none\", \"terminal.integrated.macOptionClickForcesSelection\": true, \"terminal.integrated.shell.linux\": \"bash\", \"terminal.integrated.shellArgs.linux\": [\"-l\"]}' > /root/.openvscode-server/data/Machine/settings.json
 
 # Ports
 # 39375: Exec service (HTTP)
@@ -588,11 +588,11 @@ ARG BUILDKIT_VERSION
 COPY scripts/repo-enablers /usr/local/share/cmux/repo-enablers
 RUN find /usr/local/share/cmux/repo-enablers -type f -name '*.sh' -exec chmod +x {} +
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    /usr/local/share/cmux/repo-enablers/deb/github-cli.sh \
-    && DEBIAN_FRONTEND=noninteractive apt-get update \
-    && DEBIAN_FRONTEND=noninteractive apt-get install -y gh \
-    && rm -rf /var/lib/apt/lists/*
+  --mount=type=cache,target=/var/lib/apt,sharing=locked \
+  /usr/local/share/cmux/repo-enablers/deb/github-cli.sh \
+  && DEBIAN_FRONTEND=noninteractive apt-get update \
+  && DEBIAN_FRONTEND=noninteractive apt-get install -y gh \
+  && rm -rf /var/lib/apt/lists/*
 
 # Switch to legacy iptables for Docker compatibility
 RUN update-alternatives --set iptables /usr/sbin/iptables-legacy
