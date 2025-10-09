@@ -153,10 +153,12 @@ const convexSchema = defineSchema({
     updatedAt: v.number(),
     completedAt: v.optional(v.number()),
     exitCode: v.optional(v.number()),
-    environmentError: v.optional(v.object({
-      devError: v.optional(v.string()),
-      maintenanceError: v.optional(v.string()),
-    })),
+    environmentError: v.optional(
+      v.object({
+        devError: v.optional(v.string()),
+        maintenanceError: v.optional(v.string()),
+      })
+    ),
     errorMessage: v.optional(v.string()), // Error message when run fails early
     userId: v.string(), // Link to user who created the run
     teamId: v.string(),
@@ -507,6 +509,8 @@ const convexSchema = defineSchema({
     state: v.union(v.literal("open"), v.literal("closed")),
     merged: v.optional(v.boolean()),
     draft: v.optional(v.boolean()),
+    mergeable: v.optional(v.boolean()),
+    mergeableState: v.optional(v.string()),
     authorLogin: v.optional(v.string()),
     authorId: v.optional(v.number()),
     htmlUrl: v.optional(v.string()),
@@ -537,6 +541,222 @@ const convexSchema = defineSchema({
     .index("by_team_repo_number", ["teamId", "repoFullName", "number"]) // upsert key
     .index("by_installation", ["installationId", "updatedAt"]) // debug/ops
     .index("by_repo", ["repoFullName", "updatedAt"]),
+
+  // GitHub Actions workflow runs
+  githubWorkflowRuns: defineTable({
+    // Identity within provider and repo context
+    provider: v.literal("github"),
+    installationId: v.number(),
+    repositoryId: v.optional(v.number()),
+    repoFullName: v.string(), // owner/repo
+
+    // Workflow run identity
+    runId: v.number(), // GitHub's run ID
+    runNumber: v.number(), // Run number within repo
+
+    // Team scoping
+    teamId: v.string(),
+
+    // Workflow info
+    workflowId: v.number(),
+    workflowName: v.string(),
+
+    // Run details
+    name: v.optional(v.string()), // Run name (can be custom)
+    event: v.string(), // Event that triggered the run (push, pull_request, etc.)
+    status: v.optional(
+      v.union(
+        v.literal("queued"),
+        v.literal("in_progress"),
+        v.literal("completed"),
+        v.literal("pending"),
+        v.literal("waiting")
+      )
+    ),
+    conclusion: v.optional(
+      v.union(
+        v.literal("success"),
+        v.literal("failure"),
+        v.literal("neutral"),
+        v.literal("cancelled"),
+        v.literal("skipped"),
+        v.literal("timed_out"),
+        v.literal("action_required")
+      )
+    ),
+
+    // Branch and commit info
+    headBranch: v.optional(v.string()),
+    headSha: v.optional(v.string()),
+
+    // URLs
+    htmlUrl: v.optional(v.string()),
+
+    // Timestamps
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
+    runStartedAt: v.optional(v.number()),
+    runCompletedAt: v.optional(v.number()),
+
+    // Run times (in seconds)
+    runDuration: v.optional(v.number()),
+
+    // Actor info
+    actorLogin: v.optional(v.string()),
+    actorId: v.optional(v.number()),
+
+    // Triggering PR (if applicable)
+    triggeringPrNumber: v.optional(v.number()),
+  })
+    .index("by_team", ["teamId", "updatedAt"]) // list by team, recent first
+    .index("by_team_repo", ["teamId", "repoFullName", "updatedAt"]) // filter by repo
+    .index("by_team_workflow", ["teamId", "workflowId", "updatedAt"]) // filter by workflow
+    .index("by_installation", ["installationId", "updatedAt"]) // debug/ops
+    .index("by_runId", ["runId"]) // unique lookup
+    .index("by_repo_runNumber", ["repoFullName", "runNumber"]) // unique per repo
+    .index("by_repo_sha", ["repoFullName", "headSha", "runStartedAt"]), // filter by SHA for PR
+
+  // GitHub Check Runs (for Vercel, deployments, etc.)
+  githubCheckRuns: defineTable({
+    // Identity
+    provider: v.literal("github"),
+    installationId: v.number(),
+    repositoryId: v.optional(v.number()),
+    repoFullName: v.string(),
+    checkRunId: v.number(), // GitHub check run ID
+
+    // Team scoping
+    teamId: v.string(),
+
+    // Check run details
+    name: v.string(), // Check name (e.g., "Vercel - cmux-client")
+    status: v.optional(
+      v.union(
+        v.literal("queued"),
+        v.literal("in_progress"),
+        v.literal("completed"),
+        v.literal("pending"),
+        v.literal("waiting")
+      )
+    ),
+    conclusion: v.optional(
+      v.union(
+        v.literal("success"),
+        v.literal("failure"),
+        v.literal("neutral"),
+        v.literal("cancelled"),
+        v.literal("skipped"),
+        v.literal("timed_out"),
+        v.literal("action_required")
+      )
+    ),
+
+    // Commit info
+    headSha: v.string(),
+
+    // URLs
+    htmlUrl: v.optional(v.string()),
+
+    // Timestamps
+    updatedAt: v.optional(v.number()),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+
+    // App info (e.g., Vercel)
+    appName: v.optional(v.string()),
+    appSlug: v.optional(v.string()),
+
+    // Triggering PR (if applicable)
+    triggeringPrNumber: v.optional(v.number()),
+  })
+    .index("by_team", ["teamId", "updatedAt"])
+    .index("by_team_repo", ["teamId", "repoFullName", "updatedAt"])
+    .index("by_checkRunId", ["checkRunId"])
+    .index("by_headSha", ["headSha", "updatedAt"]),
+
+  // GitHub Deployments (Vercel, etc.)
+  githubDeployments: defineTable({
+    provider: v.literal("github"),
+    installationId: v.number(),
+    repositoryId: v.optional(v.number()),
+    repoFullName: v.string(),
+    deploymentId: v.number(),
+    teamId: v.string(),
+
+    // Deployment details
+    sha: v.string(),
+    ref: v.optional(v.string()),
+    task: v.optional(v.string()),
+    environment: v.optional(v.string()),
+    description: v.optional(v.string()),
+
+    // Creator info
+    creatorLogin: v.optional(v.string()),
+
+    // Timestamps
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
+
+    // Current status (from latest deployment_status)
+    state: v.optional(
+      v.union(
+        v.literal("error"),
+        v.literal("failure"),
+        v.literal("pending"),
+        v.literal("in_progress"),
+        v.literal("queued"),
+        v.literal("success")
+      )
+    ),
+    statusDescription: v.optional(v.string()),
+    targetUrl: v.optional(v.string()),
+    environmentUrl: v.optional(v.string()),
+    logUrl: v.optional(v.string()),
+
+    // Triggering PR (if applicable)
+    triggeringPrNumber: v.optional(v.number()),
+  })
+    .index("by_team", ["teamId", "updatedAt"])
+    .index("by_team_repo", ["teamId", "repoFullName", "updatedAt"])
+    .index("by_deploymentId", ["deploymentId"])
+    .index("by_sha", ["sha", "updatedAt"]),
+
+  // GitHub Commit Statuses (legacy status API)
+  githubCommitStatuses: defineTable({
+    provider: v.literal("github"),
+    installationId: v.number(),
+    repositoryId: v.optional(v.number()),
+    repoFullName: v.string(),
+    statusId: v.number(),
+    teamId: v.string(),
+
+    // Status details
+    sha: v.string(),
+    state: v.union(
+      v.literal("error"),
+      v.literal("failure"),
+      v.literal("pending"),
+      v.literal("success")
+    ),
+    context: v.string(),
+    description: v.optional(v.string()),
+    targetUrl: v.optional(v.string()),
+
+    // Creator info
+    creatorLogin: v.optional(v.string()),
+
+    // Timestamps
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
+
+    // Triggering PR (if applicable)
+    triggeringPrNumber: v.optional(v.number()),
+  })
+    .index("by_team", ["teamId", "updatedAt"])
+    .index("by_team_repo", ["teamId", "repoFullName", "updatedAt"])
+    .index("by_statusId", ["statusId"])
+    .index("by_sha_context", ["sha", "context", "updatedAt"])
+    .index("by_sha", ["sha", "updatedAt"]),
 });
 
 export default convexSchema;

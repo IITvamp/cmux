@@ -227,6 +227,21 @@ export type GithubMergePrRequest = {
     method: 'squash' | 'rebase' | 'merge';
 };
 
+export type GithubClosePrRequest = {
+    teamSlugOrId: string;
+    owner: string;
+    repo: string;
+    number: number;
+};
+
+export type GithubMergePrSimpleRequest = {
+    teamSlugOrId: string;
+    owner: string;
+    repo: string;
+    number: number;
+    method: 'squash' | 'rebase' | 'merge';
+};
+
 export type GithubPrsFilesResponse = {
     repoFullName: string;
     number: number;
@@ -1168,6 +1183,82 @@ export type PostApiIntegrationsGithubPrsMergeResponses = {
 };
 
 export type PostApiIntegrationsGithubPrsMergeResponse = PostApiIntegrationsGithubPrsMergeResponses[keyof PostApiIntegrationsGithubPrsMergeResponses];
+
+export type PostApiIntegrationsGithubPrsCloseData = {
+    body: GithubClosePrRequest;
+    path?: never;
+    query?: never;
+    url: '/api/integrations/github/prs/close';
+};
+
+export type PostApiIntegrationsGithubPrsCloseErrors = {
+    /**
+     * Invalid request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Forbidden
+     */
+    403: unknown;
+    /**
+     * Failed to close PR
+     */
+    500: unknown;
+};
+
+export type PostApiIntegrationsGithubPrsCloseResponses = {
+    /**
+     * PR closed successfully
+     */
+    200: {
+        success: boolean;
+        message: string;
+    };
+};
+
+export type PostApiIntegrationsGithubPrsCloseResponse = PostApiIntegrationsGithubPrsCloseResponses[keyof PostApiIntegrationsGithubPrsCloseResponses];
+
+export type PostApiIntegrationsGithubPrsMergeSimpleData = {
+    body: GithubMergePrSimpleRequest;
+    path?: never;
+    query?: never;
+    url: '/api/integrations/github/prs/merge-simple';
+};
+
+export type PostApiIntegrationsGithubPrsMergeSimpleErrors = {
+    /**
+     * Invalid request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Forbidden
+     */
+    403: unknown;
+    /**
+     * Failed to merge PR
+     */
+    500: unknown;
+};
+
+export type PostApiIntegrationsGithubPrsMergeSimpleResponses = {
+    /**
+     * PR merged successfully
+     */
+    200: {
+        success: boolean;
+        message: string;
+    };
+};
+
+export type PostApiIntegrationsGithubPrsMergeSimpleResponse = PostApiIntegrationsGithubPrsMergeSimpleResponses[keyof PostApiIntegrationsGithubPrsMergeSimpleResponses];
 
 export type GetApiIntegrationsGithubPrsRawData = {
     body?: never;
