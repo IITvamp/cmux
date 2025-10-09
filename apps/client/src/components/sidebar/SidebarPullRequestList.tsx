@@ -116,15 +116,17 @@ function PullRequestListItem({ pr, teamSlugOrId, expanded, setExpanded }: PullRe
     <GitPullRequest className="w-3 h-3 text-[#1f883d] dark:text-[#238636]" />
   );
 
-  // Find Preview deployment URL (environment_url from Preview deployment)
-  const previewDeployment = (deployments ?? []).find(d => d.environment === 'Preview');
-  const previewUrl = previewDeployment?.environmentUrl;
+  // Find all Preview deployments (environment_url from Preview deployments)
+  const previewDeployments = (deployments ?? []).filter(d => d.environment === 'Preview');
+
+  const [previewExpanded, setPreviewExpanded] = useState(false);
 
   const actionButtons: ReadonlyArray<{
-    key: "vscode" | "preview" | "github";
+    key: string;
     label: string;
     icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
     href?: string;
+    hasChildren?: boolean;
   }> = [
     {
       key: "vscode",
@@ -135,7 +137,7 @@ function PullRequestListItem({ pr, teamSlugOrId, expanded, setExpanded }: PullRe
       key: "preview",
       label: "Preview",
       icon: ExternalLink,
-      href: previewUrl,
+      hasChildren: previewDeployments.length > 0,
     },
     {
       key: "github",
@@ -205,26 +207,58 @@ function PullRequestListItem({ pr, teamSlugOrId, expanded, setExpanded }: PullRe
                   };
 
                   return (
-                    <Element
-                      key={action.key}
-                      {...elementProps}
-                      onClick={(event) => {
-                        if (!action.href) {
-                          event.preventDefault();
-                        }
-                        event.stopPropagation();
-                      }}
-                      className="mt-px flex w-full items-center rounded-md pr-2 py-1 text-xs transition-colors hover:bg-neutral-200/45 dark:hover:bg-neutral-800/45 cursor-default"
-                      style={{ paddingLeft: "32px" }}
-                    >
-                      <Icon
-                        className="mr-2 h-3 w-3 text-neutral-400 grayscale opacity-60"
-                        aria-hidden
-                      />
-                      <span className="text-neutral-600 dark:text-neutral-400">
-                        {action.label}
-                      </span>
-                    </Element>
+                    <div key={action.key}>
+                      <Element
+                        {...elementProps}
+                        onClick={(event) => {
+                          if (action.key === 'preview' && action.hasChildren) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            setPreviewExpanded(prev => !prev);
+                          } else if (!action.href) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                          } else {
+                            event.stopPropagation();
+                          }
+                        }}
+                        className="mt-px flex w-full items-center rounded-md pr-2 py-1 text-xs transition-colors hover:bg-neutral-200/45 dark:hover:bg-neutral-800/45 cursor-default"
+                        style={{ paddingLeft: "32px" }}
+                      >
+                        <Icon
+                          className="mr-2 h-3 w-3 text-neutral-400 grayscale opacity-60"
+                          aria-hidden
+                        />
+                        <span className="text-neutral-600 dark:text-neutral-400">
+                          {action.label}
+                        </span>
+                      </Element>
+                      {action.key === 'preview' && previewExpanded && previewDeployments.length > 0 && (
+                        <div className="flex flex-col">
+                          {previewDeployments.map((dep, idx) => (
+                            <a
+                              key={`preview-${idx}`}
+                              href={dep.environmentUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                              }}
+                              className="mt-px flex w-full items-center rounded-md pr-2 py-1 text-xs transition-colors hover:bg-neutral-200/45 dark:hover:bg-neutral-800/45"
+                              style={{ paddingLeft: "48px" }}
+                            >
+                              <ExternalLink
+                                className="mr-2 h-3 w-3 text-neutral-400 grayscale opacity-60"
+                                aria-hidden
+                              />
+                              <span className="text-neutral-600 dark:text-neutral-400 truncate">
+                                {dep.description || `Preview ${idx + 1}`}
+                              </span>
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>

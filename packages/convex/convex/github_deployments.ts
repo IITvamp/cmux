@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { getTeamId } from "../_shared/team";
 import { internalMutation } from "./_generated/server";
-import { authQuery, authMutation } from "./users/utils";
+import { authQuery } from "./users/utils";
 import type {
   DeploymentEvent,
   DeploymentStatusEvent,
@@ -251,78 +251,5 @@ export const getDeploymentsForPr = authQuery({
     });
 
     return deployments;
-  },
-});
-
-export const upsertDeploymentsFromApi = authMutation({
-  args: {
-    teamSlugOrId: v.string(),
-    repoFullName: v.string(),
-    installationId: v.number(),
-    repositoryId: v.optional(v.number()),
-    deployments: v.array(v.any()),
-  },
-  handler: async (ctx, args) => {
-    const { teamSlugOrId, repoFullName, installationId, repositoryId, deployments } = args;
-    const teamId = await getTeamId(ctx, teamSlugOrId);
-
-    console.log("[upsertDeploymentsFromApi] Upserting deployments", {
-      teamSlugOrId,
-      teamId,
-      repoFullName,
-      count: deployments.length,
-    });
-
-    for (const deployment of deployments) {
-      const deploymentId = deployment.id;
-      const sha = deployment.sha;
-
-      if (!deploymentId || !sha) {
-        console.warn("[upsertDeploymentsFromApi] Missing required fields", {
-          deploymentId,
-          sha,
-        });
-        continue;
-      }
-
-      const createdAt = normalizeTimestamp(deployment.created_at);
-      const updatedAt = normalizeTimestamp(deployment.updated_at);
-
-      const deploymentDoc = {
-        provider: "github" as const,
-        installationId,
-        repositoryId,
-        repoFullName,
-        deploymentId,
-        teamId,
-        sha,
-        ref: deployment.ref ?? undefined,
-        task: deployment.task ?? undefined,
-        environment: deployment.environment ?? undefined,
-        description: deployment.description ?? undefined,
-        creatorLogin: deployment.creator?.login,
-        createdAt,
-        updatedAt,
-        state: undefined,
-        statusDescription: undefined,
-        targetUrl: undefined,
-        environmentUrl: undefined,
-        triggeringPrNumber: undefined,
-      };
-
-      const existing = await ctx.db
-        .query("githubDeployments")
-        .withIndex("by_deploymentId")
-        .filter((q) => q.eq(q.field("deploymentId"), deploymentId))
-        .unique();
-
-      if (existing) {
-        await ctx.db.patch(existing._id, deploymentDoc);
-      } else {
-        await ctx.db.insert("githubDeployments", deploymentDoc);
-      }
-    }
-
-    return { success: true, count: deployments.length };
   },
 });
