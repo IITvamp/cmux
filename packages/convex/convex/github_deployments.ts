@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { getTeamId } from "../_shared/team";
+import { deploymentWebhookPayload, deploymentStatusWebhookPayload } from "../_shared/github_webhook_validators";
 import { internalMutation } from "./_generated/server";
 import { authQuery } from "./users/utils";
 import type {
@@ -23,7 +24,7 @@ export const upsertDeploymentFromWebhook = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(),
+    payload: deploymentWebhookPayload,
   },
   handler: async (ctx, args) => {
     const payload = args.payload as DeploymentEvent;
@@ -98,7 +99,7 @@ export const updateDeploymentStatusFromWebhook = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(),
+    payload: deploymentStatusWebhookPayload,
   },
   handler: async (ctx, args) => {
     const payload = args.payload as DeploymentStatusEvent;

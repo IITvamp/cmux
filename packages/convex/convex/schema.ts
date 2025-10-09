@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { stackMetadataField } from "../_shared/stack_metadata_validators";
 
 const convexSchema = defineSchema({
   teams: defineTable({
@@ -13,10 +14,10 @@ const convexSchema = defineSchema({
     // Profile image URL (Stack may send null; omit when null)
     profileImageUrl: v.optional(v.string()),
     // Client metadata blobs from Stack
-    clientMetadata: v.optional(v.any()),
-    clientReadOnlyMetadata: v.optional(v.any()),
+    clientMetadata: stackMetadataField,
+    clientReadOnlyMetadata: stackMetadataField,
     // Server metadata from Stack
-    serverMetadata: v.optional(v.any()),
+    serverMetadata: stackMetadataField,
     // Timestamp from Stack (created_at_millis)
     createdAtMillis: v.optional(v.number()),
     // Local bookkeeping
@@ -69,9 +70,9 @@ const convexSchema = defineSchema({
     signedUpAtMillis: v.optional(v.number()),
     lastActiveAtMillis: v.optional(v.number()),
     // Metadata blobs
-    clientMetadata: v.optional(v.any()),
-    clientReadOnlyMetadata: v.optional(v.any()),
-    serverMetadata: v.optional(v.any()),
+    clientMetadata: stackMetadataField,
+    clientReadOnlyMetadata: stackMetadataField,
+    serverMetadata: stackMetadataField,
     // OAuth providers observed in webhook payloads
     oauthProviders: v.optional(
       v.array(

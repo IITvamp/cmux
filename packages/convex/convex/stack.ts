@@ -5,6 +5,7 @@ import {
   validateSlug,
   deriveSlugSuffix,
 } from "../_shared/teamSlug";
+import { stackMetadataField } from "../_shared/stack_metadata_validators";
 import { internalMutation, type MutationCtx } from "./_generated/server";
 import { authMutation } from "./users/utils";
 
@@ -101,9 +102,9 @@ export const upsertUser = internalMutation({
     hasPassword: v.boolean(),
     otpAuthEnabled: v.boolean(),
     passkeyAuthEnabled: v.boolean(),
-    clientMetadata: v.optional(v.any()),
-    clientReadOnlyMetadata: v.optional(v.any()),
-    serverMetadata: v.optional(v.any()),
+    clientMetadata: stackMetadataField,
+    clientReadOnlyMetadata: stackMetadataField,
+    serverMetadata: stackMetadataField,
     isAnonymous: v.boolean(),
     oauthProviders: v.optional(
       v.array(
@@ -161,9 +162,9 @@ export const upsertUserPublic = authMutation({
     hasPassword: v.boolean(),
     otpAuthEnabled: v.boolean(),
     passkeyAuthEnabled: v.boolean(),
-    clientMetadata: v.optional(v.any()),
-    clientReadOnlyMetadata: v.optional(v.any()),
-    serverMetadata: v.optional(v.any()),
+    clientMetadata: stackMetadataField,
+    clientReadOnlyMetadata: stackMetadataField,
+    serverMetadata: stackMetadataField,
     isAnonymous: v.boolean(),
     oauthProviders: v.optional(
       v.array(v.object({ id: v.string(), accountId: v.string(), email: v.optional(v.string()) }))
@@ -290,9 +291,9 @@ export const upsertTeam = internalMutation({
     id: v.string(),
     displayName: v.optional(v.string()),
     profileImageUrl: v.optional(v.string()),
-    clientMetadata: v.optional(v.any()),
-    clientReadOnlyMetadata: v.optional(v.any()),
-    serverMetadata: v.optional(v.any()),
+    clientMetadata: stackMetadataField,
+    clientReadOnlyMetadata: stackMetadataField,
+    serverMetadata: stackMetadataField,
     createdAtMillis: v.number(),
   },
   handler: async (ctx, args) => upsertTeamCore(ctx, args),
@@ -329,9 +330,9 @@ export const upsertTeamPublic = authMutation({
     id: v.string(),
     displayName: v.optional(v.string()),
     profileImageUrl: v.optional(v.string()),
-    clientMetadata: v.optional(v.any()),
-    clientReadOnlyMetadata: v.optional(v.any()),
-    serverMetadata: v.optional(v.any()),
+    clientMetadata: stackMetadataField,
+    clientReadOnlyMetadata: stackMetadataField,
+    serverMetadata: stackMetadataField,
     createdAtMillis: v.number(),
   },
   handler: async (ctx, args) => upsertTeamCore(ctx, args),

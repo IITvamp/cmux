@@ -11,6 +11,7 @@
  */
 import { v } from "convex/values";
 import { getTeamId } from "../_shared/team";
+import { workflowRunWebhookPayload } from "../_shared/github_webhook_validators";
 import { internalMutation } from "./_generated/server";
 import { authQuery } from "./users/utils";
 import type { WorkflowRunEvent } from "@octokit/webhooks-types";
@@ -35,7 +36,7 @@ export const upsertWorkflowRunFromWebhook = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(),
+    payload: workflowRunWebhookPayload,
   },
   handler: async (ctx, args) => {
     const payload = args.payload as WorkflowRunEvent;

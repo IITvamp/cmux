@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { getTeamId } from "../_shared/team";
+import { pullRequestWebhookPayload } from "../_shared/github_webhook_validators";
 import {
   internalMutation,
   internalQuery,
@@ -320,7 +321,7 @@ export const upsertFromWebhookPayload = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(),
+    payload: pullRequestWebhookPayload,
   },
   handler: async (ctx, { installationId, repoFullName, teamId, payload }) => {
     try {
