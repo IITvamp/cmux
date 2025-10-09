@@ -292,6 +292,8 @@ def create_repo_archive(repo_root: Path) -> str:
     with tarfile.open(archive_path, "w:gz") as tar:
         for rel_path in files:
             full_path = repo_root / rel_path
+            if not full_path.exists():
+                continue
             tar.add(full_path, arcname=rel_path.as_posix())
 
     return archive_path

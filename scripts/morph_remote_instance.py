@@ -155,6 +155,8 @@ def create_repo_archive(repo_root: Path) -> Path:
     with tarfile.open(tmp_path, "w") as tar:
         for rel_path in files:
             full_path = repo_root / rel_path
+            if not full_path.exists():
+                continue
             tar.add(full_path, arcname=str(rel_path))
     return tmp_path
 
@@ -1054,7 +1056,6 @@ async def task_install_systemd_units(ctx: TaskContext) -> None:
         install -Dm0644 {repo}/configs/systemd/cmux-dockerd.service /usr/lib/systemd/system/cmux-dockerd.service
         install -Dm0644 {repo}/configs/systemd/cmux-vnc.service /usr/lib/systemd/system/cmux-vnc.service
         install -Dm0755 {repo}/configs/systemd/bin/configure-openvscode /usr/local/lib/cmux/configure-openvscode
-        install -Dm0755 {repo}/configs/systemd/bin/cmux-rootfs-exec /usr/local/lib/cmux/cmux-rootfs-exec
         install -Dm0755 {repo}/configs/systemd/bin/cmux-start-vnc /usr/local/lib/cmux/cmux-start-vnc
         touch /usr/local/lib/cmux/dockerd.flag
         mkdir -p /var/log/cmux

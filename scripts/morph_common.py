@@ -103,7 +103,7 @@ def ensure_docker_cli_plugins(
         "docker compose version",
         "docker buildx version",
     ]
-    return " && ".join(docker_plugin_cmds)
+    return "\n".join(docker_plugin_cmds)
 
 
 def ensure_docker() -> str:

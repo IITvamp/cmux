@@ -38,12 +38,16 @@ from pathlib import Path
 
 import dotenv
 import httpx
-from morphcloud.api import Instance, InstanceExecResponse, MorphCloudClient, Snapshot
-
-from morph_common import (
-    ensure_docker as docker_install_script,
-    ensure_docker_cli_plugins,
+import paramiko
+from morphcloud.api import (
+    ApiError,
+    Instance,
+    InstanceExecResponse,
+    MorphCloudClient,
+    Snapshot,
 )
+
+from morph_common import ensure_docker_cli_plugins
 
 Command = t.Union[str, t.Sequence[str]]
 TaskFunc = t.Callable[["TaskContext"], t.Awaitable[None]]
@@ -118,7 +122,7 @@ class TimingsCollector:
                     lines.append(f"    ├─ {task_name}: {task_duration:.2f}s")
 
         # Calculate totals
-        total_wall_time = sum(d for l, d in self._entries if l.startswith("layer:"))
+        total_wall_time = sum(d for label, d in self._entries if label.startswith("layer:"))
         total_cpu_time = sum(task_timings.values())
 
         lines.append(f"\nTotal wall time: {total_wall_time:.2f}s")
@@ -184,6 +188,8 @@ def create_repo_archive(repo_root: Path) -> Path:
     with tarfile.open(tmp_path, "w") as tar:
         for rel_path in files:
             full_path = repo_root / rel_path
+            if not full_path.exists():
+                continue
             tar.add(full_path, arcname=str(rel_path))
     return tmp_path
 
@@ -478,7 +484,20 @@ async def setup_exec_service(
     service_url: str,
 ) -> HttpExecClient:
     ctx.console.info("Uploading exec service binary...")
-    await ctx.instance.aupload(str(binary_path), EXEC_TEMP_PATH)
+    upload_attempts = 0
+    while True:
+        try:
+            await ctx.instance.aupload(str(binary_path), EXEC_TEMP_PATH)
+            break
+        except (ApiError, httpx.HTTPError, paramiko.SSHException, OSError) as exc:
+            upload_attempts += 1
+            if upload_attempts >= 5:
+                raise
+            delay = 1.5 * upload_attempts
+            ctx.console.info(
+                f"Retrying exec upload (attempt {upload_attempts}/5) after error: {exc}"
+            )
+            await asyncio.sleep(delay)
     remote_binary = shlex.quote(EXEC_REMOTE_PATH)
     remote_temp = shlex.quote(EXEC_TEMP_PATH)
     log_path = "/var/log/cmux-execd.log"
@@ -534,8 +553,7 @@ async def _run_command(
     timeout: float | None = None,
 ) -> InstanceExecResponse:
     ctx.console.info(f"[{label}] running...")
-    exec_cmd = _shell_command(command)
-    command_parts = exec_cmd if isinstance(exec_cmd, list) else [exec_cmd]
+    command_parts = _shell_command(command)
     attempts = 0
     max_attempts = 3
     while True:
@@ -804,16 +822,29 @@ async def configure_provisioning_cgroup(ctx: TaskContext) -> None:
 
 @registry.task(
     name="apt-bootstrap",
-    description="Install core apt utilities required for early provisioning tasks",
+    description="Install core apt utilities and set up package sources",
 )
 async def task_apt_bootstrap(ctx: TaskContext) -> None:
     cmd = textwrap.dedent(
         """
+        set -eux
+        
+        # Update and install core utilities needed for source setup
         DEBIAN_FRONTEND=noninteractive apt-get update
         DEBIAN_FRONTEND=noninteractive apt-get install -y \
             ca-certificates curl wget jq git gnupg lsb-release \
             python3 python3-venv python3-distutils \
             tar unzip xz-utils zip bzip2 gzip htop
+        
+        # Setup GitHub CLI repository
+        install -m 0755 -d /usr/share/keyrings
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+            | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+        chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+        arch="$(dpkg --print-architecture)"
+        echo "deb [arch=${arch} signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+            > /etc/apt/sources.list.d/github-cli.list
+        
         rm -rf /var/lib/apt/lists/*
         """
     )
@@ -828,9 +859,43 @@ async def task_apt_bootstrap(ctx: TaskContext) -> None:
 async def task_install_base_packages(ctx: TaskContext) -> None:
     cmd = textwrap.dedent(
         """
+        set -eux
+        
+        # Single apt-get update to pick up all configured sources
+        DEBIAN_FRONTEND=noninteractive apt-get update
+        
+        # Install all packages in parallel in a single command
         DEBIAN_FRONTEND=noninteractive apt-get install -y \
             build-essential make pkg-config g++ libssl-dev \
-            ruby-full perl software-properties-common
+            ruby-full perl software-properties-common \
+            tigervnc-standalone-server tigervnc-common \
+            python3-websockify websockify \
+            xvfb \
+            x11-xserver-utils xterm fluxbox novnc \
+            x11vnc \
+            gh
+        
+        # Download and install Chrome
+        arch="$(dpkg --print-architecture)"
+        case "${arch}" in
+          amd64)
+            chrome_url="https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb"
+            ;;
+          arm64)
+            chrome_url="https://dl.google.com/linux/direct/google-chrome-stable_current_arm64.deb"
+            ;;
+          *)
+            echo "Unsupported architecture: ${arch}" >&2
+            exit 1
+            ;;
+        esac
+        cd /tmp
+        curl -fsSL -o chrome.deb "${chrome_url}"
+        DEBIAN_FRONTEND=noninteractive apt-get install -y ./chrome.deb || true
+        DEBIAN_FRONTEND=noninteractive apt-get install -yf
+        rm -f chrome.deb
+        
+        # Clean up
         rm -rf /var/lib/apt/lists/*
         """
     )
@@ -843,7 +908,34 @@ async def task_install_base_packages(ctx: TaskContext) -> None:
     description="Install Docker engine and CLI plugins",
 )
 async def task_ensure_docker(ctx: TaskContext) -> None:
-    await ctx.run("ensure-docker", docker_install_script())
+    install_cmd = textwrap.dedent(
+        """
+        set -euo pipefail
+        if command -v docker >/dev/null 2>&1; then
+          docker --version
+        else
+          DEBIAN_FRONTEND=noninteractive apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            ca-certificates curl gnupg lsb-release \
+            docker.io python3-docker git
+          systemctl enable docker >/dev/null 2>&1 || true
+          systemctl restart docker || true
+        fi
+        for attempt in $(seq 1 30); do
+          if docker info >/dev/null 2>&1; then
+            echo "Docker ready"
+            break
+          fi
+          if [ "$attempt" -eq 30 ]; then
+            echo "Docker failed to start after 30 attempts" >&2
+            exit 1
+          fi
+          sleep 2
+        done
+        docker --version
+        """
+    )
+    await ctx.run("ensure-docker-basic", install_cmd)
     await ctx.run("ensure-docker-plugins", ensure_docker_cli_plugins())
 
 
@@ -1024,40 +1116,6 @@ async def task_install_cursor(ctx: TaskContext) -> None:
     await ctx.run("install-cursor-cli", cmd)
 
 
-@registry.task(
-    name="install-chrome",
-    deps=("apt-bootstrap",),
-    description="Install Chromium browser for DevTools",
-)
-async def task_install_chrome(ctx: TaskContext) -> None:
-    cmd = textwrap.dedent(
-        """
-        DEBIAN_FRONTEND=noninteractive apt-get install -y chromium
-        rm -rf /var/lib/apt/lists/*
-        chromium --version
-        """
-    )
-    await ctx.run("install-chrome", cmd)
-
-
-@registry.task(
-    name="install-vnc",
-    deps=("install-base-packages",),
-    description="Install TigerVNC server, websockify, and noVNC",
-)
-async def task_install_vnc(ctx: TaskContext) -> None:
-    cmd = textwrap.dedent(
-        """
-        DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            tigervnc-standalone-server tigervnc-common \
-            python3-websockify websockify \
-            x11-xserver-utils xterm fluxbox novnc
-        rm -rf /var/lib/apt/lists/*
-        vncserver -version
-        websockify --version
-        """
-    )
-    await ctx.run("install-vnc", cmd)
 
 
 @registry.task(
@@ -1115,29 +1173,8 @@ async def task_install_repo_dependencies(ctx: TaskContext) -> None:
 
 
 @registry.task(
-    name="install-gh-cli",
-    deps=("upload-repo", "ensure-docker"),
-    description="Install GitHub CLI using repo enabler",
-)
-async def task_install_gh_cli(ctx: TaskContext) -> None:
-    cmd = textwrap.dedent(
-        f"""
-        set -eux
-        install -d /usr/local/share/cmux
-        rm -rf /usr/local/share/cmux/repo-enablers
-        cp -a {shlex.quote(ctx.remote_repo_root)}/scripts/repo-enablers /usr/local/share/cmux/repo-enablers
-        find /usr/local/share/cmux/repo-enablers -type f -name '*.sh' -exec chmod +x {{}} +
-        /usr/local/share/cmux/repo-enablers/deb/github-cli.sh
-        DEBIAN_FRONTEND=noninteractive apt-get install -y gh
-        rm -rf /var/lib/apt/lists/*
-        """
-    )
-    await ctx.run("install-gh-cli", cmd)
-
-
-@registry.task(
     name="install-service-scripts",
-    deps=("upload-repo", "install-vnc", "install-chrome"),
+    deps=("upload-repo", "install-base-packages"),
     description="Install VNC startup script (includes Chrome DevTools)",
 )
 async def task_install_service_scripts(ctx: TaskContext) -> None:
@@ -1361,6 +1398,15 @@ async def task_check_uv(ctx: TaskContext) -> None:
 
 
 @registry.task(
+    name="check-gh",
+    deps=("install-base-packages",),
+    description="Verify GitHub CLI is installed and working",
+)
+async def task_check_gh(ctx: TaskContext) -> None:
+    await ctx.run("check-gh", "gh --version")
+
+
+@registry.task(
     name="check-envctl",
     deps=("configure-envctl",),
     description="Verify envctl is installed and working",
@@ -1396,11 +1442,20 @@ async def task_check_vscode(ctx: TaskContext) -> None:
 @registry.task(
     name="check-vnc",
     deps=("install-systemd-units",),
-    description="Verify VNC endpoint is accessible",
+    description="Verify VNC packages and endpoint are accessible",
 )
 async def task_check_vnc(ctx: TaskContext) -> None:
     cmd = textwrap.dedent(
         """
+        # Verify VNC binaries are installed
+        vncserver -version
+        if ! command -v websockify >/dev/null 2>&1; then
+          echo "websockify not installed" >&2
+          exit 1
+        fi
+        websockify --help >/dev/null
+        
+        # Verify VNC endpoint is accessible
         sleep 5
         for attempt in $(seq 1 15); do
           if curl -fsS -o /dev/null http://127.0.0.1:39380/vnc.html; then
@@ -1411,6 +1466,10 @@ async def task_check_vnc(ctx: TaskContext) -> None:
         done
         echo "ERROR: VNC endpoint not reachable after 30s" >&2
         systemctl status cmux-vnc.service --no-pager || true
+        tail -n 60 /var/log/cmux/xvfb.log || true
+        tail -n 40 /var/log/cmux/fluxbox.log || true
+        tail -n 40 /var/log/cmux/x11vnc.log || true
+        tail -n 40 /var/log/cmux/websockify.log || true
         exit 1
         """
     )
@@ -1420,21 +1479,28 @@ async def task_check_vnc(ctx: TaskContext) -> None:
 @registry.task(
     name="check-devtools",
     deps=("install-systemd-units",),
-    description="Verify Chrome DevTools endpoint is accessible (via VNC service)",
+    description="Verify Chrome browser and DevTools endpoint are accessible",
 )
 async def task_check_devtools(ctx: TaskContext) -> None:
     cmd = textwrap.dedent(
         """
-        sleep 3
-        for attempt in $(seq 1 15); do
+        # Verify Chrome is installed
+        google-chrome --version
+        
+        # Verify DevTools endpoint is accessible
+        sleep 5
+        for attempt in $(seq 1 45); do
           if curl -fsS -o /dev/null http://127.0.0.1:39381/json/version; then
             echo "DevTools endpoint is reachable"
             exit 0
           fi
           sleep 2
         done
-        echo "ERROR: DevTools endpoint not reachable after 30s" >&2
+        echo "ERROR: DevTools endpoint not reachable after 90s" >&2
         systemctl status cmux-vnc.service --no-pager || true
+        ss -ltnp | grep 3938 || true
+        tail -n 100 /var/log/cmux/chrome.log || true
+        tail -n 40 /var/log/cmux/x11vnc.log || true
         exit 1
         """
     )
@@ -1460,7 +1526,7 @@ async def start_instance_from_snapshot(
     memory: int,
     disk_size: int,
     ttl_seconds: int,
-    ttl_action: str,
+    ttl_action: t.Literal["stop", "pause"],
     console: Console,
 ) -> tuple[Instance, dict[int, str]]:
     console.info(
@@ -1531,7 +1597,19 @@ async def provision_and_snapshot(args: argparse.Namespace) -> None:
         resource_profile=resource_profile,
     )
 
-    await configure_provisioning_cgroup(ctx)
+    for attempt in range(5):
+        try:
+            await configure_provisioning_cgroup(ctx)
+            break
+        except (ApiError, httpx.HTTPError, OSError) as exc:
+            if attempt == 4:
+                raise
+            delay = 1.5 * (attempt + 1)
+            console.info(
+                f"Retrying provisioning cgroup setup on primary instance "
+                f"(attempt {attempt + 1}/5) after error: {exc}"
+            )
+            await asyncio.sleep(delay)
     exec_binary_path = await build_exec_binary(repo_root, console)
     await setup_exec_service(
         ctx,
@@ -1569,12 +1647,24 @@ async def provision_and_snapshot(args: argparse.Namespace) -> None:
         timings=timings,
         resource_profile=resource_profile,
     )
-    await configure_provisioning_cgroup(new_ctx)
     await setup_exec_service(
         new_ctx,
         binary_path=exec_binary_path,
         service_url=new_exec_service_url,
     )
+    for attempt in range(5):
+        try:
+            await configure_provisioning_cgroup(new_ctx)
+            break
+        except (ApiError, httpx.HTTPError, OSError) as exc:
+            if attempt == 4:
+                raise
+            delay = 1.5 * (attempt + 1)
+            console.info(
+                f"Retrying provisioning cgroup setup on validation instance "
+                f"(attempt {attempt + 1}/5) after error: {exc}"
+            )
+            await asyncio.sleep(delay)
 
     # Re-run checks on the snapshot-booted instance
     console.info("Running post-snapshot validation checks...")
@@ -1583,6 +1673,7 @@ async def provision_and_snapshot(args: argparse.Namespace) -> None:
         "check-node",
         "check-bun",
         "check-uv",
+        "check-gh",
         "check-envctl",
         "check-vscode",
         "check-vnc",

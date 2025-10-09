@@ -276,7 +276,7 @@ step_enable_cmux_units() {
     cp -a /opt/app/rootfs/usr/local/lib/cmux/. /usr/local/lib/cmux/
   fi
 
-  for tool in cmux-rootfs-exec configure-openvscode cmux-start-vnc; do
+  for tool in configure-openvscode cmux-start-vnc; do
     local path="/usr/local/lib/cmux/$tool"
     if [ -f "$path" ]; then
       chmod +x "$path"
@@ -302,17 +302,12 @@ step_sanity_checks() {
   set +a
 
   run_chroot() {
-    CMUX_ROOTFS="$CMUX_ROOTFS" \\
-    CMUX_RUNTIME_ROOT="$CMUX_RUNTIME_ROOT" \\
-    CMUX_OVERLAY_UPPER="${CMUX_OVERLAY_UPPER:-}" \\
-    CMUX_OVERLAY_WORK="${CMUX_OVERLAY_WORK:-}" \\
-    /usr/local/lib/cmux/cmux-rootfs-exec "$@"
+    "$@"
   }
 
   local log_dir=/tmp/cmux-sanity
   rm -rf "$log_dir"
   mkdir -p "$log_dir"
-  export CMUX_DEBUG=1
 
   forkpty_check() {
     local log="$log_dir/forkpty.log"

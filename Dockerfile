@@ -537,9 +537,8 @@ COPY configs/systemd/cmux-worker.service /usr/lib/systemd/system/cmux-worker.ser
 COPY configs/systemd/cmux-dockerd.service /usr/lib/systemd/system/cmux-dockerd.service
 COPY configs/systemd/cmux-vnc.service /usr/lib/systemd/system/cmux-vnc.service
 COPY configs/systemd/bin/configure-openvscode /usr/local/lib/cmux/configure-openvscode
-COPY configs/systemd/bin/cmux-rootfs-exec /usr/local/lib/cmux/cmux-rootfs-exec
 COPY configs/systemd/bin/cmux-start-vnc /usr/local/lib/cmux/cmux-start-vnc
-RUN chmod +x /usr/local/lib/cmux/configure-openvscode /usr/local/lib/cmux/cmux-rootfs-exec /usr/local/lib/cmux/cmux-start-vnc && \
+RUN chmod +x /usr/local/lib/cmux/configure-openvscode /usr/local/lib/cmux/cmux-start-vnc && \
     touch /usr/local/lib/cmux/dockerd.flag && \
     mkdir -p /var/log/cmux && \
     mkdir -p /etc/systemd/system/multi-user.target.wants && \
