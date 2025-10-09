@@ -259,30 +259,33 @@ export const getWorkflowRunsForPr = authQuery({
       limit,
     });
 
-    const allRunsForRepo = await ctx.db
-      .query("githubWorkflowRuns")
-      .withIndex("by_team_repo", (q) =>
-        q.eq("teamId", teamId).eq("repoFullName", repoFullName),
-      )
-      .collect();
+    // Fetch runs by headSha if provided (more efficient index lookup)
+    let runs;
+    if (headSha) {
+      const shaRuns = await ctx.db
+        .query("githubWorkflowRuns")
+        .withIndex("by_repo_sha", (q) =>
+          q.eq("repoFullName", repoFullName).eq("headSha", headSha)
+        )
+        .order("desc")
+        .take(limit);
 
-    console.log("[getWorkflowRunsForPr] All runs for repo", {
-      teamId,
-      repoFullName,
-      totalRuns: allRunsForRepo.length,
-      prNumbers: allRunsForRepo.map((r) => r.triggeringPrNumber),
-      headShas: allRunsForRepo.map((r) => r.headSha),
-    });
+      // Filter by teamId in memory (index doesn't include it)
+      runs = shaRuns.filter(r => r.teamId === teamId);
+    } else {
+      // Fallback: fetch all for repo and filter (less efficient)
+      const allRuns = await ctx.db
+        .query("githubWorkflowRuns")
+        .withIndex("by_team_repo", (q) =>
+          q.eq("teamId", teamId).eq("repoFullName", repoFullName)
+        )
+        .order("desc")
+        .take(100); // Limit to recent 100
 
-    // Filter by either triggeringPrNumber or headSha
-    const runs = allRunsForRepo
-      .filter((run) => {
-        const matchesPrNumber = run.triggeringPrNumber === prNumber;
-        const matchesHeadSha = headSha && run.headSha === headSha;
-        return matchesPrNumber || matchesHeadSha;
-      })
-      .sort((a, b) => (b.runStartedAt ?? 0) - (a.runStartedAt ?? 0))
-      .slice(0, limit);
+      runs = allRuns
+        .filter(r => r.triggeringPrNumber === prNumber)
+        .slice(0, limit);
+    }
 
     console.log("[getWorkflowRunsForPr] Filtered runs for PR", {
       teamId,

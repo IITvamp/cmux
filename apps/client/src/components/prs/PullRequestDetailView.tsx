@@ -87,7 +87,7 @@ function WorkflowRuns({ teamSlugOrId, repoFullName, prNumber, headSha }: Workflo
     ...(deployments || []).map(dep => ({
       ...dep,
       type: 'deployment' as const,
-      name: dep.environment || 'Deployment',
+      name: dep.description || dep.environment || 'Deployment',
       timestamp: dep.createdAt,
       status: dep.state === 'pending' || dep.state === 'queued' || dep.state === 'in_progress' ? 'in_progress' : 'completed',
       conclusion: dep.state === 'success' ? 'success' : dep.state === 'failure' || dep.state === 'error' ? 'failure' : undefined
@@ -107,26 +107,10 @@ function WorkflowRuns({ teamSlugOrId, repoFullName, prNumber, headSha }: Workflo
     return null;
   }
 
-  // Group by name and get latest (filter out Preview deployments)
-  const latestRunsByName = allRuns
-    .filter(run => !(run.type === 'deployment' && run.name === 'Preview'))
-    .reduce((acc, run) => {
-      // Normalize names: treat "Production" deployments and "vercel/*" contexts as "Vercel"
-      let groupKey = run.name;
-      if (run.type === 'deployment' && run.name === 'Production') {
-        groupKey = 'Vercel';
-      } else if (run.type === 'status' && run.name.toLowerCase().startsWith('vercel')) {
-        groupKey = 'Vercel';
-      }
+  // Filter out Preview deployments (they go in sidebar Preview tab instead)
+  const filteredRuns = allRuns.filter(run => !(run.type === 'deployment' && run.environment === 'Preview'));
 
-      const existing = acc.get(groupKey);
-      if (!existing || (run.timestamp ?? 0) > (existing.timestamp ?? 0)) {
-        acc.set(groupKey, { ...run, name: groupKey });
-      }
-      return acc;
-    }, new Map<string, typeof allRuns[0]>());
-
-  const latestRuns = Array.from(latestRunsByName.values());
+  const latestRuns = filteredRuns;
 
   const hasAnyRunning = latestRuns.some(
     (run) => run.status === "in_progress" || run.status === "queued" || run.status === "waiting" || run.status === "pending"
@@ -214,7 +198,7 @@ function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber, headSha }: 
     ...(deployments || []).map(dep => ({
       ...dep,
       type: 'deployment' as const,
-      name: dep.environment || 'Deployment',
+      name: dep.description || dep.environment || 'Deployment',
       timestamp: dep.createdAt,
       status: dep.state === 'pending' || dep.state === 'queued' || dep.state === 'in_progress' ? 'in_progress' : 'completed',
       conclusion: dep.state === 'success' ? 'success' : dep.state === 'failure' || dep.state === 'error' ? 'failure' : undefined,
@@ -307,26 +291,10 @@ function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber, headSha }: 
     return null;
   }
 
-  // Group by name and show only the latest run per name (filter out Preview deployments)
-  const latestRunsByName = allRuns
-    .filter(run => !(run.type === 'deployment' && run.name === 'Preview'))
-    .reduce((acc, run) => {
-      // Normalize names: treat "Production" deployments and "vercel/*" contexts as "Vercel"
-      let groupKey = run.name;
-      if (run.type === 'deployment' && run.name === 'Production') {
-        groupKey = 'Vercel';
-      } else if (run.type === 'status' && run.name.toLowerCase().startsWith('vercel')) {
-        groupKey = 'Vercel';
-      }
+  // Filter out Preview deployments (they go in sidebar Preview tab instead)
+  const filteredRuns = allRuns.filter(run => !(run.type === 'deployment' && run.environment === 'Preview'));
 
-      const existing = acc.get(groupKey);
-      if (!existing || (run.timestamp ?? 0) > (existing.timestamp ?? 0)) {
-        acc.set(groupKey, { ...run, name: groupKey });
-      }
-      return acc;
-    }, new Map<string, typeof allRuns[0]>());
-
-  const sortedRuns = Array.from(latestRunsByName.values()).sort((a, b) => {
+  const sortedRuns = filteredRuns.sort((a, b) => {
     return (b.timestamp ?? 0) - (a.timestamp ?? 0);
   });
 
@@ -335,7 +303,7 @@ function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber, headSha }: 
       <div className="divide-y divide-neutral-200 dark:divide-neutral-800">
         {sortedRuns.map((run) => (
           <a
-            key={run.type === 'workflow' ? `workflow-${run._id}` : `check-${run._id}`}
+            key={`${run.type}-${run._id}`}
             href={run.url || '#'}
             target="_blank"
             rel="noreferrer"

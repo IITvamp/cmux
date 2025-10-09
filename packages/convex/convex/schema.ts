@@ -608,7 +608,8 @@ const convexSchema = defineSchema({
     .index("by_team_workflow", ["teamId", "workflowId", "updatedAt"]) // filter by workflow
     .index("by_installation", ["installationId", "updatedAt"]) // debug/ops
     .index("by_runId", ["runId"]) // unique lookup
-    .index("by_repo_runNumber", ["repoFullName", "runNumber"]), // unique per repo
+    .index("by_repo_runNumber", ["repoFullName", "runNumber"]) // unique per repo
+    .index("by_repo_sha", ["repoFullName", "headSha", "runStartedAt"]), // filter by SHA for PR
 
   // GitHub Check Runs (for Vercel, deployments, etc.)
   githubCheckRuns: defineTable({
