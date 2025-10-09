@@ -262,6 +262,7 @@ export async function spawnAgent(
 
     let authFiles: EnvironmentResult["files"] = [];
     let startupCommands: string[] = [];
+    let unsetEnvVars: string[] = [];
 
     // Fetch API keys from Convex BEFORE calling agent.environment()
     // so we can pass the Anthropic API key to the environment context
@@ -286,6 +287,7 @@ export async function spawnAgent(
       };
       authFiles = envResult.files;
       startupCommands = envResult.startupCommands || [];
+      unsetEnvVars = envResult.unsetEnv || [];
     }
 
     // Apply API keys: prefer agent-provided hook if present; otherwise default env injection
@@ -298,6 +300,9 @@ export async function spawnAgent(
       if (applied.startupCommands && applied.startupCommands.length > 0) {
         startupCommands.push(...applied.startupCommands);
       }
+      if (applied.unsetEnv && applied.unsetEnv.length > 0) {
+        unsetEnvVars.push(...applied.unsetEnv);
+      }
     } else if (agent.apiKeys) {
       for (const keyConfig of agent.apiKeys) {
         const key = apiKeys[keyConfig.envVar];
@@ -308,13 +313,14 @@ export async function spawnAgent(
       }
     }
 
-    // For Claude agents that use settings.json for API keys, remove ANTHROPIC_API_KEY
-    // from environment to prevent Claude Code from detecting it and prompting
-    if (agent.name.startsWith("claude/") && "ANTHROPIC_API_KEY" in envVars) {
-      delete envVars.ANTHROPIC_API_KEY;
-      serverLogger.info(
-        `[AgentSpawner] Removed ANTHROPIC_API_KEY from environment for ${agent.name} (using settings.json instead)`,
-      );
+    // Remove environment variables specified by the agent
+    for (const envVar of unsetEnvVars) {
+      if (envVar in envVars) {
+        delete envVars[envVar];
+        serverLogger.info(
+          `[AgentSpawner] Removed ${envVar} from environment for ${agent.name} as requested by agent config`,
+        );
+      }
     }
 
     // Replace $PROMPT placeholders in args with $CMUX_PROMPT token for shell-time expansion
@@ -601,6 +607,11 @@ export async function spawnAgent(
       serverLogger.info(`[AgentSpawner] Codex raw args:`, actualArgs);
     }
 
+    // Build unset command for environment variables
+    const unsetCommand = unsetEnvVars.length > 0
+      ? `unset ${unsetEnvVars.join(" ")}; `
+      : "";
+
     // For Codex agents, use direct command execution to preserve notify argument
     // The notify command contains complex JSON that gets mangled through shell layers
     const tmuxArgs = agent.name.toLowerCase().includes("codex")
@@ -627,11 +638,7 @@ export async function spawnAgent(
         tmuxSessionName,
         "bash",
         "-lc",
-        // For Claude agents, explicitly unset ANTHROPIC_API_KEY before exec
-        // to prevent detection from .env files in the workspace
-        agent.name.startsWith("claude/")
-          ? `unset ANTHROPIC_API_KEY; exec ${commandString}`
-          : `exec ${commandString}`,
+        `${unsetCommand}exec ${commandString}`,
       ];
 
     const terminalCreationCommand: WorkerCreateTerminal = {

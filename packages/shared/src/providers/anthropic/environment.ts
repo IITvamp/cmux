@@ -209,5 +209,10 @@ echo ${ctx.taskRunJwt}`;
     "echo '[CMUX] Settings directory in ~/.claude:' && ls -la /root/.claude/",
   );
 
-  return { files, env, startupCommands };
+  return {
+    files,
+    env,
+    startupCommands,
+    unsetEnv: ["ANTHROPIC_API_KEY"],
+  };
 }

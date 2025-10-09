@@ -4,6 +4,7 @@ export interface EnvironmentResult {
   files: AuthFile[];
   env: Record<string, string>;
   startupCommands?: string[];
+  unsetEnv?: string[];
 }
 
 export type EnvironmentContext = {
