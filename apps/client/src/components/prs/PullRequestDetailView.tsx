@@ -110,7 +110,22 @@ function WorkflowRuns({ teamSlugOrId, repoFullName, prNumber, headSha }: Workflo
   // Filter out Preview deployments (they go in sidebar Preview tab instead)
   const filteredRuns = allRuns.filter(run => !(run.type === 'deployment' && run.environment === 'Preview'));
 
-  const latestRuns = filteredRuns;
+  // Deduplicate by GitHub ID
+  const deduped = new Map<string, typeof filteredRuns[number]>();
+  for (const run of filteredRuns) {
+    let key: string;
+    if (run.type === 'workflow') key = `workflow-${run.runId}`;
+    else if (run.type === 'check') key = `check-${run.checkRunId}`;
+    else if (run.type === 'deployment') key = `deployment-${run.deploymentId}`;
+    else key = `status-${run.statusId}`;
+
+    const existing = deduped.get(key);
+    if (!existing || (run.timestamp ?? 0) > (existing.timestamp ?? 0)) {
+      deduped.set(key, run);
+    }
+  }
+
+  const latestRuns = Array.from(deduped.values());
 
   const hasAnyRunning = latestRuns.some(
     (run) => run.status === "in_progress" || run.status === "queued" || run.status === "waiting" || run.status === "pending"
@@ -294,7 +309,22 @@ function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber, headSha }: 
   // Filter out Preview deployments (they go in sidebar Preview tab instead)
   const filteredRuns = allRuns.filter(run => !(run.type === 'deployment' && run.environment === 'Preview'));
 
-  const sortedRuns = filteredRuns.sort((a, b) => {
+  // Deduplicate by GitHub ID (checkRunId, runId, deploymentId, statusId) + name
+  const deduped = new Map<string, typeof filteredRuns[number]>();
+  for (const run of filteredRuns) {
+    let key: string;
+    if (run.type === 'workflow') key = `workflow-${run.runId}`;
+    else if (run.type === 'check') key = `check-${run.checkRunId}`;
+    else if (run.type === 'deployment') key = `deployment-${run.deploymentId}`;
+    else key = `status-${run.statusId}`;
+
+    const existing = deduped.get(key);
+    if (!existing || (run.timestamp ?? 0) > (existing.timestamp ?? 0)) {
+      deduped.set(key, run);
+    }
+  }
+
+  const sortedRuns = Array.from(deduped.values()).sort((a, b) => {
     return (b.timestamp ?? 0) - (a.timestamp ?? 0);
   });
 
