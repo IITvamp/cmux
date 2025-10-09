@@ -541,7 +541,7 @@ async def task_install_nvm(ctx: TaskContext) -> None:
 
 @registry.task(
     name="install-bun",
-    deps=("apt-bootstrap",),
+    deps=("install-node-runtime",),
     description="Install Bun runtime",
 )
 async def task_install_bun(ctx: TaskContext) -> None:
@@ -1093,6 +1093,65 @@ async def provision_and_snapshot(args: argparse.Namespace) -> None:
             console.always(line)
 
 
+def format_dependency_graph(registry: TaskRegistry) -> str:
+    tasks = registry.tasks
+    if not tasks:
+        return ""
+
+    children: dict[str, list[str]] = {name: [] for name in tasks}
+    for task in tasks.values():
+        for dependency in task.dependencies:
+            children.setdefault(dependency, []).append(task.name)
+    for child_list in children.values():
+        child_list.sort()
+
+    roots = sorted(
+        name for name, definition in tasks.items() if not definition.dependencies
+    )
+
+    lines: list[str] = []
+
+    def render_node(
+        node: str,
+        prefix: str,
+        is_last: bool,
+        path: set[str],
+    ) -> None:
+        connector = "└─" if is_last else "├─"
+        lines.append(f"{prefix}{connector} {node}")
+        if node in path:
+            lines.append(f"{prefix}   ↻ cycle")
+            return
+        descendants = children.get(node, [])
+        if not descendants:
+            return
+        next_prefix = f"{prefix}   " if is_last else f"{prefix}│  "
+        next_path = set(path)
+        next_path.add(node)
+        for index, child in enumerate(descendants):
+            render_node(child, next_prefix, index == len(descendants) - 1, next_path)
+
+    for root_index, root in enumerate(roots):
+        if root_index:
+            lines.append("")
+        lines.append(root)
+        descendants = children.get(root, [])
+        for index, child in enumerate(descendants):
+            render_node(child, "", index == len(descendants) - 1, {root})
+
+    orphaned = sorted(
+        name
+        for name in tasks
+        if name not in roots and all(name not in children.get(other, []) for other in tasks)
+    )
+    for orphan in orphaned:
+        if lines:
+            lines.append("")
+        lines.append(orphan)
+
+    return "\n".join(lines)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Provision Morph instance with parallel setup"
@@ -1132,11 +1191,21 @@ def parse_args() -> argparse.Namespace:
         choices=("pause", "stop"),
         help="Action when TTL expires",
     )
+    parser.add_argument(
+        "--print-deps",
+        action="store_true",
+        help="Print dependency graph and exit",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    if getattr(args, "print_deps", False):
+        graph = format_dependency_graph(registry)
+        if graph:
+            print(graph)
+        return
     asyncio.run(provision_and_snapshot(args))
 
 
