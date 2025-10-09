@@ -19,7 +19,7 @@ export async function getClaudeEnvironment(
   const startupCommands: string[] = [];
   const claudeLifecycleDir = "/root/lifecycle/claude";
   const claudeSecretsDir = `${claudeLifecycleDir}/secrets`;
-  // const claudeApiKeyPath = `${claudeSecretsDir}/.anthropic_key`;
+  const claudeApiKeyPath = `${claudeSecretsDir}/.anthropic_key`;
   const claudeApiKeyHelperPath = `${claudeSecretsDir}/anthropic_key_helper.sh`;
 
   // Prepare .claude.json
@@ -190,7 +190,31 @@ exit 0`;
 
   // Add apiKey helper script to read key from file
   const helperScript = `#!/bin/sh
-echo ${ctx.taskRunJwt}`;
+set -euo pipefail
+
+KEY_FILE="${claudeApiKeyPath}"
+
+if [ -f "${KEY_FILE}" ]; then
+  cat "${KEY_FILE}"
+  exit 0
+fi
+
+SETTINGS_FILE="$HOME/.claude/settings.json"
+if command -v jq >/dev/null 2>&1 && [ -f "${SETTINGS_FILE}" ]; then
+  KEY=$(jq -r '.apiKey // empty' "${SETTINGS_FILE}" 2>/dev/null)
+  if [ -n "${KEY}" ]; then
+    printf '%s' "${KEY}"
+    exit 0
+  fi
+fi
+
+if [ -n "${ANTHROPIC_API_KEY-}" ]; then
+  printf '%s' "${ANTHROPIC_API_KEY}"
+  exit 0
+fi
+
+echo "[CMUX] Unable to determine Anthropic API key" >&2
+exit 1`;
   files.push({
     destinationPath: claudeApiKeyHelperPath,
     contentBase64: Buffer.from(helperScript).toString("base64"),
