@@ -12,8 +12,11 @@ ARG PIP_VERSION
 ARG RUST_VERSION
 ARG NVM_VERSION=0.39.7
 ARG NODE_VERSION=24.9.0
+ARG GITHUB_TOKEN
 
 FROM --platform=$BUILDPLATFORM ubuntu:24.04 AS builder
+
+ARG GITHUB_TOKEN
 
 ARG VERSION
 ARG CODE_RELEASE=1.103.1
@@ -98,12 +101,30 @@ corepack enable
 corepack prepare pnpm@10.14.0 --activate
 EOF
 
+# Helper script for authenticated GitHub downloads
+RUN <<'EOF'
+set -eux
+cat <<'SCRIPT' >/usr/local/bin/github-curl
+#!/usr/bin/env bash
+set -euo pipefail
+token="${GITHUB_TOKEN:-}"
+if [ -z "${token}" ] && [ -f /run/secrets/github_token ]; then
+  token="$(tr -d '\r\n' </run/secrets/github_token)"
+fi
+if [ -n "${token}" ]; then
+  exec curl -H "Authorization: Bearer ${token}" "$@"
+fi
+exec curl "$@"
+SCRIPT
+chmod +x /usr/local/bin/github-curl
+EOF
+
 # Install nvm for optional Node version management
-RUN bash <<'EOF'
+RUN --mount=type=secret,id=github_token,required=false bash <<'EOF'
 set -eux
 NVM_VERSION="${NVM_VERSION:-0.39.7}"
 mkdir -p "${NVM_DIR}"
-curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash
+github-curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash
 cat <<'PROFILE' > /etc/profile.d/nvm.sh
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
@@ -120,8 +141,8 @@ RUN curl -fsSL https://bun.sh/install | bash && \
   bunx --version
 
 # Install openvscode-server (with retries and IPv4 fallback)
-RUN if [ -z "${CODE_RELEASE}" ]; then \
-  CODE_RELEASE=$(curl -sX GET "https://api.github.com/repos/gitpod-io/openvscode-server/releases/latest" \
+RUN --mount=type=secret,id=github_token,required=false if [ -z "${CODE_RELEASE}" ]; then \
+  CODE_RELEASE=$(github-curl -sX GET "https://api.github.com/repos/gitpod-io/openvscode-server/releases/latest" \
   | awk '/tag_name/{print $4;exit}' FS='["\"]' \
   | sed 's|^openvscode-server-v||'); \
   fi && \
@@ -136,8 +157,8 @@ RUN if [ -z "${CODE_RELEASE}" ]; then \
   url="https://github.com/gitpod-io/openvscode-server/releases/download/openvscode-server-v${CODE_RELEASE}/openvscode-server-v${CODE_RELEASE}-linux-${ARCH}.tar.gz" && \
   echo "Downloading: $url" && \
   ( \
-  curl -fSL --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz "$url" \
-  || curl -fSL4 --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz "$url" \
+  github-curl -fSL --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz "$url" \
+  || github-curl -4 -fSL --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz "$url" \
   ) && \
   tar xf /tmp/openvscode-server.tar.gz -C /app/openvscode-server/ --strip-components=1 && \
   rm -rf /tmp/openvscode-server.tar.gz
@@ -221,6 +242,10 @@ RUN /app/openvscode-server/bin/openvscode-server --install-extension /tmp/cmux-v
 # Stage 2: Runtime base (shared between local and morph)
 FROM ubuntu:24.04 AS runtime-base
 
+ARG GITHUB_TOKEN
+
+COPY --from=builder /usr/local/bin/github-curl /usr/local/bin/github-curl
+
 ARG UV_VERSION
 ARG PYTHON_VERSION
 ARG PIP_VERSION
@@ -292,7 +317,7 @@ ENV RUSTUP_HOME=/usr/local/rustup \
   PATH="/root/.local/bin:/usr/local/cargo/bin:/usr/local/bin:${PATH}"
 
 # Install Chrome (amd64) or Chromium snapshot (arm64) so that VNC sessions have a browser available
-RUN <<'EOF'
+RUN --mount=type=secret,id=github_token,required=false <<'EOF'
 set -eux
 arch="$(dpkg --print-architecture)"
 tmp_dir="$(mktemp -d)"
@@ -315,7 +340,7 @@ case "${arch}" in
     ;;
   arm64)
     cd "${tmp_dir}"
-    revision="$(curl -fsSL https://raw.githubusercontent.com/microsoft/playwright/main/packages/playwright-core/browsers.json \
+    revision="$(github-curl -fsSL https://raw.githubusercontent.com/microsoft/playwright/main/packages/playwright-core/browsers.json \
       | jq -r '.browsers[] | select(.name == "chromium") | .revision')"
     if [ -z "${revision}" ] || [ "${revision}" = "null" ]; then
       echo "Failed to determine Playwright Chromium revision for arm64" >&2
@@ -339,7 +364,7 @@ EOF
 
 
 # Install uv-managed Python runtime (latest by default) and keep pip pinned
-RUN <<'EOF'
+RUN --mount=type=secret,id=github_token,required=false <<'EOF'
 set -eux
 ARCH="$(uname -m)"
 case "${ARCH}" in
@@ -359,10 +384,10 @@ esac
 
 UV_VERSION_RAW="${UV_VERSION:-}"
 if [ -z "${UV_VERSION_RAW}" ]; then
-  UV_VERSION_RAW="$(curl -fsSL https://api.github.com/repos/astral-sh/uv/releases/latest | jq -r '.tag_name')"
+  UV_VERSION_RAW="$(github-curl -fsSL https://api.github.com/repos/astral-sh/uv/releases/latest | jq -r '.tag_name')"
 fi
 UV_VERSION="$(printf '%s' "${UV_VERSION_RAW}" | tr -d ' \t\r\n')"
-curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-${UV_ASSET_SUFFIX}.tar.gz" -o /tmp/uv.tar.gz
+github-curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-${UV_ASSET_SUFFIX}.tar.gz" -o /tmp/uv.tar.gz
 tar -xzf /tmp/uv.tar.gz -C /tmp
 install -m 0755 /tmp/uv-${UV_ASSET_SUFFIX}/uv /usr/local/bin/uv
 install -m 0755 /tmp/uv-${UV_ASSET_SUFFIX}/uvx /usr/local/bin/uvx
@@ -397,6 +422,7 @@ COPY scripts/repo-enablers /usr/local/share/cmux/repo-enablers
 RUN find /usr/local/share/cmux/repo-enablers -type f -name '*.sh' -exec chmod +x {} +
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,target=/var/lib/apt,sharing=locked \
+  --mount=type=secret,id=github_token,required=false \
   /usr/local/share/cmux/repo-enablers/deb/github-cli.sh \
   && DEBIAN_FRONTEND=noninteractive apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y gh \
@@ -429,11 +455,11 @@ corepack prepare pnpm@10.14.0 --activate
 EOF
 
 # Install nvm for optional Node version management in runtime
-RUN <<'EOF'
+RUN --mount=type=secret,id=github_token,required=false <<'EOF'
 set -eux
 NVM_VERSION="${NVM_VERSION:-0.39.7}"
 mkdir -p "${NVM_DIR}"
-curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash
+github-curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash
 cat <<'PROFILE' > /etc/profile.d/nvm.sh
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
@@ -469,8 +495,8 @@ RUN chmod +x /usr/local/bin/cmux-collect-relevant-diff.sh \
 
 # Install openvscode-server for x86_64 (target platform)
 ARG CODE_RELEASE
-RUN if [ -z "${CODE_RELEASE}" ]; then \
-  CODE_RELEASE=$(curl -sX GET "https://api.github.com/repos/gitpod-io/openvscode-server/releases/latest" \
+RUN --mount=type=secret,id=github_token,required=false if [ -z "${CODE_RELEASE}" ]; then \
+  CODE_RELEASE=$(github-curl -sX GET "https://api.github.com/repos/gitpod-io/openvscode-server/releases/latest" \
   | awk '/tag_name/{print $4;exit}' FS='["\"]' \
   | sed 's|^openvscode-server-v||'); \
   fi && \
@@ -485,8 +511,8 @@ RUN if [ -z "${CODE_RELEASE}" ]; then \
   url="https://github.com/gitpod-io/openvscode-server/releases/download/openvscode-server-v${CODE_RELEASE}/openvscode-server-v${CODE_RELEASE}-linux-${ARCH}.tar.gz" && \
   echo "Downloading: $url" && \
   ( \
-  curl -fSL --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz "$url" \
-  || curl -fSL4 --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz "$url" \
+  github-curl -fSL --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz "$url" \
+  || github-curl -4 -fSL --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz "$url" \
   ) && \
   tar xf /tmp/openvscode-server.tar.gz -C /app/openvscode-server/ --strip-components=1 && \
   rm -rf /tmp/openvscode-server.tar.gz
@@ -579,6 +605,8 @@ CMD []
 # Stage 3: Local (DinD) runtime with Docker available
 FROM runtime-base AS runtime-local
 
+ARG GITHUB_TOKEN
+
 ARG DOCKER_VERSION
 ARG DOCKER_CHANNEL
 ARG DOCKER_COMPOSE_VERSION
@@ -589,6 +617,7 @@ COPY scripts/repo-enablers /usr/local/share/cmux/repo-enablers
 RUN find /usr/local/share/cmux/repo-enablers -type f -name '*.sh' -exec chmod +x {} +
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,target=/var/lib/apt,sharing=locked \
+  --mount=type=secret,id=github_token,required=false \
   /usr/local/share/cmux/repo-enablers/deb/github-cli.sh \
   && DEBIAN_FRONTEND=noninteractive apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y gh \
@@ -598,11 +627,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 RUN update-alternatives --set iptables /usr/sbin/iptables-legacy
 
 # Install Docker
-RUN <<-'EOF'
+RUN --mount=type=secret,id=github_token,required=false <<-'EOF'
     set -eux; \
     arch="$(uname -m)"; \
     DOCKER_CHANNEL="${DOCKER_CHANNEL:-stable}"; \
-    DOCKER_VERSION="${DOCKER_VERSION:-$(curl -fsSL https://api.github.com/repos/docker/docker/releases/latest | jq -r '.tag_name' | sed 's/^v//')}"; \
+    DOCKER_VERSION="${DOCKER_VERSION:-$(github-curl -fsSL https://api.github.com/repos/docker/docker/releases/latest | jq -r '.tag_name' | sed 's/^v//')}"; \
     case "$arch" in \
         x86_64) dockerArch='x86_64' ;; \
         aarch64) dockerArch='aarch64' ;; \
@@ -616,7 +645,7 @@ RUN <<-'EOF'
 EOF
 
 # Install Docker Compose, Buildx, and BuildKit
-RUN <<-'EOF'
+RUN --mount=type=secret,id=github_token,required=false <<-'EOF'
     set -eux; \
     mkdir -p /usr/local/lib/docker/cli-plugins; \
     arch="$(uname -m)"; \
@@ -625,16 +654,16 @@ RUN <<-'EOF'
         aarch64) composeArch='aarch64'; buildxAsset='linux-arm64'; buildkitAsset='linux-arm64' ;; \
         *) echo >&2 "error: unsupported architecture ($arch)"; exit 1 ;; \
     esac; \
-    DOCKER_COMPOSE_VERSION="${DOCKER_COMPOSE_VERSION:-$(curl -fsSL https://api.github.com/repos/docker/compose/releases/latest | jq -r '.tag_name' | sed 's/^v//')}"; \
-    curl -fsSL "https://github.com/docker/compose/releases/download/v${DOCKER_COMPOSE_VERSION}/docker-compose-linux-${composeArch}" \
+    DOCKER_COMPOSE_VERSION="${DOCKER_COMPOSE_VERSION:-$(github-curl -fsSL https://api.github.com/repos/docker/compose/releases/latest | jq -r '.tag_name' | sed 's/^v//')}"; \
+    github-curl -fsSL "https://github.com/docker/compose/releases/download/v${DOCKER_COMPOSE_VERSION}/docker-compose-linux-${composeArch}" \
         -o /usr/local/lib/docker/cli-plugins/docker-compose; \
     chmod +x /usr/local/lib/docker/cli-plugins/docker-compose; \
-    BUILDX_VERSION="${BUILDX_VERSION:-$(curl -fsSL https://api.github.com/repos/docker/buildx/releases/latest | jq -r '.tag_name' | sed 's/^v//')}"; \
-    curl -fsSL "https://github.com/docker/buildx/releases/download/v${BUILDX_VERSION}/buildx-v${BUILDX_VERSION}.${buildxAsset}" \
+    BUILDX_VERSION="${BUILDX_VERSION:-$(github-curl -fsSL https://api.github.com/repos/docker/buildx/releases/latest | jq -r '.tag_name' | sed 's/^v//')}"; \
+    github-curl -fsSL "https://github.com/docker/buildx/releases/download/v${BUILDX_VERSION}/buildx-v${BUILDX_VERSION}.${buildxAsset}" \
         -o /usr/local/lib/docker/cli-plugins/docker-buildx; \
     chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx; \
-    BUILDKIT_VERSION="${BUILDKIT_VERSION:-$(curl -fsSL https://api.github.com/repos/moby/buildkit/releases/latest | jq -r '.tag_name' | sed 's/^v//')}"; \
-    curl -fsSL "https://github.com/moby/buildkit/releases/download/v${BUILDKIT_VERSION}/buildkit-v${BUILDKIT_VERSION}.${buildkitAsset}.tar.gz" \
+    BUILDKIT_VERSION="${BUILDKIT_VERSION:-$(github-curl -fsSL https://api.github.com/repos/moby/buildkit/releases/latest | jq -r '.tag_name' | sed 's/^v//')}"; \
+    github-curl -fsSL "https://github.com/moby/buildkit/releases/download/v${BUILDKIT_VERSION}/buildkit-v${BUILDKIT_VERSION}.${buildkitAsset}.tar.gz" \
         -o /tmp/buildkit.tar.gz; \
     tar -xzf /tmp/buildkit.tar.gz -C /tmp; \
     install -m 0755 /tmp/bin/buildctl /usr/local/bin/buildctl; \
@@ -693,12 +722,13 @@ ARG VERSION
 ARG TARGETPLATFORM
 ARG CMUX_RELEASE=1
 ARG NFPM_VERSION=2.39.0
+ARG GITHUB_TOKEN
 
 COPY configs/systemd-host /tmp/systemd-host
 COPY configs/nfpm/cmux.yaml /tmp/nfpm/cmux.yaml
 COPY scripts/package /tmp/package-scripts
 
-RUN bash <<'EOF'
+RUN --mount=type=secret,id=github_token,required=false bash <<'EOF'
 set -euo pipefail
 
 pkgroot="/pkgroot"
@@ -781,7 +811,7 @@ esac
 # Install nfpm
 nfpm_tar="/tmp/nfpm.tar.gz"
 nfpm_tmp_dir="/tmp/nfpm-dist"
-curl -fsSL "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_${nfpm_archive_arch}.tar.gz" -o "${nfpm_tar}"
+github-curl -fsSL "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_${nfpm_archive_arch}.tar.gz" -o "${nfpm_tar}"
 rm -rf "${nfpm_tmp_dir}"
 mkdir -p "${nfpm_tmp_dir}"
 tar -xzf "${nfpm_tar}" -C "${nfpm_tmp_dir}"

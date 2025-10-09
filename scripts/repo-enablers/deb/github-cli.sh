@@ -8,7 +8,7 @@ arch="$(dpkg --print-architecture)"
 install -m 0755 -d /usr/share/keyrings
 
 if [ ! -f "${keyring}" ]; then
-  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+  github-curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     | dd of="${keyring}"
   chmod go+r "${keyring}"
 fi

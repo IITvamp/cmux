@@ -11,14 +11,20 @@ XVFB_LOG_FILE="${LOG_DIR}/xvfb.log"
 X11VNC_LOG_FILE="${LOG_DIR}/x11vnc.log"
 WEBSOCKIFY_LOG_FILE="${LOG_DIR}/websockify.log"
 CHROME_LOG_FILE="${LOG_DIR}/chrome.log"
-CDP_PORT=39381
+CDP_PROXY_LOG_FILE="${LOG_DIR}/cdp-proxy.log"
+CDP_PROXY_PORT="${CHROME_PORT:-39381}"
+CDP_TARGET_PORT="${CDP_INTERNAL_PORT:-39382}"
+CDP_TARGET_HOST="${CDP_TARGET_HOST:-127.0.0.1}"
+CDP_HOST_HEADER="${CDP_HOST_HEADER:-localhost:${CDP_TARGET_PORT}}"
+CDP_PROXY_BIN="/usr/local/lib/cmux/cmux-cdp-proxy"
 
 mkdir -p "${LOG_DIR}"
 touch \
   "${XVFB_LOG_FILE}" \
   "${X11VNC_LOG_FILE}" \
   "${WEBSOCKIFY_LOG_FILE}" \
-  "${CHROME_LOG_FILE}"
+  "${CHROME_LOG_FILE}" \
+  "${CDP_PROXY_LOG_FILE}"
 
 start_process() {
   local log_file="$1"
@@ -29,7 +35,7 @@ start_process() {
 
 cleanup() {
   local status=$?
-  for pid in ${WEBSOCKIFY_PID:-} ${CHROME_PID:-} ${X11VNC_PID:-} ${XVFB_PID:-}; do
+  for pid in ${WEBSOCKIFY_PID:-} ${CDP_PROXY_PID:-} ${CHROME_PID:-} ${X11VNC_PID:-} ${XVFB_PID:-}; do
     if [[ -n "${pid:-}" ]] && kill -0 "$pid" >/dev/null 2>&1; then
       kill "$pid" >/dev/null 2>&1 || true
       wait "$pid" >/dev/null 2>&1 || true
@@ -83,8 +89,8 @@ if [[ -n "${CHROME_BIN}" && -x "${CHROME_BIN}" ]]; then
     --disable-translate
     --disable-infobars
     --disable-features=ChromeWhatsNewUI,AutofillServerCommunication,AutomationControlled
-    --remote-debugging-address=0.0.0.0
-    --remote-debugging-port=${CDP_PORT}
+    --remote-debugging-address=${CDP_TARGET_HOST}
+    --remote-debugging-port=${CDP_TARGET_PORT}
     --remote-allow-origins=*
     --test-type
     --start-maximized
@@ -103,6 +109,17 @@ if [[ -n "${CHROME_BIN}" && -x "${CHROME_BIN}" ]]; then
   fi
 else
   echo "Chrome binary not found; skipping browser autostart" >>"${CHROME_LOG_FILE}"
+fi
+
+if [[ -x "${CDP_PROXY_BIN}" ]]; then
+  CDP_PROXY_PID=$(start_process "${CDP_PROXY_LOG_FILE}" env \
+    CMUX_CDP_PROXY_PORT="${CDP_PROXY_PORT}" \
+    CMUX_CDP_TARGET_HOST="${CDP_TARGET_HOST}" \
+    CMUX_CDP_TARGET_PORT="${CDP_TARGET_PORT}" \
+    CMUX_CDP_TARGET_HOST_HEADER="${CDP_HOST_HEADER}" \
+    "${CDP_PROXY_BIN}")
+else
+  echo "CDP proxy binary not found at ${CDP_PROXY_BIN}; DevTools access limited to localhost" >>"${CDP_PROXY_LOG_FILE}"
 fi
 
 /usr/bin/websockify --web=/usr/share/novnc 0.0.0.0:39380 127.0.0.1:5901 >>"${WEBSOCKIFY_LOG_FILE}" 2>&1 &

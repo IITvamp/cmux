@@ -63,6 +63,8 @@ EXEC_SOURCE_PATH = Path("scripts/execd/main.go")
 EXEC_BUILD_OUTPUT_DIR = Path("scripts/execd/dist")
 VSCODE_HTTP_PORT = 39378
 VNC_HTTP_PORT = 39380
+CDP_HTTP_PORT = 39381
+CDP_PROXY_BINARY_NAME = "cmux-cdp-proxy"
 
 
 @dataclass(slots=True)
@@ -213,7 +215,7 @@ async def _expose_standard_ports(
     instance: Instance,
     console: Console,
 ) -> dict[int, str]:
-    ports = [EXEC_HTTP_PORT, 39376, 39377, VSCODE_HTTP_PORT, 39379, VNC_HTTP_PORT, 39381]
+    ports = [EXEC_HTTP_PORT, 39376, 39377, VSCODE_HTTP_PORT, 39379, VNC_HTTP_PORT, CDP_HTTP_PORT]
     console.info("Exposing standard HTTP services...")
 
     async def _expose(port: int) -> tuple[int, str]:
@@ -623,7 +625,7 @@ class TaskContext:
             """
             export RUSTUP_HOME=/usr/local/rustup
             export CARGO_HOME=/usr/local/cargo
-            export PATH="/root/.local/bin:/usr/local/cargo/bin:/usr/local/bin:$PATH"
+            export PATH="/root/.local/bin:/usr/local/cargo/bin:/usr/local/go/bin:/usr/local/bin:$PATH"
             """
         ).strip()
         self.environment_prelude = exports
@@ -1042,6 +1044,44 @@ async def task_install_bun(ctx: TaskContext) -> None:
 
 
 @registry.task(
+    name="install-go-toolchain",
+    deps=("install-base-packages",),
+    description="Install Go toolchain for building CMux helpers",
+)
+async def task_install_go_toolchain(ctx: TaskContext) -> None:
+    cmd = textwrap.dedent(
+        """
+        set -eux
+        GO_VERSION="1.25.2"
+        ARCH="$(uname -m)"
+        case "${ARCH}" in
+          x86_64)
+            GO_ARCH="amd64"
+            ;;
+          aarch64|arm64)
+            GO_ARCH="arm64"
+            ;;
+          *)
+            echo "Unsupported architecture for Go: ${ARCH}" >&2
+            exit 1
+            ;;
+        esac
+        TMP_DIR="$(mktemp -d)"
+        trap 'rm -rf "${TMP_DIR}"' EXIT
+        cd "${TMP_DIR}"
+        curl -fsSLo go.tar.gz "https://go.dev/dl/go${GO_VERSION}.linux-${GO_ARCH}.tar.gz"
+        rm -rf /usr/local/go
+        tar -C /usr/local -xzf go.tar.gz
+        install -d /usr/local/bin
+        ln -sf /usr/local/go/bin/go /usr/local/bin/go
+        ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+        /usr/local/go/bin/go version
+        """
+    )
+    await ctx.run("install-go-toolchain", cmd)
+
+
+@registry.task(
     name="install-uv-python",
     deps=("apt-bootstrap",),
     description="Install uv CLI and provision default Python runtime",
@@ -1374,12 +1414,36 @@ async def task_install_service_scripts(ctx: TaskContext) -> None:
 
 
 @registry.task(
+    name="build-cdp-proxy",
+    deps=("install-service-scripts", "install-go-toolchain"),
+    description="Build and install Chrome DevTools proxy binary",
+)
+async def task_build_cdp_proxy(ctx: TaskContext) -> None:
+    repo = shlex.quote(ctx.remote_repo_root)
+    cmd = textwrap.dedent(
+        f"""
+        set -euo pipefail
+        export PATH="/usr/local/go/bin:${{PATH}}"
+        install -d /usr/local/lib/cmux
+        cd {repo}/scripts/cdp-proxy
+        go build -trimpath -o /usr/local/lib/cmux/{CDP_PROXY_BINARY_NAME} .
+        if [ ! -x /usr/local/lib/cmux/{CDP_PROXY_BINARY_NAME} ]; then
+          echo "Failed to build {CDP_PROXY_BINARY_NAME}" >&2
+          exit 1
+        fi
+        """
+    )
+    await ctx.run("build-cdp-proxy", cmd)
+
+
+@registry.task(
     name="install-systemd-units",
     deps=(
         "upload-repo",
         "install-openvscode",
         "install-openvscode-extensions",
         "install-service-scripts",
+        "build-cdp-proxy",
         "configure-zsh",
     ),
     description="Install cmux systemd units and helpers",
@@ -1809,6 +1873,49 @@ async def task_check_devtools(ctx: TaskContext) -> None:
     await ctx.run("check-devtools", cmd)
 
 
+async def verify_devtools_via_exposed_url(
+    port_map: dict[int, str],
+    *,
+    console: Console,
+) -> None:
+    cdp_base_url = port_map.get(CDP_HTTP_PORT)
+    if cdp_base_url is None:
+        raise RuntimeError("Failed to expose DevTools service URL via Morph")
+    version_url = urllib.parse.urljoin(
+        cdp_base_url.rstrip("/") + "/",
+        "json/version",
+    )
+    console.info(f"Verifying DevTools via exposed URL: {version_url}")
+    max_attempts = 45
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(5.0, connect=5.0, read=5.0),
+        follow_redirects=True,
+    ) as client:
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = await client.get(
+                    version_url,
+                    headers={"Accept": "application/json"},
+                )
+            except (httpx.HTTPError, ssl.SSLError, OSError) as exc:
+                console.info(
+                    f"Attempt {attempt}/{max_attempts} failed to reach DevTools via Morph: {exc}"
+                )
+            else:
+                if response.status_code == httpx.codes.OK:
+                    console.info("DevTools endpoint is reachable via Morph exposed URL")
+                    return
+                console.info(
+                    f"Attempt {attempt}/{max_attempts} returned HTTP "
+                    f"{response.status_code} from DevTools via Morph"
+                )
+            if attempt < max_attempts:
+                await asyncio.sleep(2)
+    raise RuntimeError(
+        "DevTools endpoint not reachable via Morph exposed URL after multiple attempts"
+    )
+
+
 async def snapshot_instance(
     instance: Instance,
     *,
@@ -1888,6 +1995,7 @@ async def provision_and_snapshot(args: argparse.Namespace) -> None:
         service_url=exec_service_url,
     )
     await run_task_graph(registry, ctx)
+    await verify_devtools_via_exposed_url(port_map, console=console)
 
     graph = format_dependency_graph(registry)
     if graph:
