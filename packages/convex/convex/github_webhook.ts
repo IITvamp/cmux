@@ -16,6 +16,14 @@ import { bytesToHex } from "../_shared/encoding";
 import { streamInstallationRepositories } from "../_shared/githubApp";
 import { internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
+import type { CheckRunWebhookPayload } from "./github_check_runs";
+import type {
+  DeploymentStatusWebhookPayload,
+  DeploymentWebhookPayload,
+} from "./github_deployments";
+import type { PullRequestWebhookPayload } from "./github_prs";
+import type { StatusWebhookPayload } from "./github_commit_statuses";
+import type { WorkflowRunWebhookPayload } from "./github_workflows";
 
 const DEBUG_FLAGS = {
   githubWebhook: false, // set true to emit verbose push diagnostics
@@ -54,6 +62,233 @@ function normalizeTimestamp(
     return parsed;
   }
   return undefined;
+}
+
+const isString = (value: unknown): value is string => typeof value === "string";
+const isNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+
+function sanitizeStatusEvent(event: StatusEvent): StatusWebhookPayload {
+  return {
+    id: isNumber(event.id) ? event.id : undefined,
+    sha: isString(event.sha) ? event.sha : undefined,
+    context: isString(event.context) ? event.context : undefined,
+    state: isString(event.state) ? event.state : undefined,
+    repositoryId: isNumber(event.repository?.id) ? event.repository?.id : undefined,
+    description: isString(event.description) ? event.description : undefined,
+    targetUrl: isString(event.target_url) ? event.target_url : undefined,
+    senderLogin: isString(event.sender?.login) ? event.sender?.login : undefined,
+    createdAt:
+      isString(event.created_at) || isNumber(event.created_at)
+        ? event.created_at
+        : undefined,
+    updatedAt:
+      isString(event.updated_at) || isNumber(event.updated_at)
+        ? event.updated_at
+        : undefined,
+  };
+}
+
+function sanitizeCheckRunEvent(event: CheckRunEvent): CheckRunWebhookPayload {
+  const pullRequestNumbers = event.check_run?.pull_requests?.map((pr) =>
+    isNumber(pr?.number) ? pr.number : undefined,
+  )
+    .filter((value): value is number => value !== undefined);
+
+  const completedAt = event.check_run?.completed_at;
+
+  return {
+    checkRunId: isNumber(event.check_run?.id) ? event.check_run?.id : undefined,
+    name: isString(event.check_run?.name) ? event.check_run?.name : undefined,
+    headSha: isString(event.check_run?.head_sha) ? event.check_run?.head_sha : undefined,
+    status: isString(event.check_run?.status) ? event.check_run?.status : undefined,
+    conclusion: isString(event.check_run?.conclusion)
+      ? event.check_run?.conclusion
+      : undefined,
+    repositoryId: isNumber(event.repository?.id) ? event.repository?.id : undefined,
+    htmlUrl: isString(event.check_run?.html_url) ? event.check_run?.html_url : undefined,
+    appName: isString(event.check_run?.app?.name) ? event.check_run?.app?.name : undefined,
+    appSlug: isString(event.check_run?.app?.slug) ? event.check_run?.app?.slug : undefined,
+    updatedAt:
+      isString(event.check_run?.updated_at) || isNumber(event.check_run?.updated_at)
+        ? event.check_run?.updated_at
+        : undefined,
+    startedAt:
+      isString(event.check_run?.started_at) || isNumber(event.check_run?.started_at)
+        ? event.check_run?.started_at
+        : undefined,
+    completedAt:
+      isString(completedAt) || isNumber(completedAt)
+        ? completedAt
+        : undefined,
+    pullRequestNumbers: pullRequestNumbers && pullRequestNumbers.length > 0 ? pullRequestNumbers : undefined,
+  };
+}
+
+function sanitizeWorkflowRunEvent(
+  event: WorkflowRunEvent,
+): WorkflowRunWebhookPayload {
+  const pullRequestNumbers = event.workflow_run?.pull_requests?.map((pr) =>
+    isNumber(pr?.number) ? pr.number : undefined,
+  )
+    .filter((value): value is number => value !== undefined);
+
+  return {
+    runId: isNumber(event.workflow_run?.id) ? event.workflow_run?.id : undefined,
+    runNumber: isNumber(event.workflow_run?.run_number)
+      ? event.workflow_run?.run_number
+      : undefined,
+    workflowId: isNumber(event.workflow_run?.workflow_id)
+      ? event.workflow_run?.workflow_id
+      : undefined,
+    workflowName: isString(event.workflow?.name) ? event.workflow?.name : undefined,
+    runName: isString(event.workflow_run?.name) ? event.workflow_run?.name : undefined,
+    event: isString(event.workflow_run?.event) ? event.workflow_run?.event : undefined,
+    status: isString(event.workflow_run?.status) ? event.workflow_run?.status : undefined,
+    conclusion: isString(event.workflow_run?.conclusion)
+      ? event.workflow_run?.conclusion
+      : undefined,
+    repositoryId: isNumber(event.repository?.id) ? event.repository?.id : undefined,
+    headBranch: isString(event.workflow_run?.head_branch)
+      ? event.workflow_run?.head_branch
+      : undefined,
+    headSha: isString(event.workflow_run?.head_sha)
+      ? event.workflow_run?.head_sha
+      : undefined,
+    htmlUrl: isString(event.workflow_run?.html_url)
+      ? event.workflow_run?.html_url
+      : undefined,
+    createdAt:
+      isString(event.workflow_run?.created_at) || isNumber(event.workflow_run?.created_at)
+        ? event.workflow_run?.created_at
+        : undefined,
+    updatedAt:
+      isString(event.workflow_run?.updated_at) || isNumber(event.workflow_run?.updated_at)
+        ? event.workflow_run?.updated_at
+        : undefined,
+    runStartedAt:
+      isString(event.workflow_run?.run_started_at) || isNumber(event.workflow_run?.run_started_at)
+        ? event.workflow_run?.run_started_at
+        : undefined,
+    runCompletedAt:
+      isString(event.workflow_run?.completed_at) || isNumber(event.workflow_run?.completed_at)
+        ? event.workflow_run?.completed_at
+        : undefined,
+    actorLogin: isString(event.workflow_run?.actor?.login)
+      ? event.workflow_run?.actor?.login
+      : undefined,
+    actorId: isNumber(event.workflow_run?.actor?.id)
+      ? event.workflow_run?.actor?.id
+      : undefined,
+    pullRequestNumbers: pullRequestNumbers && pullRequestNumbers.length > 0 ? pullRequestNumbers : undefined,
+  };
+}
+
+function sanitizeDeploymentEvent(event: DeploymentEvent): DeploymentWebhookPayload {
+  return {
+    deploymentId: isNumber(event.deployment?.id) ? event.deployment?.id : undefined,
+    sha: isString(event.deployment?.sha) ? event.deployment?.sha : undefined,
+    ref: isString(event.deployment?.ref) ? event.deployment?.ref : undefined,
+    task: isString(event.deployment?.task) ? event.deployment?.task : undefined,
+    environment: isString(event.deployment?.environment)
+      ? event.deployment?.environment
+      : undefined,
+    description: isString(event.deployment?.description)
+      ? event.deployment?.description
+      : undefined,
+    creatorLogin: isString(event.deployment?.creator?.login)
+      ? event.deployment?.creator?.login
+      : undefined,
+    createdAt:
+      isString(event.deployment?.created_at) || isNumber(event.deployment?.created_at)
+        ? event.deployment?.created_at
+        : undefined,
+    updatedAt:
+      isString(event.deployment?.updated_at) || isNumber(event.deployment?.updated_at)
+        ? event.deployment?.updated_at
+        : undefined,
+    repositoryId: isNumber(event.repository?.id) ? event.repository?.id : undefined,
+  };
+}
+
+function sanitizeDeploymentStatusEvent(
+  event: DeploymentStatusEvent,
+): DeploymentStatusWebhookPayload {
+  return {
+    deploymentId: isNumber(event.deployment?.id) ? event.deployment?.id : undefined,
+    sha: isString(event.deployment?.sha) ? event.deployment?.sha : undefined,
+    state: isString(event.deployment_status?.state)
+      ? event.deployment_status?.state
+      : undefined,
+    description: isString(event.deployment_status?.description)
+      ? event.deployment_status?.description
+      : undefined,
+    logUrl: isString(event.deployment_status?.log_url)
+      ? event.deployment_status?.log_url
+      : undefined,
+    targetUrl: isString(event.deployment_status?.target_url)
+      ? event.deployment_status?.target_url
+      : undefined,
+    environmentUrl: isString(event.deployment_status?.environment_url)
+      ? event.deployment_status?.environment_url
+      : undefined,
+    createdAt:
+      isString(event.deployment?.created_at) || isNumber(event.deployment?.created_at)
+        ? event.deployment?.created_at
+        : undefined,
+    updatedAt:
+      isString(event.deployment_status?.updated_at) || isNumber(event.deployment_status?.updated_at)
+        ? event.deployment_status?.updated_at
+        : undefined,
+    ref: isString(event.deployment?.ref) ? event.deployment?.ref : undefined,
+    task: isString(event.deployment?.task) ? event.deployment?.task : undefined,
+    environment: isString(event.deployment?.environment)
+      ? event.deployment?.environment
+      : undefined,
+    creatorLogin: isString(event.deployment?.creator?.login)
+      ? event.deployment?.creator?.login
+      : undefined,
+    repositoryId: isNumber(event.repository?.id) ? event.repository?.id : undefined,
+  };
+}
+
+function sanitizePullRequestEvent(event: PullRequestEvent): PullRequestWebhookPayload {
+  const pr = event.pull_request;
+  const number = isNumber(pr?.number)
+    ? pr?.number
+    : isNumber(event.number)
+      ? event.number
+      : undefined;
+
+  return {
+    number,
+    providerPrId: isNumber(pr?.id) ? pr?.id : undefined,
+    repositoryId: isNumber(pr?.base?.repo?.id) ? pr?.base?.repo?.id : undefined,
+    title: isString(pr?.title) ? pr?.title : undefined,
+    state: isString(pr?.state) ? pr?.state : undefined,
+    merged: typeof pr?.merged === "boolean" ? pr?.merged : undefined,
+    draft: typeof pr?.draft === "boolean" ? pr?.draft : undefined,
+    htmlUrl: isString(pr?.html_url) ? pr?.html_url : undefined,
+    authorLogin: isString(pr?.user?.login) ? pr?.user?.login : undefined,
+    authorId: isNumber(pr?.user?.id) ? pr?.user?.id : undefined,
+    baseRef: isString(pr?.base?.ref) ? pr?.base?.ref : undefined,
+    headRef: isString(pr?.head?.ref) ? pr?.head?.ref : undefined,
+    baseSha: isString(pr?.base?.sha) ? pr?.base?.sha : undefined,
+    headSha: isString(pr?.head?.sha) ? pr?.head?.sha : undefined,
+    mergeCommitSha: isString(pr?.merge_commit_sha) ? pr?.merge_commit_sha : undefined,
+    createdAt: isString(pr?.created_at) ? pr?.created_at : undefined,
+    updatedAt: isString(pr?.updated_at) ? pr?.updated_at : undefined,
+    closedAt: isString(pr?.closed_at) ? pr?.closed_at : undefined,
+    mergedAt: isString(pr?.merged_at) ? pr?.merged_at : undefined,
+    commentsCount: isNumber(pr?.comments) ? pr?.comments : undefined,
+    reviewCommentsCount: isNumber(pr?.review_comments) ? pr?.review_comments : undefined,
+    commitsCount: isNumber(pr?.commits) ? pr?.commits : undefined,
+    additions: isNumber(pr?.additions) ? pr?.additions : undefined,
+    deletions: isNumber(pr?.deletions) ? pr?.deletions : undefined,
+    changedFiles: isNumber(pr?.changed_files) ? pr?.changed_files : undefined,
+    baseRepoPushedAt: isString(pr?.base?.repo?.pushed_at)
+      ? pr?.base?.repo?.pushed_at
+      : undefined,
+  };
 }
 
 export const githubWebhook = httpAction(async (_ctx, req) => {
@@ -255,7 +490,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
               installationId: installation,
               repoFullName,
               teamId,
-              payload: workflowRunPayload,
+              payload: sanitizeWorkflowRunEvent(workflowRunPayload),
             },
           );
 
@@ -310,7 +545,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             installationId: installation,
             repoFullName,
             teamId,
-            payload: checkRunPayload,
+            payload: sanitizeCheckRunEvent(checkRunPayload),
           });
 
         } catch (err) {
@@ -363,7 +598,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
               installationId: installation,
               repoFullName,
               teamId,
-              payload: deploymentPayload,
+              payload: sanitizeDeploymentEvent(deploymentPayload),
             },
           );
 
@@ -413,7 +648,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
               installationId: installation,
               repoFullName,
               teamId,
-              payload: deploymentStatusPayload,
+              payload: sanitizeDeploymentStatusEvent(deploymentStatusPayload),
             },
           );
 
@@ -463,7 +698,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
               installationId: installation,
               repoFullName,
               teamId,
-              payload: statusPayload,
+              payload: sanitizeStatusEvent(statusPayload),
             },
           );
 
@@ -492,7 +727,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             installationId: installation,
             repoFullName,
             teamId,
-            payload: prPayload,
+            payload: sanitizePullRequestEvent(prPayload),
           });
         } catch (err) {
           console.error("github_webhook pull_request handler failed", {

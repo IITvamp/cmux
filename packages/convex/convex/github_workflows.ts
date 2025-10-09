@@ -13,10 +13,29 @@ import { v } from "convex/values";
 import { getTeamId } from "../_shared/team";
 import { internalMutation } from "./_generated/server";
 import { authQuery } from "./users/utils";
-import type { WorkflowRunEvent } from "@octokit/webhooks-types";
 
-type WorkflowRunWithCompletedAt = NonNullable<WorkflowRunEvent["workflow_run"]> & {
-  completed_at?: string | null;
+const timestampValue = v.union(v.string(), v.number());
+
+export type WorkflowRunWebhookPayload = {
+  runId?: number;
+  runNumber?: number;
+  workflowId?: number;
+  workflowName?: string;
+  runName?: string;
+  event?: string;
+  status?: string;
+  conclusion?: string;
+  repositoryId?: number;
+  headBranch?: string;
+  headSha?: string;
+  htmlUrl?: string;
+  createdAt?: string | number;
+  updatedAt?: string | number;
+  runStartedAt?: string | number;
+  runCompletedAt?: string | number;
+  actorLogin?: string;
+  actorId?: number;
+  pullRequestNumbers?: number[];
 };
 
 function normalizeTimestamp(
@@ -35,18 +54,37 @@ export const upsertWorkflowRunFromWebhook = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(),
+    payload: v.object({
+      runId: v.optional(v.number()),
+      runNumber: v.optional(v.number()),
+      workflowId: v.optional(v.number()),
+      workflowName: v.optional(v.string()),
+      runName: v.optional(v.string()),
+      event: v.optional(v.string()),
+      status: v.optional(v.string()),
+      conclusion: v.optional(v.string()),
+      repositoryId: v.optional(v.number()),
+      headBranch: v.optional(v.string()),
+      headSha: v.optional(v.string()),
+      htmlUrl: v.optional(v.string()),
+      createdAt: v.optional(timestampValue),
+      updatedAt: v.optional(timestampValue),
+      runStartedAt: v.optional(timestampValue),
+      runCompletedAt: v.optional(timestampValue),
+      actorLogin: v.optional(v.string()),
+      actorId: v.optional(v.number()),
+      pullRequestNumbers: v.optional(v.array(v.number())),
+    }),
   },
   handler: async (ctx, args) => {
-    const payload = args.payload as WorkflowRunEvent;
-    const { installationId, repoFullName, teamId } = args;
+    const { installationId, repoFullName, teamId, payload } = args;
 
 
     // Extract core workflow run data
-    const runId = payload.workflow_run?.id;
-    const runNumber = payload.workflow_run?.run_number;
-    const workflowId = payload.workflow_run?.workflow_id;
-    const workflowName = payload.workflow?.name;
+    const runId = payload.runId;
+    const runNumber = payload.runNumber;
+    const workflowId = payload.workflowId;
+    const workflowName = payload.workflowName;
 
     if (!runId || !runNumber || !workflowId || !workflowName) {
       console.warn("[upsertWorkflowRun] Missing required fields", {
@@ -61,26 +99,24 @@ export const upsertWorkflowRunFromWebhook = internalMutation({
     }
 
     // Map GitHub status to our schema status (exclude 'requested')
-    const githubStatus = payload.workflow_run?.status;
+    const githubStatus = payload.status;
     const status = githubStatus === "requested" ? undefined : githubStatus;
 
     // Map GitHub conclusion to our schema conclusion (exclude 'stale' and handle null)
-    const githubConclusion = payload.workflow_run?.conclusion;
+    const githubConclusion = payload.conclusion;
     const conclusion =
       githubConclusion === "stale" || githubConclusion === null
         ? undefined
         : githubConclusion;
 
     // Normalize timestamps
-    const createdAt = normalizeTimestamp(payload.workflow_run?.created_at);
-    const updatedAt = normalizeTimestamp(payload.workflow_run?.updated_at);
-    const runStartedAt = normalizeTimestamp(
-      payload.workflow_run?.run_started_at,
-    );
+    const createdAt = normalizeTimestamp(payload.createdAt);
+    const updatedAt = normalizeTimestamp(payload.updatedAt);
+    const runStartedAt = normalizeTimestamp(payload.runStartedAt);
 
     const runCompletedAt =
-      payload.workflow_run?.status === "completed"
-        ? normalizeTimestamp((payload.workflow_run as WorkflowRunWithCompletedAt).completed_at)
+      payload.status === "completed"
+        ? normalizeTimestamp(payload.runCompletedAt)
         : undefined;
 
     // Calculate run duration if we have both start and completion times
@@ -90,37 +126,34 @@ export const upsertWorkflowRunFromWebhook = internalMutation({
     }
 
     // Extract actor info
-    const actorLogin = payload.workflow_run?.actor?.login;
-    const actorId = payload.workflow_run?.actor?.id;
+    const actorLogin = payload.actorLogin;
+    const actorId = payload.actorId;
 
     // Extract triggering PR info if available
     let triggeringPrNumber: number | undefined;
-    if (
-      payload.workflow_run?.pull_requests &&
-      payload.workflow_run.pull_requests.length > 0
-    ) {
+    if (payload.pullRequestNumbers && payload.pullRequestNumbers.length > 0) {
       // Take the first PR if multiple are associated
-      triggeringPrNumber = payload.workflow_run.pull_requests[0]?.number;
+      triggeringPrNumber = payload.pullRequestNumbers[0];
     }
 
     // Prepare the document
     const workflowRunDoc = {
       provider: "github" as const,
       installationId,
-      repositoryId: payload.repository?.id,
+      repositoryId: payload.repositoryId,
       repoFullName,
       runId,
       runNumber,
       teamId,
       workflowId,
       workflowName,
-      name: payload.workflow_run.name || undefined,
-      event: payload.workflow_run.event,
+      name: payload.runName || undefined,
+      event: payload.event,
       status,
       conclusion,
-      headBranch: payload.workflow_run.head_branch || undefined,
-      headSha: payload.workflow_run.head_sha || undefined,
-      htmlUrl: payload.workflow_run.html_url || undefined,
+      headBranch: payload.headBranch || undefined,
+      headSha: payload.headSha || undefined,
+      htmlUrl: payload.htmlUrl || undefined,
       createdAt,
       updatedAt,
       runStartedAt,

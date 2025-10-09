@@ -2,7 +2,21 @@ import { v } from "convex/values";
 import { getTeamId } from "../_shared/team";
 import { internalMutation } from "./_generated/server";
 import { authQuery } from "./users/utils";
-import type { StatusEvent } from "@octokit/webhooks-types";
+
+const timestampValue = v.union(v.string(), v.number());
+
+export type StatusWebhookPayload = {
+  id?: number;
+  sha?: string;
+  context?: string;
+  state?: string;
+  repositoryId?: number;
+  description?: string;
+  targetUrl?: string;
+  senderLogin?: string;
+  createdAt?: string | number;
+  updatedAt?: string | number;
+};
 
 function normalizeTimestamp(
   value: string | number | null | undefined,
@@ -20,11 +34,21 @@ export const upsertCommitStatusFromWebhook = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(),
+    payload: v.object({
+      id: v.optional(v.number()),
+      sha: v.optional(v.string()),
+      context: v.optional(v.string()),
+      state: v.optional(v.string()),
+      repositoryId: v.optional(v.number()),
+      description: v.optional(v.string()),
+      targetUrl: v.optional(v.string()),
+      senderLogin: v.optional(v.string()),
+      createdAt: v.optional(timestampValue),
+      updatedAt: v.optional(timestampValue),
+    }),
   },
   handler: async (ctx, args) => {
-    const payload = args.payload as StatusEvent;
-    const { installationId, repoFullName, teamId } = args;
+    const { installationId, repoFullName, teamId, payload } = args;
 
 
     const statusId = payload.id;
@@ -48,13 +72,13 @@ export const upsertCommitStatusFromWebhook = internalMutation({
       ? payload.state
       : "pending";
 
-    const createdAt = normalizeTimestamp(payload.created_at);
-    const updatedAt = normalizeTimestamp(payload.updated_at);
+    const createdAt = normalizeTimestamp(payload.createdAt);
+    const updatedAt = normalizeTimestamp(payload.updatedAt);
 
     const statusDoc = {
       provider: "github" as const,
       installationId,
-      repositoryId: payload.repository?.id,
+      repositoryId: payload.repositoryId,
       repoFullName,
       statusId,
       teamId,
@@ -62,8 +86,8 @@ export const upsertCommitStatusFromWebhook = internalMutation({
       state,
       context,
       description: payload.description ?? undefined,
-      targetUrl: payload.target_url ?? undefined,
-      creatorLogin: payload.sender?.login,
+      targetUrl: payload.targetUrl ?? undefined,
+      creatorLogin: payload.senderLogin,
       createdAt,
       updatedAt,
       triggeringPrNumber: undefined,

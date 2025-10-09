@@ -9,49 +9,33 @@ import { authMutation, authQuery } from "./users/utils";
 
 const SYSTEM_BRANCH_USER_ID = "__system__";
 
-type WebhookUser = {
-  login?: string;
-  id?: number;
-};
-
-type WebhookRepo = {
-  id?: number;
-  pushed_at?: string;
-};
-
-type WebhookBranchRef = {
-  ref?: string;
-  sha?: string;
-  repo?: WebhookRepo;
-};
-
-type WebhookPullRequest = {
+export type PullRequestWebhookPayload = {
   number?: number;
-  id?: number;
+  providerPrId?: number;
+  repositoryId?: number;
   title?: string;
   state?: string;
   merged?: boolean;
   draft?: boolean;
-  html_url?: string;
-  merge_commit_sha?: string;
-  created_at?: string;
-  updated_at?: string;
-  closed_at?: string;
-  merged_at?: string;
-  comments?: number;
-  review_comments?: number;
-  commits?: number;
+  htmlUrl?: string;
+  authorLogin?: string;
+  authorId?: number;
+  baseRef?: string;
+  headRef?: string;
+  baseSha?: string;
+  headSha?: string;
+  mergeCommitSha?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  closedAt?: string;
+  mergedAt?: string;
+  commentsCount?: number;
+  reviewCommentsCount?: number;
+  commitsCount?: number;
   additions?: number;
   deletions?: number;
-  changed_files?: number;
-  user?: WebhookUser;
-  base?: WebhookBranchRef;
-  head?: WebhookBranchRef;
-};
-
-type PullRequestWebhookEnvelope = {
-  pull_request?: WebhookPullRequest;
-  number?: number;
+  changedFiles?: number;
+  baseRepoPushedAt?: string;
 };
 
 async function upsertBranchMetadata(
@@ -320,32 +304,53 @@ export const upsertFromWebhookPayload = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(),
+    payload: v.object({
+      number: v.optional(v.number()),
+      providerPrId: v.optional(v.number()),
+      repositoryId: v.optional(v.number()),
+      title: v.optional(v.string()),
+      state: v.optional(v.string()),
+      merged: v.optional(v.boolean()),
+      draft: v.optional(v.boolean()),
+      htmlUrl: v.optional(v.string()),
+      authorLogin: v.optional(v.string()),
+      authorId: v.optional(v.number()),
+      baseRef: v.optional(v.string()),
+      headRef: v.optional(v.string()),
+      baseSha: v.optional(v.string()),
+      headSha: v.optional(v.string()),
+      mergeCommitSha: v.optional(v.string()),
+      createdAt: v.optional(v.string()),
+      updatedAt: v.optional(v.string()),
+      closedAt: v.optional(v.string()),
+      mergedAt: v.optional(v.string()),
+      commentsCount: v.optional(v.number()),
+      reviewCommentsCount: v.optional(v.number()),
+      commitsCount: v.optional(v.number()),
+      additions: v.optional(v.number()),
+      deletions: v.optional(v.number()),
+      changedFiles: v.optional(v.number()),
+      baseRepoPushedAt: v.optional(v.string()),
+    }),
   },
   handler: async (ctx, { installationId, repoFullName, teamId, payload }) => {
     try {
-      const envelope = (payload ?? {}) as PullRequestWebhookEnvelope;
-      const pr = envelope.pull_request ?? {};
-      const number = Number(pr.number ?? envelope.number ?? 0);
+      const number = payload.number ?? 0;
       if (!number) return { ok: false as const };
-      const mapStr = (value: unknown) =>
-        typeof value === "string" ? value : undefined;
-      const mapNum = (value: unknown) =>
-        typeof value === "number" ? value : undefined;
       const ts = (s: unknown) => {
         if (typeof s !== "string") return undefined;
         const n = Date.parse(s);
         return Number.isFinite(n) ? n : undefined;
       };
-      const baseRef = mapStr(pr.base?.ref);
-      const headRef = mapStr(pr.head?.ref);
-      const baseSha = mapStr(pr.base?.sha);
-      const headSha = mapStr(pr.head?.sha);
-      const mergeCommitSha = mapStr(pr.merge_commit_sha);
+      const baseRef = payload.baseRef;
+      const headRef = payload.headRef;
+      const baseSha = payload.baseSha;
+      const headSha = payload.headSha;
+      const mergeCommitSha = payload.mergeCommitSha;
       const baseActivityTs =
-        ts(pr.base?.repo?.pushed_at) ??
-        ts(pr.merged_at) ??
-        ts(pr.updated_at) ??
+        ts(payload.baseRepoPushedAt) ??
+        ts(payload.mergedAt) ??
+        ts(payload.updatedAt) ??
         Date.now();
 
       await upsertCore(ctx, {
@@ -354,30 +359,30 @@ export const upsertFromWebhookPayload = internalMutation({
         repoFullName,
         number,
         record: {
-          providerPrId: mapNum(pr.id),
-          repositoryId: mapNum(pr.base?.repo?.id),
-          title: mapStr(pr.title) ?? "",
-          state: mapStr(pr.state) === "closed" ? "closed" : "open",
-          merged: Boolean(pr.merged),
-          draft: Boolean(pr.draft),
-          authorLogin: mapStr(pr.user?.login),
-          authorId: mapNum(pr.user?.id),
-          htmlUrl: mapStr(pr.html_url),
+          providerPrId: payload.providerPrId,
+          repositoryId: payload.repositoryId,
+          title: payload.title ?? "",
+          state: payload.state === "closed" ? "closed" : "open",
+          merged: Boolean(payload.merged),
+          draft: Boolean(payload.draft),
+          authorLogin: payload.authorLogin,
+          authorId: payload.authorId,
+          htmlUrl: payload.htmlUrl,
           baseRef,
           headRef,
           baseSha,
           headSha,
           mergeCommitSha,
-          createdAt: ts(pr.created_at),
-          updatedAt: ts(pr.updated_at),
-          closedAt: ts(pr.closed_at),
-          mergedAt: ts(pr.merged_at),
-          commentsCount: mapNum(pr.comments),
-          reviewCommentsCount: mapNum(pr.review_comments),
-          commitsCount: mapNum(pr.commits),
-          additions: mapNum(pr.additions),
-          deletions: mapNum(pr.deletions),
-          changedFiles: mapNum(pr.changed_files),
+          createdAt: ts(payload.createdAt),
+          updatedAt: ts(payload.updatedAt),
+          closedAt: ts(payload.closedAt),
+          mergedAt: ts(payload.mergedAt),
+          commentsCount: payload.commentsCount,
+          reviewCommentsCount: payload.reviewCommentsCount,
+          commitsCount: payload.commitsCount,
+          additions: payload.additions,
+          deletions: payload.deletions,
+          changedFiles: payload.changedFiles,
         },
       });
 
@@ -397,7 +402,7 @@ export const upsertFromWebhookPayload = internalMutation({
           repoFullName,
           branchName: headRef,
           headSha,
-          activityTimestamp: ts(pr.updated_at) ?? Date.now(),
+          activityTimestamp: ts(payload.updatedAt) ?? Date.now(),
         });
       }
       return { ok: true as const };

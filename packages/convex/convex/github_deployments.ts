@@ -2,10 +2,38 @@ import { v } from "convex/values";
 import { getTeamId } from "../_shared/team";
 import { internalMutation } from "./_generated/server";
 import { authQuery } from "./users/utils";
-import type {
-  DeploymentEvent,
-  DeploymentStatusEvent,
-} from "@octokit/webhooks-types";
+
+const timestampValue = v.union(v.string(), v.number());
+
+export type DeploymentWebhookPayload = {
+  deploymentId?: number;
+  sha?: string;
+  ref?: string;
+  task?: string;
+  environment?: string;
+  description?: string;
+  creatorLogin?: string;
+  createdAt?: string | number;
+  updatedAt?: string | number;
+  repositoryId?: number;
+};
+
+export type DeploymentStatusWebhookPayload = {
+  deploymentId?: number;
+  sha?: string;
+  state?: string;
+  description?: string;
+  logUrl?: string;
+  targetUrl?: string;
+  environmentUrl?: string;
+  createdAt?: string | number;
+  updatedAt?: string | number;
+  ref?: string;
+  task?: string;
+  environment?: string;
+  creatorLogin?: string;
+  repositoryId?: number;
+};
 
 function normalizeTimestamp(
   value: string | number | null | undefined,
@@ -23,15 +51,25 @@ export const upsertDeploymentFromWebhook = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(),
+    payload: v.object({
+      deploymentId: v.optional(v.number()),
+      sha: v.optional(v.string()),
+      ref: v.optional(v.string()),
+      task: v.optional(v.string()),
+      environment: v.optional(v.string()),
+      description: v.optional(v.string()),
+      creatorLogin: v.optional(v.string()),
+      createdAt: v.optional(timestampValue),
+      updatedAt: v.optional(timestampValue),
+      repositoryId: v.optional(v.number()),
+    }),
   },
   handler: async (ctx, args) => {
-    const payload = args.payload as DeploymentEvent;
-    const { installationId, repoFullName, teamId } = args;
+    const { installationId, repoFullName, teamId, payload } = args;
 
 
-    const deploymentId = payload.deployment?.id;
-    const sha = payload.deployment?.sha;
+    const deploymentId = payload.deploymentId;
+    const sha = payload.sha;
 
     if (!deploymentId || !sha) {
       console.warn("[upsertDeployment] Missing required fields", {
@@ -43,22 +81,22 @@ export const upsertDeploymentFromWebhook = internalMutation({
       return;
     }
 
-    const createdAt = normalizeTimestamp(payload.deployment?.created_at);
-    const updatedAt = normalizeTimestamp(payload.deployment?.updated_at);
+    const createdAt = normalizeTimestamp(payload.createdAt);
+    const updatedAt = normalizeTimestamp(payload.updatedAt);
 
     const deploymentDoc = {
       provider: "github" as const,
       installationId,
-      repositoryId: payload.repository?.id,
+      repositoryId: payload.repositoryId,
       repoFullName,
       deploymentId,
       teamId,
       sha,
-      ref: payload.deployment?.ref ?? undefined,
-      task: payload.deployment?.task ?? undefined,
-      environment: payload.deployment?.environment ?? undefined,
-      description: payload.deployment?.description ?? undefined,
-      creatorLogin: payload.deployment?.creator?.login,
+      ref: payload.ref ?? undefined,
+      task: payload.task ?? undefined,
+      environment: payload.environment ?? undefined,
+      description: payload.description ?? undefined,
+      creatorLogin: payload.creatorLogin,
       createdAt,
       updatedAt,
       state: undefined,
@@ -98,15 +136,29 @@ export const updateDeploymentStatusFromWebhook = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(),
+    payload: v.object({
+      deploymentId: v.optional(v.number()),
+      sha: v.optional(v.string()),
+      state: v.optional(v.string()),
+      description: v.optional(v.string()),
+      logUrl: v.optional(v.string()),
+      targetUrl: v.optional(v.string()),
+      environmentUrl: v.optional(v.string()),
+      createdAt: v.optional(timestampValue),
+      updatedAt: v.optional(timestampValue),
+      ref: v.optional(v.string()),
+      task: v.optional(v.string()),
+      environment: v.optional(v.string()),
+      creatorLogin: v.optional(v.string()),
+      repositoryId: v.optional(v.number()),
+    }),
   },
   handler: async (ctx, args) => {
-    const payload = args.payload as DeploymentStatusEvent;
-    const { installationId, repoFullName, teamId } = args;
+    const { installationId, repoFullName, teamId, payload } = args;
 
 
-    const deploymentId = payload.deployment?.id;
-    const state = payload.deployment_status?.state;
+    const deploymentId = payload.deploymentId;
+    const state = payload.state;
 
     if (!deploymentId) {
       console.warn("[updateDeploymentStatus] Missing deploymentId", {
@@ -121,7 +173,7 @@ export const updateDeploymentStatusFromWebhook = internalMutation({
     const isValidState = (s: string): s is ValidState => validStates.includes(s as ValidState);
     const normalizedState: ValidState | undefined = state && isValidState(state) ? state : undefined;
 
-    const updatedAt = normalizeTimestamp(payload.deployment_status?.updated_at);
+    const updatedAt = normalizeTimestamp(payload.updatedAt);
 
     const existingRecords = await ctx.db
       .query("githubDeployments")
@@ -131,10 +183,10 @@ export const updateDeploymentStatusFromWebhook = internalMutation({
     if (existingRecords.length > 0) {
       await ctx.db.patch(existingRecords[0]._id, {
         state: normalizedState,
-        statusDescription: payload.deployment_status?.description ?? undefined,
-        logUrl: payload.deployment_status?.log_url ?? undefined,
-        targetUrl: payload.deployment_status?.target_url ?? undefined,
-        environmentUrl: payload.deployment_status?.environment_url ?? undefined,
+        statusDescription: payload.description ?? undefined,
+        logUrl: payload.logUrl ?? undefined,
+        targetUrl: payload.targetUrl ?? undefined,
+        environmentUrl: payload.environmentUrl ?? undefined,
         updatedAt,
       });
 
@@ -149,7 +201,7 @@ export const updateDeploymentStatusFromWebhook = internalMutation({
         }
       }
     } else {
-      const sha = payload.deployment?.sha;
+      const sha = payload.sha;
       if (!sha) {
         console.warn("[updateDeploymentStatus] Deployment not found and no SHA available", {
           deploymentId,
@@ -159,28 +211,28 @@ export const updateDeploymentStatusFromWebhook = internalMutation({
         return;
       }
 
-      const createdAt = normalizeTimestamp(payload.deployment?.created_at);
+      const createdAt = normalizeTimestamp(payload.createdAt);
 
       const deploymentDoc = {
         provider: "github" as const,
         installationId,
-        repositoryId: payload.repository?.id,
+        repositoryId: payload.repositoryId,
         repoFullName,
         deploymentId,
         teamId,
         sha,
-        ref: payload.deployment?.ref ?? undefined,
-        task: payload.deployment?.task ?? undefined,
-        environment: payload.deployment?.environment ?? undefined,
-        description: payload.deployment?.description ?? undefined,
-        creatorLogin: payload.deployment?.creator?.login,
+        ref: payload.ref ?? undefined,
+        task: payload.task ?? undefined,
+        environment: payload.environment ?? undefined,
+        description: payload.description ?? undefined,
+        creatorLogin: payload.creatorLogin,
         createdAt,
         updatedAt,
         state: normalizedState,
-        statusDescription: payload.deployment_status?.description ?? undefined,
-        logUrl: payload.deployment_status?.log_url ?? undefined,
-        targetUrl: payload.deployment_status?.target_url ?? undefined,
-        environmentUrl: payload.deployment_status?.environment_url ?? undefined,
+        statusDescription: payload.description ?? undefined,
+        logUrl: payload.logUrl ?? undefined,
+        targetUrl: payload.targetUrl ?? undefined,
+        environmentUrl: payload.environmentUrl ?? undefined,
         triggeringPrNumber: undefined,
       };
 

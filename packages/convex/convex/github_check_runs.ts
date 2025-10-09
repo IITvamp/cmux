@@ -13,7 +13,24 @@ import { v } from "convex/values";
 import { getTeamId } from "../_shared/team";
 import { internalMutation } from "./_generated/server";
 import { authQuery } from "./users/utils";
-import type { CheckRunEvent } from "@octokit/webhooks-types";
+
+const timestampValue = v.union(v.string(), v.number());
+
+export type CheckRunWebhookPayload = {
+  checkRunId?: number;
+  name?: string;
+  headSha?: string;
+  status?: string;
+  conclusion?: string;
+  repositoryId?: number;
+  htmlUrl?: string;
+  appName?: string;
+  appSlug?: string;
+  updatedAt?: string | number;
+  startedAt?: string | number;
+  completedAt?: string | number;
+  pullRequestNumbers?: number[];
+};
 
 function normalizeTimestamp(
   value: string | number | null | undefined,
@@ -31,17 +48,30 @@ export const upsertCheckRunFromWebhook = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(),
+    payload: v.object({
+      checkRunId: v.optional(v.number()),
+      name: v.optional(v.string()),
+      headSha: v.optional(v.string()),
+      status: v.optional(v.string()),
+      conclusion: v.optional(v.string()),
+      repositoryId: v.optional(v.number()),
+      htmlUrl: v.optional(v.string()),
+      appName: v.optional(v.string()),
+      appSlug: v.optional(v.string()),
+      updatedAt: v.optional(timestampValue),
+      startedAt: v.optional(timestampValue),
+      completedAt: v.optional(timestampValue),
+      pullRequestNumbers: v.optional(v.array(v.number())),
+    }),
   },
   handler: async (ctx, args) => {
-    const payload = args.payload as CheckRunEvent;
-    const { installationId, repoFullName, teamId } = args;
+    const { installationId, repoFullName, teamId, payload } = args;
 
 
     // Extract core check run data
-    const checkRunId = payload.check_run?.id;
-    const name = payload.check_run?.name;
-    const headSha = payload.check_run?.head_sha;
+    const checkRunId = payload.checkRunId;
+    const name = payload.name;
+    const headSha = payload.headSha;
 
     if (!checkRunId || !name || !headSha) {
       console.warn("[upsertCheckRun] Missing required fields", {
@@ -54,44 +84,41 @@ export const upsertCheckRunFromWebhook = internalMutation({
       return;
     }
 
-    const githubStatus = payload.check_run?.status;
+    const githubStatus = payload.status;
     const validStatuses = ["queued", "in_progress", "completed", "pending", "waiting"] as const;
     type ValidStatus = typeof validStatuses[number];
     const status = githubStatus && validStatuses.includes(githubStatus as ValidStatus) ? githubStatus : undefined;
 
     // Map GitHub conclusion to our schema conclusion
-    const githubConclusion = payload.check_run?.conclusion;
+    const githubConclusion = payload.conclusion;
     const conclusion =
-      githubConclusion === "stale" || githubConclusion === null
+      githubConclusion === "stale"
         ? undefined
         : githubConclusion;
 
-    const updatedAt = normalizeTimestamp((payload.check_run as { updated_at?: string | null })?.updated_at);
-    const startedAt = normalizeTimestamp((payload.check_run as { started_at?: string | null })?.started_at);
-    const completedAt = normalizeTimestamp((payload.check_run as { completed_at?: string | null })?.completed_at);
+    const updatedAt = normalizeTimestamp(payload.updatedAt);
+    const startedAt = normalizeTimestamp(payload.startedAt);
+    const completedAt = normalizeTimestamp(payload.completedAt);
 
     // Extract app info
-    const appName = payload.check_run?.app?.name;
-    const appSlug = payload.check_run?.app?.slug;
+    const appName = payload.appName;
+    const appSlug = payload.appSlug;
 
     // Extract URLs
-    const htmlUrl = payload.check_run?.html_url;
+    const htmlUrl = payload.htmlUrl;
 
     // Extract triggering PR info if available
     let triggeringPrNumber: number | undefined;
-    if (
-      payload.check_run?.pull_requests &&
-      payload.check_run.pull_requests.length > 0
-    ) {
+    if (payload.pullRequestNumbers && payload.pullRequestNumbers.length > 0) {
       // Take the first PR if multiple are associated
-      triggeringPrNumber = payload.check_run.pull_requests[0]?.number;
+      triggeringPrNumber = payload.pullRequestNumbers[0];
     }
 
     // Prepare the document
     const checkRunDoc = {
       provider: "github" as const,
       installationId,
-      repositoryId: payload.repository?.id,
+      repositoryId: payload.repositoryId,
       repoFullName,
       checkRunId,
       teamId,
