@@ -32,6 +32,8 @@ type DiffControls = {
   collapseAll: () => void;
   totalAdditions: number;
   totalDeletions: number;
+  expandChecks?: () => void;
+  collapseChecks?: () => void;
 };
 
 type AdditionsAndDeletionsProps = {
@@ -158,9 +160,17 @@ function WorkflowRuns({ allRuns, isLoading }: { allRuns: CombinedRun[]; isLoadin
   );
 }
 
-function WorkflowRunsSection({ allRuns, isLoading }: { allRuns: CombinedRun[]; isLoading: boolean }) {
-  const [isExpanded, setIsExpanded] = useState(false);
-
+function WorkflowRunsSection({
+  allRuns,
+  isLoading,
+  isExpanded,
+  onToggle,
+}: {
+  allRuns: CombinedRun[];
+  isLoading: boolean;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
   const sortedRuns = useMemo(() => allRuns.slice().sort((a, b) => {
     const getStatusPriority = (run: typeof a) => {
       if (run.conclusion === "failure" || run.conclusion === "timed_out" || run.conclusion === "action_required") return 0;
@@ -305,7 +315,7 @@ function WorkflowRunsSection({ allRuns, isLoading }: { allRuns: CombinedRun[]; i
   return (
     <div>
       <button
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={onToggle}
         className="w-full flex items-center pl-3 pr-2.5 py-1.5 border-y border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 transition-colors group"
       >
         <div className="flex items-center" style={{ width: '20px' }}>
@@ -444,7 +454,31 @@ export function PullRequestDetailView({
     headSha: currentPR?.headSha,
   });
 
+  const hasAnyFailure = useMemo(() => {
+    return workflowData.allRuns.some(
+      (run) => run.conclusion === "failure" || run.conclusion === "timed_out" || run.conclusion === "action_required"
+    );
+  }, [workflowData.allRuns]);
+
+  const [checksExpandedOverride, setChecksExpandedOverride] = useState<boolean | null>(null);
+  const checksExpanded = checksExpandedOverride !== null ? checksExpandedOverride : hasAnyFailure;
+
+  const handleToggleChecks = () => {
+    setChecksExpandedOverride(!checksExpanded);
+  };
+
+  const expandAllChecks = () => setChecksExpandedOverride(true);
+  const collapseAllChecks = () => setChecksExpandedOverride(false);
+
   const [diffControls, setDiffControls] = useState<DiffControls | null>(null);
+
+  const handleDiffControlsChange = (controls: DiffControls | null) => {
+    setDiffControls(controls ? {
+      ...controls,
+      expandChecks: expandAllChecks,
+      collapseChecks: collapseAllChecks,
+    } : null);
+  };
 
   const closePrMutation = useMutation<
     PostApiIntegrationsGithubPrsCloseResponse,
@@ -612,12 +646,18 @@ export function PullRequestDetailView({
                       <Dropdown.Popup>
                         <Dropdown.Arrow />
                         <Dropdown.Item
-                          onClick={() => diffControls?.expandAll?.()}
+                          onClick={() => {
+                            diffControls?.expandAll?.();
+                            diffControls?.expandChecks?.();
+                          }}
                         >
                           Expand all
                         </Dropdown.Item>
                         <Dropdown.Item
-                          onClick={() => diffControls?.collapseAll?.()}
+                          onClick={() => {
+                            diffControls?.collapseAll?.();
+                            diffControls?.collapseChecks?.();
+                          }}
                         >
                           Collapse all
                         </Dropdown.Item>
@@ -680,6 +720,8 @@ export function PullRequestDetailView({
               <WorkflowRunsSection
                 allRuns={workflowData.allRuns}
                 isLoading={workflowData.isLoading}
+                isExpanded={checksExpanded}
+                onToggle={handleToggleChecks}
               />
             </Suspense>
             <Suspense
@@ -698,7 +740,7 @@ export function PullRequestDetailView({
                   repoFullName={currentPR.repoFullName}
                   ref1={normalizeGitRef(currentPR.baseRef)}
                   ref2={normalizeGitRef(currentPR.headRef)}
-                  onControlsChange={setDiffControls}
+                  onControlsChange={handleDiffControlsChange}
                   classNames={gitDiffViewerClassNames}
                 />
               ) : (
