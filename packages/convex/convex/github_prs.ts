@@ -6,6 +6,7 @@ import {
   type MutationCtx,
 } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
+import { jsonValue } from "./_shared/validators";
 
 const SYSTEM_BRANCH_USER_ID = "__system__";
 
@@ -320,7 +321,7 @@ export const upsertFromWebhookPayload = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(),
+    payload: jsonValue,
   },
   handler: async (ctx, { installationId, repoFullName, teamId, payload }) => {
     try {

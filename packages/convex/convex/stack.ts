@@ -7,6 +7,7 @@ import {
 } from "../_shared/teamSlug";
 import { internalMutation, type MutationCtx } from "./_generated/server";
 import { authMutation } from "./users/utils";
+import { jsonValue, type JsonValue } from "./_shared/validators";
 
 type UpsertUserArgs = {
   id: string;
@@ -23,9 +24,9 @@ type UpsertUserArgs = {
   hasPassword: boolean;
   otpAuthEnabled: boolean;
   passkeyAuthEnabled: boolean;
-  clientMetadata?: unknown;
-  clientReadOnlyMetadata?: unknown;
-  serverMetadata?: unknown;
+  clientMetadata?: JsonValue;
+  clientReadOnlyMetadata?: JsonValue;
+  serverMetadata?: JsonValue;
   isAnonymous: boolean;
   oauthProviders?: Array<{ id: string; accountId: string; email?: string }>;
 };
@@ -101,9 +102,9 @@ export const upsertUser = internalMutation({
     hasPassword: v.boolean(),
     otpAuthEnabled: v.boolean(),
     passkeyAuthEnabled: v.boolean(),
-    clientMetadata: v.optional(v.any()),
-    clientReadOnlyMetadata: v.optional(v.any()),
-    serverMetadata: v.optional(v.any()),
+    clientMetadata: v.optional(jsonValue),
+    clientReadOnlyMetadata: v.optional(jsonValue),
+    serverMetadata: v.optional(jsonValue),
     isAnonymous: v.boolean(),
     oauthProviders: v.optional(
       v.array(
@@ -161,9 +162,9 @@ export const upsertUserPublic = authMutation({
     hasPassword: v.boolean(),
     otpAuthEnabled: v.boolean(),
     passkeyAuthEnabled: v.boolean(),
-    clientMetadata: v.optional(v.any()),
-    clientReadOnlyMetadata: v.optional(v.any()),
-    serverMetadata: v.optional(v.any()),
+    clientMetadata: v.optional(jsonValue),
+    clientReadOnlyMetadata: v.optional(jsonValue),
+    serverMetadata: v.optional(jsonValue),
     isAnonymous: v.boolean(),
     oauthProviders: v.optional(
       v.array(v.object({ id: v.string(), accountId: v.string(), email: v.optional(v.string()) }))
@@ -181,9 +182,9 @@ type UpsertTeamArgs = {
   id: string;
   displayName?: string;
   profileImageUrl?: string;
-  clientMetadata?: unknown;
-  clientReadOnlyMetadata?: unknown;
-  serverMetadata?: unknown;
+  clientMetadata?: JsonValue;
+  clientReadOnlyMetadata?: JsonValue;
+  serverMetadata?: JsonValue;
   createdAtMillis: number;
 };
 
@@ -256,9 +257,9 @@ async function upsertTeamCore(ctx: MutationCtx, args: UpsertTeamArgs) {
   const patch: {
     displayName?: string;
     profileImageUrl?: string;
-    clientMetadata?: unknown;
-    clientReadOnlyMetadata?: unknown;
-    serverMetadata?: unknown;
+    clientMetadata?: JsonValue;
+    clientReadOnlyMetadata?: JsonValue;
+    serverMetadata?: JsonValue;
     createdAtMillis: number;
     updatedAt: number;
     slug?: string;
@@ -290,9 +291,9 @@ export const upsertTeam = internalMutation({
     id: v.string(),
     displayName: v.optional(v.string()),
     profileImageUrl: v.optional(v.string()),
-    clientMetadata: v.optional(v.any()),
-    clientReadOnlyMetadata: v.optional(v.any()),
-    serverMetadata: v.optional(v.any()),
+    clientMetadata: v.optional(jsonValue),
+    clientReadOnlyMetadata: v.optional(jsonValue),
+    serverMetadata: v.optional(jsonValue),
     createdAtMillis: v.number(),
   },
   handler: async (ctx, args) => upsertTeamCore(ctx, args),
@@ -329,9 +330,9 @@ export const upsertTeamPublic = authMutation({
     id: v.string(),
     displayName: v.optional(v.string()),
     profileImageUrl: v.optional(v.string()),
-    clientMetadata: v.optional(v.any()),
-    clientReadOnlyMetadata: v.optional(v.any()),
-    serverMetadata: v.optional(v.any()),
+    clientMetadata: v.optional(jsonValue),
+    clientReadOnlyMetadata: v.optional(jsonValue),
+    serverMetadata: v.optional(jsonValue),
     createdAtMillis: v.number(),
   },
   handler: async (ctx, args) => upsertTeamCore(ctx, args),

@@ -14,6 +14,7 @@ import { getTeamId } from "../_shared/team";
 import { internalMutation } from "./_generated/server";
 import { authQuery } from "./users/utils";
 import type { WorkflowRunEvent } from "@octokit/webhooks-types";
+import { jsonValue } from "./_shared/validators";
 
 type WorkflowRunWithCompletedAt = NonNullable<WorkflowRunEvent["workflow_run"]> & {
   completed_at?: string | null;
@@ -35,7 +36,7 @@ export const upsertWorkflowRunFromWebhook = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(),
+    payload: jsonValue,
   },
   handler: async (ctx, args) => {
     const payload = args.payload as WorkflowRunEvent;

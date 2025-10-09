@@ -3,6 +3,7 @@ import { getTeamId } from "../_shared/team";
 import { internalMutation } from "./_generated/server";
 import { authQuery } from "./users/utils";
 import type { StatusEvent } from "@octokit/webhooks-types";
+import { jsonValue } from "./_shared/validators";
 
 function normalizeTimestamp(
   value: string | number | null | undefined,
@@ -20,7 +21,7 @@ export const upsertCommitStatusFromWebhook = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(),
+    payload: jsonValue,
   },
   handler: async (ctx, args) => {
     const payload = args.payload as StatusEvent;

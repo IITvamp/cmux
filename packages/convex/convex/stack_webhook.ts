@@ -6,6 +6,7 @@ import {
 } from "../_shared/stack-webhook-schema";
 import { internal } from "./_generated/api";
 import { httpAction, type ActionCtx } from "./_generated/server";
+import type { JsonValue } from "./_shared/validators";
 
 function undefIfNull<T>(value: T | null | undefined): T | undefined {
   return value === null || value === undefined ? undefined : value;
@@ -22,9 +23,9 @@ async function upsertTeamFromEventData(
     id: t.id,
     displayName: undefIfNull(t.display_name || undefined),
     profileImageUrl: undefIfNull(t.profile_image_url || undefined),
-    clientMetadata: undefIfNull(t.client_metadata),
-    clientReadOnlyMetadata: undefIfNull(t.client_read_only_metadata),
-    serverMetadata: undefIfNull(t.server_metadata),
+    clientMetadata: undefIfNull(t.client_metadata) as JsonValue | undefined,
+    clientReadOnlyMetadata: undefIfNull(t.client_read_only_metadata) as JsonValue | undefined,
+    serverMetadata: undefIfNull(t.server_metadata) as JsonValue | undefined,
     createdAtMillis: t.created_at_millis,
   });
 }
@@ -82,9 +83,9 @@ export const stackWebhook = httpAction(async (ctx, req) => {
         hasPassword: u.has_password,
         otpAuthEnabled: u.otp_auth_enabled,
         passkeyAuthEnabled: u.passkey_auth_enabled,
-        clientMetadata: undefIfNull(u.client_metadata),
-        clientReadOnlyMetadata: undefIfNull(u.client_read_only_metadata),
-        serverMetadata: undefIfNull(u.server_metadata),
+        clientMetadata: undefIfNull(u.client_metadata) as JsonValue | undefined,
+        clientReadOnlyMetadata: undefIfNull(u.client_read_only_metadata) as JsonValue | undefined,
+        serverMetadata: undefIfNull(u.server_metadata) as JsonValue | undefined,
         isAnonymous: u.is_anonymous,
         oauthProviders,
       });

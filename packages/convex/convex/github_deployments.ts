@@ -6,6 +6,7 @@ import type {
   DeploymentEvent,
   DeploymentStatusEvent,
 } from "@octokit/webhooks-types";
+import { jsonValue } from "./_shared/validators";
 
 function normalizeTimestamp(
   value: string | number | null | undefined,
@@ -23,7 +24,7 @@ export const upsertDeploymentFromWebhook = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(),
+    payload: jsonValue,
   },
   handler: async (ctx, args) => {
     const payload = args.payload as DeploymentEvent;
@@ -98,7 +99,7 @@ export const updateDeploymentStatusFromWebhook = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.any(),
+    payload: jsonValue,
   },
   handler: async (ctx, args) => {
     const payload = args.payload as DeploymentStatusEvent;

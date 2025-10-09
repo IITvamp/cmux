@@ -10,6 +10,7 @@ import { v } from "convex/values";
 import { env } from "../_shared/convex-env";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
+import type { JsonValue } from "./_shared/validators";
 
 type BackfillArgs = {
   users?: boolean;
@@ -97,9 +98,9 @@ export const backfillFromStack = internalAction({
             hasPassword: u.hasPassword,
             otpAuthEnabled: u.otpAuthEnabled,
             passkeyAuthEnabled: u.passkeyAuthEnabled,
-            clientMetadata: u.clientMetadata,
-            clientReadOnlyMetadata: u.clientReadOnlyMetadata,
-            serverMetadata: (u as unknown as { serverMetadata?: unknown })
+            clientMetadata: u.clientMetadata as JsonValue | undefined,
+            clientReadOnlyMetadata: u.clientReadOnlyMetadata as JsonValue | undefined,
+            serverMetadata: (u as unknown as { serverMetadata?: JsonValue })
               .serverMetadata,
             isAnonymous: u.isAnonymous,
             // oauthProviders in SDK lacks accountId/email on list; skip
@@ -125,9 +126,9 @@ export const backfillFromStack = internalAction({
           id: t.id,
           displayName: t.displayName ?? undefined,
           profileImageUrl: t.profileImageUrl ?? undefined,
-          clientMetadata: t.clientMetadata,
-          clientReadOnlyMetadata: t.clientReadOnlyMetadata,
-          serverMetadata: (t as unknown as { serverMetadata?: unknown })
+          clientMetadata: t.clientMetadata as JsonValue | undefined,
+          clientReadOnlyMetadata: t.clientReadOnlyMetadata as JsonValue | undefined,
+          serverMetadata: (t as unknown as { serverMetadata?: JsonValue })
             .serverMetadata,
           createdAtMillis: t.createdAt.getTime(),
         });
