@@ -78,6 +78,8 @@ function WorkflowRuns({ teamSlugOrId, repoFullName, prNumber, headSha }: Workflo
     limit: 50,
   });
 
+  const isLoading = workflowRuns === undefined || checkRuns === undefined || deployments === undefined || commitStatuses === undefined;
+
   // Combine all types of runs
   const allRuns = [
     ...(workflowRuns || []).map(run => ({ ...run, type: 'workflow' as const, name: run.workflowName, timestamp: run.runStartedAt })),
@@ -85,9 +87,9 @@ function WorkflowRuns({ teamSlugOrId, repoFullName, prNumber, headSha }: Workflo
     ...(deployments || []).map(dep => ({
       ...dep,
       type: 'deployment' as const,
-      name: `${dep.environment || 'Deployment'} - ${dep.description || dep.sha.slice(0, 7)}`,
+      name: dep.environment || 'Deployment',
       timestamp: dep.createdAt,
-      status: dep.state,
+      status: dep.state === 'pending' || dep.state === 'queued' || dep.state === 'in_progress' ? 'in_progress' : 'completed',
       conclusion: dep.state === 'success' ? 'success' : dep.state === 'failure' || dep.state === 'error' ? 'failure' : undefined
     })),
     ...(commitStatuses || []).map(status => ({
@@ -95,23 +97,34 @@ function WorkflowRuns({ teamSlugOrId, repoFullName, prNumber, headSha }: Workflo
       type: 'status' as const,
       name: status.context,
       timestamp: status.updatedAt,
-      status: status.state === 'pending' ? 'pending' : 'completed',
+      status: status.state === 'pending' ? 'in_progress' : 'completed',
       conclusion: status.state === 'success' ? 'success' : status.state === 'failure' || status.state === 'error' ? 'failure' : undefined
     })),
   ];
 
-  if (allRuns.length === 0) {
+  // Don't show anything while loading or if no runs
+  if (isLoading || allRuns.length === 0) {
     return null;
   }
 
-  // Group by name and get latest
-  const latestRunsByName = allRuns.reduce((acc, run) => {
-    const existing = acc.get(run.name);
-    if (!existing || (run.timestamp ?? 0) > (existing.timestamp ?? 0)) {
-      acc.set(run.name, run);
-    }
-    return acc;
-  }, new Map<string, typeof allRuns[0]>());
+  // Group by name and get latest (filter out Preview deployments)
+  const latestRunsByName = allRuns
+    .filter(run => !(run.type === 'deployment' && run.name === 'Preview'))
+    .reduce((acc, run) => {
+      // Normalize names: treat "Production" deployments and "vercel/*" contexts as "Vercel"
+      let groupKey = run.name;
+      if (run.type === 'deployment' && run.name === 'Production') {
+        groupKey = 'Vercel';
+      } else if (run.type === 'status' && run.name.toLowerCase().startsWith('vercel')) {
+        groupKey = 'Vercel';
+      }
+
+      const existing = acc.get(groupKey);
+      if (!existing || (run.timestamp ?? 0) > (existing.timestamp ?? 0)) {
+        acc.set(groupKey, { ...run, name: groupKey });
+      }
+      return acc;
+    }, new Map<string, typeof allRuns[0]>());
 
   const latestRuns = Array.from(latestRunsByName.values());
 
@@ -188,7 +201,10 @@ function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber, headSha }: 
     limit: 50,
   });
 
-  // Combine all types of runs
+  // Check if any queries are still loading
+  const isLoading = workflowRuns === undefined || checkRuns === undefined || deployments === undefined || commitStatuses === undefined;
+
+  // Combine all types of runs - group Vercel deployments with their statuses
   const allRuns = [
     ...(workflowRuns || []).map(run => ({ ...run, type: 'workflow' as const, name: run.workflowName, timestamp: run.runStartedAt, url: run.htmlUrl })),
     ...(checkRuns || []).map(run => {
@@ -198,20 +214,20 @@ function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber, headSha }: 
     ...(deployments || []).map(dep => ({
       ...dep,
       type: 'deployment' as const,
-      name: `${dep.environment || 'Deployment'} - ${dep.description || dep.sha.slice(0, 7)}`,
+      name: dep.environment || 'Deployment',
       timestamp: dep.createdAt,
-      status: dep.state,
+      status: dep.state === 'pending' || dep.state === 'queued' || dep.state === 'in_progress' ? 'in_progress' : 'completed',
       conclusion: dep.state === 'success' ? 'success' : dep.state === 'failure' || dep.state === 'error' ? 'failure' : undefined,
-      url: dep.environmentUrl || dep.targetUrl
+      url: dep.logUrl || dep.targetUrl || dep.environmentUrl || `https://github.com/${repoFullName}/pull/${prNumber}/checks`
     })),
     ...(commitStatuses || []).map(status => ({
       ...status,
       type: 'status' as const,
       name: status.context,
       timestamp: status.updatedAt,
-      status: status.state === 'pending' ? 'pending' : 'completed',
+      status: status.state === 'pending' ? 'in_progress' : 'completed',
       conclusion: status.state === 'success' ? 'success' : status.state === 'failure' || status.state === 'error' ? 'failure' : undefined,
-      url: status.targetUrl
+      url: status.targetUrl || `https://github.com/${repoFullName}/pull/${prNumber}/checks`
     })),
   ];
 
@@ -286,18 +302,29 @@ function WorkflowRunsSection({ teamSlugOrId, repoFullName, prNumber, headSha }: 
   };
 
 
-  if (allRuns.length === 0) {
+  // Don't show anything while loading or if no runs
+  if (isLoading || allRuns.length === 0) {
     return null;
   }
 
-  // Group by name and show only the latest run per name
-  const latestRunsByName = allRuns.reduce((acc, run) => {
-    const existing = acc.get(run.name);
-    if (!existing || (run.timestamp ?? 0) > (existing.timestamp ?? 0)) {
-      acc.set(run.name, run);
-    }
-    return acc;
-  }, new Map<string, typeof allRuns[0]>());
+  // Group by name and show only the latest run per name (filter out Preview deployments)
+  const latestRunsByName = allRuns
+    .filter(run => !(run.type === 'deployment' && run.name === 'Preview'))
+    .reduce((acc, run) => {
+      // Normalize names: treat "Production" deployments and "vercel/*" contexts as "Vercel"
+      let groupKey = run.name;
+      if (run.type === 'deployment' && run.name === 'Production') {
+        groupKey = 'Vercel';
+      } else if (run.type === 'status' && run.name.toLowerCase().startsWith('vercel')) {
+        groupKey = 'Vercel';
+      }
+
+      const existing = acc.get(groupKey);
+      if (!existing || (run.timestamp ?? 0) > (existing.timestamp ?? 0)) {
+        acc.set(groupKey, { ...run, name: groupKey });
+      }
+      return acc;
+    }, new Map<string, typeof allRuns[0]>());
 
   const sortedRuns = Array.from(latestRunsByName.values()).sort((a, b) => {
     return (b.timestamp ?? 0) - (a.timestamp ?? 0);

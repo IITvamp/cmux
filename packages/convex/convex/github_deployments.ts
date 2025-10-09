@@ -149,6 +149,7 @@ export const updateDeploymentStatusFromWebhook = internalMutation({
       await ctx.db.patch(existing._id, {
         state: normalizedState,
         statusDescription: payload.deployment_status?.description ?? undefined,
+        logUrl: payload.deployment_status?.log_url ?? undefined,
         targetUrl: payload.deployment_status?.target_url ?? undefined,
         environmentUrl: payload.deployment_status?.environment_url ?? undefined,
         updatedAt,
@@ -189,6 +190,7 @@ export const updateDeploymentStatusFromWebhook = internalMutation({
         updatedAt,
         state: normalizedState,
         statusDescription: payload.deployment_status?.description ?? undefined,
+        logUrl: payload.deployment_status?.log_url ?? undefined,
         targetUrl: payload.deployment_status?.target_url ?? undefined,
         environmentUrl: payload.deployment_status?.environment_url ?? undefined,
         triggeringPrNumber: undefined,

@@ -705,6 +705,7 @@ const convexSchema = defineSchema({
     statusDescription: v.optional(v.string()),
     targetUrl: v.optional(v.string()),
     environmentUrl: v.optional(v.string()),
+    logUrl: v.optional(v.string()),
 
     // Triggering PR (if applicable)
     triggeringPrNumber: v.optional(v.number()),

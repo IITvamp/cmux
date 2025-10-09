@@ -13,6 +13,7 @@ import {
 import { useMemo, useState, type ComponentType, type MouseEvent } from "react";
 import { SidebarListItem } from "./SidebarListItem";
 import { SIDEBAR_PRS_DEFAULT_LIMIT } from "./const";
+import type { Doc } from "@cmux/convex/dataModel";
 
 type Props = {
   teamSlugOrId: string;
@@ -62,66 +63,99 @@ export function SidebarPullRequestList({
 
   return (
     <ul className="flex flex-col gap-px">
-      {list.map((pr) => {
-        const [owner = "", repo = ""] = pr.repoFullName?.split("/", 2) ?? [
-          "",
-          "",
-        ];
-        const key = `${pr.repoFullName}#${pr.number}`;
-        const isExpanded = expanded[key] ?? false;
-        const branchLabel = pr.headRef;
+      {list.map((pr) => (
+        <PullRequestListItem
+          key={`${pr.repoFullName}#${pr.number}`}
+          pr={pr}
+          teamSlugOrId={teamSlugOrId}
+          expanded={expanded}
+          setExpanded={setExpanded}
+        />
+      ))}
+    </ul>
+  );
+}
 
-        const secondaryParts = [
-          branchLabel,
-          `${pr.repoFullName}#${pr.number}`,
-          pr.authorLogin,
-        ]
-          .filter(Boolean)
-          .map(String);
-        const secondary = secondaryParts.join(" • ");
-        const leadingIcon = pr.merged ? (
-          <GitMerge className="w-3 h-3 text-purple-500" />
-        ) : pr.state === "closed" ? (
-          <GitPullRequestClosed className="w-3 h-3 text-red-500" />
-        ) : pr.draft ? (
-          <GitPullRequestDraft className="w-3 h-3 text-neutral-500" />
-        ) : (
-          <GitPullRequest className="w-3 h-3 text-[#1f883d] dark:text-[#238636]" />
-        );
+type PullRequestListItemProps = {
+  pr: Doc<"pullRequests">;
+  teamSlugOrId: string;
+  expanded: Record<string, boolean>;
+  setExpanded: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+};
 
-        const actionButtons: ReadonlyArray<{
-          key: "vscode" | "preview" | "github";
-          label: string;
-          icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
-        }> = [
-          {
-            key: "vscode",
-            label: "VS Code",
-            icon: VSCodeIcon,
-          },
-          {
-            key: "preview",
-            label: "Preview",
-            icon: ExternalLink,
-          },
-          {
-            key: "github",
-            label: "GitHub",
-            icon: GitHubIcon,
-          },
-        ];
+function PullRequestListItem({ pr, teamSlugOrId, expanded, setExpanded }: PullRequestListItemProps) {
+  // Query deployments for this PR to get Preview URL
+  const deployments = useConvexQuery(api.github_deployments.getDeploymentsForPr, {
+    teamSlugOrId,
+    repoFullName: pr.repoFullName,
+    prNumber: pr.number,
+    headSha: pr.headSha,
+    limit: 10,
+  });
 
-        const handleToggle = (
-          _event?: MouseEvent<HTMLButtonElement | HTMLAnchorElement>
-        ) => {
-          setExpanded((prev) => ({
-            ...prev,
-            [key]: !isExpanded,
-          }));
-        };
+  const [owner = "", repo = ""] = pr.repoFullName?.split("/", 2) ?? ["", ""];
+  const key = `${pr.repoFullName}#${pr.number}`;
+  const isExpanded = expanded[key] ?? false;
+  const branchLabel = pr.headRef;
 
-        return (
-          <li key={key} className="rounded-md select-none">
+  const secondaryParts = [
+    branchLabel,
+    `${pr.repoFullName}#${pr.number}`,
+    pr.authorLogin,
+  ]
+    .filter(Boolean)
+    .map(String);
+  const secondary = secondaryParts.join(" • ");
+  const leadingIcon = pr.merged ? (
+    <GitMerge className="w-3 h-3 text-purple-500" />
+  ) : pr.state === "closed" ? (
+    <GitPullRequestClosed className="w-3 h-3 text-red-500" />
+  ) : pr.draft ? (
+    <GitPullRequestDraft className="w-3 h-3 text-neutral-500" />
+  ) : (
+    <GitPullRequest className="w-3 h-3 text-[#1f883d] dark:text-[#238636]" />
+  );
+
+  // Find Preview deployment URL (environment_url from Preview deployment)
+  const previewDeployment = (deployments ?? []).find(d => d.environment === 'Preview');
+  const previewUrl = previewDeployment?.environmentUrl;
+
+  const actionButtons: ReadonlyArray<{
+    key: "vscode" | "preview" | "github";
+    label: string;
+    icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+    href?: string;
+  }> = [
+    {
+      key: "vscode",
+      label: "VS Code",
+      icon: VSCodeIcon,
+    },
+    {
+      key: "preview",
+      label: "Preview",
+      icon: ExternalLink,
+      href: previewUrl,
+    },
+    {
+      key: "github",
+      label: "GitHub",
+      icon: GitHubIcon,
+      href: pr.htmlUrl,
+    },
+  ];
+
+  const handleToggle = (
+    _event?: MouseEvent<HTMLButtonElement | HTMLAnchorElement>
+  ) => {
+    setExpanded((prev) => ({
+      ...prev,
+      [key]: !isExpanded,
+    }));
+  };
+
+  return (
+    <li key={key} className="rounded-md select-none">
             <Link
               to="/$teamSlugOrId/prs-only/$owner/$repo/$number"
               params={{
@@ -161,12 +195,23 @@ export function SidebarPullRequestList({
               <div className="mt-px flex flex-col" role="group">
                 {actionButtons.map((action) => {
                   const Icon = action.icon;
+                  const Element = action.href ? 'a' : 'button';
+                  const elementProps = action.href ? {
+                    href: action.href,
+                    target: "_blank",
+                    rel: "noreferrer",
+                  } : {
+                    type: "button" as const,
+                  };
+
                   return (
-                    <button
+                    <Element
                       key={action.key}
-                      type="button"
+                      {...elementProps}
                       onClick={(event) => {
-                        event.preventDefault();
+                        if (!action.href) {
+                          event.preventDefault();
+                        }
                         event.stopPropagation();
                       }}
                       className="mt-px flex w-full items-center rounded-md pr-2 py-1 text-xs transition-colors hover:bg-neutral-200/45 dark:hover:bg-neutral-800/45 cursor-default"
@@ -179,15 +224,12 @@ export function SidebarPullRequestList({
                       <span className="text-neutral-600 dark:text-neutral-400">
                         {action.label}
                       </span>
-                    </button>
+                    </Element>
                   );
                 })}
               </div>
             ) : null}
-          </li>
-        );
-      })}
-    </ul>
+    </li>
   );
 }
 
