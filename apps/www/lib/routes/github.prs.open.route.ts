@@ -921,13 +921,6 @@ githubPrsOpenRouter.openapi(
     const octokit = createOctokit(githubAccessToken);
 
     try {
-      const currentPR = await fetchPullRequestDetail({
-        octokit,
-        owner,
-        repo,
-        number,
-      });
-
       await mergePullRequest({
         octokit,
         owner,

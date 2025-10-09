@@ -320,7 +320,7 @@ export const upsertFromWebhookPayload = internalMutation({
     installationId: v.number(),
     repoFullName: v.string(),
     teamId: v.string(),
-    payload: v.object({}),
+    payload: v.any(),
   },
   handler: async (ctx, { installationId, repoFullName, teamId, payload }) => {
     try {
@@ -332,8 +332,6 @@ export const upsertFromWebhookPayload = internalMutation({
         typeof value === "string" ? value : undefined;
       const mapNum = (value: unknown) =>
         typeof value === "number" ? value : undefined;
-      const mapBool = (value: unknown) =>
-        typeof value === "boolean" ? value : undefined;
       const ts = (s: unknown) => {
         if (typeof s !== "string") return undefined;
         const n = Date.parse(s);
