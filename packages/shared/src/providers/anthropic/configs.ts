@@ -2,7 +2,14 @@ import type { AgentConfig } from "../../agentConfig";
 import { ANTHROPIC_API_KEY } from "../../apiKeys";
 import { checkClaudeRequirements } from "./check-requirements";
 import { startClaudeCompletionDetector } from "./completion-detector";
-import { getClaudeEnvironment } from "./environment";
+import {
+  CLAUDE_KEY_ENV_VARS_TO_UNSET,
+  getClaudeEnvironment,
+} from "./environment";
+
+const applyClaudeApiKeys: NonNullable<AgentConfig["applyApiKeys"]> = async () => ({
+  unsetEnv: [...CLAUDE_KEY_ENV_VARS_TO_UNSET],
+});
 
 export const CLAUDE_SONNET_4_CONFIG: AgentConfig = {
   name: "claude/sonnet-4",
@@ -18,9 +25,7 @@ export const CLAUDE_SONNET_4_CONFIG: AgentConfig = {
   environment: getClaudeEnvironment,
   checkRequirements: checkClaudeRequirements,
   apiKeys: [ANTHROPIC_API_KEY],
-  applyApiKeys: async (_keys) => {
-    return {};
-  },
+  applyApiKeys: applyClaudeApiKeys,
   completionDetector: startClaudeCompletionDetector,
 };
 
@@ -38,9 +43,7 @@ export const CLAUDE_OPUS_4_CONFIG: AgentConfig = {
   environment: getClaudeEnvironment,
   checkRequirements: checkClaudeRequirements,
   apiKeys: [ANTHROPIC_API_KEY],
-  applyApiKeys: async (_keys) => {
-    return {};
-  },
+  applyApiKeys: applyClaudeApiKeys,
   completionDetector: startClaudeCompletionDetector,
 };
 
@@ -58,9 +61,7 @@ export const CLAUDE_OPUS_4_1_CONFIG: AgentConfig = {
   environment: getClaudeEnvironment,
   checkRequirements: checkClaudeRequirements,
   apiKeys: [ANTHROPIC_API_KEY],
-  applyApiKeys: async (_keys) => {
-    return {};
-  },
+  applyApiKeys: applyClaudeApiKeys,
   completionDetector: startClaudeCompletionDetector,
 };
 
@@ -78,8 +79,6 @@ export const CLAUDE_SONNET_4_5_CONFIG: AgentConfig = {
   environment: getClaudeEnvironment,
   checkRequirements: checkClaudeRequirements,
   apiKeys: [ANTHROPIC_API_KEY],
-  applyApiKeys: async (_keys) => {
-    return {};
-  },
+  applyApiKeys: applyClaudeApiKeys,
   completionDetector: startClaudeCompletionDetector,
 };

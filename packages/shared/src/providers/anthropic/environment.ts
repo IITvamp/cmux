@@ -3,6 +3,14 @@ import type {
   EnvironmentResult,
 } from "../common/environment-result";
 
+export const CLAUDE_KEY_ENV_VARS_TO_UNSET = [
+  "ANTHROPIC_API_KEY",
+  "CLAUDE_API_KEY",
+  "CLAUDE_CODE_API_KEY",
+  "ANTHROPIC_API_KEY_PATH",
+  "ANTHROPIC_API_KEY_FILE",
+];
+
 export async function getClaudeEnvironment(
   ctx: EnvironmentContext,
 ): Promise<EnvironmentResult> {
@@ -215,6 +223,6 @@ echo ${ctx.taskRunJwt}`;
     files,
     env,
     startupCommands,
-    unsetEnv: ["ANTHROPIC_API_KEY"],
+    unsetEnv: [...CLAUDE_KEY_ENV_VARS_TO_UNSET],
   };
 }
