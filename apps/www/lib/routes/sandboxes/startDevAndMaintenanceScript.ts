@@ -85,52 +85,57 @@ export async function runMaintenanceScript({
     session: ids.sessionName,
     runnerPath: ids.runnerPath,
     hasIdentifiers: Boolean(identifiers),
+    scriptLength: script.length,
     scriptSample: script.slice(0, 80),
   });
-  const command = `
-set -euo pipefail
+
+  if (!script || script.trim().length === 0) {
+    return {
+      error: "Maintenance script is empty",
+      sessionName: ids.sessionName,
+      logFile: ids.logFile,
+    };
+  }
+  const command = `set -eux
 mkdir -p ${LOG_DIR}
-${buildScriptFileCommand(ids.scriptPath, script)}
-cat <<'CMUX_MAINT_RUNNER_EOF' > ${ids.runnerPath}
-#!/usr/bin/env bash
-set -euo pipefail
-cleanup() {
-  status=$?
-  printf '%s' "\\${status}" > ${ids.exitFile}
-  tmux wait-for -S ${ids.waitName}
-  exit "\\${status}"
-}
-trap cleanup EXIT
-cd ${WORKSPACE_ROOT}
-bash -eu -o pipefail ${ids.scriptPath}
-CMUX_MAINT_RUNNER_EOF
-chmod +x ${ids.runnerPath}
-tmux kill-session -t ${ids.sessionName} 2>/dev/null || true
-rm -f ${ids.exitFile}
-: > ${ids.logFile}
-tmux new-session -d -s ${ids.sessionName} "bash --login"
-tmux pipe-pane -t ${ids.sessionName}:0 -o 'cat >> ${ids.logFile}'
-sleep 0.25
-tmux send-keys -t ${ids.sessionName}:0 "${ids.runnerPath}" C-m
-tmux wait-for -L ${ids.waitName}
-status=$(cat ${ids.exitFile} 2>/dev/null || echo '1')
-rm -f ${ids.exitFile}
-if [ "\\${status}" = "0" ]; then
-  tmux send-keys -t ${ids.sessionName}:0 "printf \"\\n[cmux] Maintenance script completed successfully. Closing session.\\n\"" C-m
-  sleep 0.2
-  tmux kill-session -t ${ids.sessionName} 2>/dev/null || true
-  rm -f ${ids.runnerPath} ${ids.scriptPath}
-else
-  tmux send-keys -t ${ids.sessionName}:0 "printf \"\\n[cmux] Maintenance script failed with exit code \${status}. Session left open for inspection.\\n\"" C-m
-fi
-if [ ! -f ${ids.logFile} ]; then
-  touch ${ids.logFile}
-fi
-exit "\\${status}"
+mkdir -p ${CMUX_RUNTIME_DIR}
+cat > ${ids.scriptPath} <<'SCRIPT_EOF'
+${script}
+SCRIPT_EOF
+chmod +x ${ids.scriptPath}
+echo "[DEBUG] Starting tmux server if needed..."
+tmux start-server 2>&1 || echo "Server already running"
+echo "[DEBUG] Killing existing session if any..."
+set +e
+tmux kill-session -t ${ids.sessionName} 2>&1
+set -e
+echo "[DEBUG] Creating new tmux session: ${ids.sessionName}"
+tmux new-session -d -s ${ids.sessionName} bash
+echo "[DEBUG] Sending command to tmux session"
+tmux send-keys -t ${ids.sessionName} "cd ${WORKSPACE_ROOT} && bash ${ids.scriptPath} 2>&1 | tee ${ids.logFile}; echo \$? > ${ids.exitFile}; tmux wait-for -S ${ids.waitName}" C-m
+echo "[DEBUG] Waiting for completion signal: ${ids.waitName}"
+tmux wait-for ${ids.waitName}
+echo "[DEBUG] Wait completed, reading exit code"
+exit_code=$(cat ${ids.exitFile} 2>&1 || echo 1)
+echo "[DEBUG] Exit code: \$exit_code"
+tmux kill-session -t ${ids.sessionName} 2>&1 || echo "Session already gone"
+exit \$exit_code
 `;
 
   try {
+    console.log("[cmux] Executing maintenance command", {
+      commandLength: command.length,
+      commandSample: command.slice(0, 200),
+    });
     const result = await instance.exec(`bash -lc ${singleQuote(command)}`);
+
+    console.log("[cmux] Maintenance command completed", {
+      exitCode: result.exit_code,
+      stdoutLength: result.stdout?.length ?? 0,
+      stderrLength: result.stderr?.length ?? 0,
+      stdoutPreview: result.stdout?.slice(0, 500),
+      stderrPreview: result.stderr?.slice(0, 500),
+    });
 
     if (result.exit_code !== 0) {
       const stderrPreview = previewOutput(result.stderr, 2000);
@@ -176,53 +181,65 @@ export async function startDevScript({
     session: ids.sessionName,
     runnerPath: ids.runnerPath,
     hasIdentifiers: Boolean(identifiers),
+    scriptLength: script.length,
     scriptSample: script.slice(0, 80),
   });
+
+  if (!script || script.trim().length === 0) {
+    return {
+      error: "Dev script is empty",
+      sessionName: ids.sessionName,
+      logFile: ids.logFile,
+    };
+  }
   const devScriptDir = `${CMUX_RUNTIME_DIR}/${ids.id}`;
   const devScriptPath = `${devScriptDir}/dev-script.sh`;
-  const command = `
-set -euo pipefail
+  const command = `set -eux
 mkdir -p ${LOG_DIR}
 mkdir -p ${devScriptDir}
-${buildScriptFileCommand(devScriptPath, script)}
-cat <<'CMUX_DEV_RUNNER_EOF' > ${ids.runnerPath}
-#!/usr/bin/env bash
-set -euo pipefail
-cleanup() {
-  status=$?
-  printf '%s' "\\\${status}" > ${ids.exitFile}
-  exit "\\\${status}"
-}
-trap cleanup EXIT
-cd ${WORKSPACE_ROOT}
-bash -eu -o pipefail ${devScriptPath}
-CMUX_DEV_RUNNER_EOF
-chmod +x ${ids.runnerPath}
-tmux kill-session -t ${ids.sessionName} 2>/dev/null || true
-rm -f ${ids.exitFile}
-: > ${ids.logFile}
-tmux new-session -d -s ${ids.sessionName} "bash --login"
-tmux pipe-pane -t ${ids.sessionName}:0 -o 'cat >> ${ids.logFile}'
-sleep 0.25
-tmux send-keys -t ${ids.sessionName}:0 "${ids.runnerPath}" C-m
-sleep 1
-if [ -f ${ids.exitFile} ]; then
-  status=$(cat ${ids.exitFile} 2>/dev/null || echo '1')
-  if [ "\\${status}" = "0" ]; then
-    tmux send-keys -t ${ids.sessionName}:0 "printf \"\\n[cmux] Dev script exited immediately with status 0. Session left open for debugging.\\n\"" C-m
-    exit 1
-  fi
-  tmux send-keys -t ${ids.sessionName}:0 "printf \"\\n[cmux] Dev script exited with status \${status}. Session left open for debugging.\\n\"" C-m
-  exit "\\${status}"
+cat > ${devScriptPath} <<'SCRIPT_EOF'
+${script}
+SCRIPT_EOF
+chmod +x ${devScriptPath}
+echo "[DEBUG] Starting tmux server if needed..."
+tmux start-server 2>&1 || echo "Server already running"
+echo "[DEBUG] Killing existing dev session if any..."
+set +e
+tmux kill-session -t ${ids.sessionName} 2>&1
+set -e
+echo "[DEBUG] Creating new dev tmux session: ${ids.sessionName}"
+tmux new-session -d -s ${ids.sessionName} bash
+echo "[DEBUG] Setting up pipe-pane for logging"
+tmux pipe-pane -t ${ids.sessionName} -o "cat >> ${ids.logFile}"
+echo "[DEBUG] Sending cd command"
+tmux send-keys -t ${ids.sessionName} "cd ${WORKSPACE_ROOT}" C-m
+echo "[DEBUG] Sending dev script command"
+tmux send-keys -t ${ids.sessionName} "bash ${devScriptPath}" C-m
+sleep 0.5
+echo "[DEBUG] Checking if session is still alive"
+if ! tmux has-session -t ${ids.sessionName} 2>&1; then
+  echo "[ERROR] Dev script session died immediately" >&2
+  cat ${ids.logFile} 2>&1 || echo "No log file"
+  exit 1
 fi
-if [ ! -f ${ids.logFile} ]; then
-  touch ${ids.logFile}
-fi
+echo "[SUCCESS] Dev script started in tmux session ${ids.sessionName}"
 exit 0
 `;
 
   try {
+    console.log("[cmux] Executing dev command", {
+      commandLength: command.length,
+      commandSample: command.slice(0, 200),
+    });
     const result = await instance.exec(`bash -lc ${singleQuote(command)}`);
+
+    console.log("[cmux] Dev command completed", {
+      exitCode: result.exit_code,
+      stdoutLength: result.stdout?.length ?? 0,
+      stderrLength: result.stderr?.length ?? 0,
+      stdoutPreview: result.stdout?.slice(0, 500),
+      stderrPreview: result.stderr?.slice(0, 500),
+    });
 
     if (result.exit_code !== 0) {
       const stderrPreview = previewOutput(result.stderr, 2000);
