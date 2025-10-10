@@ -7,6 +7,7 @@ import {
 } from "@cmux/shared/agentConfig";
 import type {
   WorkerCreateTerminal,
+  WorkerEnvironmentErrorEvent,
   WorkerTerminalFailed,
 } from "@cmux/shared/worker-schemas";
 import { parse as parseDotenv } from "dotenv";
@@ -36,7 +37,8 @@ import rawSwitchBranchScript from "../scripts/switch-branch.ts?raw";
 
 const SWITCH_BRANCH_BUN_SCRIPT = rawSwitchBranchScript;
 
-const { getApiEnvironmentsByIdVars } = await getWwwOpenApiModule();
+const { getApiEnvironmentsByIdVars, getApiEnvironmentsById } =
+  await getWwwOpenApiModule();
 
 export interface AgentSpawnResult {
   agentName: string;
@@ -222,11 +224,21 @@ export async function spawnAgent(
       PROMPT: processedTaskDescription,
     };
 
+    let environmentScripts:
+      | {
+        maintenanceScript?: string;
+        devScript?: string;
+      }
+      | undefined;
+
     if (options.environmentId) {
+      const environmentId = String(options.environmentId);
+      const client = getWwwClient();
+
       try {
         const envRes = await getApiEnvironmentsByIdVars({
-          client: getWwwClient(),
-          path: { id: String(options.environmentId) },
+          client,
+          path: { id: environmentId },
           query: { teamSlugOrId },
         });
         const envContent = envRes.data?.envVarsContent;
@@ -244,17 +256,45 @@ export async function spawnAgent(
               ...preserved,
             };
             serverLogger.info(
-              `[AgentSpawner] Injected ${Object.keys(parsed).length} env vars from environment ${String(
-                options.environmentId,
-              )}`,
+              `[AgentSpawner] Injected ${Object.keys(parsed).length} env vars from environment ${environmentId}`,
             );
           }
         }
       } catch (error) {
         serverLogger.error(
-          `[AgentSpawner] Failed to load environment env vars for ${String(
-            options.environmentId,
-          )}`,
+          `[AgentSpawner] Failed to load environment env vars for ${environmentId}`,
+          error,
+        );
+      }
+
+      try {
+        const envDetails = await getApiEnvironmentsById({
+          client,
+          path: { id: environmentId },
+          query: { teamSlugOrId },
+        });
+
+        if (envDetails.data) {
+          const { maintenanceScript, devScript } = envDetails.data;
+          const normalizedMaintenance =
+            maintenanceScript && maintenanceScript.trim().length > 0
+              ? maintenanceScript
+              : undefined;
+          const normalizedDev =
+            devScript && devScript.trim().length > 0 ? devScript : undefined;
+
+          if (normalizedMaintenance || normalizedDev) {
+            environmentScripts = {
+              ...(normalizedMaintenance
+                ? { maintenanceScript: normalizedMaintenance }
+                : {}),
+              ...(normalizedDev ? { devScript: normalizedDev } : {}),
+            };
+          }
+        }
+      } catch (error) {
+        serverLogger.error(
+          `[AgentSpawner] Failed to load environment scripts for ${environmentId}`,
           error,
         );
       }
@@ -492,6 +532,47 @@ export async function spawnAgent(
       }
     });
 
+    vscodeInstance.on(
+      "environment-error",
+      async (data: WorkerEnvironmentErrorEvent) => {
+        try {
+          serverLogger.info(
+            `[AgentSpawner] Environment script update received for ${agent.name}:`,
+            {
+              maintenanceError: data.maintenanceError,
+              devError: data.devError,
+            },
+          );
+
+          if (data.taskRunId !== taskRunId) {
+            serverLogger.warn(
+              `[AgentSpawner] Environment error event taskRunId mismatch; ignoring`,
+            );
+            return;
+          }
+
+          await runWithAuth(
+            capturedAuthToken,
+            capturedAuthHeaderJson,
+            async () =>
+              retryOnOptimisticConcurrency(() =>
+                getConvex().mutation(api.taskRuns.updateEnvironmentError, {
+                  teamSlugOrId,
+                  id: taskRunId,
+                  maintenanceError: data.maintenanceError,
+                  devError: data.devError,
+                }),
+              ),
+          );
+        } catch (error) {
+          serverLogger.error(
+            `[AgentSpawner] Failed to record environment script status`,
+            error,
+          );
+        }
+      },
+    );
+
     // Get ports if it's a Docker instance
     let ports:
       | { vscode: string; worker: string; extension?: string }
@@ -655,6 +736,9 @@ export async function spawnAgent(
       authFiles,
       startupCommands,
       cwd: "/root/workspace",
+      ...(environmentScripts
+        ? { tmuxScripts: environmentScripts }
+        : {}),
     };
 
     const switchBranch = async () => {

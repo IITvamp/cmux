@@ -57,6 +57,11 @@ export const WorkerTaskRunContextSchema = z.object({
   convexUrl: z.string(),
 });
 
+export const WorkerTmuxScriptsSchema = z.object({
+  maintenanceScript: z.string().optional(),
+  devScript: z.string().optional(),
+});
+
 // Terminal operation schemas for server<>worker communication
 export const WorkerCreateTerminalSchema = z.object({
   terminalId: z.string(),
@@ -74,6 +79,7 @@ export const WorkerCreateTerminalSchema = z.object({
   agentModel: z.string().optional(),
   authFiles: z.array(AuthFileSchema).optional(),
   startupCommands: z.array(z.string()).optional(),
+  tmuxScripts: WorkerTmuxScriptsSchema.optional(),
 });
 
 export const WorkerTerminalInputSchema = z.object({
@@ -211,6 +217,7 @@ export type WorkerUploadFiles = z.infer<typeof WorkerUploadFilesSchema>;
 export type WorkerConfigureGit = z.infer<typeof WorkerConfigureGitSchema>;
 export type WorkerExec = z.infer<typeof WorkerExecSchema>;
 export type WorkerExecResult = z.infer<typeof WorkerExecResultSchema>;
+export type WorkerTmuxScripts = z.infer<typeof WorkerTmuxScriptsSchema>;
 
 // Socket.io event maps for Server <-> Worker communication
 // Docker readiness response type
@@ -275,6 +282,14 @@ export interface WorkerFileDiff {
   patch: string;
 }
 
+export interface WorkerEnvironmentErrorEvent {
+  workerId: string;
+  terminalId: string;
+  taskRunId?: Id<"taskRuns">;
+  maintenanceError?: string;
+  devError?: string;
+}
+
 export interface WorkerToServerEvents {
   // Registration and health
   "worker:register": (data: WorkerRegister) => void;
@@ -288,6 +303,7 @@ export interface WorkerToServerEvents {
   "worker:terminal-idle": (data: WorkerTerminalIdle) => void;
   "worker:task-complete": (data: WorkerTaskComplete) => void;
   "worker:terminal-failed": (data: WorkerTerminalFailed) => void;
+  "worker:environment-error": (data: WorkerEnvironmentErrorEvent) => void;
 
   // File change events
   "worker:file-changes": (data: {

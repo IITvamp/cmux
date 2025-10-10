@@ -40,7 +40,7 @@ function shouldIgnoreOutput(data: Buffer, ignorePatterns: RegExp[]): boolean {
 }
 
 // Helper function to check if tmux session exists
-async function waitForTmuxSession(
+export async function waitForTmuxSession(
   sessionName: string,
   maxRetries = 10,
   delayMs = 100

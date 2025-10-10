@@ -11,6 +11,7 @@ import {
   type WorkerHeartbeat,
   type WorkerRegister,
   type WorkerTaskRunContext,
+  type WorkerTmuxScripts,
   type WorkerToServerEventNames,
   type WorkerToServerEvents,
 } from "@cmux/shared";
@@ -38,6 +39,7 @@ import { Server, type Namespace, type Socket } from "socket.io";
 import { checkDockerReadiness } from "./checkDockerReadiness";
 import { detectTerminalIdle } from "./detectTerminalIdle";
 import { runWorkerExec } from "./execRunner";
+import { runEnvironmentScriptsInTmux } from "./runEnvironmentScripts";
 import { FileWatcher, computeGitDiff, getFileWithDiff } from "./fileWatcher";
 import { log } from "./logger";
 
@@ -842,6 +844,7 @@ async function createTerminal(
     taskRunId?: Id<"taskRuns">;
     agentModel?: string;
     startupCommands?: string[];
+    tmuxScripts?: WorkerTmuxScripts;
     taskRunContext: WorkerTaskRunContext;
   },
 ): Promise<void> {
@@ -853,6 +856,7 @@ async function createTerminal(
     command,
     args = [],
     startupCommands = [],
+    tmuxScripts,
     taskRunContext,
   } = options;
 
@@ -921,6 +925,15 @@ async function createTerminal(
       spawnCommand,
       spawnArgs,
     });
+  }
+
+  let tmuxSessionName: string | undefined;
+  if (spawnCommand === "tmux" && spawnArgs.length > 0) {
+    const sessionIndex = spawnArgs.indexOf("-s");
+    tmuxSessionName =
+      sessionIndex !== -1 && spawnArgs[sessionIndex + 1]
+        ? spawnArgs[sessionIndex + 1]
+        : terminalId;
   }
 
   const ptyEnv = {
@@ -1016,6 +1029,33 @@ async function createTerminal(
   } catch (error) {
     log("ERROR", "Failed to spawn process", error);
     return;
+  }
+
+  if (tmuxSessionName && tmuxScripts) {
+    runEnvironmentScriptsInTmux({
+      sessionName: tmuxSessionName,
+      terminalId,
+      taskRunId: options.taskRunId,
+      scripts: tmuxScripts,
+      emitEnvironmentError: (errors) => {
+        if (!options.taskRunId) {
+          return;
+        }
+        emitToMainServer("worker:environment-error", {
+          workerId: WORKER_ID,
+          terminalId,
+          taskRunId: options.taskRunId,
+          maintenanceError: errors.maintenanceError,
+          devError: errors.devError,
+        });
+      },
+    }).catch((error) => {
+      log("ERROR", "Failed to schedule environment scripts", {
+        terminalId,
+        sessionName: tmuxSessionName,
+        error,
+      });
+    });
   }
 
   const headlessTerminal = new Terminal({
@@ -1186,11 +1226,7 @@ async function createTerminal(
   // detect idle - check if we're using tmux (either directly or as wrapper)
   if (spawnCommand === "tmux" && spawnArgs.length > 0) {
     // Extract session name from tmux args
-    const sessionIndex = spawnArgs.indexOf("-s");
-    const sessionName =
-      sessionIndex !== -1 && spawnArgs[sessionIndex + 1]
-        ? spawnArgs[sessionIndex + 1]
-        : terminalId;
+    const sessionName = tmuxSessionName || terminalId;
 
     log("INFO", "Setting up task completion detection for terminal", {
       terminalId,

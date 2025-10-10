@@ -1,5 +1,6 @@
 import { Id } from "@cmux/convex/dataModel";
 import { connectToWorkerManagement } from "@cmux/shared/socket";
+import type { WorkerEnvironmentErrorEvent } from "@cmux/shared/worker-schemas";
 import { EventEmitter } from "node:events";
 import { dockerLogger } from "../utils/fileLogger";
 
@@ -160,6 +161,20 @@ export abstract class VSCodeInstance extends EventEmitter {
         );
         this.emit("terminal-failed", data);
       });
+
+      this.workerSocket.on(
+        "worker:environment-error",
+        (data: WorkerEnvironmentErrorEvent) => {
+          dockerLogger.info(
+            `[VSCodeInstance ${this.instanceId}] Environment script status update:`,
+            {
+              maintenanceError: data.maintenanceError,
+              devError: data.devError,
+            }
+          );
+          this.emit("environment-error", data);
+        }
+      );
 
       this.workerSocket.on("worker:file-changes", (data) => {
         dockerLogger.info(
