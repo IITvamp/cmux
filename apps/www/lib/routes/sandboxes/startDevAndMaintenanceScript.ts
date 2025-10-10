@@ -102,18 +102,25 @@ chmod +x ${ids.runnerPath}
 tmux kill-session -t ${ids.sessionName} 2>/dev/null || true
 rm -f ${ids.exitFile}
 : > ${ids.logFile}
-tmux new-session -d -s ${ids.sessionName} ${ids.runnerPath}
+tmux new-session -d -s ${ids.sessionName} "bash --login"
 tmux pipe-pane -t ${ids.sessionName}:0 -o 'cat >> ${ids.logFile}'
+sleep 0.25
+tmux send-keys -t ${ids.sessionName}:0 "${ids.runnerPath}" C-m
 tmux wait-for -L ${ids.waitName}
 status=$(cat ${ids.exitFile} 2>/dev/null || echo '1')
-rm -f ${ids.exitFile} ${ids.runnerPath} ${ids.scriptPath}
-tmux kill-session -t ${ids.sessionName} 2>/dev/null || true
-if [ "\${status}" != "0" ]; then
-  if [ -f ${ids.logFile} ]; then
-    tail -n 200 ${ids.logFile} >&2
-  fi
+rm -f ${ids.exitFile}
+if [ "${status}" = "0" ]; then
+  tmux send-keys -t ${ids.sessionName}:0 "printf \"\\n[cmux] Maintenance script completed successfully. Closing session.\\n\"" C-m
+  sleep 0.2
+  tmux kill-session -t ${ids.sessionName} 2>/dev/null || true
+  rm -f ${ids.runnerPath} ${ids.scriptPath}
+else
+  tmux send-keys -t ${ids.sessionName}:0 "printf \"\\n[cmux] Maintenance script failed with exit code \$status. Session left open for inspection.\\n\"" C-m
 fi
-exit "\${status}"
+if [ ! -f ${ids.logFile} ]; then
+  touch ${ids.logFile}
+fi
+exit "${status}"
 `;
 
   try {
@@ -169,21 +176,37 @@ ${buildScriptFileCommand(devScriptPath, script)}
 cat <<'CMUX_DEV_RUNNER_EOF' > ${ids.runnerPath}
 #!/usr/bin/env bash
 set -euo pipefail
+cleanup() {
+  status=$?
+  printf '%s' "\\${status}" > ${ids.exitFile}
+  exit "\\${status}"
+}
+trap cleanup EXIT
 cd ${WORKSPACE_ROOT}
-exec bash -eu -o pipefail ${devScriptPath}
+bash -eu -o pipefail ${devScriptPath}
 CMUX_DEV_RUNNER_EOF
 chmod +x ${ids.runnerPath}
 tmux kill-session -t ${ids.sessionName} 2>/dev/null || true
+rm -f ${ids.exitFile}
 : > ${ids.logFile}
-tmux new-session -d -s ${ids.sessionName} ${ids.runnerPath}
+tmux new-session -d -s ${ids.sessionName} "bash --login"
 tmux pipe-pane -t ${ids.sessionName}:0 -o 'cat >> ${ids.logFile}'
-sleep 0.5
-if ! tmux has-session -t ${ids.sessionName} 2>/dev/null; then
-  if [ -f ${ids.logFile} ]; then
-    tail -n 50 ${ids.logFile}
+sleep 0.25
+tmux send-keys -t ${ids.sessionName}:0 "${ids.runnerPath}" C-m
+sleep 1
+if [ -f ${ids.exitFile} ]; then
+  status=$(cat ${ids.exitFile} 2>/dev/null || echo '1')
+  if [ "${status}" = "0" ]; then
+    tmux send-keys -t ${ids.sessionName}:0 "printf \"\\n[cmux] Dev script exited immediately with status 0. Session left open for debugging.\\n\"" C-m
+    exit 1
   fi
-  exit 1
+  tmux send-keys -t ${ids.sessionName}:0 "printf \"\\n[cmux] Dev script exited with status \$status. Session left open for debugging.\\n\"" C-m
+  exit "${status}"
 fi
+if [ ! -f ${ids.logFile} ]; then
+  touch ${ids.logFile}
+fi
+exit 0
 `;
 
   try {
