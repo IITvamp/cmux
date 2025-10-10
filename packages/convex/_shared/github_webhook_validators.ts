@@ -305,14 +305,14 @@ function mapCheckRun(event: CheckRunEvent): GithubCheckRunEventPayload {
       html_url: pickString(checkRun.html_url),
       app: (checkRun.app as Record<string, unknown> | undefined)
         ? {
-            name: pickString((checkRun.app as Record<string, unknown>).name),
-            slug: pickString((checkRun.app as Record<string, unknown>).slug),
-          }
+          name: pickString((checkRun.app as Record<string, unknown>).name),
+          slug: pickString((checkRun.app as Record<string, unknown>).slug),
+        }
         : undefined,
       pull_requests: Array.isArray(checkRun.pull_requests)
         ? (checkRun.pull_requests as unknown[])
-            .map((pr) => ({ number: pickNumber((pr as any)?.number) }))
-            .filter((pr) => pr.number !== undefined)
+          .map((pr) => ({ number: pickNumber((pr as any)?.number) }))
+          .filter((pr) => pr.number !== undefined)
         : undefined,
       updated_at: pickString(checkRun.updated_at),
       started_at: pickString(checkRun.started_at),
@@ -408,8 +408,8 @@ function mapWorkflowRun(
       actor: mapUser(run.actor),
       pull_requests: Array.isArray(run.pull_requests)
         ? (run.pull_requests as unknown[])
-            .map((pr) => ({ number: pickNumber((pr as any)?.number) }))
-            .filter((pr) => pr.number !== undefined)
+          .map((pr) => ({ number: pickNumber((pr as any)?.number) }))
+          .filter((pr) => pr.number !== undefined)
         : undefined,
     };
     payload.workflow_run = Object.fromEntries(
