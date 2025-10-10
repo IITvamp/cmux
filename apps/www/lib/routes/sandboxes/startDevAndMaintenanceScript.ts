@@ -103,6 +103,14 @@ chmod +x ${ids.maintenanceScriptPath}
 ${waitForTmuxSession}
 tmux new-window -t cmux: -n ${ids.maintenanceWindowName} -d
 tmux send-keys -t cmux:${ids.maintenanceWindowName} "bash ${ids.maintenanceScriptPath} 2>&1 | tee ${ids.maintenanceLogFile}" C-m
+sleep 2
+if tmux list-windows -t cmux | grep -q "${ids.maintenanceWindowName}"; then
+  echo "[MAINTENANCE] Window is running"
+  tail -20 ${ids.maintenanceLogFile} || echo "[MAINTENANCE] Log file not yet available"
+else
+  echo "[MAINTENANCE] Window may have exited (normal if script completed)"
+  tail -20 ${ids.maintenanceLogFile} 2>/dev/null || echo "[MAINTENANCE] No logs available"
+fi
 `;
 
     try {
@@ -119,6 +127,8 @@ tmux send-keys -t cmux:${ids.maintenanceWindowName} "bash ${ids.maintenanceScrip
           stdout ? `stdout: ${stdout}` : null,
         ].filter((part): part is string => part !== null);
         maintenanceError = messageParts.join(" | ");
+      } else {
+        console.log(`[MAINTENANCE SCRIPT VERIFICATION]\n${result.stdout || ""}`);
       }
     } catch (error) {
       maintenanceError = `Maintenance script execution failed: ${error instanceof Error ? error.message : String(error)}`;
@@ -127,7 +137,7 @@ tmux send-keys -t cmux:${ids.maintenanceWindowName} "bash ${ids.maintenanceScrip
 
   if (devScript && devScript.trim().length > 0) {
     const devScriptContent = `#!/bin/bash
-set -eux
+set -ux
 cd ${WORKSPACE_ROOT}
 
 echo "=== Dev Script Started at \$(date) ==="
@@ -144,6 +154,14 @@ chmod +x ${ids.devScriptPath}
 ${waitForTmuxSession}
 tmux new-window -t cmux: -n ${ids.devWindowName} -d
 tmux send-keys -t cmux:${ids.devWindowName} "bash ${ids.devScriptPath} 2>&1 | tee ${ids.devLogFile}" C-m
+sleep 2
+if tmux list-windows -t cmux | grep -q "${ids.devWindowName}"; then
+  echo "[DEV] Window is running"
+  tail -20 ${ids.devLogFile} || echo "[DEV] Log file not yet available"
+else
+  echo "[DEV] ERROR: Window not found" >&2
+  exit 1
+fi
 `;
 
     try {
@@ -158,6 +176,8 @@ tmux send-keys -t cmux:${ids.devWindowName} "bash ${ids.devScriptPath} 2>&1 | te
           stdout ? `stdout: ${stdout}` : null,
         ].filter((part): part is string => part !== null);
         devError = messageParts.join(" | ");
+      } else {
+        console.log(`[DEV SCRIPT VERIFICATION]\n${result.stdout || ""}`);
       }
     } catch (error) {
       devError = `Dev script execution failed: ${error instanceof Error ? error.message : String(error)}`;
