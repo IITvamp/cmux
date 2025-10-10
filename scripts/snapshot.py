@@ -1444,6 +1444,7 @@ async def task_install_systemd_units(ctx: TaskContext) -> None:
         install -Dm0755 {repo}/configs/systemd/bin/configure-openvscode /usr/local/lib/cmux/configure-openvscode
         touch /usr/local/lib/cmux/dockerd.flag
         mkdir -p /var/log/cmux
+        mkdir -p /root/workspace
         mkdir -p /etc/systemd/system/multi-user.target.wants
         mkdir -p /etc/systemd/system/cmux.target.wants
         ln -sf /usr/lib/systemd/system/cmux.target /etc/systemd/system/multi-user.target.wants/cmux.target
