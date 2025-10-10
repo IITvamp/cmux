@@ -6,11 +6,53 @@
 */
 
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { app } from "electron";
 
 import { clearLogDirectory } from "./log-management/clear-log-directory";
 import { resolveLogFilePath } from "./log-management/log-paths";
+
+// Fix PATH on macOS: Electron apps launched from Finder/Spotlight don't inherit
+// the user's shell PATH, which means Docker and other CLI tools won't be found.
+// This is a critical fix for Docker detection at startup.
+function fixPath(): void {
+  if (process.platform !== "darwin") {
+    return;
+  }
+
+  try {
+    // Get PATH from user's shell by running a login shell
+    const shellPath = execFileSync("/bin/bash", ["-l", "-c", "echo $PATH"], {
+      encoding: "utf8",
+      timeout: 5000,
+    }).trim();
+
+    if (shellPath && shellPath.length > 0) {
+      // Merge shell PATH with existing PATH, avoiding duplicates
+      const existingPaths = new Set(
+        (process.env.PATH || "").split(":").filter((p) => p)
+      );
+      const shellPaths = shellPath.split(":").filter((p) => p);
+
+      // Add shell paths that aren't already in the PATH
+      const newPaths = shellPaths.filter((p) => !existingPaths.has(p));
+
+      if (newPaths.length > 0) {
+        process.env.PATH = [...newPaths, ...existingPaths].join(":");
+        console.log(
+          `[Bootstrap] Fixed PATH for macOS (added ${newPaths.length} paths)`
+        );
+      }
+    }
+  } catch (error) {
+    // Don't fail startup if PATH fixing fails, just log it
+    console.warn("[Bootstrap] Failed to fix PATH:", error);
+  }
+}
+
+// Fix PATH before anything else
+fixPath();
 
 function timestamp(): string {
   return new Date().toISOString();
