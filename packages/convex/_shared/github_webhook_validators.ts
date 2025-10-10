@@ -194,8 +194,6 @@ export type GithubDeploymentStatusEventPayload = Infer<
 >;
 export type GithubCommitStatusEventPayload = Infer<typeof commitStatusWebhookPayload>;
 
-type Maybe<T> = T | null | undefined;
-
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
@@ -212,9 +210,7 @@ const asStringOrNull = (value: unknown): string | null | undefined =>
       ? null
       : undefined;
 
-const sanitizeGithubUser = (
-  user: Maybe<{ login?: unknown; id?: unknown }>,
-): GithubUserPayload | undefined => {
+const sanitizeGithubUser = (user: unknown): GithubUserPayload | undefined => {
   if (!isObject(user)) {
     return undefined;
   }
@@ -228,7 +224,7 @@ const sanitizeGithubUser = (
 };
 
 const sanitizeGithubRepository = (
-  repository: Maybe<{ id?: unknown; pushed_at?: unknown }>,
+  repository: unknown,
 ): GithubRepositoryPayload | undefined => {
   if (!isObject(repository)) {
     return undefined;
@@ -248,9 +244,7 @@ const sanitizeGithubRepository = (
   return Object.keys(sanitized).length > 0 ? sanitized : undefined;
 };
 
-const sanitizeGithubApp = (
-  app: Maybe<{ name?: unknown; slug?: unknown }>,
-): GithubAppPayload | undefined => {
+const sanitizeGithubApp = (app: unknown): GithubAppPayload | undefined => {
   if (!isObject(app)) {
     return undefined;
   }
@@ -304,7 +298,7 @@ const sanitizeDeploymentPullRequests = (
 };
 
 const sanitizeGithubBranchRef = (
-  branchRef: Maybe<Infer<typeof githubBranchRef>>,
+  branchRef: unknown,
 ): Infer<typeof githubBranchRef> | undefined => {
   if (!isObject(branchRef)) {
     return undefined;
@@ -321,7 +315,7 @@ const sanitizeGithubBranchRef = (
 };
 
 const sanitizeGithubPullRequest = (
-  pullRequest: Maybe<Infer<typeof githubPullRequest>>,
+  pullRequest: unknown,
 ): GithubPullRequestPayload | undefined => {
   if (!isObject(pullRequest)) {
     return undefined;
@@ -449,7 +443,7 @@ export const sanitizeCheckRunEvent = (
 };
 
 const sanitizeGithubDeployment = (
-  deployment: Maybe<DeploymentEvent["deployment"]>,
+  deployment: unknown,
 ): GithubDeploymentPayload | undefined => {
   if (!isObject(deployment)) {
     return undefined;
@@ -480,7 +474,7 @@ const sanitizeGithubDeployment = (
 };
 
 const sanitizeGithubDeploymentStatus = (
-  status: Maybe<DeploymentStatusEvent["deployment_status"]>,
+  status: unknown,
 ): GithubDeploymentStatusPayload | undefined => {
   if (!isObject(status)) {
     return undefined;
@@ -544,7 +538,7 @@ export const sanitizeDeploymentStatusEvent = (
 };
 
 const sanitizeGithubWorkflowRun = (
-  workflowRun: Maybe<WorkflowRunEvent["workflow_run"]>,
+  workflowRun: unknown,
 ): GithubWorkflowRunPayload | undefined => {
   if (!isObject(workflowRun)) {
     return undefined;
@@ -589,7 +583,7 @@ const sanitizeGithubWorkflowRun = (
 };
 
 const sanitizeGithubWorkflow = (
-  workflow: Maybe<WorkflowRunEvent["workflow"]>,
+  workflow: unknown,
 ): GithubWorkflowPayload | undefined => {
   if (!isObject(workflow)) {
     return undefined;
