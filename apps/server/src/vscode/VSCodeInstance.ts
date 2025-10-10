@@ -3,6 +3,8 @@ import { connectToWorkerManagement } from "@cmux/shared/socket";
 import { EventEmitter } from "node:events";
 import { dockerLogger } from "../utils/fileLogger";
 
+import type { WorkerEnvironmentScriptResult } from "@cmux/shared";
+
 export interface VSCodeInstanceConfig {
   workspacePath?: string;
   initialCommand?: string;
@@ -167,6 +169,14 @@ export abstract class VSCodeInstance extends EventEmitter {
           { taskId: data.taskRunId, changeCount: data.changes.length }
         );
         this.emit("file-changes", data);
+      });
+
+      this.workerSocket.on("worker:environment-script-result", (data: WorkerEnvironmentScriptResult) => {
+        dockerLogger.info(
+          `[VSCodeInstance ${this.instanceId}] Environment script result:`,
+          data
+        );
+        this.emit("environment-script-result", data);
       });
 
       this.workerSocket.on("worker:error", (data) => {

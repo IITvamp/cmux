@@ -77,6 +77,10 @@
     "./providers/common/check-docker": {
       "import": "./src/providers/common/check-docker.ts",
       "types": "./src/providers/common/check-docker.ts"
+    },
+    "./tmux-scripts": {
+      "import": "./src/tmux-scripts.ts",
+      "types": "./src/tmux-scripts.ts"
     }
   },
   "dependencies": {

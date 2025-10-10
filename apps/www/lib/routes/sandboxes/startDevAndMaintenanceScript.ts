@@ -1,165 +1,182 @@
 import { randomUUID } from "node:crypto";
 
+import type { EnvironmentScriptEntry, EnvironmentScriptManifest } from "@cmux/shared/tmux-scripts";
+import {
+  CMUX_LOG_DIR,
+  CMUX_WORKSPACE_ROOT,
+  TMUX_RUNTIME_DIR,
+  manifestPathForNamespace,
+  sanitizeScriptNamespace,
+  scriptDirectoryForNamespace,
+} from "@cmux/shared/tmux-scripts";
+
 import type { MorphInstance } from "./git";
-import { maskSensitive, singleQuote } from "./shell";
+import { singleQuote } from "./shell";
 
-const WORKSPACE_ROOT = "/root/workspace";
-const CMUX_RUNTIME_DIR = "/var/tmp/cmux-scripts";
-const LOG_DIR = "/var/log/cmux";
-
-const previewOutput = (
-  value: string | undefined,
-  maxLength = 2500,
-): string | null => {
-  if (!value) {
-    return null;
-  }
-  const sanitized = maskSensitive(value).trim();
-  if (sanitized.length === 0) {
-    return null;
-  }
-  if (sanitized.length <= maxLength) {
-    return sanitized;
-  }
-  return `${sanitized.slice(0, maxLength)}…`;
-};
+const WORKSPACE_ROOT = CMUX_WORKSPACE_ROOT;
 
 const buildScriptFileCommand = (path: string, contents: string): string => `
-mkdir -p ${CMUX_RUNTIME_DIR}
 cat <<'CMUX_SCRIPT_EOF' > ${path}
 ${contents}
 CMUX_SCRIPT_EOF
 chmod +x ${path}
 `;
 
-const ensurePidStoppedCommand = (pidFile: string): string => `
-if [ -f ${pidFile} ]; then
-  (
-    set -euo pipefail
-    trap 'status=$?; echo "Failed to stop process recorded in ${pidFile} (pid \${EXISTING_PID:-unknown}) (exit $status)" >&2' ERR
-    EXISTING_PID=$(cat ${pidFile} 2>/dev/null || true)
-    if [ -n "\${EXISTING_PID}" ] && kill -0 \${EXISTING_PID} 2>/dev/null; then
-      if kill \${EXISTING_PID} 2>/dev/null; then
-        sleep 0.2
-      elif kill -0 \${EXISTING_PID} 2>/dev/null; then
-        echo "Unable to terminate process \${EXISTING_PID}" >&2
-        exit 1
-      fi
-
-      if kill -0 \${EXISTING_PID} 2>/dev/null; then
-        echo "Process \${EXISTING_PID} still running after SIGTERM" >&2
-        exit 1
-      fi
-    fi
-  )
-fi
+const writeFileCommand = (path: string, contents: string): string => `
+cat <<'CMUX_FILE_EOF' > ${path}
+${contents}
+CMUX_FILE_EOF
 `;
 
-export async function runMaintenanceScript({
-  instance,
-  script,
-}: {
-  instance: MorphInstance;
+interface QueuedScriptConfig {
+  namespace: string;
+  id: string;
+  name: string;
   script: string;
-}): Promise<{ error: string | null }> {
-  const maintenanceScriptPath = `${CMUX_RUNTIME_DIR}/maintenance-script.sh`;
-  const command = `
-set -euo pipefail
-trap 'rm -f ${maintenanceScriptPath}' EXIT
-${buildScriptFileCommand(maintenanceScriptPath, script)}
-cd ${WORKSPACE_ROOT}
-bash -eu -o pipefail ${maintenanceScriptPath}
-`;
-
-  try {
-    const result = await instance.exec(`bash -lc ${singleQuote(command)}`);
-
-    if (result.exit_code !== 0) {
-      const stderrPreview = previewOutput(result.stderr, 2000);
-      const stdoutPreview = previewOutput(result.stdout, 500);
-      const messageParts = [
-        `Maintenance script failed with exit code ${result.exit_code}`,
-        stderrPreview ? `stderr: ${stderrPreview}` : null,
-        stdoutPreview ? `stdout: ${stdoutPreview}` : null,
-      ].filter((part): part is string => part !== null);
-      return { error: messageParts.join(" | ") };
-    }
-
-    return { error: null };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    return { error: `Maintenance script execution failed: ${errorMessage}` };
-  }
+  mode: EnvironmentScriptEntry["mode"];
+  logFile: string;
+  statusFile?: string;
 }
 
-export async function startDevScript({
-  instance,
-  script,
-}: {
+const buildQueuedScript = (config: QueuedScriptConfig): {
+  command: string;
+  entry: EnvironmentScriptEntry;
+} => {
+  const { namespace, id, name, script, mode, logFile, statusFile } = config;
+  const scriptDir = scriptDirectoryForNamespace(namespace);
+  const scriptPath = `${scriptDir}/${id}-script.sh`;
+
+  const trimmedScript = script.trimEnd();
+  const headerLines = [
+    "#!/usr/bin/env bash",
+    "set -euo pipefail",
+    `LOG_FILE=${logFile}`,
+    statusFile ? `STATUS_FILE=${statusFile}` : undefined,
+    'mkdir -p "$(dirname "$LOG_FILE")"',
+    'touch "$LOG_FILE"',
+    statusFile ? 'rm -f "$STATUS_FILE"' : undefined,
+    'exec > >(tee -a "$LOG_FILE")',
+    'exec 2>&1',
+    statusFile ? 'trap \'status=$?; echo $status > "$STATUS_FILE"\' EXIT' : undefined,
+    `cd ${WORKSPACE_ROOT}`,
+    "",
+  ].filter((line): line is string => Boolean(line));
+
+  const scriptContent = `${headerLines.join("\n")}${trimmedScript}\n`;
+
+  const commands = [
+    buildScriptFileCommand(scriptPath, scriptContent),
+    statusFile ? `rm -f ${statusFile}` : undefined,
+  ].filter((cmd): cmd is string => Boolean(cmd));
+
+  const entry: EnvironmentScriptEntry = {
+    id,
+    name,
+    mode,
+    scriptPath,
+    workingDirectory: WORKSPACE_ROOT,
+    logPath: logFile,
+    ...(statusFile ? { statusFile } : {}),
+  };
+
+  return { command: commands.join("\n"), entry };
+};
+
+interface PrepareScriptsForTmuxParams {
   instance: MorphInstance;
-  script: string;
-}): Promise<{ error: string | null }> {
-  const devScriptRunId = randomUUID().replace(/-/g, "");
-  const devScriptDir = `${CMUX_RUNTIME_DIR}/${devScriptRunId}`;
-  const devScriptPath = `${devScriptDir}/dev-script.sh`;
-  const pidFile = `${LOG_DIR}/dev-script.pid`;
-  const logFile = `${LOG_DIR}/dev-script.log`;
+  maintenanceScript?: string | null;
+  devScript?: string | null;
+  taskRunId?: string | null;
+}
 
-  const command = `
-set -euo pipefail
-mkdir -p ${LOG_DIR}
-mkdir -p ${devScriptDir}
-${ensurePidStoppedCommand(pidFile)}
-${buildScriptFileCommand(devScriptPath, script)}
-cd ${WORKSPACE_ROOT}
-nohup bash -eu -o pipefail ${devScriptPath} > ${logFile} 2>&1 &
-echo $! > ${pidFile}
-`;
+export async function prepareScriptsForTmux({
+  instance,
+  maintenanceScript,
+  devScript,
+  taskRunId,
+}: PrepareScriptsForTmuxParams): Promise<void> {
+  if (!maintenanceScript && !devScript) {
+    return;
+  }
 
-  try {
-    const result = await instance.exec(`bash -lc ${singleQuote(command)}`);
-
-    if (result.exit_code !== 0) {
-      const stderrPreview = previewOutput(result.stderr, 2000);
-      const stdoutPreview = previewOutput(result.stdout, 500);
-      const messageParts = [
-        `Dev script failed to start with exit code ${result.exit_code}`,
-        stderrPreview ? `stderr: ${stderrPreview}` : null,
-        stdoutPreview ? `stdout: ${stdoutPreview}` : null,
-      ].filter((part): part is string => part !== null);
-      return { error: messageParts.join(" | ") };
-    }
-
-    // Check if the process started successfully and is still running
-    const checkCommand = `
-if [ -f ${pidFile} ]; then
-  PID=$(cat ${pidFile} 2>/dev/null || echo "")
-  if [ -n "\$PID" ]; then
-    sleep 0.5
-    if ! kill -0 \$PID 2>/dev/null; then
-      if [ -f ${logFile} ]; then
-        tail -n 50 ${logFile}
-      fi
-      exit 1
-    fi
-  fi
-fi
-`;
-
-    const checkResult = await instance.exec(
-      `bash -c ${singleQuote(checkCommand)}`,
+  if (!taskRunId) {
+    console.warn(
+      "[prepareScriptsForTmux] Missing taskRunId; skipping tmux script preparation",
     );
+    return;
+  }
 
-    if (checkResult.exit_code !== 0) {
-      const logPreview = previewOutput(checkResult.stdout, 2000);
-      return {
-        error: `Dev script failed immediately after start${logPreview ? ` | log: ${logPreview}` : ""}`,
-      };
-    }
+  const namespace = sanitizeScriptNamespace(taskRunId);
+  const scriptDir = scriptDirectoryForNamespace(namespace);
+  const manifestPath = manifestPathForNamespace(namespace);
+  const tempNamespace = sanitizeScriptNamespace(
+    `${taskRunId}-${randomUUID().slice(0, 8)}`,
+  );
+  const tempScriptDir = scriptDirectoryForNamespace(tempNamespace);
+  const tempManifestPath = manifestPathForNamespace(tempNamespace);
 
-    return { error: null };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    return { error: `Dev script execution failed: ${errorMessage}` };
+  const setupCommands: string[] = [
+    "set -euo pipefail",
+    `mkdir -p ${TMUX_RUNTIME_DIR}`,
+    `rm -rf ${tempScriptDir}`,
+    `mkdir -p ${tempScriptDir}`,
+    `mkdir -p ${CMUX_LOG_DIR}`,
+  ];
+
+  const entries: EnvironmentScriptEntry[] = [];
+
+  if (maintenanceScript) {
+    const maintenanceConfig = buildQueuedScript({
+      namespace: tempNamespace,
+      id: "maintenance",
+      name: "maintenance",
+      script: maintenanceScript,
+      mode: "oneshot",
+      logFile: `${CMUX_LOG_DIR}/maintenance-script.log`,
+      statusFile: `${CMUX_LOG_DIR}/maintenance-script.status`,
+    });
+    setupCommands.push(maintenanceConfig.command);
+    entries.push(maintenanceConfig.entry);
+  }
+
+  if (devScript) {
+    const devConfig = buildQueuedScript({
+      namespace: tempNamespace,
+      id: "dev",
+      name: "dev",
+      script: devScript,
+      mode: "continuous",
+      logFile: `${CMUX_LOG_DIR}/dev-script.log`,
+      statusFile: `${CMUX_LOG_DIR}/dev-script.status`,
+    });
+    setupCommands.push(devConfig.command);
+    entries.push(devConfig.entry);
+  }
+
+  if (entries.length === 0) {
+    return;
+  }
+
+  const manifest: EnvironmentScriptManifest = {
+    version: 1,
+    namespace: tempNamespace,
+    scripts: entries,
+  };
+
+  setupCommands.push(writeFileCommand(tempManifestPath, JSON.stringify(manifest)));
+  setupCommands.push(`rm -rf ${scriptDir}`);
+  setupCommands.push(`mv ${tempScriptDir} ${scriptDir}`);
+  setupCommands.push(`ln -sf ${manifestPath} ${TMUX_RUNTIME_DIR}/tmux-scripts-latest.json`);
+
+  const command = setupCommands.join("\n");
+
+  const result = await instance.exec(`bash -lc ${singleQuote(command)}`);
+
+  if (result.exit_code !== 0) {
+    throw new Error(
+      `Failed to prepare tmux scripts (exit ${result.exit_code}): ${
+        result.stderr || result.stdout || "no output"
+      }`,
+    );
   }
 }

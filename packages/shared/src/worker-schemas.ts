@@ -2,6 +2,8 @@ import type { Id } from "@cmux/convex/dataModel";
 import { z } from "zod";
 import { typedZid } from "./utils/typed-zid";
 
+import type { EnvironmentScriptMode } from "./tmux-scripts";
+
 // Auth file schema for file uploads and environment setup
 export const AuthFileSchema = z.object({
   destinationPath: z.string(),
@@ -212,6 +214,18 @@ export type WorkerConfigureGit = z.infer<typeof WorkerConfigureGitSchema>;
 export type WorkerExec = z.infer<typeof WorkerExecSchema>;
 export type WorkerExecResult = z.infer<typeof WorkerExecResultSchema>;
 
+export interface WorkerEnvironmentScriptResult {
+  workerId: string;
+  taskRunId?: Id<"taskRuns">;
+  scriptId: string;
+  mode: EnvironmentScriptMode;
+  exitCode: number;
+  logPath: string;
+  statusFile?: string;
+  manifestPath?: string;
+  sessionName?: string;
+}
+
 // Socket.io event maps for Server <-> Worker communication
 // Docker readiness response type
 
@@ -288,6 +302,7 @@ export interface WorkerToServerEvents {
   "worker:terminal-idle": (data: WorkerTerminalIdle) => void;
   "worker:task-complete": (data: WorkerTaskComplete) => void;
   "worker:terminal-failed": (data: WorkerTerminalFailed) => void;
+  "worker:environment-script-result": (data: WorkerEnvironmentScriptResult) => void;
 
   // File change events
   "worker:file-changes": (data: {

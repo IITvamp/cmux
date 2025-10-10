@@ -17,6 +17,14 @@ import {
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import type { Id } from "@cmux/convex/dataModel";
 
+import {
+  TMUX_RUNTIME_DIR,
+  manifestPathForNamespace,
+  sanitizeScriptNamespace,
+  type EnvironmentScriptEntry,
+  type EnvironmentScriptManifest,
+} from "@cmux/shared/tmux-scripts";
+
 import { getWorkerServerSocketOptions } from "@cmux/shared/node/socket";
 import { startAmpProxy } from "@cmux/shared/src/providers/amp/start-amp-proxy.ts";
 import { handleWorkerTaskCompletion } from "./crown/workflow";
@@ -50,6 +58,9 @@ const WORKER_ID = process.env.WORKER_ID || `worker-${Date.now()}`;
 const WORKER_PORT = parseInt(process.env.WORKER_PORT || "39377", 10);
 const CONTAINER_IMAGE = process.env.CONTAINER_IMAGE || "cmux-worker";
 const CONTAINER_VERSION = process.env.CONTAINER_VERSION || "0.0.1";
+
+const FALLBACK_MANIFEST_PATH = `${TMUX_RUNTIME_DIR}/tmux-scripts-latest.json`;
+const ENVIRONMENT_SCRIPT_SESSIONS = new Set<string>();
 
 // Create Express app
 const app = express();
@@ -829,6 +840,219 @@ vscodeIO.on("connection", (socket) => {
   });
 });
 
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isEnvironmentScriptManifest = (value: unknown): value is EnvironmentScriptManifest => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const manifest = value as EnvironmentScriptManifest;
+  if (manifest.version !== 1 || !Array.isArray(manifest.scripts)) {
+    return false;
+  }
+  return manifest.scripts.every((script) =>
+    script &&
+    typeof script.id === "string" &&
+    typeof script.scriptPath === "string" &&
+    typeof script.workingDirectory === "string" &&
+    typeof script.mode === "string"
+  );
+};
+
+const loadEnvironmentScriptManifest = async (
+  taskRunId?: Id<"taskRuns">,
+): Promise<{ manifest: EnvironmentScriptManifest; manifestPath: string } | null> => {
+  const candidates: Array<{ path: string }> = [];
+  if (taskRunId) {
+    const namespace = sanitizeScriptNamespace(String(taskRunId));
+    candidates.push({ path: manifestPathForNamespace(namespace) });
+  }
+  candidates.push({ path: FALLBACK_MANIFEST_PATH });
+
+  for (const candidate of candidates) {
+    try {
+      const data = await fs.readFile(candidate.path, "utf8");
+      const parsed = JSON.parse(data);
+      if (isEnvironmentScriptManifest(parsed)) {
+        return { manifest: parsed, manifestPath: candidate.path };
+      }
+    } catch (error) {
+      const err = error as NodeJS.ErrnoException;
+      if (err.code !== "ENOENT") {
+        log("WARNING", "[environment-scripts] Failed to read manifest", {
+          path: candidate.path,
+          error,
+        });
+      }
+    }
+  }
+  return null;
+};
+
+const runTmuxCommand = async (args: string[]): Promise<void> => {
+  await new Promise<void>((resolve, reject) => {
+    const tmux = spawn("tmux", args, {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stderr = "";
+    tmux.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    tmux.on("error", (error) => reject(error));
+    tmux.on("exit", (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`tmux ${args.join(" ")} failed (${code})${stderr ? `: ${stderr.trim()}` : ""}`));
+      }
+    });
+  });
+};
+
+const ensureTmuxSessionReady = async (sessionName: string): Promise<boolean> => {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      await runTmuxCommand(["has-session", "-t", sessionName]);
+      return true;
+    } catch (error) {
+      await delay(200);
+    }
+  }
+  return false;
+};
+
+const startEnvironmentScriptWindow = async (
+  sessionName: string,
+  script: EnvironmentScriptEntry,
+): Promise<void> => {
+  const windowName = script.name || script.id;
+  await runTmuxCommand([
+    "new-window",
+    "-t",
+    `${sessionName}:`,
+    "-n",
+    windowName,
+    "-d",
+    "-c",
+    script.workingDirectory,
+    script.scriptPath,
+  ]);
+  await runTmuxCommand([
+    "set-option",
+    "-t",
+    `${sessionName}:${windowName}`,
+    "remain-on-exit",
+    "on",
+  ]);
+};
+
+const monitorEnvironmentScript = ({
+  sessionName,
+  script,
+  taskRunId,
+  manifestPath,
+}: {
+  sessionName: string;
+  script: EnvironmentScriptEntry;
+  taskRunId?: Id<"taskRuns">;
+  manifestPath: string;
+}): void => {
+  if (!script.statusFile) {
+    return;
+  }
+  const statusFile = script.statusFile;
+
+  (async () => {
+    while (true) {
+      try {
+        const content = await fs.readFile(statusFile, "utf8");
+        const trimmed = content.trim();
+        const parsed = Number.parseInt(trimmed, 10);
+        const exitCode = Number.isNaN(parsed) ? -1 : parsed;
+
+        emitToMainServer("worker:environment-script-result", {
+          workerId: WORKER_ID,
+          taskRunId,
+          scriptId: script.id,
+          mode: script.mode,
+          exitCode,
+          logPath: script.logPath,
+          statusFile,
+          manifestPath,
+          sessionName,
+        });
+        break;
+      } catch (error) {
+        const err = error as NodeJS.ErrnoException;
+        if (err.code === "ENOENT") {
+          await delay(1000);
+          continue;
+        }
+        log("ERROR", "[environment-scripts] Failed to read status file", {
+          statusFile,
+          error,
+        });
+        break;
+      }
+    }
+  })().catch((error) => {
+    log("ERROR", "[environment-scripts] Monitor failed", {
+      scriptId: script.id,
+      error,
+    });
+  });
+};
+
+const setupEnvironmentScripts = async ({
+  sessionName,
+  taskRunId,
+}: {
+  sessionName: string;
+  taskRunId?: Id<"taskRuns">;
+}): Promise<void> => {
+  if (ENVIRONMENT_SCRIPT_SESSIONS.has(sessionName)) {
+    return;
+  }
+
+  const loaded = await loadEnvironmentScriptManifest(taskRunId);
+  if (!loaded || loaded.manifest.scripts.length === 0) {
+    return;
+  }
+
+  const sessionReady = await ensureTmuxSessionReady(sessionName);
+  if (!sessionReady) {
+    log("WARNING", "[environment-scripts] tmux session not ready", {
+      sessionName,
+    });
+    return;
+  }
+
+  ENVIRONMENT_SCRIPT_SESSIONS.add(sessionName);
+
+  for (const script of loaded.manifest.scripts) {
+    try {
+      await startEnvironmentScriptWindow(sessionName, script);
+      monitorEnvironmentScript({
+        sessionName,
+        script,
+        taskRunId,
+        manifestPath: loaded.manifestPath,
+      });
+    } catch (error) {
+      log("ERROR", "[environment-scripts] Failed to start script window", {
+        scriptId: script.id,
+        error,
+      });
+      emitToMainServer("worker:error", {
+        workerId: WORKER_ID,
+        error: `Failed to start environment script ${script.name}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      });
+    }
+  }
+};
+
 // Create terminal helper function
 async function createTerminal(
   terminalId: string,
@@ -1017,6 +1241,11 @@ async function createTerminal(
     log("ERROR", "Failed to spawn process", error);
     return;
   }
+
+  void setupEnvironmentScripts({
+    sessionName: sanitizeTmuxSessionName(terminalId),
+    taskRunId: options.taskRunId,
+  });
 
   const headlessTerminal = new Terminal({
     cols,

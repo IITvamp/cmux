@@ -19,7 +19,7 @@ import {
 import type { HydrateRepoConfig } from "./sandboxes/hydration";
 import { hydrateWorkspace } from "./sandboxes/hydration";
 import { resolveTeamAndSnapshot } from "./sandboxes/snapshot";
-import { runMaintenanceScript, startDevScript } from "./sandboxes/startDevAndMaintenanceScript";
+import { prepareScriptsForTmux } from "./sandboxes/startDevAndMaintenanceScript";
 import {
   encodeEnvContentForEnvctl,
   envctlLoadCommand,
@@ -303,40 +303,36 @@ sandboxesRouter.openapi(
       }
 
       if (maintenanceScript || devScript) {
-        (async () => {
-          const maintenanceScriptResult = maintenanceScript
-            ? await runMaintenanceScript({
-              instance,
-              script: maintenanceScript,
-            })
-            : undefined;
-          const devScriptResult = devScript
-            ? await startDevScript({ instance, script: devScript })
-            : undefined;
-          if (
-            taskRunConvexId &&
-            (maintenanceScriptResult?.error || devScriptResult?.error)
-          ) {
+        try {
+          await prepareScriptsForTmux({
+            instance,
+            maintenanceScript,
+            devScript,
+            taskRunId: body.taskRunId ?? null,
+          });
+        } catch (error) {
+          console.error(
+            "[sandboxes.start] Failed to prepare tmux scripts:",
+            error,
+          );
+          if (taskRunConvexId) {
+            const errorMessage =
+              error instanceof Error ? error.message : String(error);
             try {
               await convex.mutation(api.taskRuns.updateEnvironmentError, {
                 teamSlugOrId: body.teamSlugOrId,
                 id: taskRunConvexId,
-                maintenanceError: maintenanceScriptResult?.error || undefined,
-                devError: devScriptResult?.error || undefined,
+                maintenanceError: maintenanceScript ? errorMessage : undefined,
+                devError: devScript ? errorMessage : undefined,
               });
             } catch (mutationError) {
               console.error(
-                "[sandboxes.start] Failed to record environment error to taskRun",
+                "[sandboxes.start] Failed to record tmux script error to taskRun",
                 mutationError,
               );
             }
           }
-        })().catch((error) => {
-          console.error(
-            "[sandboxes.start] Background script execution failed:",
-            error,
-          );
-        });
+        }
       }
 
       await configureGitIdentityTask;

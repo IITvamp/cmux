@@ -7,6 +7,7 @@ import {
 } from "@cmux/shared/agentConfig";
 import type {
   WorkerCreateTerminal,
+  WorkerEnvironmentScriptResult,
   WorkerTerminalFailed,
 } from "@cmux/shared/worker-schemas";
 import { parse as parseDotenv } from "dotenv";
@@ -487,6 +488,62 @@ export async function spawnAgent(
       } catch (error) {
         serverLogger.error(
           `[AgentSpawner] Error handling terminal-failed:`,
+          error,
+        );
+      }
+    });
+
+    vscodeInstance.on("environment-script-result", async (data: WorkerEnvironmentScriptResult) => {
+      serverLogger.info(
+        `[AgentSpawner] Environment script result for ${agent.name}:`,
+        data,
+      );
+
+      if (data.exitCode === 0) {
+        return;
+      }
+
+      const trimmedMessageParts: string[] = [
+        `exit code ${data.exitCode}`,
+        data.logPath ? `log: ${data.logPath}` : null,
+        data.statusFile ? `status: ${data.statusFile}` : null,
+      ].filter((part): part is string => Boolean(part));
+
+      const errorMessage =
+        trimmedMessageParts.length > 0
+          ? `Environment script '${data.scriptId}' failed (${trimmedMessageParts.join(" | ")})`
+          : `Environment script '${data.scriptId}' failed`;
+
+      let maintenanceError: string | undefined;
+      let devError: string | undefined;
+      if (data.scriptId === "maintenance") {
+        maintenanceError = errorMessage;
+      } else if (data.scriptId === "dev") {
+        devError = errorMessage;
+      } else {
+        serverLogger.warn(
+          `[AgentSpawner] Unknown environment script id '${data.scriptId}'`,
+        );
+        return;
+      }
+
+      try {
+        await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () =>
+          retryOnOptimisticConcurrency(() =>
+            getConvex().mutation(api.taskRuns.updateEnvironmentError, {
+              teamSlugOrId,
+              id: taskRunId,
+              maintenanceError,
+              devError,
+            }),
+          ),
+        );
+        serverLogger.info(
+          `[AgentSpawner] Recorded environment script failure for ${agent.name}`,
+        );
+      } catch (error) {
+        serverLogger.error(
+          `[AgentSpawner] Failed to record environment script error`,
           error,
         );
       }
