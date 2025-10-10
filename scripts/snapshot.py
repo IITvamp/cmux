@@ -1260,30 +1260,6 @@ async def task_install_global_cli(ctx: TaskContext) -> None:
 
 
 @registry.task(
-    name="configure-hostname",
-    deps=("apt-bootstrap",),
-    description="Ensure the instance reports the cmux hostname",
-)
-async def task_configure_hostname(ctx: TaskContext) -> None:
-    cmd = textwrap.dedent(
-        """
-        set -eux
-        desired="cmux"
-        current="$(hostnamectl --static || hostname)"
-        if [ "${current}" != "${desired}" ]; then
-          hostnamectl set-hostname "${desired}"
-        fi
-        if grep -qE '^127\\.0\\.1\\.1\\s' /etc/hosts; then
-          sed -i "s/^127\\.0\\.1\\.1\\s.*/127.0.1.1 ${desired}/" /etc/hosts
-        elif ! grep -qE "127\\.0\\.1\\.1\\s+${desired}(\\s|$)" /etc/hosts; then
-          printf '127.0.1.1 %s\n' "${desired}" >> /etc/hosts
-        fi
-        """
-    )
-    await ctx.run("configure-hostname", cmd)
-
-
-@registry.task(
     name="configure-zsh",
     deps=("install-base-packages",),
     description="Install zsh configuration and default prompt",

@@ -84,6 +84,7 @@ if [[ -n "${CHROME_BIN}" && -x "${CHROME_BIN}" ]]; then
     --disable-software-rasterizer
     --no-first-run
     --no-default-browser-check
+    --disable-session-crashed-bubble
     --disable-default-apps
     --disable-sync
     --disable-translate
