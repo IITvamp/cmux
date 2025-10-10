@@ -1,10 +1,7 @@
 from morphcloud.api import MorphCloudClient
-import httpx
-import json
-import sys
 
 
-SNAPSHOT_ID = "snapshot_ml9y7pf4"
+SNAPSHOT_ID = "snapshot_edx10psw"
 
 
 
@@ -24,6 +21,11 @@ def main() -> None:
     print(instance.exec("pwd"))
 
     print("\ndone!")
+
+    # press enter to kill
+    input("Press Enter to kill instance...")
+    instance.stop()
+    print("instance killed")
 
 
 if __name__ == "__main__":
