@@ -1276,10 +1276,20 @@ httpServer.listen(WORKER_PORT, () => {
 });
 
 // Start AMP proxy via shared provider module
+const parsedAmpProxyPort = Number.parseInt(
+  process.env.AMP_PROXY_PORT ?? "",
+  10,
+);
+const ampProxyPort = Number.isNaN(parsedAmpProxyPort)
+  ? undefined
+  : parsedAmpProxyPort;
+
 startAmpProxy({
   ampUrl: process.env.AMP_URL,
+  ampUpstreamUrl: process.env.AMP_UPSTREAM_URL,
+  port: ampProxyPort,
   workerId: WORKER_ID,
-  emitToMainServer: emitToMainServer,
+  emitToMainServer,
 });
 
 // Periodic maintenance for pending events

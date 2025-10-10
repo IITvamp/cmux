@@ -12,6 +12,7 @@ ARG PIP_VERSION
 ARG RUST_VERSION
 ARG NVM_VERSION=0.39.7
 ARG NODE_VERSION=24.9.0
+ARG GO_VERSION=1.25.2
 ARG GITHUB_TOKEN
 
 FROM --platform=$BUILDPLATFORM ubuntu:24.04 AS builder
@@ -30,6 +31,7 @@ ARG PIP_VERSION
 ARG RUST_VERSION
 ARG NODE_VERSION
 ARG NVM_VERSION
+ARG GO_VERSION
 
 ENV RUSTUP_HOME=/usr/local/rustup \
   CARGO_HOME=/usr/local/cargo \
@@ -99,6 +101,27 @@ ln -sf /usr/local/bin/corepack /usr/bin/corepack
 npm install -g node-gyp
 corepack enable
 corepack prepare pnpm@10.14.0 --activate
+EOF
+
+# Install Go toolchain for building helper binaries
+RUN <<'EOF'
+set -eux
+GO_VERSION="${GO_VERSION:-1.25.2}"
+arch="$(uname -m)"
+case "${arch}" in
+  x86_64) go_arch="amd64" ;;
+  aarch64|arm64) go_arch="arm64" ;;
+  *) echo "Unsupported architecture for Go: ${arch}" >&2; exit 1 ;;
+esac
+tmp_dir="$(mktemp -d)"
+trap 'rm -rf "${tmp_dir}"' EXIT
+cd "${tmp_dir}"
+curl -fsSLo go.tar.gz "https://go.dev/dl/go${GO_VERSION}.linux-${go_arch}.tar.gz"
+rm -rf /usr/local/go
+tar -C /usr/local -xzf go.tar.gz
+ln -sf /usr/local/go/bin/go /usr/local/bin/go
+ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+/usr/local/go/bin/go version
 EOF
 
 # Helper script for authenticated GitHub downloads
@@ -190,6 +213,9 @@ COPY apps/worker/scripts ./apps/worker/scripts
 COPY apps/worker/tsconfig.json ./apps/worker/
 COPY apps/worker/wait-for-docker.sh ./apps/worker/
 
+# Copy Chrome DevTools proxy source
+COPY scripts/cdp-proxy ./scripts/cdp-proxy/
+
 # Copy VS Code extension source
 COPY packages/vscode-extension/src ./packages/vscode-extension/src
 COPY packages/vscode-extension/tsconfig.json ./packages/vscode-extension/
@@ -228,6 +254,33 @@ RUN cd /cmux && \
   cp -r ./apps/worker/build /builtins/build && \
   cp ./apps/worker/wait-for-docker.sh /usr/local/bin/ && \
   chmod +x /usr/local/bin/wait-for-docker.sh
+
+# Build Chrome DevTools proxy binary
+RUN --mount=type=cache,target=/root/.cache/go-build \
+  --mount=type=cache,target=/go/pkg/mod \
+  <<'EOF'
+set -eux
+mkdir -p /usr/local/lib/cmux
+export PATH="/usr/local/go/bin:${PATH}"
+case "${TARGETPLATFORM:-}" in
+  linux/amd64 | linux/amd64/*)
+    export GOOS=linux
+    export GOARCH=amd64
+    ;;
+  linux/arm64 | linux/arm64/*)
+    export GOOS=linux
+    export GOARCH=arm64
+    ;;
+  *)
+    echo "Unsupported TARGETPLATFORM: ${TARGETPLATFORM:-}" >&2
+    exit 1
+    ;;
+esac
+export CGO_ENABLED=0
+cd /cmux/scripts/cdp-proxy
+go build -trimpath -ldflags="-s -w" -o /usr/local/lib/cmux/cmux-cdp-proxy .
+test -x /usr/local/lib/cmux/cmux-cdp-proxy
+EOF
 
 # Verify bun is still working in builder
 RUN bun --version && bunx --version
@@ -569,7 +622,8 @@ COPY configs/systemd/cmux-websockify.service /usr/lib/systemd/system/cmux-websoc
 COPY configs/systemd/cmux-cdp-proxy.service /usr/lib/systemd/system/cmux-cdp-proxy.service
 COPY configs/systemd/bin/configure-openvscode /usr/local/lib/cmux/configure-openvscode
 COPY configs/systemd/bin/cmux-start-chrome /usr/local/lib/cmux/cmux-start-chrome
-RUN chmod +x /usr/local/lib/cmux/configure-openvscode /usr/local/lib/cmux/cmux-start-chrome && \
+COPY --from=builder /usr/local/lib/cmux/cmux-cdp-proxy /usr/local/lib/cmux/cmux-cdp-proxy
+RUN chmod +x /usr/local/lib/cmux/configure-openvscode /usr/local/lib/cmux/cmux-start-chrome /usr/local/lib/cmux/cmux-cdp-proxy && \
   touch /usr/local/lib/cmux/dockerd.flag && \
   mkdir -p /var/log/cmux && \
   mkdir -p /etc/systemd/system/multi-user.target.wants && \
@@ -724,166 +778,3 @@ FROM runtime-base AS morph
 
 # Final runtime image (default behaviour)
 FROM runtime-local AS runtime-final
-
-# Packaging factory stage: produces .deb/.rpm artifacts using nfpm
-FROM runtime-final AS package-prep
-
-ARG VERSION
-ARG TARGETPLATFORM
-ARG CMUX_RELEASE=1
-ARG NFPM_VERSION=2.39.0
-ARG GITHUB_TOKEN
-
-COPY configs/systemd-host /tmp/systemd-host
-COPY configs/nfpm/cmux.yaml /tmp/nfpm/cmux.yaml
-COPY scripts/package /tmp/package-scripts
-
-RUN --mount=type=secret,id=github_token,required=false bash <<'EOF'
-set -euo pipefail
-
-pkgroot="/pkgroot"
-rm -rf "${pkgroot}" /out
-mkdir -p \
-  "${pkgroot}/usr/local/bin" \
-  "${pkgroot}/usr/local/lib/cmux" \
-  "${pkgroot}/usr/local/lib/node_modules" \
-  "${pkgroot}/opt/cmux/bin" \
-  "${pkgroot}/opt/cmux/repo-enablers" \
-  "${pkgroot}/opt/cmux/openvscode-server" \
-  "${pkgroot}/opt/cmux/builtins" \
-  "${pkgroot}/etc/cmux" \
-  "${pkgroot}/lib/systemd/system" \
-  /out \
-  /tmp/nfpm
-
-if compgen -G "/tmp/package-scripts/*.sh" > /dev/null; then
-  chmod +x /tmp/package-scripts/*.sh
-fi
-
-# Copy runtime executables required on the host
-for bin in envctl envd cmux-proxy node npm npx corepack; do
-  if [ -x "/usr/local/bin/${bin}" ]; then
-    install -m 0755 "/usr/local/bin/${bin}" "${pkgroot}/usr/local/bin/${bin}"
-  fi
-done
-
-# Node global modules (corepack uses this path)
-if [ -d /usr/local/lib/node_modules ]; then
-  cp -a /usr/local/lib/node_modules "${pkgroot}/usr/local/lib/node_modules"
-fi
-
-# Provide jq so configure-openvscode works even without extra host deps
-if command -v jq >/dev/null 2>&1; then
-  install -m 0755 "$(command -v jq)" "${pkgroot}/usr/local/bin/jq"
-fi
-
-# Copy application artifacts
-cp -a /app/openvscode-server/. "${pkgroot}/opt/cmux/openvscode-server/"
-cp -a /builtins/. "${pkgroot}/opt/cmux/builtins/"
-
-# Host helper scripts
-cp -a /tmp/systemd-host/bin/. "${pkgroot}/opt/cmux/bin/"
-chmod +x "${pkgroot}"/opt/cmux/bin/*
-if [ -f /usr/local/lib/cmux/configure-openvscode ]; then
-  install -m 0755 /usr/local/lib/cmux/configure-openvscode "${pkgroot}/opt/cmux/bin/configure-openvscode"
-fi
-if [ -d /usr/local/share/cmux/repo-enablers ]; then
-  cp -a /usr/local/share/cmux/repo-enablers/. "${pkgroot}/opt/cmux/repo-enablers/"
-fi
-
-# Config and unit files
-install -m 0644 /tmp/systemd-host/cmux.env "${pkgroot}/etc/cmux/cmux.env"
-for unit in cmux.target cmux-openvscode.service cmux-worker.service; do
-  install -m 0644 "/tmp/systemd-host/${unit}" "${pkgroot}/lib/systemd/system/${unit}"
-done
-
-# Prepare workspace directory layout
-mkdir -p "${pkgroot}/opt/cmux/workspace"
-
-# Determine target architecture mappings
-case "${TARGETPLATFORM:-$(uname -m)}" in
-  "linux/amd64"|amd64|x86_64)
-    deb_arch="amd64"
-    rpm_arch="x86_64"
-    nfpm_archive_arch="x86_64"
-    ;;
-  "linux/arm64"|arm64|aarch64)
-    deb_arch="arm64"
-    rpm_arch="aarch64"
-    nfpm_archive_arch="arm64"
-    ;;
-  *)
-    echo "Unsupported TARGETPLATFORM ${TARGETPLATFORM:-unknown}" >&2
-    exit 1
-    ;;
-esac
-
-# Install nfpm
-nfpm_tar="/tmp/nfpm.tar.gz"
-nfpm_tmp_dir="/tmp/nfpm-dist"
-github-curl -fsSL "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_${nfpm_archive_arch}.tar.gz" -o "${nfpm_tar}"
-rm -rf "${nfpm_tmp_dir}"
-mkdir -p "${nfpm_tmp_dir}"
-tar -xzf "${nfpm_tar}" -C "${nfpm_tmp_dir}"
-install -m 0755 "${nfpm_tmp_dir}/nfpm" /usr/local/bin/nfpm
-rm -rf "${nfpm_tmp_dir}" "${nfpm_tar}"
-
-export CMUX_VERSION="${VERSION:-0.0.0-dev}"
-export CMUX_RELEASE="${CMUX_RELEASE:-1}"
-
-rendered_config="/tmp/nfpm/rendered.yaml"
-
-# Build Debian package
-export NFPM_ARCH="${deb_arch}"
-python3 - <<'PY' "/tmp/nfpm/cmux.yaml" "${rendered_config}"
-import os
-import sys
-from pathlib import Path
-
-template_path, rendered_path = sys.argv[1:3]
-content = Path(template_path).read_text(encoding="utf-8")
-content = content.replace("__NFPM_ARCH__", os.environ["NFPM_ARCH"])
-content = content.replace("__CMUX_VERSION__", os.environ["CMUX_VERSION"])
-content = content.replace("__CMUX_RELEASE__", os.environ["CMUX_RELEASE"])
-Path(rendered_path).write_text(content, encoding="utf-8")
-PY
-nfpm pkg \
-  --config "${rendered_config}" \
-  --packager deb \
-  --target "/out/cmux_${CMUX_VERSION}_${deb_arch}.deb"
-
-# Build RPM package
-export NFPM_ARCH="${rpm_arch}"
-python3 - <<'PY' "/tmp/nfpm/cmux.yaml" "${rendered_config}"
-import os
-import sys
-from pathlib import Path
-
-template_path, rendered_path = sys.argv[1:3]
-content = Path(template_path).read_text(encoding="utf-8")
-content = content.replace("__NFPM_ARCH__", os.environ["NFPM_ARCH"])
-content = content.replace("__CMUX_VERSION__", os.environ["CMUX_VERSION"])
-content = content.replace("__CMUX_RELEASE__", os.environ["CMUX_RELEASE"])
-Path(rendered_path).write_text(content, encoding="utf-8")
-PY
-nfpm pkg \
-  --config "${rendered_config}" \
-  --packager rpm \
-  --target "/out/cmux_${CMUX_VERSION}_${rpm_arch}.rpm"
-
-cat <<META > /out/manifest.json
-{
-  "version": "${CMUX_VERSION}",
-  "release": "${CMUX_RELEASE}",
-  "deb": "cmux_${CMUX_VERSION}_${deb_arch}.deb",
-  "rpm": "cmux_${CMUX_VERSION}_${rpm_arch}.rpm",
-  "platform": "${TARGETPLATFORM:-$(uname -m)}"
-}
-META
-EOF
-
-FROM scratch AS package-export
-COPY --from=package-prep /out /out
-
-# Final image (unchanged default runtime)
-FROM runtime-final

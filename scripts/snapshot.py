@@ -139,6 +139,162 @@ class TimingsCollector:
         return lines
 
 
+
+async def _run_command(
+    ctx: "TaskContext",
+    label: str,
+    command: Command,
+    *,
+    timeout: float | None = None,
+) -> InstanceExecResponse:
+    ctx.console.info(f"[{label}] running...")
+    command_parts = _shell_command(command)
+    attempts = 0
+    max_attempts = 3
+    while True:
+        attempts += 1
+        try:
+            result = await ctx.instance.aexec(
+                command_parts,
+                timeout=timeout,
+            )
+        except (httpx.HTTPError, OSError, socket.error) as exc:
+            if attempts < max_attempts:
+                delay = min(2**attempts, 8)
+                ctx.console.info(
+                    f"[{label}] retrying after remote exec failure ({exc}) "
+                    f"(attempt {attempts}/{max_attempts}) in {delay}s"
+                )
+                await asyncio.sleep(delay)
+                continue
+            raise
+        stdout_lines = result.stdout.splitlines()
+        stderr_lines = result.stderr.splitlines()
+        for line in stdout_lines:
+            ctx.console.info(f"[{label}] {line}")
+        for line in stderr_lines:
+            ctx.console.info(f"[{label}][stderr] {line}")
+        exit_code = result.exit_code
+        if exit_code not in (0, None):
+            error_parts = [f"{label} failed with exit code {exit_code}"]
+            if result.stdout.strip():
+                error_parts.append(f"stdout:\n{result.stdout.rstrip()}")
+            if result.stderr.strip():
+                error_parts.append(f"stderr:\n{result.stderr.rstrip()}")
+            raise RuntimeError("\n".join(error_parts))
+        return result
+
+
+@dataclass(slots=True)
+class TaskContext:
+    instance: Instance
+    repo_root: Path
+    remote_repo_root: str
+    remote_repo_tar: str
+    exec_service_url: str
+    console: Console
+    timings: TimingsCollector
+    resource_profile: ResourceProfile | None = None
+    cgroup_path: str | None = None
+    exec_client: HttpExecClient | None = field(default=None, init=False)
+    environment_prelude: str = field(default="", init=False)
+
+    def __post_init__(self) -> None:
+        exports = textwrap.dedent(
+            """
+            export RUSTUP_HOME=/usr/local/rustup
+            export CARGO_HOME=/usr/local/cargo
+            export PATH="/root/.local/bin:/usr/local/cargo/bin:/usr/local/go/bin:/usr/local/bin:$PATH"
+            """
+        ).strip()
+        self.environment_prelude = exports
+
+    async def run(
+        self,
+        label: str,
+        command: Command,
+        *,
+        timeout: float | None = None,
+    ) -> InstanceExecResponse:
+        command_with_env = self._apply_environment(command)
+        command_to_run = (
+            _wrap_command_with_cgroup(self.cgroup_path, command_with_env)
+            if self.cgroup_path
+            else command_with_env
+        )
+        if self.exec_client is not None:
+            return await self.exec_client.run(
+                label,
+                command_to_run,
+                timeout=timeout,
+            )
+        return await _run_command(self, label, command_to_run, timeout=timeout)
+
+    async def run_via_ssh(
+        self,
+        label: str,
+        command: Command,
+        *,
+        timeout: float | None = None,
+        use_cgroup: bool = True,
+    ) -> InstanceExecResponse:
+        command_with_env = self._apply_environment(command)
+        command_to_run = (
+            _wrap_command_with_cgroup(self.cgroup_path, command_with_env)
+            if use_cgroup and self.cgroup_path
+            else command_with_env
+        )
+        return await _run_command(self, label, command_to_run, timeout=timeout)
+
+    def _apply_environment(self, command: Command) -> Command:
+        if not self.environment_prelude:
+            return command
+        if isinstance(command, str):
+            return f"{self.environment_prelude}\n{command}"
+        quoted = " ".join(shlex.quote(str(part)) for part in command)
+        return f"{self.environment_prelude}\n{quoted}"
+
+
+@dataclass(frozen=True)
+class TaskDefinition:
+    name: str
+    func: TaskFunc
+    dependencies: tuple[str, ...]
+    description: str | None = None
+
+
+class TaskRegistry:
+    def __init__(self) -> None:
+        self._tasks: dict[str, TaskDefinition] = {}
+
+    def task(
+        self,
+        *,
+        name: str,
+        deps: t.Iterable[str] = (),
+        description: str | None = None,
+    ) -> t.Callable[[TaskFunc], TaskFunc]:
+        def decorator(func: TaskFunc) -> TaskFunc:
+            if name in self._tasks:
+                raise ValueError(f"Task '{name}' already registered")
+            self._tasks[name] = TaskDefinition(
+                name=name,
+                func=func,
+                dependencies=tuple(deps),
+                description=description,
+            )
+            return func
+
+        return decorator
+
+    @property
+    def tasks(self) -> dict[str, TaskDefinition]:
+        return dict(self._tasks)
+
+
+registry = TaskRegistry()
+
+
 def send_macos_notification(console: Console, title: str, message: str) -> None:
     if sys.platform != "darwin":
         return
@@ -489,11 +645,6 @@ def _build_exec_binary_sync(repo_root: Path, console: Console) -> Path:
     console.info(f"Built exec binary at {binary_path}")
     return binary_path
 
-
-async def build_exec_binary(repo_root: Path, console: Console) -> Path:
-    return await asyncio.to_thread(_build_exec_binary_sync, repo_root, console)
-
-
 async def setup_exec_service(
     ctx: TaskContext,
     *,
@@ -562,158 +713,20 @@ async def setup_exec_service(
     return client
 
 
-async def _run_command(
-    ctx: "TaskContext",
-    label: str,
-    command: Command,
-    *,
-    timeout: float | None = None,
-) -> InstanceExecResponse:
-    ctx.console.info(f"[{label}] running...")
-    command_parts = _shell_command(command)
-    attempts = 0
-    max_attempts = 3
-    while True:
-        attempts += 1
-        try:
-            result = await ctx.instance.aexec(
-                command_parts,
-                timeout=timeout,
-            )
-        except (httpx.HTTPError, OSError, socket.error) as exc:
-            if attempts < max_attempts:
-                delay = min(2**attempts, 8)
-                ctx.console.info(
-                    f"[{label}] retrying after remote exec failure ({exc}) "
-                    f"(attempt {attempts}/{max_attempts}) in {delay}s"
-                )
-                await asyncio.sleep(delay)
-                continue
-            raise
-        stdout_lines = result.stdout.splitlines()
-        stderr_lines = result.stderr.splitlines()
-        for line in stdout_lines:
-            ctx.console.info(f"[{label}] {line}")
-        for line in stderr_lines:
-            ctx.console.info(f"[{label}][stderr] {line}")
-        exit_code = result.exit_code
-        if exit_code not in (0, None):
-            error_parts = [f"{label} failed with exit code {exit_code}"]
-            if result.stdout.strip():
-                error_parts.append(f"stdout:\n{result.stdout.rstrip()}")
-            if result.stderr.strip():
-                error_parts.append(f"stderr:\n{result.stderr.rstrip()}")
-            raise RuntimeError("\n".join(error_parts))
-        return result
+@registry.task(
+    name="build-setup-exec-binary",
+    description="Build and setup exec binary",
+)
+async def build_exec_binary(ctx: TaskContext) -> None:
+    repo_root = ctx.repo_root
+    console = ctx.console
+    ctx.console.info("Building exec binary...")
+    exec_binary_path = await asyncio.to_thread(_build_exec_binary_sync, repo_root, console)
+    ctx.console.info("Built exec binary")
 
-
-@dataclass(slots=True)
-class TaskContext:
-    instance: Instance
-    repo_root: Path
-    remote_repo_root: str
-    remote_repo_tar: str
-    console: Console
-    timings: TimingsCollector
-    resource_profile: ResourceProfile | None = None
-    cgroup_path: str | None = None
-    exec_client: HttpExecClient | None = field(default=None, init=False)
-    environment_prelude: str = field(default="", init=False)
-
-    def __post_init__(self) -> None:
-        exports = textwrap.dedent(
-            """
-            export RUSTUP_HOME=/usr/local/rustup
-            export CARGO_HOME=/usr/local/cargo
-            export PATH="/root/.local/bin:/usr/local/cargo/bin:/usr/local/go/bin:/usr/local/bin:$PATH"
-            """
-        ).strip()
-        self.environment_prelude = exports
-
-    async def run(
-        self,
-        label: str,
-        command: Command,
-        *,
-        timeout: float | None = None,
-    ) -> InstanceExecResponse:
-        command_with_env = self._apply_environment(command)
-        command_to_run = (
-            _wrap_command_with_cgroup(self.cgroup_path, command_with_env)
-            if self.cgroup_path
-            else command_with_env
-        )
-        if self.exec_client is not None:
-            return await self.exec_client.run(
-                label,
-                command_to_run,
-                timeout=timeout,
-            )
-        return await _run_command(self, label, command_to_run, timeout=timeout)
-
-    async def run_via_ssh(
-        self,
-        label: str,
-        command: Command,
-        *,
-        timeout: float | None = None,
-        use_cgroup: bool = True,
-    ) -> InstanceExecResponse:
-        command_with_env = self._apply_environment(command)
-        command_to_run = (
-            _wrap_command_with_cgroup(self.cgroup_path, command_with_env)
-            if use_cgroup and self.cgroup_path
-            else command_with_env
-        )
-        return await _run_command(self, label, command_to_run, timeout=timeout)
-
-    def _apply_environment(self, command: Command) -> Command:
-        if not self.environment_prelude:
-            return command
-        if isinstance(command, str):
-            return f"{self.environment_prelude}\n{command}"
-        quoted = " ".join(shlex.quote(str(part)) for part in command)
-        return f"{self.environment_prelude}\n{quoted}"
-
-
-@dataclass(frozen=True)
-class TaskDefinition:
-    name: str
-    func: TaskFunc
-    dependencies: tuple[str, ...]
-    description: str | None = None
-
-
-class TaskRegistry:
-    def __init__(self) -> None:
-        self._tasks: dict[str, TaskDefinition] = {}
-
-    def task(
-        self,
-        *,
-        name: str,
-        deps: t.Iterable[str] = (),
-        description: str | None = None,
-    ) -> t.Callable[[TaskFunc], TaskFunc]:
-        def decorator(func: TaskFunc) -> TaskFunc:
-            if name in self._tasks:
-                raise ValueError(f"Task '{name}' already registered")
-            self._tasks[name] = TaskDefinition(
-                name=name,
-                func=func,
-                dependencies=tuple(deps),
-                description=description,
-            )
-            return func
-
-        return decorator
-
-    @property
-    def tasks(self) -> dict[str, TaskDefinition]:
-        return dict(self._tasks)
-
-
-registry = TaskRegistry()
+    ctx.console.info(f"Setting up exec service at {ctx.exec_service_url}")
+    await setup_exec_service(ctx, binary_path=exec_binary_path, service_url=ctx.exec_service_url)
+    ctx.console.info("Exec service setup complete")
 
 
 def _build_resource_profile(args: argparse.Namespace) -> ResourceProfile:
@@ -739,8 +752,12 @@ def _build_resource_profile(args: argparse.Namespace) -> ResourceProfile:
         io_weight=200,
     )
 
-
+@registry.task(
+    name="configure-provisioning-cgroup",
+    description="Configure provisioning cgroup",
+)
 async def configure_provisioning_cgroup(ctx: TaskContext) -> None:
+    ctx.console.info("Configuring provisioning cgroup...")
     profile = ctx.resource_profile
     if profile is None:
         ctx.console.info("Resource profile not provided; skipping cgroup configuration")
@@ -858,7 +875,6 @@ async def task_apt_bootstrap(ctx: TaskContext) -> None:
         DEBIAN_FRONTEND=noninteractive apt-get update
         DEBIAN_FRONTEND=noninteractive apt-get install -y \
             ca-certificates curl wget jq git gnupg lsb-release \
-            python3 python3-venv python3-distutils \
             tar unzip xz-utils zip bzip2 gzip htop
         
         # Setup GitHub CLI repository
@@ -1419,6 +1435,7 @@ async def task_build_cdp_proxy(ctx: TaskContext) -> None:
         "install-openvscode",
         "install-openvscode-extensions",
         "install-service-scripts",
+        "build-worker",
         "build-cdp-proxy",
         "configure-zsh",
     ),
@@ -1519,6 +1536,39 @@ async def task_install_collect_scripts(ctx: TaskContext) -> None:
         """
     )
     await ctx.run("install-collect-scripts", cmd)
+
+
+@registry.task(
+    name="build-worker",
+    deps=("install-repo-dependencies",),
+    description="Build worker bundle and install helper scripts",
+)
+async def task_build_worker(ctx: TaskContext) -> None:
+    repo = shlex.quote(ctx.remote_repo_root)
+    cmd = textwrap.dedent(
+        f"""
+        set -euo pipefail
+        export PATH="/usr/local/bin:$PATH"
+        cd {repo}
+        bun build ./apps/worker/src/index.ts \\
+          --target node \\
+          --outdir ./apps/worker/build \\
+          --external @cmux/convex \\
+          --external 'node:*'
+        if [ ! -f ./apps/worker/build/index.js ]; then
+          echo "Worker build output missing at ./apps/worker/build/index.js" >&2
+          exit 1
+        fi
+        install -d /builtins
+        cat <<'JSON' > /builtins/package.json
+{{"name":"builtins","type":"module","version":"1.0.0"}}
+JSON
+        rm -rf /builtins/build
+        cp -r ./apps/worker/build /builtins/build
+        install -Dm0755 ./apps/worker/wait-for-docker.sh /usr/local/bin/wait-for-docker.sh
+        """
+    )
+    await ctx.run("build-worker", cmd)
 
 
 @registry.task(
@@ -1862,6 +1912,32 @@ async def task_check_devtools(ctx: TaskContext) -> None:
     )
     await ctx.run("check-devtools", cmd)
 
+@registry.task(
+    name="check-worker",
+    deps=("install-systemd-units",),
+    description="Verify worker service is running",
+)
+async def task_check_worker(ctx: TaskContext) -> None:
+    cmd = textwrap.dedent(
+        """
+        set -euo pipefail
+        for attempt in $(seq 1 30); do
+          if systemctl is-active --quiet cmux-worker.service; then
+            if health="$(curl -fsS http://127.0.0.1:39377/health)"; then
+              printf '%s\n' "$health"
+              exit 0
+            fi
+          fi
+          sleep 2
+        done
+        echo "ERROR: cmux-worker service failed health check" >&2
+        systemctl status cmux-worker.service --no-pager || true
+        tail -n 80 /var/log/cmux/worker.log || true
+        exit 1
+        """
+    )
+    await ctx.run("check-worker", cmd)
+
 
 async def verify_devtools_via_exposed_url(
     port_map: dict[int, str],
@@ -1963,27 +2039,9 @@ async def provision_and_snapshot(args: argparse.Namespace) -> None:
         console=console,
         timings=timings,
         resource_profile=resource_profile,
+        exec_service_url=exec_service_url
     )
 
-    for attempt in range(5):
-        try:
-            await configure_provisioning_cgroup(ctx)
-            break
-        except (ApiError, httpx.HTTPError, OSError) as exc:
-            if attempt == 4:
-                raise
-            delay = 1.5 * (attempt + 1)
-            console.info(
-                f"Retrying provisioning cgroup setup on primary instance "
-                f"(attempt {attempt + 1}/5) after error: {exc}"
-            )
-            await asyncio.sleep(delay)
-    exec_binary_path = await build_exec_binary(repo_root, console)
-    await setup_exec_service(
-        ctx,
-        binary_path=exec_binary_path,
-        service_url=exec_service_url,
-    )
     await run_task_graph(registry, ctx)
     await verify_devtools_via_exposed_url(port_map, console=console)
 
