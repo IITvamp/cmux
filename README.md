@@ -44,3 +44,7 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+Code agents dance in  
+Docker containers, weaving  
+Dreams into software
