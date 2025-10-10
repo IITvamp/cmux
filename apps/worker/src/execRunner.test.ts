@@ -41,6 +41,26 @@ describe("runWorkerExec", () => {
     expect(res.stdout.trim()).toBe("$HOME");
   });
 
+  it("executes bash -lc with a leading newline script payload", async () => {
+    const script = `
+set -eu
+TMP=$(mktemp)
+cat <<'EOF' > "$TMP"
+PAYLOAD
+EOF
+cat "$TMP"
+rm -f "$TMP"
+`;
+
+    const res = await runWorkerExec({
+      command: "bash",
+      args: ["-lc", script],
+    });
+
+    expect(res.exitCode).toBe(0);
+    expect(res.stdout.trim()).toBe("PAYLOAD");
+  });
+
   it("executes a tmux new-session when tmux is available", async () => {
     // Check if tmux is available
     const check = await runWorkerExec({ command: "tmux", args: ["-V"] });

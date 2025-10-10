@@ -2208,17 +2208,17 @@ def parse_args() -> argparse.Namespace:
         default=".",
         help="Repository root to upload (default: current directory)",
     )
-    parser.add_argument("--vcpus", type=int, default=10, help="vCPU count for instance")
+    parser.add_argument("--vcpus", type=int, default=4, help="vCPU count for instance")
     parser.add_argument(
         "--memory",
         type=int,
-        default=32_768,
+        default=16_384,
         help="Memory (MiB) for instance",
     )
     parser.add_argument(
         "--disk-size",
         type=int,
-        default=65_536,
+        default=32_768,
         help="Disk size (MiB) for instance",
     )
     parser.add_argument(
