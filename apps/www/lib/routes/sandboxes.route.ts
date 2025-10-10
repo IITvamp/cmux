@@ -19,7 +19,11 @@ import {
 import type { HydrateRepoConfig } from "./sandboxes/hydration";
 import { hydrateWorkspace } from "./sandboxes/hydration";
 import { resolveTeamAndSnapshot } from "./sandboxes/snapshot";
-import { runMaintenanceScript, startDevScript } from "./sandboxes/startDevAndMaintenanceScript";
+import {
+  allocateScriptIdentifiers,
+  runMaintenanceScript,
+  startDevScript,
+} from "./sandboxes/startDevAndMaintenanceScript";
 import {
   encodeEnvContentForEnvctl,
   envctlLoadCommand,
@@ -53,6 +57,10 @@ const StartSandboxResponse = z
     vscodeUrl: z.string(),
     workerUrl: z.string(),
     provider: z.enum(["morph"]).default("morph"),
+    maintenanceScriptSessionName: z.string().nullable().optional(),
+    maintenanceScriptLogPath: z.string().nullable().optional(),
+    devScriptSessionName: z.string().nullable().optional(),
+    devScriptLogPath: z.string().nullable().optional(),
   })
   .openapi("StartSandboxResponse");
 
@@ -168,6 +176,13 @@ sandboxesRouter.openapi(
 
       const maintenanceScript = environmentMaintenanceScript ?? null;
       const devScript = environmentDevScript ?? null;
+
+      const maintenanceIdentifiers = maintenanceScript
+        ? allocateScriptIdentifiers("maintenance")
+        : null;
+      const devIdentifiers = devScript
+        ? allocateScriptIdentifiers("dev")
+        : null;
 
       const gitIdentityPromise = githubAccessTokenPromise.then(
         ({ githubAccessToken }) => {
@@ -308,10 +323,15 @@ sandboxesRouter.openapi(
             ? await runMaintenanceScript({
               instance,
               script: maintenanceScript,
+              identifiers: maintenanceIdentifiers ?? undefined,
             })
             : undefined;
           const devScriptResult = devScript
-            ? await startDevScript({ instance, script: devScript })
+            ? await startDevScript({
+              instance,
+              script: devScript,
+              identifiers: devIdentifiers ?? undefined,
+            })
             : undefined;
           if (
             taskRunConvexId &&
@@ -323,6 +343,22 @@ sandboxesRouter.openapi(
                 id: taskRunConvexId,
                 maintenanceError: maintenanceScriptResult?.error || undefined,
                 devError: devScriptResult?.error || undefined,
+                maintenanceSessionName:
+                  maintenanceScriptResult?.sessionName ||
+                  maintenanceIdentifiers?.sessionName ||
+                  undefined,
+                maintenanceLogPath:
+                  maintenanceScriptResult?.logFile ||
+                  maintenanceIdentifiers?.logFile ||
+                  undefined,
+                devSessionName:
+                  devScriptResult?.sessionName ||
+                  devIdentifiers?.sessionName ||
+                  undefined,
+                devLogPath:
+                  devScriptResult?.logFile ||
+                  devIdentifiers?.logFile ||
+                  undefined,
               });
             } catch (mutationError) {
               console.error(
@@ -346,6 +382,11 @@ sandboxesRouter.openapi(
         vscodeUrl: vscodeService.url,
         workerUrl: workerService.url,
         provider: "morph",
+        maintenanceScriptSessionName:
+          maintenanceIdentifiers?.sessionName ?? null,
+        maintenanceScriptLogPath: maintenanceIdentifiers?.logFile ?? null,
+        devScriptSessionName: devIdentifiers?.sessionName ?? null,
+        devScriptLogPath: devIdentifiers?.logFile ?? null,
       });
     } catch (error) {
       if (error instanceof HTTPException) {

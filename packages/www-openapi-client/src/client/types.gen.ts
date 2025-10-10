@@ -439,6 +439,10 @@ export type StartSandboxResponse = {
     vscodeUrl: string;
     workerUrl: string;
     provider?: 'morph';
+    maintenanceScriptSessionName?: string | null;
+    maintenanceScriptLogPath?: string | null;
+    devScriptSessionName?: string | null;
+    devScriptLogPath?: string | null;
 };
 
 export type StartSandboxBody = {

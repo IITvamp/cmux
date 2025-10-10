@@ -7,6 +7,39 @@ const WORKSPACE_ROOT = "/root/workspace";
 const CMUX_RUNTIME_DIR = "/var/tmp/cmux-scripts";
 const LOG_DIR = "/var/log/cmux";
 
+const sanitizeTmuxSessionName = (value: string): string =>
+  value.replace(/[^a-zA-Z0-9_-]/g, "_");
+
+type ScriptPrefix = "maintenance" | "dev";
+
+export type ScriptIdentifiers = {
+  id: string;
+  sessionName: string;
+  scriptPath: string;
+  runnerPath: string;
+  logFile: string;
+  exitFile: string;
+  waitName: string;
+};
+
+const buildScriptId = (prefix: ScriptPrefix): ScriptIdentifiers => {
+  const id = randomUUID().replace(/-/g, "").slice(0, 16);
+  const base = `cmux-${prefix}-${id}`;
+  const sessionName = sanitizeTmuxSessionName(base);
+  return {
+    id,
+    sessionName,
+    scriptPath: `${CMUX_RUNTIME_DIR}/${prefix}-script-${id}.sh`,
+    runnerPath: `${CMUX_RUNTIME_DIR}/${prefix}-runner-${id}.sh`,
+    logFile: `${LOG_DIR}/${prefix}-script-${id}.log`,
+    exitFile: `${LOG_DIR}/${prefix}-script-${id}.exit`,
+    waitName: sanitizeTmuxSessionName(`${base}-done`),
+  };
+};
+
+export const allocateScriptIdentifiers = (prefix: ScriptPrefix): ScriptIdentifiers =>
+  buildScriptId(prefix);
+
 const previewOutput = (
   value: string | undefined,
   maxLength = 2500,
@@ -32,43 +65,55 @@ CMUX_SCRIPT_EOF
 chmod +x ${path}
 `;
 
-const ensurePidStoppedCommand = (pidFile: string): string => `
-if [ -f ${pidFile} ]; then
-  (
-    set -euo pipefail
-    trap 'status=$?; echo "Failed to stop process recorded in ${pidFile} (pid \${EXISTING_PID:-unknown}) (exit $status)" >&2' ERR
-    EXISTING_PID=$(cat ${pidFile} 2>/dev/null || true)
-    if [ -n "\${EXISTING_PID}" ] && kill -0 \${EXISTING_PID} 2>/dev/null; then
-      if kill \${EXISTING_PID} 2>/dev/null; then
-        sleep 0.2
-      elif kill -0 \${EXISTING_PID} 2>/dev/null; then
-        echo "Unable to terminate process \${EXISTING_PID}" >&2
-        exit 1
-      fi
-
-      if kill -0 \${EXISTING_PID} 2>/dev/null; then
-        echo "Process \${EXISTING_PID} still running after SIGTERM" >&2
-        exit 1
-      fi
-    fi
-  )
-fi
-`;
+type ScriptResult = {
+  error: string | null;
+  sessionName: string;
+  logFile: string;
+};
 
 export async function runMaintenanceScript({
   instance,
   script,
+  identifiers,
 }: {
   instance: MorphInstance;
   script: string;
-}): Promise<{ error: string | null }> {
-  const maintenanceScriptPath = `${CMUX_RUNTIME_DIR}/maintenance-script.sh`;
+  identifiers?: ScriptIdentifiers;
+}): Promise<ScriptResult> {
+  const ids = identifiers ?? buildScriptId("maintenance");
   const command = `
 set -euo pipefail
-trap 'rm -f ${maintenanceScriptPath}' EXIT
-${buildScriptFileCommand(maintenanceScriptPath, script)}
+mkdir -p ${LOG_DIR}
+${buildScriptFileCommand(ids.scriptPath, script)}
+cat <<'CMUX_MAINT_RUNNER_EOF' > ${ids.runnerPath}
+#!/usr/bin/env bash
+set -euo pipefail
+cleanup() {
+  status=$?
+  printf '%s' "\${status}" > ${ids.exitFile}
+  tmux wait-for -S ${ids.waitName}
+  exit "\${status}"
+}
+trap cleanup EXIT
 cd ${WORKSPACE_ROOT}
-bash -eu -o pipefail ${maintenanceScriptPath}
+bash -eu -o pipefail ${ids.scriptPath}
+CMUX_MAINT_RUNNER_EOF
+chmod +x ${ids.runnerPath}
+tmux kill-session -t ${ids.sessionName} 2>/dev/null || true
+rm -f ${ids.exitFile}
+: > ${ids.logFile}
+tmux new-session -d -s ${ids.sessionName} ${ids.runnerPath}
+tmux pipe-pane -t ${ids.sessionName}:0 -o 'cat >> ${ids.logFile}'
+tmux wait-for -L ${ids.waitName}
+status=$(cat ${ids.exitFile} 2>/dev/null || echo '1')
+rm -f ${ids.exitFile} ${ids.runnerPath} ${ids.scriptPath}
+tmux kill-session -t ${ids.sessionName} 2>/dev/null || true
+if [ "\${status}" != "0" ]; then
+  if [ -f ${ids.logFile} ]; then
+    tail -n 200 ${ids.logFile} >&2
+  fi
+fi
+exit "\${status}"
 `;
 
   try {
@@ -82,38 +127,63 @@ bash -eu -o pipefail ${maintenanceScriptPath}
         stderrPreview ? `stderr: ${stderrPreview}` : null,
         stdoutPreview ? `stdout: ${stdoutPreview}` : null,
       ].filter((part): part is string => part !== null);
-      return { error: messageParts.join(" | ") };
+      return {
+        error: messageParts.join(" | "),
+        sessionName: ids.sessionName,
+        logFile: ids.logFile,
+      };
     }
 
-    return { error: null };
+    return {
+      error: null,
+      sessionName: ids.sessionName,
+      logFile: ids.logFile,
+    };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    return { error: `Maintenance script execution failed: ${errorMessage}` };
+    return {
+      error: `Maintenance script execution failed: ${errorMessage}`,
+      sessionName: ids.sessionName,
+      logFile: ids.logFile,
+    };
   }
 }
 
 export async function startDevScript({
   instance,
   script,
+  identifiers,
 }: {
   instance: MorphInstance;
   script: string;
-}): Promise<{ error: string | null }> {
-  const devScriptRunId = randomUUID().replace(/-/g, "");
-  const devScriptDir = `${CMUX_RUNTIME_DIR}/${devScriptRunId}`;
+  identifiers?: ScriptIdentifiers;
+}): Promise<ScriptResult> {
+  const ids = identifiers ?? buildScriptId("dev");
+  const devScriptDir = `${CMUX_RUNTIME_DIR}/${ids.id}`;
   const devScriptPath = `${devScriptDir}/dev-script.sh`;
-  const pidFile = `${LOG_DIR}/dev-script.pid`;
-  const logFile = `${LOG_DIR}/dev-script.log`;
-
   const command = `
 set -euo pipefail
 mkdir -p ${LOG_DIR}
 mkdir -p ${devScriptDir}
-${ensurePidStoppedCommand(pidFile)}
 ${buildScriptFileCommand(devScriptPath, script)}
+cat <<'CMUX_DEV_RUNNER_EOF' > ${ids.runnerPath}
+#!/usr/bin/env bash
+set -euo pipefail
 cd ${WORKSPACE_ROOT}
-nohup bash -eu -o pipefail ${devScriptPath} > ${logFile} 2>&1 &
-echo $! > ${pidFile}
+exec bash -eu -o pipefail ${devScriptPath}
+CMUX_DEV_RUNNER_EOF
+chmod +x ${ids.runnerPath}
+tmux kill-session -t ${ids.sessionName} 2>/dev/null || true
+: > ${ids.logFile}
+tmux new-session -d -s ${ids.sessionName} ${ids.runnerPath}
+tmux pipe-pane -t ${ids.sessionName}:0 -o 'cat >> ${ids.logFile}'
+sleep 0.5
+if ! tmux has-session -t ${ids.sessionName} 2>/dev/null; then
+  if [ -f ${ids.logFile} ]; then
+    tail -n 50 ${ids.logFile}
+  fi
+  exit 1
+fi
 `;
 
   try {
@@ -127,39 +197,24 @@ echo $! > ${pidFile}
         stderrPreview ? `stderr: ${stderrPreview}` : null,
         stdoutPreview ? `stdout: ${stdoutPreview}` : null,
       ].filter((part): part is string => part !== null);
-      return { error: messageParts.join(" | ") };
-    }
-
-    // Check if the process started successfully and is still running
-    const checkCommand = `
-if [ -f ${pidFile} ]; then
-  PID=$(cat ${pidFile} 2>/dev/null || echo "")
-  if [ -n "\$PID" ]; then
-    sleep 0.5
-    if ! kill -0 \$PID 2>/dev/null; then
-      if [ -f ${logFile} ]; then
-        tail -n 50 ${logFile}
-      fi
-      exit 1
-    fi
-  fi
-fi
-`;
-
-    const checkResult = await instance.exec(
-      `bash -c ${singleQuote(checkCommand)}`,
-    );
-
-    if (checkResult.exit_code !== 0) {
-      const logPreview = previewOutput(checkResult.stdout, 2000);
       return {
-        error: `Dev script failed immediately after start${logPreview ? ` | log: ${logPreview}` : ""}`,
+        error: messageParts.join(" | "),
+        sessionName: ids.sessionName,
+        logFile: ids.logFile,
       };
     }
 
-    return { error: null };
+    return {
+      error: null,
+      sessionName: ids.sessionName,
+      logFile: ids.logFile,
+    };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    return { error: `Dev script execution failed: ${errorMessage}` };
+    return {
+      error: `Dev script execution failed: ${errorMessage}`,
+      sessionName: ids.sessionName,
+      logFile: ids.logFile,
+    };
   }
 }

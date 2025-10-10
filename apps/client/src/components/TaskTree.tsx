@@ -749,6 +749,10 @@ interface TaskRunDetailsProps {
   environmentError?: {
     maintenanceError?: string;
     devError?: string;
+    maintenanceSessionName?: string;
+    maintenanceLogPath?: string;
+    devSessionName?: string;
+    devLogPath?: string;
   };
 }
 
@@ -770,7 +774,12 @@ function TaskRunDetails({
 
   const indentLevel = level + 1;
   const hasEnvironmentError = Boolean(
-    environmentError?.maintenanceError || environmentError?.devError
+    environmentError?.maintenanceError ||
+      environmentError?.devError ||
+      environmentError?.maintenanceSessionName ||
+      environmentError?.maintenanceLogPath ||
+      environmentError?.devSessionName ||
+      environmentError?.devLogPath
   );
 
   const environmentErrorIndicator = hasEnvironmentError ? (
@@ -790,9 +799,29 @@ function TaskRunDetails({
               Maintenance script: {environmentError.maintenanceError}
             </p>
           )}
+          {environmentError?.maintenanceSessionName && (
+            <p className="text-xs text-neutral-400">
+              Maintenance tmux: <span className="font-mono text-neutral-300">tmux attach -t {environmentError.maintenanceSessionName}</span>
+            </p>
+          )}
+          {environmentError?.maintenanceLogPath && (
+            <p className="text-xs text-neutral-400">
+              Maintenance log: <span className="font-mono text-neutral-300">{environmentError.maintenanceLogPath}</span>
+            </p>
+          )}
           {environmentError?.devError && (
             <p className="text-xs text-neutral-400">
               Dev script: {environmentError.devError}
+            </p>
+          )}
+          {environmentError?.devSessionName && (
+            <p className="text-xs text-neutral-400">
+              Dev tmux: <span className="font-mono text-neutral-300">tmux attach -t {environmentError.devSessionName}</span>
+            </p>
+          )}
+          {environmentError?.devLogPath && (
+            <p className="text-xs text-neutral-400">
+              Dev log: <span className="font-mono text-neutral-300">{environmentError.devLogPath}</span>
             </p>
           )}
         </div>

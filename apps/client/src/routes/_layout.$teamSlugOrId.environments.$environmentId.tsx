@@ -14,6 +14,7 @@ import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { validateExposedPorts } from "@cmux/shared/utils/validate-exposed-ports";
+import type { StartSandboxResponse } from "@cmux/www-openapi-client";
 import {
   patchApiEnvironmentsByIdPortsMutation,
   patchApiEnvironmentsByIdMutation,
@@ -457,7 +458,7 @@ function EnvironmentDetailsPage() {
     }
   };
 
-  const handleSandboxSuccess = (data: { vscodeUrl: string; instanceId: string }) => {
+  const handleSandboxSuccess = (data: StartSandboxResponse) => {
     const baseUrl = data.vscodeUrl;
     const hasQuery = baseUrl.includes("?");
     const vscodeUrlWithFolder = `${baseUrl}${hasQuery ? "&" : "?"}folder=/root/workspace`;
