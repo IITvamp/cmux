@@ -147,7 +147,7 @@ function NewSnapshotVersionPage() {
             initialExposedPorts={
               environment.exposedPorts && environment.exposedPorts.length > 0
                 ? environment.exposedPorts.join(", ")
-                : "3000, 8080"
+                : ""
             }
             initialEnvVars={initialEnvVars}
           />

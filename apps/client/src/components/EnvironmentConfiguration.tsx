@@ -48,7 +48,7 @@ export function EnvironmentConfiguration({
   initialEnvName = "",
   initialMaintenanceScript = "",
   initialDevScript = "",
-  initialExposedPorts = "3000, 8080",
+  initialExposedPorts = "",
   initialEnvVars,
 }: {
   selectedRepos: string[];
