@@ -1389,6 +1389,8 @@ EOF
 EOF
         mkdir -p /etc/profile.d
         cat <<'EOF' > /etc/profile.d/cmux-paths.sh
+export RUSTUP_HOME=/usr/local/rustup
+export CARGO_HOME=/usr/local/cargo
 export PATH="/usr/local/bin:/usr/local/cargo/bin:$HOME/.local/bin:$PATH"
 EOF
         if ! grep -q "alias g='git'" /root/.bashrc 2>/dev/null; then

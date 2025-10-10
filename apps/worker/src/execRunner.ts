@@ -1,16 +1,8 @@
 import { promisify } from "node:util";
-import {
-  exec,
-  execFile,
-  type ExecException,
-  type ExecFileException,
-} from "node:child_process";
+import { exec, type ExecException } from "node:child_process";
 import type { WorkerExec, WorkerExecResult } from "@cmux/shared";
 
 const execAsync = promisify(exec);
-const execFileAsync = promisify(execFile);
-
-const SHELL_COMMANDS = new Set(["bash", "/bin/bash", "sh", "/bin/sh"]);
 
 export async function runWorkerExec(validated: WorkerExec): Promise<WorkerExecResult> {
   const execOptions = {
@@ -20,13 +12,21 @@ export async function runWorkerExec(validated: WorkerExec): Promise<WorkerExecRe
   } as const;
 
   try {
-    if (SHELL_COMMANDS.has(validated.command)) {
-      const shellArgs = validated.args ?? [];
-      const { stdout, stderr } = await execFileAsync(
-        validated.command,
-        shellArgs,
-        execOptions,
-      );
+    // If the caller asked for a specific shell with -c, execute using that shell
+    if (
+      (validated.command === "/bin/bash" ||
+        validated.command === "bash" ||
+        validated.command === "/bin/sh" ||
+        validated.command === "sh") &&
+      validated.args &&
+      validated.args[0] === "-c"
+    ) {
+      const shellCommand = validated.args.slice(1).join(" ");
+      const shellPath = validated.command;
+      const { stdout, stderr } = await execAsync(shellCommand, {
+        ...execOptions,
+        shell: shellPath,
+      });
       return { stdout: stdout || "", stderr: stderr || "", exitCode: 0 };
     }
 
@@ -53,7 +53,7 @@ export async function runWorkerExec(validated: WorkerExec): Promise<WorkerExecRe
       return "";
     };
 
-    const err = execError as Partial<ExecException & ExecFileException> & {
+    const err = execError as Partial<ExecException> & {
       stdout?: unknown;
       stderr?: unknown;
       code?: number | string;
