@@ -161,6 +161,14 @@ export abstract class VSCodeInstance extends EventEmitter {
         this.emit("terminal-failed", data);
       });
 
+      this.workerSocket.on("worker:environment-script-failed", (data) => {
+        dockerLogger.warn(
+          `[VSCodeInstance ${this.instanceId}] Environment script failed:`,
+          data,
+        );
+        this.emit("environment-script-failed", data);
+      });
+
       this.workerSocket.on("worker:file-changes", (data) => {
         dockerLogger.info(
           `[VSCodeInstance ${this.instanceId}] File changes detected:`,

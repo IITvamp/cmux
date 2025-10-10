@@ -74,6 +74,8 @@ export const WorkerCreateTerminalSchema = z.object({
   agentModel: z.string().optional(),
   authFiles: z.array(AuthFileSchema).optional(),
   startupCommands: z.array(z.string()).optional(),
+  maintenanceScript: z.string().optional(),
+  devScript: z.string().optional(),
 });
 
 export const WorkerTerminalInputSchema = z.object({
@@ -212,6 +214,20 @@ export type WorkerConfigureGit = z.infer<typeof WorkerConfigureGitSchema>;
 export type WorkerExec = z.infer<typeof WorkerExecSchema>;
 export type WorkerExecResult = z.infer<typeof WorkerExecResultSchema>;
 
+export const EnvironmentScriptTypeSchema = z.enum(["maintenance", "dev"]);
+export type EnvironmentScriptType = z.infer<typeof EnvironmentScriptTypeSchema>;
+
+export const WorkerEnvironmentScriptFailedSchema = z.object({
+  workerId: z.string(),
+  terminalId: z.string(),
+  taskRunId: typedZid("taskRuns").optional(),
+  scriptType: EnvironmentScriptTypeSchema,
+  error: z.string(),
+});
+export type WorkerEnvironmentScriptFailed = z.infer<
+  typeof WorkerEnvironmentScriptFailedSchema
+>;
+
 // Socket.io event maps for Server <-> Worker communication
 // Docker readiness response type
 
@@ -288,6 +304,9 @@ export interface WorkerToServerEvents {
   "worker:terminal-idle": (data: WorkerTerminalIdle) => void;
   "worker:task-complete": (data: WorkerTaskComplete) => void;
   "worker:terminal-failed": (data: WorkerTerminalFailed) => void;
+  "worker:environment-script-failed": (
+    data: WorkerEnvironmentScriptFailed,
+  ) => void;
 
   // File change events
   "worker:file-changes": (data: {

@@ -1,3 +1,4 @@
+import type { EnvironmentScriptType } from "@cmux/shared";
 import {
   SERVER_TERMINAL_CONFIG,
   WorkerConfigureGitSchema,
@@ -29,6 +30,7 @@ import {
   spawn,
   type ChildProcessWithoutNullStreams,
 } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { createServer } from "node:http";
 import { cpus, platform, totalmem } from "node:os";
@@ -50,6 +52,15 @@ const WORKER_ID = process.env.WORKER_ID || `worker-${Date.now()}`;
 const WORKER_PORT = parseInt(process.env.WORKER_PORT || "39377", 10);
 const CONTAINER_IMAGE = process.env.CONTAINER_IMAGE || "cmux-worker";
 const CONTAINER_VERSION = process.env.CONTAINER_VERSION || "0.0.1";
+const CMUX_RUNTIME_DIR = "/var/tmp/cmux-scripts";
+const CMUX_LOG_DIR = "/var/log/cmux";
+const DEV_SCRIPT_FAILURE_WINDOW_MS = 5_000;
+const MAINTENANCE_SCRIPT_TIMEOUT_MS = 30 * 60 * 1_000;
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 
 // Create Express app
 const app = express();
@@ -243,6 +254,326 @@ function sanitizeTmuxSessionName(name: string): string {
   // Replace all invalid characters with underscores
   // Allow only alphanumeric characters, hyphens, and underscores
   return name.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+interface ScriptSetupOptions {
+  sessionName: string;
+  cwd: string;
+  maintenanceScript?: string;
+  devScript?: string;
+  taskRunId?: Id<"taskRuns">;
+  terminalId: string;
+}
+
+interface LaunchScriptOptions extends ScriptSetupOptions {
+  scriptContent: string;
+  scriptType: EnvironmentScriptType;
+  windowName: string;
+  expectLongRunning: boolean;
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function compressWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function previewOutput(
+  value: string | null | undefined,
+  maxLength = 2000,
+): string | null {
+  if (!value) return null;
+  const compressed = compressWhitespace(value);
+  if (compressed.length === 0) return null;
+  if (compressed.length <= maxLength) return compressed;
+  return `${compressed.slice(0, maxLength)}…`;
+}
+
+async function ensureTmuxSessionReady(
+  sessionName: string,
+  maxRetries = 20,
+  delayMs = 250,
+): Promise<void> {
+  for (let attempt = 0; attempt < maxRetries; attempt += 1) {
+    const exists = await new Promise<boolean>((resolve) => {
+      const checkProcess = spawn("tmux", ["has-session", "-t", sessionName]);
+      checkProcess.on("exit", (code) => resolve(code === 0));
+      checkProcess.on("error", () => resolve(false));
+    });
+
+    if (exists) {
+      log("INFO", "[environmentScripts] Tmux session ready", {
+        sessionName,
+        attempt: attempt + 1,
+      });
+      return;
+    }
+
+    await sleep(delayMs);
+  }
+
+  throw new Error(`Tmux session '${sessionName}' not ready`);
+}
+
+async function setupEnvironmentScripts(
+  options: ScriptSetupOptions,
+): Promise<void> {
+  const { maintenanceScript, devScript } = options;
+
+  const trimmedMaintenance =
+    maintenanceScript && maintenanceScript.trim().length > 0
+      ? maintenanceScript
+      : null;
+  if (trimmedMaintenance) {
+    const error = await launchScriptInTmux({
+      ...options,
+      scriptContent: trimmedMaintenance,
+      scriptType: "maintenance",
+      windowName: "maintenance",
+      expectLongRunning: false,
+    });
+
+    if (error) {
+      log("ERROR", "[environmentScripts] Maintenance script failed", {
+        error,
+        terminalId: options.terminalId,
+      });
+      emitToMainServer("worker:environment-script-failed", {
+        workerId: WORKER_ID,
+        terminalId: options.terminalId,
+        taskRunId: options.taskRunId,
+        scriptType: "maintenance",
+        error,
+      });
+    }
+  }
+
+  const trimmedDev =
+    devScript && devScript.trim().length > 0 ? devScript : null;
+  if (trimmedDev) {
+    const error = await launchScriptInTmux({
+      ...options,
+      scriptContent: trimmedDev,
+      scriptType: "dev",
+      windowName: "dev",
+      expectLongRunning: true,
+    });
+
+    if (error) {
+      log("ERROR", "[environmentScripts] Dev script failed to start", {
+        error,
+        terminalId: options.terminalId,
+      });
+      emitToMainServer("worker:environment-script-failed", {
+        workerId: WORKER_ID,
+        terminalId: options.terminalId,
+        taskRunId: options.taskRunId,
+        scriptType: "dev",
+        error,
+      });
+    }
+  }
+}
+
+async function launchScriptInTmux(
+  options: LaunchScriptOptions,
+): Promise<string | null> {
+  const {
+    sessionName,
+    cwd,
+    scriptContent,
+    scriptType,
+    windowName,
+    expectLongRunning,
+  } = options;
+
+  try {
+    await fs.mkdir(CMUX_RUNTIME_DIR, { recursive: true });
+    await fs.mkdir(CMUX_LOG_DIR, { recursive: true });
+
+    const runId = randomUUID().replace(/-/g, "");
+    const scriptPath = path.join(
+      CMUX_RUNTIME_DIR,
+      `${scriptType}-script-${runId}.sh`,
+    );
+    const statusPath = path.join(
+      CMUX_RUNTIME_DIR,
+      `${scriptType}-script-${runId}.status`,
+    );
+    const logFileName = `${scriptType}-script.log`;
+    const logPath = path.join(CMUX_LOG_DIR, logFileName);
+
+    const normalizedScript = scriptContent.endsWith("\n")
+      ? scriptContent
+      : `${scriptContent}\n`;
+
+    await fs.writeFile(scriptPath, normalizedScript, { mode: 0o700 });
+    await fs.chmod(scriptPath, 0o700);
+
+    const commandLines = [
+      "set -uo pipefail",
+      `cd ${shellQuote(cwd)}`,
+      `STATUS_FILE=${shellQuote(statusPath)}`,
+      `LOG_FILE=${shellQuote(logPath)}`,
+      'mkdir -p "$(dirname "$STATUS_FILE")"',
+      'mkdir -p "$(dirname "$LOG_FILE")"',
+      'rm -f "$STATUS_FILE"',
+      'trap \'status=$?; echo "$status" > "$STATUS_FILE"\' EXIT',
+      `bash -euo pipefail ${shellQuote(scriptPath)} 2>&1 | tee -a "$LOG_FILE"`,
+      'exit_status=${PIPESTATUS[0]}',
+      'exit $exit_status',
+    ];
+    const commandString = commandLines.join("\n");
+
+    log("INFO", "[environmentScripts] Launching script in tmux", {
+      sessionName,
+      windowName,
+      scriptType,
+      scriptPath,
+      logPath,
+    });
+
+    const { exitCode, stderr } = await runTmuxCommand([
+      "new-window",
+      "-t",
+      sessionName,
+      "-n",
+      windowName,
+      "-c",
+      cwd,
+      "bash",
+      "-lc",
+      commandString,
+    ]);
+
+    if (exitCode !== 0) {
+      const stderrPreview = previewOutput(stderr, 500);
+      return `${
+        scriptType === "maintenance" ? "Maintenance" : "Dev"
+      } script tmux launch failed${
+        stderrPreview ? `: ${stderrPreview}` : ""
+      }`;
+    }
+
+    if (!expectLongRunning) {
+      const statusCode = await waitForStatusFile(
+        statusPath,
+        MAINTENANCE_SCRIPT_TIMEOUT_MS,
+      );
+      if (statusCode === null) {
+        return "Maintenance script did not report completion";
+      }
+      if (statusCode !== 0) {
+        const logPreview = await readLogPreview(logPath, 2000);
+        return formatScriptError(scriptType, statusCode, logPreview);
+      }
+      log("INFO", "[environmentScripts] Maintenance script complete", {
+        sessionName,
+        windowName,
+      });
+      return null;
+    }
+
+    const statusCode = await waitForStatusFile(
+      statusPath,
+      DEV_SCRIPT_FAILURE_WINDOW_MS,
+    );
+    if (statusCode === null) {
+      log("INFO", "[environmentScripts] Dev script running", {
+        sessionName,
+        windowName,
+      });
+      return null;
+    }
+    if (statusCode !== 0) {
+      const logPreview = await readLogPreview(logPath, 2000);
+      return formatScriptError(scriptType, statusCode, logPreview);
+    }
+    const logPreview = await readLogPreview(logPath, 2000);
+    return (
+      "Dev script exited immediately" +
+      (logPreview ? ` | log: ${logPreview}` : "")
+    );
+  } catch (error) {
+    return `${
+      scriptType === "maintenance" ? "Maintenance" : "Dev"
+    } script setup failed: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
+async function runTmuxCommand(
+  args: string[],
+): Promise<{ exitCode: number; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const tmuxProcess = spawn("tmux", args, {
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let stderr = "";
+    tmuxProcess.stderr.on("data", (data) => {
+      stderr += data.toString();
+    });
+    tmuxProcess.on("error", (error) => {
+      reject(error);
+    });
+    tmuxProcess.on("exit", (code) => {
+      resolve({ exitCode: code ?? 0, stderr });
+    });
+  });
+}
+
+async function waitForStatusFile(
+  statusPath: string,
+  timeoutMs: number,
+): Promise<number | null> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const contents = await fs.readFile(statusPath, "utf8");
+      const trimmed = contents.trim();
+      if (trimmed.length === 0) {
+        return 0;
+      }
+      const parsed = Number(trimmed);
+      if (!Number.isNaN(parsed)) {
+        return parsed;
+      }
+      return 0;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw error;
+      }
+    }
+    await sleep(250);
+  }
+  return null;
+}
+
+async function readLogPreview(
+  logPath: string,
+  maxLength = 2000,
+): Promise<string | null> {
+  try {
+    const contents = await fs.readFile(logPath, "utf8");
+    return previewOutput(contents, maxLength);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+function formatScriptError(
+  scriptType: EnvironmentScriptType,
+  exitCode: number,
+  logPreview: string | null,
+): string {
+  const label = scriptType === "maintenance" ? "Maintenance" : "Dev";
+  return `${label} script failed with exit code ${exitCode}${
+    logPreview ? ` | log: ${logPreview}` : ""
+  }`;
 }
 
 // Worker statistics
@@ -843,6 +1174,8 @@ async function createTerminal(
     agentModel?: string;
     startupCommands?: string[];
     taskRunContext: WorkerTaskRunContext;
+    maintenanceScript?: string;
+    devScript?: string;
   },
 ): Promise<void> {
   const {
@@ -854,7 +1187,12 @@ async function createTerminal(
     args = [],
     startupCommands = [],
     taskRunContext,
+    maintenanceScript,
+    devScript,
+    taskRunId,
   } = options;
+
+  const tmuxSessionName = sanitizeTmuxSessionName(terminalId);
 
   const taskRunToken = taskRunContext.taskRunToken;
   const convexUrl = taskRunContext.convexUrl;
@@ -905,7 +1243,7 @@ async function createTerminal(
       "new-session",
       "-A",
       "-s",
-      sanitizeTmuxSessionName(terminalId),
+      tmuxSessionName,
     ];
     spawnArgs.push("-x", cols.toString(), "-y", rows.toString());
 
@@ -1016,6 +1354,31 @@ async function createTerminal(
   } catch (error) {
     log("ERROR", "Failed to spawn process", error);
     return;
+  }
+
+  if (
+    (maintenanceScript && maintenanceScript.trim().length > 0) ||
+    (devScript && devScript.trim().length > 0)
+  ) {
+    void (async () => {
+      try {
+        await ensureTmuxSessionReady(tmuxSessionName);
+        await setupEnvironmentScripts({
+          sessionName: tmuxSessionName,
+          cwd,
+          maintenanceScript,
+          devScript,
+          taskRunId,
+          terminalId,
+        });
+      } catch (error) {
+        log(
+          "ERROR",
+          "[createTerminal] Failed to start environment scripts",
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      }
+    })();
   }
 
   const headlessTerminal = new Terminal({

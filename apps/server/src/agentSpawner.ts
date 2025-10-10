@@ -7,6 +7,7 @@ import {
 } from "@cmux/shared/agentConfig";
 import type {
   WorkerCreateTerminal,
+  WorkerEnvironmentScriptFailed,
   WorkerTerminalFailed,
 } from "@cmux/shared/worker-schemas";
 import { parse as parseDotenv } from "dotenv";
@@ -424,6 +425,21 @@ export async function spawnAgent(
     const vscodeInfo = await vscodeInstance.start();
     const vscodeUrl = vscodeInfo.workspaceUrl;
 
+    let maintenanceScript: string | null = null;
+    let devScript: string | null = null;
+    if (vscodeInstance instanceof CmuxVSCodeInstance) {
+      const rawMaintenanceScript = vscodeInstance.getMaintenanceScript();
+      const rawDevScript = vscodeInstance.getDevScript();
+      maintenanceScript =
+        rawMaintenanceScript && rawMaintenanceScript.trim().length > 0
+          ? rawMaintenanceScript
+          : null;
+      devScript =
+        rawDevScript && rawDevScript.trim().length > 0
+          ? rawDevScript
+          : null;
+    }
+
     serverLogger.info(
       `VSCode instance spawned for agent ${agent.name}: ${vscodeUrl}`,
     );
@@ -491,6 +507,46 @@ export async function spawnAgent(
         );
       }
     });
+
+    vscodeInstance.on(
+      "environment-script-failed",
+      async (data: WorkerEnvironmentScriptFailed) => {
+        const runId = data.taskRunId ?? taskRunId;
+        if (!runId) {
+          serverLogger.warn(
+            `[AgentSpawner] Environment script failure missing taskRunId`,
+            data,
+          );
+          return;
+        }
+
+        const payload =
+          data.scriptType === "maintenance"
+            ? { maintenanceError: data.error }
+            : { devError: data.error };
+
+        try {
+          await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () =>
+            retryOnOptimisticConcurrency(() =>
+              getConvex().mutation(api.taskRuns.updateEnvironmentError, {
+                teamSlugOrId,
+                id: runId,
+                ...payload,
+              }),
+            ),
+          );
+
+          serverLogger.warn(
+            `[AgentSpawner] Recorded ${data.scriptType} script failure for task run ${runId}`,
+          );
+        } catch (error) {
+          serverLogger.error(
+            `[AgentSpawner] Failed to record ${data.scriptType} script failure`,
+            error,
+          );
+        }
+      },
+    );
 
     // Get ports if it's a Docker instance
     let ports:
@@ -655,6 +711,8 @@ export async function spawnAgent(
       authFiles,
       startupCommands,
       cwd: "/root/workspace",
+      maintenanceScript: maintenanceScript ?? undefined,
+      devScript: devScript ?? undefined,
     };
 
     const switchBranch = async () => {

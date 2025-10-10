@@ -19,6 +19,8 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
   private workerUrl: string | null = null;
   private vscodeBaseUrl: string | null = null;
   private provider: VSCodeInstanceInfo["provider"] = "morph";
+  private maintenanceScript: string | null = null;
+  private devScript: string | null = null;
   private repoUrl?: string;
   private branch?: string;
   private newBranch?: string;
@@ -76,6 +78,8 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
     this.vscodeBaseUrl = data.vscodeUrl;
     this.workerUrl = data.workerUrl;
     this.provider = data.provider || "morph";
+    this.maintenanceScript = data.maintenanceScript ?? null;
+    this.devScript = data.devScript ?? null;
 
     const workspaceUrl = this.getWorkspaceUrl(this.vscodeBaseUrl);
     dockerLogger.info(`[CmuxVSCodeInstance] VS Code URL: ${workspaceUrl}`);
@@ -175,5 +179,13 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
 
   getName(): string {
     return this.sandboxId || this.instanceId;
+  }
+
+  getMaintenanceScript(): string | null {
+    return this.maintenanceScript;
+  }
+
+  getDevScript(): string | null {
+    return this.devScript;
   }
 }
