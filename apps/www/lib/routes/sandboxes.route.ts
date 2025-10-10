@@ -19,7 +19,6 @@ import {
 import type { HydrateRepoConfig } from "./sandboxes/hydration";
 import { hydrateWorkspace } from "./sandboxes/hydration";
 import { resolveTeamAndSnapshot } from "./sandboxes/snapshot";
-import { runMaintenanceScript, startDevScript } from "./sandboxes/startDevAndMaintenanceScript";
 import {
   encodeEnvContentForEnvctl,
   envctlLoadCommand,
@@ -214,6 +213,18 @@ sandboxesRouter.openapi(
         envVarsToApply += `\nCMUX_TASK_RUN_JWT="${body.taskRunJwt}"`;
       }
 
+      // Add dev and maintenance scripts as environment variables to be run from tmux attach
+      if (maintenanceScript) {
+        // Base64 encode to safely pass through environment variables
+        const encodedScript = Buffer.from(maintenanceScript).toString("base64");
+        envVarsToApply += `\nCMUX_MAINTENANCE_SCRIPT="${encodedScript}"`;
+      }
+      if (devScript) {
+        // Base64 encode to safely pass through environment variables
+        const encodedScript = Buffer.from(devScript).toString("base64");
+        envVarsToApply += `\nCMUX_DEV_SCRIPT="${encodedScript}"`;
+      }
+
       // Apply all environment variables if any
       if (envVarsToApply.trim().length > 0) {
         try {
@@ -302,42 +313,9 @@ sandboxesRouter.openapi(
         return c.text("Failed to hydrate sandbox", 500);
       }
 
-      if (maintenanceScript || devScript) {
-        (async () => {
-          const maintenanceScriptResult = maintenanceScript
-            ? await runMaintenanceScript({
-              instance,
-              script: maintenanceScript,
-            })
-            : undefined;
-          const devScriptResult = devScript
-            ? await startDevScript({ instance, script: devScript })
-            : undefined;
-          if (
-            taskRunConvexId &&
-            (maintenanceScriptResult?.error || devScriptResult?.error)
-          ) {
-            try {
-              await convex.mutation(api.taskRuns.updateEnvironmentError, {
-                teamSlugOrId: body.teamSlugOrId,
-                id: taskRunConvexId,
-                maintenanceError: maintenanceScriptResult?.error || undefined,
-                devError: devScriptResult?.error || undefined,
-              });
-            } catch (mutationError) {
-              console.error(
-                "[sandboxes.start] Failed to record environment error to taskRun",
-                mutationError,
-              );
-            }
-          }
-        })().catch((error) => {
-          console.error(
-            "[sandboxes.start] Background script execution failed:",
-            error,
-          );
-        });
-      }
+      // Note: Dev and maintenance scripts are now run from tmux attach via environment variables
+      // (CMUX_DEV_SCRIPT and CMUX_MAINTENANCE_SCRIPT) instead of being run here directly.
+      // This ensures they run in the same context as the agent.
 
       await configureGitIdentityTask;
 

@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { promises as fs } from "node:fs";
 import { log } from "./logger";
 
 interface IdleDetectionOptions {
@@ -37,6 +38,131 @@ function shouldIgnoreOutput(data: Buffer, ignorePatterns: RegExp[]): boolean {
 
   // All lines matched ignore patterns
   return true;
+}
+
+// Helper function to run a script synchronously
+async function runScript(
+  scriptContent: string,
+  scriptType: "maintenance" | "dev"
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const WORKSPACE_ROOT = "/root/workspace";
+  const CMUX_RUNTIME_DIR = "/var/tmp/cmux-scripts";
+  const scriptPath = `${CMUX_RUNTIME_DIR}/${scriptType}-script.sh`;
+
+  // Ensure directory exists
+  await fs.mkdir(CMUX_RUNTIME_DIR, { recursive: true });
+
+  // Write script to file
+  await fs.writeFile(scriptPath, scriptContent, { mode: 0o755 });
+
+  return new Promise((resolve) => {
+    const child = spawn("bash", ["-eu", "-o", "pipefail", scriptPath], {
+      cwd: WORKSPACE_ROOT,
+      env: { ...process.env },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (data) => {
+      stdout += data.toString();
+    });
+
+    child.stderr.on("data", (data) => {
+      stderr += data.toString();
+    });
+
+    child.on("exit", (code) => {
+      // Clean up script file
+      fs.unlink(scriptPath).catch(() => {});
+      resolve({
+        exitCode: code || 0,
+        stdout,
+        stderr,
+      });
+    });
+
+    child.on("error", (error) => {
+      // Clean up script file
+      fs.unlink(scriptPath).catch(() => {});
+      resolve({
+        exitCode: 1,
+        stdout,
+        stderr: error.message,
+      });
+    });
+  });
+}
+
+// Helper function to run a script in the background
+async function runScriptInBackground(
+  scriptContent: string,
+  scriptType: "dev"
+): Promise<void> {
+  const WORKSPACE_ROOT = "/root/workspace";
+  const CMUX_RUNTIME_DIR = "/var/tmp/cmux-scripts";
+  const LOG_DIR = "/var/log/cmux";
+  const scriptPath = `${CMUX_RUNTIME_DIR}/${scriptType}-script.sh`;
+  const pidFile = `${LOG_DIR}/${scriptType}-script.pid`;
+  const logFile = `${LOG_DIR}/${scriptType}-script.log`;
+
+  // Ensure directories exist
+  await fs.mkdir(CMUX_RUNTIME_DIR, { recursive: true });
+  await fs.mkdir(LOG_DIR, { recursive: true });
+
+  // Write script to file
+  await fs.writeFile(scriptPath, scriptContent, { mode: 0o755 });
+
+  // Kill any existing process
+  try {
+    const existingPid = await fs.readFile(pidFile, "utf-8");
+    if (existingPid) {
+      try {
+        process.kill(parseInt(existingPid.trim(), 10));
+        // Wait a bit for process to die
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      } catch {
+        // Process already dead or doesn't exist
+      }
+    }
+  } catch {
+    // No existing PID file
+  }
+
+  return new Promise((resolve, reject) => {
+    const child = spawn("bash", ["-eu", "-o", "pipefail", scriptPath], {
+      cwd: WORKSPACE_ROOT,
+      env: { ...process.env },
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: true,
+    });
+
+    // Write PID file
+    fs.writeFile(pidFile, child.pid?.toString() || "").catch(() => {});
+
+    // Redirect output to log file
+    const logStream = require("fs").createWriteStream(logFile, { flags: "a" });
+    child.stdout.pipe(logStream);
+    child.stderr.pipe(logStream);
+
+    // Detach from parent process
+    child.unref();
+
+    // Check if it started successfully
+    setTimeout(() => {
+      try {
+        if (child.pid && child.exitCode === null) {
+          // Process is still running
+          resolve();
+        } else {
+          reject(new Error(`${scriptType} script failed to start`));
+        }
+      } catch (error) {
+        reject(error);
+      }
+    }, 500);
+  });
 }
 
 // Helper function to check if tmux session exists
@@ -200,11 +326,64 @@ export async function detectTerminalIdle(
     await new Promise((resolve) => setTimeout(resolve, 5000));
     log(
       "DEBUG",
-      "[detectTerminalIdle] 5 second wait complete, starting process spawn",
+      "[detectTerminalIdle] 5 second wait complete, checking for dev/maintenance scripts",
       {
         sessionName,
       }
     );
+
+    // Check for and run dev/maintenance scripts before attaching to tmux
+    const maintenanceScript = process.env.CMUX_MAINTENANCE_SCRIPT;
+    const devScript = process.env.CMUX_DEV_SCRIPT;
+
+    if (maintenanceScript || devScript) {
+      log(
+        "INFO",
+        "[detectTerminalIdle] Found dev/maintenance scripts to run before tmux attach",
+        {
+          hasMaintenanceScript: !!maintenanceScript,
+          hasDevScript: !!devScript,
+        }
+      );
+
+      // Run maintenance script first (synchronously)
+      if (maintenanceScript) {
+        try {
+          log("INFO", "[detectTerminalIdle] Running maintenance script...");
+          const decodedScript = Buffer.from(maintenanceScript, "base64").toString("utf-8");
+          const maintenanceResult = await runScript(decodedScript, "maintenance");
+          if (maintenanceResult.exitCode !== 0) {
+            log(
+              "ERROR",
+              "[detectTerminalIdle] Maintenance script failed",
+              {
+                exitCode: maintenanceResult.exitCode,
+                stderr: maintenanceResult.stderr.slice(0, 500),
+              }
+            );
+          } else {
+            log("INFO", "[detectTerminalIdle] Maintenance script completed successfully");
+          }
+        } catch (error) {
+          log("ERROR", "[detectTerminalIdle] Failed to run maintenance script", error);
+        }
+      }
+
+      // Run dev script (in background)
+      if (devScript) {
+        try {
+          log("INFO", "[detectTerminalIdle] Starting dev script in background...");
+          const decodedScript = Buffer.from(devScript, "base64").toString("utf-8");
+          // Start dev script in background and don't wait for it
+          runScriptInBackground(decodedScript, "dev").catch((error) => {
+            log("ERROR", "[detectTerminalIdle] Dev script background execution failed", error);
+          });
+          log("INFO", "[detectTerminalIdle] Dev script started in background");
+        } catch (error) {
+          log("ERROR", "[detectTerminalIdle] Failed to start dev script", error);
+        }
+      }
+    }
 
     // Use 'script' command to allocate a PTY and attach to tmux session
     try {
