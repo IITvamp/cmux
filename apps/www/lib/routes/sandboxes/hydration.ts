@@ -69,9 +69,7 @@ exit $EXIT_CODE
 `;
 
   console.log("[sandboxes.start] Starting hydration with Bun script");
-  const hydrateRes = await instance.exec(
-    `bash -c ${singleQuote(command.trim())}`
-  );
+  const hydrateRes = await instance.exec(`bash -c ${singleQuote(command)}`);
 
   // Log the full output for debugging
   const maskedStdout = maskSensitive(hydrateRes.stdout || "");

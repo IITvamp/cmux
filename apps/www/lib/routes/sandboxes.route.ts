@@ -6,7 +6,6 @@ import { verifyTeamAccess } from "@/lib/utils/team-verification";
 import { env } from "@/lib/utils/www-env";
 import { api } from "@cmux/convex/api";
 import { RESERVED_CMUX_PORT_SET } from "@cmux/shared/utils/reserved-cmux-ports";
-import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { MorphCloudClient } from "morphcloud";
@@ -19,10 +18,6 @@ import {
 import type { HydrateRepoConfig } from "./sandboxes/hydration";
 import { hydrateWorkspace } from "./sandboxes/hydration";
 import { resolveTeamAndSnapshot } from "./sandboxes/snapshot";
-import {
-  runMaintenanceScript,
-  startDevScript,
-} from "./sandboxes/startDevAndMaintenanceScript";
 import {
   encodeEnvContentForEnvctl,
   envctlLoadCommand,
@@ -38,10 +33,8 @@ const StartSandboxBody = z
     ttlSeconds: z
       .number()
       .optional()
-      .default(60 * 60),
+      .default(20 * 60),
     metadata: z.record(z.string(), z.string()).optional(),
-    taskRunId: z.string().optional(),
-    taskRunJwt: z.string().optional(),
     // Optional hydration parameters to clone a repo into the sandbox on start
     repoUrl: z.string().optional(),
     branch: z.string().optional(),
@@ -147,30 +140,18 @@ sandboxesRouter.openapi(
     try {
       const convex = getConvex({ accessToken });
 
-      const taskRunConvexId = body.taskRunId
-        ? typedZid("taskRuns").parse(body.taskRunId)
-        : null;
-
-      const {
-        team,
-        resolvedSnapshotId,
-        environmentDataVaultKey,
-        environmentMaintenanceScript,
-        environmentDevScript,
-      } = await resolveTeamAndSnapshot({
-        req: c.req.raw,
-        convex,
-        teamSlugOrId: body.teamSlugOrId,
-        environmentId: body.environmentId,
-        snapshotId: body.snapshotId,
-      });
+      const { team, resolvedSnapshotId, environmentDataVaultKey } =
+        await resolveTeamAndSnapshot({
+          req: c.req.raw,
+          convex,
+          teamSlugOrId: body.teamSlugOrId,
+          environmentId: body.environmentId,
+          snapshotId: body.snapshotId,
+        });
 
       const environmentEnvVarsPromise = environmentDataVaultKey
         ? loadEnvironmentEnvVars(environmentDataVaultKey)
         : Promise.resolve<string | null>(null);
-
-      const maintenanceScript = environmentMaintenanceScript ?? null;
-      const devScript = environmentDevScript ?? null;
 
       const gitIdentityPromise = githubAccessTokenPromise.then(
         ({ githubAccessToken }) => {
@@ -182,10 +163,9 @@ sandboxesRouter.openapi(
       );
 
       const client = new MorphCloudClient({ apiKey: env.MORPH_API_KEY });
-
       const instance = await client.instances.start({
         snapshotId: resolvedSnapshotId,
-        ttlSeconds: body.ttlSeconds ?? 60 * 60,
+        ttlSeconds: body.ttlSeconds ?? 20 * 60,
         ttlAction: "pause",
         metadata: {
           app: "cmux",
@@ -203,37 +183,19 @@ sandboxesRouter.openapi(
         return c.text("VSCode or worker service not found", 500);
       }
 
-      // Get environment variables from the environment if configured
       const environmentEnvVarsContent = await environmentEnvVarsPromise;
-
-      // Prepare environment variables including task JWT if present
-      let envVarsToApply = environmentEnvVarsContent || "";
-
-      // Add CMUX task-related env vars if present
-      if (body.taskRunId) {
-        envVarsToApply += `\nCMUX_TASK_RUN_ID="${body.taskRunId}"`;
-      }
-      if (body.taskRunJwt) {
-        envVarsToApply += `\nCMUX_TASK_RUN_JWT="${body.taskRunJwt}"`;
-      }
-
-      // Apply all environment variables if any
-      if (envVarsToApply.trim().length > 0) {
+      if (
+        environmentEnvVarsContent &&
+        environmentEnvVarsContent.trim().length > 0
+      ) {
         try {
-          const encodedEnv = encodeEnvContentForEnvctl(envVarsToApply);
-          const loadRes = await instance.exec([
-            "/bin/bash",
-            "-lc",
-            envctlLoadCommand(encodedEnv),
-          ]);
+          const encodedEnv = encodeEnvContentForEnvctl(
+            environmentEnvVarsContent
+          );
+          const loadRes = await instance.exec(envctlLoadCommand(encodedEnv));
           if (loadRes.exit_code === 0) {
             console.log(
-              `[sandboxes.start] Applied environment variables via envctl`,
-              {
-                hasEnvironmentVars: Boolean(environmentEnvVarsContent),
-                hasTaskRunId: Boolean(body.taskRunId),
-                hasTaskRunJwt: Boolean(body.taskRunJwt),
-              }
+              `[sandboxes.start] Applied environment env vars via envctl`
             );
           } else {
             console.error(
@@ -242,7 +204,7 @@ sandboxesRouter.openapi(
           }
         } catch (error) {
           console.error(
-            "[sandboxes.start] Failed to apply environment variables",
+            "[sandboxes.start] Failed to apply environment env vars",
             error
           );
         }
@@ -307,43 +269,6 @@ sandboxesRouter.openapi(
         console.error(`[sandboxes.start] Hydration failed:`, error);
         await instance.stop().catch(() => {});
         return c.text("Failed to hydrate sandbox", 500);
-      }
-
-      if (maintenanceScript || devScript) {
-        (async () => {
-          const maintenanceScriptResult = maintenanceScript
-            ? await runMaintenanceScript({
-                instance,
-                script: maintenanceScript,
-              })
-            : undefined;
-          const devScriptResult = devScript
-            ? await startDevScript({ instance, script: devScript })
-            : undefined;
-          if (
-            taskRunConvexId &&
-            (maintenanceScriptResult?.error || devScriptResult?.error)
-          ) {
-            try {
-              await convex.mutation(api.taskRuns.updateEnvironmentError, {
-                teamSlugOrId: body.teamSlugOrId,
-                id: taskRunConvexId,
-                maintenanceError: maintenanceScriptResult?.error || undefined,
-                devError: devScriptResult?.error || undefined,
-              });
-            } catch (mutationError) {
-              console.error(
-                "[sandboxes.start] Failed to record environment error to taskRun",
-                mutationError
-              );
-            }
-          }
-        })().catch((error) => {
-          console.error(
-            "[sandboxes.start] Background script execution failed:",
-            error
-          );
-        });
       }
 
       await configureGitIdentityTask;
@@ -437,7 +362,7 @@ sandboxesRouter.openapi(
 
       const encodedEnv = encodeEnvContentForEnvctl(envVarsContent);
       const command = envctlLoadCommand(encodedEnv);
-      const execResult = await instance.exec(["/bin/bash", "-lc", command]);
+      const execResult = await instance.exec(command);
       if (execResult.exit_code !== 0) {
         console.error(
           `[sandboxes.env] envctl load failed exit=${execResult.exit_code} stderr=${(execResult.stderr || "").slice(0, 200)}`
@@ -598,11 +523,9 @@ sandboxesRouter.openapi(
       const reservedPorts = RESERVED_CMUX_PORT_SET;
 
       // Attempt to read devcontainer.json for declared forwarded ports
-      const devcontainerJson = await instance.exec([
-        "/bin/bash",
-        "-lc",
-        "cat /root/workspace/.devcontainer/devcontainer.json",
-      ]);
+      const devcontainerJson = await instance.exec(
+        "cat /root/workspace/.devcontainer/devcontainer.json"
+      );
       const parsed =
         devcontainerJson.exit_code === 0
           ? (JSON.parse(devcontainerJson.stdout || "{}") as {
