@@ -21,8 +21,7 @@ import { hydrateWorkspace } from "./sandboxes/hydration";
 import { resolveTeamAndSnapshot } from "./sandboxes/snapshot";
 import {
   allocateScriptIdentifiers,
-  runMaintenanceScript,
-  startDevScript,
+  runMaintenanceAndDevScripts,
 } from "./sandboxes/startDevAndMaintenanceScript";
 import {
   encodeEnvContentForEnvctl,
@@ -177,12 +176,10 @@ sandboxesRouter.openapi(
       const maintenanceScript = environmentMaintenanceScript ?? null;
       const devScript = environmentDevScript ?? null;
 
-      const maintenanceIdentifiers = maintenanceScript
-        ? allocateScriptIdentifiers("maintenance")
-        : null;
-      const devIdentifiers = devScript
-        ? allocateScriptIdentifiers("dev")
-        : null;
+      const scriptIdentifiers =
+        maintenanceScript || devScript
+          ? allocateScriptIdentifiers()
+          : null;
 
       const gitIdentityPromise = githubAccessTokenPromise.then(
         ({ githubAccessToken }) => {
@@ -319,46 +316,23 @@ sandboxesRouter.openapi(
 
       if (maintenanceScript || devScript) {
         (async () => {
-          const maintenanceScriptResult = maintenanceScript
-            ? await runMaintenanceScript({
-              instance,
-              script: maintenanceScript,
-              identifiers: maintenanceIdentifiers ?? undefined,
-            })
-            : undefined;
-          const devScriptResult = devScript
-            ? await startDevScript({
-              instance,
-              script: devScript,
-              identifiers: devIdentifiers ?? undefined,
-            })
-            : undefined;
-          if (
-            taskRunConvexId &&
-            (maintenanceScriptResult?.error || devScriptResult?.error)
-          ) {
+          const result = await runMaintenanceAndDevScripts({
+            instance,
+            maintenanceScript: maintenanceScript || undefined,
+            devScript: devScript || undefined,
+            identifiers: scriptIdentifiers ?? undefined,
+          });
+          if (taskRunConvexId && (result.maintenanceError || result.devError)) {
             try {
               await convex.mutation(api.taskRuns.updateEnvironmentError, {
                 teamSlugOrId: body.teamSlugOrId,
                 id: taskRunConvexId,
-                maintenanceError: maintenanceScriptResult?.error || undefined,
-                devError: devScriptResult?.error || undefined,
-                maintenanceSessionName:
-                  maintenanceScriptResult?.sessionName ||
-                  maintenanceIdentifiers?.sessionName ||
-                  undefined,
-                maintenanceLogPath:
-                  maintenanceScriptResult?.logFile ||
-                  maintenanceIdentifiers?.logFile ||
-                  undefined,
-                devSessionName:
-                  devScriptResult?.sessionName ||
-                  devIdentifiers?.sessionName ||
-                  undefined,
-                devLogPath:
-                  devScriptResult?.logFile ||
-                  devIdentifiers?.logFile ||
-                  undefined,
+                maintenanceError: result.maintenanceError ?? undefined,
+                devError: result.devError ?? undefined,
+                maintenanceSessionName: result.maintenanceWindowName ?? undefined,
+                maintenanceLogPath: result.maintenanceLogFile ?? undefined,
+                devSessionName: result.devWindowName ?? undefined,
+                devLogPath: result.devLogFile ?? undefined,
               });
             } catch (mutationError) {
               console.error(
@@ -382,11 +356,10 @@ sandboxesRouter.openapi(
         vscodeUrl: vscodeService.url,
         workerUrl: workerService.url,
         provider: "morph",
-        maintenanceScriptSessionName:
-          maintenanceIdentifiers?.sessionName ?? null,
-        maintenanceScriptLogPath: maintenanceIdentifiers?.logFile ?? null,
-        devScriptSessionName: devIdentifiers?.sessionName ?? null,
-        devScriptLogPath: devIdentifiers?.logFile ?? null,
+        maintenanceScriptSessionName: scriptIdentifiers?.maintenanceWindowName ?? null,
+        maintenanceScriptLogPath: scriptIdentifiers?.maintenanceLogFile ?? null,
+        devScriptSessionName: scriptIdentifiers?.devWindowName ?? null,
+        devScriptLogPath: scriptIdentifiers?.devLogFile ?? null,
       });
     } catch (error) {
       if (error instanceof HTTPException) {

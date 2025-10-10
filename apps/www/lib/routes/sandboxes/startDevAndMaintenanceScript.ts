@@ -1,272 +1,175 @@
 import { randomUUID } from "node:crypto";
 
 import type { MorphInstance } from "./git";
-import { maskSensitive, singleQuote } from "./shell";
+import { singleQuote } from "./shell";
 
 const WORKSPACE_ROOT = "/root/workspace";
 const CMUX_RUNTIME_DIR = "/var/tmp/cmux-scripts";
 const LOG_DIR = "/var/log/cmux";
 
-const sanitizeTmuxSessionName = (value: string): string =>
-  value.replace(/[^a-zA-Z0-9_-]/g, "_");
-
-type ScriptPrefix = "maintenance" | "dev";
-
 export type ScriptIdentifiers = {
-  id: string;
-  sessionName: string;
-  scriptPath: string;
-  runnerPath: string;
-  logFile: string;
-  exitFile: string;
-  waitName: string;
+  maintenanceId: string;
+  maintenanceWindowName: string;
+  maintenanceScriptPath: string;
+  maintenanceLogFile: string;
+  devId: string;
+  devWindowName: string;
+  devScriptPath: string;
+  devLogFile: string;
 };
 
-const buildScriptId = (prefix: ScriptPrefix): ScriptIdentifiers => {
-  const id = randomUUID().replace(/-/g, "").slice(0, 16);
-  const base = `cmux-${prefix}-${id}`;
-  const sessionName = sanitizeTmuxSessionName(base);
+export const allocateScriptIdentifiers = (): ScriptIdentifiers => {
+  const maintenanceId = randomUUID().replace(/-/g, "").slice(0, 16);
+  const devId = randomUUID().replace(/-/g, "").slice(0, 16);
   return {
-    id,
-    sessionName,
-    scriptPath: `${CMUX_RUNTIME_DIR}/${prefix}-script-${id}.sh`,
-    runnerPath: `${CMUX_RUNTIME_DIR}/${prefix}-runner-${id}.sh`,
-    logFile: `${LOG_DIR}/${prefix}-script-${id}.log`,
-    exitFile: `${LOG_DIR}/${prefix}-script-${id}.exit`,
-    waitName: sanitizeTmuxSessionName(`${base}-done`),
+    maintenanceId,
+    maintenanceWindowName: `maintenance-${maintenanceId}`,
+    maintenanceScriptPath: `${CMUX_RUNTIME_DIR}/maintenance-${maintenanceId}.sh`,
+    maintenanceLogFile: `${LOG_DIR}/maintenance-${maintenanceId}.log`,
+    devId,
+    devWindowName: `dev-${devId}`,
+    devScriptPath: `${CMUX_RUNTIME_DIR}/dev-${devId}.sh`,
+    devLogFile: `${LOG_DIR}/dev-${devId}.log`,
   };
 };
 
-export const allocateScriptIdentifiers = (prefix: ScriptPrefix): ScriptIdentifiers =>
-  buildScriptId(prefix);
-
-const previewOutput = (
-  value: string | undefined,
-  maxLength = 2500,
-): string | null => {
-  if (!value) {
-    return null;
-  }
-  const sanitized = maskSensitive(value).trim();
-  if (sanitized.length === 0) {
-    return null;
-  }
-  if (sanitized.length <= maxLength) {
-    return sanitized;
-  }
-  return `${sanitized.slice(0, maxLength)}…`;
-};
-
-const buildScriptFileCommand = (path: string, contents: string): string => `
-mkdir -p ${CMUX_RUNTIME_DIR}
-cat <<'CMUX_SCRIPT_EOF' > ${path}
-${contents}
-CMUX_SCRIPT_EOF
-chmod +x ${path}
-`;
-
 type ScriptResult = {
-  error: string | null;
-  sessionName: string;
-  logFile: string;
+  maintenanceError: string | null;
+  maintenanceWindowName: string | null;
+  maintenanceLogFile: string | null;
+  devError: string | null;
+  devWindowName: string | null;
+  devLogFile: string | null;
 };
 
-export async function runMaintenanceScript({
+export async function runMaintenanceAndDevScripts({
   instance,
-  script,
+  maintenanceScript,
+  devScript,
   identifiers,
 }: {
   instance: MorphInstance;
-  script: string;
+  maintenanceScript?: string;
+  devScript?: string;
   identifiers?: ScriptIdentifiers;
 }): Promise<ScriptResult> {
-  const ids = identifiers ?? buildScriptId("maintenance");
-  console.log("[cmux] runMaintenanceScript", {
-    session: ids.sessionName,
-    runnerPath: ids.runnerPath,
-    hasIdentifiers: Boolean(identifiers),
-    scriptLength: script.length,
-    scriptSample: script.slice(0, 80),
-  });
+  const ids = identifiers ?? allocateScriptIdentifiers();
 
-  if (!script || script.trim().length === 0) {
+  if (
+    (!maintenanceScript || maintenanceScript.trim().length === 0) &&
+    (!devScript || devScript.trim().length === 0)
+  ) {
     return {
-      error: "Maintenance script is empty",
-      sessionName: ids.sessionName,
-      logFile: ids.logFile,
+      maintenanceError: "Both maintenance and dev scripts are empty",
+      maintenanceWindowName: null,
+      maintenanceLogFile: null,
+      devError: null,
+      devWindowName: null,
+      devLogFile: null,
     };
   }
-  const command = `set -eux
+
+  const waitForTmuxSession = `for i in {1..20}; do
+  if tmux has-session -t cmux 2>/dev/null; then
+    break
+  fi
+  sleep 0.5
+done
+if ! tmux has-session -t cmux 2>/dev/null; then
+  echo "Error: cmux session does not exist" >&2
+  exit 1
+fi`;
+
+  let maintenanceError: string | null = null;
+  let devError: string | null = null;
+
+  if (maintenanceScript && maintenanceScript.trim().length > 0) {
+    const maintenanceScriptContent = `#!/bin/bash
+set -eux
+cd ${WORKSPACE_ROOT}
+
+echo "=== Maintenance Script Started at \$(date) ==="
+${maintenanceScript}
+echo "=== Maintenance Script Completed at \$(date) ==="
+`;
+
+    const maintenanceCommand = `set -eu
 mkdir -p ${LOG_DIR}
 mkdir -p ${CMUX_RUNTIME_DIR}
-cat > ${ids.scriptPath} <<'SCRIPT_EOF'
-${script}
+cat > ${ids.maintenanceScriptPath} <<'SCRIPT_EOF'
+${maintenanceScriptContent}
 SCRIPT_EOF
-chmod +x ${ids.scriptPath}
-echo "[DEBUG] Starting tmux server if needed..."
-tmux start-server 2>&1 || echo "Server already running"
-echo "[DEBUG] Killing existing session if any..."
-set +e
-tmux kill-session -t ${ids.sessionName} 2>&1
-set -e
-echo "[DEBUG] Creating new tmux session: ${ids.sessionName}"
-tmux new-session -d -s ${ids.sessionName} bash
-echo "[DEBUG] Sending command to tmux session"
-tmux send-keys -t ${ids.sessionName} "cd ${WORKSPACE_ROOT} && bash ${ids.scriptPath} 2>&1 | tee ${ids.logFile}; echo \$? > ${ids.exitFile}; tmux wait-for -S ${ids.waitName}" C-m
-echo "[DEBUG] Waiting for completion signal: ${ids.waitName}"
-tmux wait-for ${ids.waitName}
-echo "[DEBUG] Wait completed, reading exit code"
-exit_code=$(cat ${ids.exitFile} 2>&1 || echo 1)
-echo "[DEBUG] Exit code: \$exit_code"
-tmux kill-session -t ${ids.sessionName} 2>&1 || echo "Session already gone"
-exit \$exit_code
+chmod +x ${ids.maintenanceScriptPath}
+${waitForTmuxSession}
+tmux new-window -t cmux: -n ${ids.maintenanceWindowName} -d
+tmux send-keys -t cmux:${ids.maintenanceWindowName} "bash ${ids.maintenanceScriptPath} 2>&1 | tee ${ids.maintenanceLogFile}" C-m
 `;
 
-  try {
-    console.log("[cmux] Executing maintenance command", {
-      commandLength: command.length,
-      commandSample: command.slice(0, 200),
-    });
-    const result = await instance.exec(`bash -lc ${singleQuote(command)}`);
+    try {
+      const result = await instance.exec(
+        `bash -lc ${singleQuote(maintenanceCommand)}`,
+      );
 
-    console.log("[cmux] Maintenance command completed", {
-      exitCode: result.exit_code,
-      stdoutLength: result.stdout?.length ?? 0,
-      stderrLength: result.stderr?.length ?? 0,
-      stdoutPreview: result.stdout?.slice(0, 500),
-      stderrPreview: result.stderr?.slice(0, 500),
-    });
-
-    if (result.exit_code !== 0) {
-      const stderrPreview = previewOutput(result.stderr, 2000);
-      const stdoutPreview = previewOutput(result.stdout, 500);
-      const messageParts = [
-        `Maintenance script failed with exit code ${result.exit_code}`,
-        stderrPreview ? `stderr: ${stderrPreview}` : null,
-        stdoutPreview ? `stdout: ${stdoutPreview}` : null,
-      ].filter((part): part is string => part !== null);
-      return {
-        error: messageParts.join(" | "),
-        sessionName: ids.sessionName,
-        logFile: ids.logFile,
-      };
+      if (result.exit_code !== 0) {
+        const stderr = result.stderr?.trim() || "";
+        const stdout = result.stdout?.trim() || "";
+        const messageParts = [
+          `Failed to start maintenance script with exit code ${result.exit_code}`,
+          stderr ? `stderr: ${stderr}` : null,
+          stdout ? `stdout: ${stdout}` : null,
+        ].filter((part): part is string => part !== null);
+        maintenanceError = messageParts.join(" | ");
+      }
+    } catch (error) {
+      maintenanceError = `Maintenance script execution failed: ${error instanceof Error ? error.message : String(error)}`;
     }
-
-    return {
-      error: null,
-      sessionName: ids.sessionName,
-      logFile: ids.logFile,
-    };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    return {
-      error: `Maintenance script execution failed: ${errorMessage}`,
-      sessionName: ids.sessionName,
-      logFile: ids.logFile,
-    };
   }
-}
 
-export async function startDevScript({
-  instance,
-  script,
-  identifiers,
-}: {
-  instance: MorphInstance;
-  script: string;
-  identifiers?: ScriptIdentifiers;
-}): Promise<ScriptResult> {
-  const ids = identifiers ?? buildScriptId("dev");
-  console.log("[cmux] startDevScript", {
-    session: ids.sessionName,
-    runnerPath: ids.runnerPath,
-    hasIdentifiers: Boolean(identifiers),
-    scriptLength: script.length,
-    scriptSample: script.slice(0, 80),
-  });
+  if (devScript && devScript.trim().length > 0) {
+    const devScriptContent = `#!/bin/bash
+set -eux
+cd ${WORKSPACE_ROOT}
 
-  if (!script || script.trim().length === 0) {
-    return {
-      error: "Dev script is empty",
-      sessionName: ids.sessionName,
-      logFile: ids.logFile,
-    };
-  }
-  const devScriptDir = `${CMUX_RUNTIME_DIR}/${ids.id}`;
-  const devScriptPath = `${devScriptDir}/dev-script.sh`;
-  const command = `set -eux
+echo "=== Dev Script Started at \$(date) ==="
+${devScript}
+`;
+
+    const devCommand = `set -eu
 mkdir -p ${LOG_DIR}
-mkdir -p ${devScriptDir}
-cat > ${devScriptPath} <<'SCRIPT_EOF'
-${script}
+mkdir -p ${CMUX_RUNTIME_DIR}
+cat > ${ids.devScriptPath} <<'SCRIPT_EOF'
+${devScriptContent}
 SCRIPT_EOF
-chmod +x ${devScriptPath}
-echo "[DEBUG] Starting tmux server if needed..."
-tmux start-server 2>&1 || echo "Server already running"
-echo "[DEBUG] Killing existing dev session if any..."
-set +e
-tmux kill-session -t ${ids.sessionName} 2>&1
-set -e
-echo "[DEBUG] Creating new dev tmux session: ${ids.sessionName}"
-tmux new-session -d -s ${ids.sessionName} bash
-echo "[DEBUG] Setting up pipe-pane for logging"
-tmux pipe-pane -t ${ids.sessionName} -o "cat >> ${ids.logFile}"
-echo "[DEBUG] Sending cd command"
-tmux send-keys -t ${ids.sessionName} "cd ${WORKSPACE_ROOT}" C-m
-echo "[DEBUG] Sending dev script command"
-tmux send-keys -t ${ids.sessionName} "bash ${devScriptPath}" C-m
-sleep 0.5
-echo "[DEBUG] Checking if session is still alive"
-if ! tmux has-session -t ${ids.sessionName} 2>&1; then
-  echo "[ERROR] Dev script session died immediately" >&2
-  cat ${ids.logFile} 2>&1 || echo "No log file"
-  exit 1
-fi
-echo "[SUCCESS] Dev script started in tmux session ${ids.sessionName}"
-exit 0
+chmod +x ${ids.devScriptPath}
+${waitForTmuxSession}
+tmux new-window -t cmux: -n ${ids.devWindowName} -d
+tmux send-keys -t cmux:${ids.devWindowName} "bash ${ids.devScriptPath} 2>&1 | tee ${ids.devLogFile}" C-m
 `;
 
-  try {
-    console.log("[cmux] Executing dev command", {
-      commandLength: command.length,
-      commandSample: command.slice(0, 200),
-    });
-    const result = await instance.exec(`bash -lc ${singleQuote(command)}`);
+    try {
+      const result = await instance.exec(`bash -lc ${singleQuote(devCommand)}`);
 
-    console.log("[cmux] Dev command completed", {
-      exitCode: result.exit_code,
-      stdoutLength: result.stdout?.length ?? 0,
-      stderrLength: result.stderr?.length ?? 0,
-      stdoutPreview: result.stdout?.slice(0, 500),
-      stderrPreview: result.stderr?.slice(0, 500),
-    });
-
-    if (result.exit_code !== 0) {
-      const stderrPreview = previewOutput(result.stderr, 2000);
-      const stdoutPreview = previewOutput(result.stdout, 500);
-      const messageParts = [
-        `Dev script failed to start with exit code ${result.exit_code}`,
-        stderrPreview ? `stderr: ${stderrPreview}` : null,
-        stdoutPreview ? `stdout: ${stdoutPreview}` : null,
-      ].filter((part): part is string => part !== null);
-      return {
-        error: messageParts.join(" | "),
-        sessionName: ids.sessionName,
-        logFile: ids.logFile,
-      };
+      if (result.exit_code !== 0) {
+        const stderr = result.stderr?.trim() || "";
+        const stdout = result.stdout?.trim() || "";
+        const messageParts = [
+          `Failed to start dev script with exit code ${result.exit_code}`,
+          stderr ? `stderr: ${stderr}` : null,
+          stdout ? `stdout: ${stdout}` : null,
+        ].filter((part): part is string => part !== null);
+        devError = messageParts.join(" | ");
+      }
+    } catch (error) {
+      devError = `Dev script execution failed: ${error instanceof Error ? error.message : String(error)}`;
     }
-
-    return {
-      error: null,
-      sessionName: ids.sessionName,
-      logFile: ids.logFile,
-    };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    return {
-      error: `Dev script execution failed: ${errorMessage}`,
-      sessionName: ids.sessionName,
-      logFile: ids.logFile,
-    };
   }
+
+  return {
+    maintenanceError,
+    maintenanceWindowName: maintenanceScript ? ids.maintenanceWindowName : null,
+    maintenanceLogFile: maintenanceScript ? ids.maintenanceLogFile : null,
+    devError,
+    devWindowName: devScript ? ids.devWindowName : null,
+    devLogFile: devScript ? ids.devLogFile : null,
+  };
 }
