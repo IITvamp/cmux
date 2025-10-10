@@ -6,7 +6,6 @@ import { verifyTeamAccess } from "@/lib/utils/team-verification";
 import { env } from "@/lib/utils/www-env";
 import { api } from "@cmux/convex/api";
 import { RESERVED_CMUX_PORT_SET } from "@cmux/shared/utils/reserved-cmux-ports";
-import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { MorphCloudClient } from "morphcloud";
@@ -19,7 +18,6 @@ import {
 import type { HydrateRepoConfig } from "./sandboxes/hydration";
 import { hydrateWorkspace } from "./sandboxes/hydration";
 import { resolveTeamAndSnapshot } from "./sandboxes/snapshot";
-import { runMaintenanceScript, startDevScript } from "./sandboxes/startDevAndMaintenanceScript";
 import {
   encodeEnvContentForEnvctl,
   envctlLoadCommand,
@@ -53,6 +51,8 @@ const StartSandboxResponse = z
     vscodeUrl: z.string(),
     workerUrl: z.string(),
     provider: z.enum(["morph"]).default("morph"),
+    maintenanceScript: z.string().nullable().optional(),
+    devScript: z.string().nullable().optional(),
   })
   .openapi("StartSandboxResponse");
 
@@ -143,10 +143,6 @@ sandboxesRouter.openapi(
 
     try {
       const convex = getConvex({ accessToken });
-
-      const taskRunConvexId = body.taskRunId
-        ? typedZid("taskRuns").parse(body.taskRunId)
-        : null;
 
       const {
         team,
@@ -302,43 +298,6 @@ sandboxesRouter.openapi(
         return c.text("Failed to hydrate sandbox", 500);
       }
 
-      if (maintenanceScript || devScript) {
-        (async () => {
-          const maintenanceScriptResult = maintenanceScript
-            ? await runMaintenanceScript({
-              instance,
-              script: maintenanceScript,
-            })
-            : undefined;
-          const devScriptResult = devScript
-            ? await startDevScript({ instance, script: devScript })
-            : undefined;
-          if (
-            taskRunConvexId &&
-            (maintenanceScriptResult?.error || devScriptResult?.error)
-          ) {
-            try {
-              await convex.mutation(api.taskRuns.updateEnvironmentError, {
-                teamSlugOrId: body.teamSlugOrId,
-                id: taskRunConvexId,
-                maintenanceError: maintenanceScriptResult?.error || undefined,
-                devError: devScriptResult?.error || undefined,
-              });
-            } catch (mutationError) {
-              console.error(
-                "[sandboxes.start] Failed to record environment error to taskRun",
-                mutationError,
-              );
-            }
-          }
-        })().catch((error) => {
-          console.error(
-            "[sandboxes.start] Background script execution failed:",
-            error,
-          );
-        });
-      }
-
       await configureGitIdentityTask;
 
       return c.json({
@@ -346,6 +305,8 @@ sandboxesRouter.openapi(
         vscodeUrl: vscodeService.url,
         workerUrl: workerService.url,
         provider: "morph",
+        maintenanceScript,
+        devScript,
       });
     } catch (error) {
       if (error instanceof HTTPException) {

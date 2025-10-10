@@ -38,6 +38,120 @@ const SWITCH_BRANCH_BUN_SCRIPT = rawSwitchBranchScript;
 
 const { getApiEnvironmentsByIdVars } = await getWwwOpenApiModule();
 
+const WORKSPACE_ROOT = "/root/workspace";
+const CMUX_RUNTIME_DIR = "/var/tmp/cmux-scripts";
+const LOG_DIR = "/var/log/cmux";
+const MAINTENANCE_ERROR_FILE = `${LOG_DIR}/maintenance-script.error`;
+const DEV_ERROR_FILE = `${LOG_DIR}/dev-script.error`;
+
+const ensureTrailingNewline = (value: string): string =>
+  value.endsWith("\n") ? value : `${value}\n`;
+
+function buildBootstrapScriptContent({
+  commandString,
+  maintenanceScript,
+  devScript,
+  unsetEnvVars,
+}: {
+  commandString: string;
+  maintenanceScript: string | null;
+  devScript: string | null;
+  unsetEnvVars: string[];
+}): string {
+  const lines: string[] = ["#!/bin/bash", "set -euo pipefail"];
+
+  if (unsetEnvVars.length > 0) {
+    lines.push(`unset ${unsetEnvVars.join(" ")}`);
+  }
+
+  lines.push(`CMUX_WORKSPACE="${WORKSPACE_ROOT}"`);
+  lines.push(`CMUX_RUNTIME_DIR="${CMUX_RUNTIME_DIR}"`);
+  lines.push(`CMUX_LOG_DIR="${LOG_DIR}"`);
+  lines.push(`CMUX_MAINTENANCE_ERROR_FILE="${MAINTENANCE_ERROR_FILE}"`);
+  lines.push(`CMUX_DEV_ERROR_FILE="${DEV_ERROR_FILE}"`);
+  lines.push('mkdir -p "${CMUX_RUNTIME_DIR}"');
+  lines.push('mkdir -p "${CMUX_LOG_DIR}"');
+  lines.push('cd "${CMUX_WORKSPACE}"');
+
+  if (maintenanceScript) {
+    const maintenanceLines = [
+      "if ! (",
+      "  set -euo pipefail",
+      '  CMUX_MAINTENANCE_SCRIPT_PATH="${CMUX_RUNTIME_DIR}/maintenance-script.sh"',
+      '  trap \'rm -f "${CMUX_MAINTENANCE_SCRIPT_PATH}"\' EXIT',
+      '  cat <<\'CMUX_MAINTENANCE_EOF\' > "${CMUX_MAINTENANCE_SCRIPT_PATH}"',
+      ensureTrailingNewline(maintenanceScript),
+      "CMUX_MAINTENANCE_EOF",
+      '  chmod +x "${CMUX_MAINTENANCE_SCRIPT_PATH}"',
+      '  cd "${CMUX_WORKSPACE}"',
+      '  bash -eu -o pipefail "${CMUX_MAINTENANCE_SCRIPT_PATH}"',
+      "); then",
+      '  CMUX_MAINTENANCE_EXIT_CODE=$?',
+      '  printf \'Maintenance script failed with exit code %s\\n\' "${CMUX_MAINTENANCE_EXIT_CODE}" > "${CMUX_MAINTENANCE_ERROR_FILE}"',
+      "else",
+      '  rm -f "${CMUX_MAINTENANCE_ERROR_FILE}" 2>/dev/null || true',
+      "fi",
+    ];
+    lines.push(maintenanceLines.join("\n"));
+  }
+
+  if (devScript) {
+    const devScriptLines = [
+      'CMUX_DEV_PID_FILE="${CMUX_LOG_DIR}/dev-script.pid"',
+      'CMUX_DEV_LOG_FILE="${CMUX_LOG_DIR}/dev-script.log"',
+      "if ! (",
+      "  set -euo pipefail",
+      '  CMUX_DEV_RUN_ID="$(date +%s)-$RANDOM-$RANDOM"',
+      '  CMUX_DEV_DIR="${CMUX_RUNTIME_DIR}/dev-${CMUX_DEV_RUN_ID}"',
+      '  CMUX_DEV_SCRIPT_PATH="${CMUX_DEV_DIR}/dev-script.sh"',
+      '  mkdir -p "${CMUX_LOG_DIR}"',
+      '  mkdir -p "${CMUX_DEV_DIR}"',
+      '  cat <<\'CMUX_DEV_SCRIPT_EOF\' > "${CMUX_DEV_SCRIPT_PATH}"',
+      ensureTrailingNewline(devScript),
+      "CMUX_DEV_SCRIPT_EOF",
+      '  chmod +x "${CMUX_DEV_SCRIPT_PATH}"',
+      '  if [ -f "${CMUX_DEV_PID_FILE}" ]; then',
+      '    CMUX_EXISTING_PID=$(cat "${CMUX_DEV_PID_FILE}" 2>/dev/null || true)',
+      '    if [ -n "${CMUX_EXISTING_PID}" ] && kill -0 "${CMUX_EXISTING_PID}" 2>/dev/null; then',
+      '      kill "${CMUX_EXISTING_PID}" 2>/dev/null || true',
+      "      sleep 0.2",
+      '      if kill -0 "${CMUX_EXISTING_PID}" 2>/dev/null; then',
+      '        echo "Unable to terminate process ${CMUX_EXISTING_PID}" >&2',
+      "        exit 1",
+      "      fi",
+      "    fi",
+      "  fi",
+      '  nohup bash -eu -o pipefail "${CMUX_DEV_SCRIPT_PATH}" > "${CMUX_DEV_LOG_FILE}" 2>&1 &',
+      '  echo $! > "${CMUX_DEV_PID_FILE}"',
+      "); then",
+      '  CMUX_DEV_EXIT_CODE=$?',
+      '  printf \'Dev script failed to start with exit code %s\\n\' "${CMUX_DEV_EXIT_CODE}" > "${CMUX_DEV_ERROR_FILE}"',
+      "else",
+      "  sleep 0.5",
+      '  CMUX_STARTED_PID=$(cat "${CMUX_DEV_PID_FILE}" 2>/dev/null || true)',
+      '  if [ -n "${CMUX_STARTED_PID}" ] && ! kill -0 "${CMUX_STARTED_PID}" 2>/dev/null; then',
+      '    if [ -f "${CMUX_DEV_LOG_FILE}" ]; then',
+      '      tail -n 50 "${CMUX_DEV_LOG_FILE}" > "${CMUX_DEV_ERROR_FILE}" || true',
+      "    else",
+      '      printf \'Dev script failed immediately after start\\n\' > "${CMUX_DEV_ERROR_FILE}"',
+      "    fi",
+      "  else",
+      '    rm -f "${CMUX_DEV_ERROR_FILE}" 2>/dev/null || true',
+      "  fi",
+      "fi",
+    ];
+    lines.push(devScriptLines.join("\n"));
+  }
+
+  const escapedCommand = commandString
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"');
+  lines.push('rm -f "$0" 2>/dev/null || true');
+  lines.push(`eval "exec ${escapedCommand}"`);
+
+  return lines.join("\n");
+}
+
 export interface AgentSpawnResult {
   agentName: string;
   terminalId: string;
@@ -581,6 +695,13 @@ export async function spawnAgent(
 
     const actualCommand = agent.command;
     const actualArgs = processedArgs;
+    const actualArgsWithPrompt = agent.name
+      .toLowerCase()
+      .includes("codex")
+      ? actualArgs.map((arg) =>
+        arg === "$CMUX_PROMPT" ? processedTaskDescription : arg,
+      )
+      : actualArgs;
 
     // Build a shell command string so CMUX env vars expand inside tmux session
     const shellEscaped = (s: string) => {
@@ -592,7 +713,7 @@ export async function spawnAgent(
       // Otherwise single-quote and escape any existing single quotes
       return `'${s.replace(/'/g, "'\\''")}'`;
     };
-    const commandString = [actualCommand, ...actualArgs]
+    const commandString = [actualCommand, ...actualArgsWithPrompt]
       .map(shellEscaped)
       .join(" ");
 
@@ -601,7 +722,7 @@ export async function spawnAgent(
       serverLogger.info(
         `[AgentSpawner] Codex command string: ${commandString}`,
       );
-      serverLogger.info(`[AgentSpawner] Codex raw args:`, actualArgs);
+      serverLogger.info(`[AgentSpawner] Codex raw args:`, actualArgsWithPrompt);
     }
 
     // Build unset command for environment variables
@@ -609,24 +730,59 @@ export async function spawnAgent(
       ? `unset ${unsetEnvVars.join(" ")}; `
       : "";
 
+    const normalizeScriptValue = (value: string | null): string | null => {
+      if (!value) return null;
+      const trimmed = value.trim();
+      return trimmed.length > 0 ? value : null;
+    };
+
+    const maintenanceScript =
+      vscodeInstance instanceof CmuxVSCodeInstance
+        ? normalizeScriptValue(vscodeInstance.getMaintenanceScript())
+        : null;
+    const devScript =
+      vscodeInstance instanceof CmuxVSCodeInstance
+        ? normalizeScriptValue(vscodeInstance.getDevScript())
+        : null;
+
+    let bootstrapScriptPath: string | null = null;
+
+    if (maintenanceScript || devScript) {
+      bootstrapScriptPath = `${CMUX_RUNTIME_DIR}/bootstrap-${tmuxSessionName}.sh`;
+      const bootstrapContent = buildBootstrapScriptContent({
+        commandString,
+        maintenanceScript,
+        devScript,
+        unsetEnvVars,
+      });
+      const bootstrapCommand = [
+        `mkdir -p ${CMUX_RUNTIME_DIR}`,
+        `rm -f ${bootstrapScriptPath}`,
+        `cat <<'CMUX_BOOTSTRAP_EOF' > ${bootstrapScriptPath}`,
+        bootstrapContent,
+        "CMUX_BOOTSTRAP_EOF",
+        `chmod +x ${bootstrapScriptPath}`,
+      ].join("\n");
+
+      startupCommands.push(bootstrapCommand);
+
+      serverLogger.info(
+        `[AgentSpawner] Added bootstrap script for ${agent.name} (maintenance: ${Boolean(maintenanceScript)}, dev: ${Boolean(devScript)})`,
+      );
+    }
+
     // For Codex agents, use direct command execution to preserve notify argument
     // The notify command contains complex JSON that gets mangled through shell layers
-    const tmuxArgs = agent.name.toLowerCase().includes("codex")
+    let tmuxArgs = agent.name.toLowerCase().includes("codex")
       ? [
         "new-session",
         "-d",
         "-s",
         tmuxSessionName,
         "-c",
-        "/root/workspace",
+        WORKSPACE_ROOT,
         actualCommand,
-        ...actualArgs.map((arg) => {
-          // Replace $CMUX_PROMPT with actual prompt value
-          if (arg === "$CMUX_PROMPT") {
-            return processedTaskDescription;
-          }
-          return arg;
-        }),
+        ...actualArgsWithPrompt,
       ]
       : [
         "new-session",
@@ -637,6 +793,17 @@ export async function spawnAgent(
         "-lc",
         `${unsetCommand}exec ${commandString}`,
       ];
+
+    if (bootstrapScriptPath) {
+      tmuxArgs = [
+        "new-session",
+        "-d",
+        "-s",
+        tmuxSessionName,
+        "/bin/bash",
+        bootstrapScriptPath,
+      ];
+    }
 
     const terminalCreationCommand: WorkerCreateTerminal = {
       terminalId: tmuxSessionName,
@@ -654,7 +821,7 @@ export async function spawnAgent(
       agentModel: agent.name,
       authFiles,
       startupCommands,
-      cwd: "/root/workspace",
+      cwd: WORKSPACE_ROOT,
     };
 
     const switchBranch = async () => {
@@ -674,7 +841,7 @@ exit $EXIT_CODE
         workerSocket,
         command: "bash",
         args: ["-lc", command],
-        cwd: "/root/workspace",
+        cwd: WORKSPACE_ROOT,
         env: {
           CMUX_BRANCH_NAME: newBranch,
         },
@@ -890,6 +1057,67 @@ exit $EXIT_CODE
         `[AgentSpawner] Emitted worker:create-terminal at ${new Date().toISOString()}`,
       );
     });
+
+    if (maintenanceScript || devScript) {
+      void (async () => {
+        try {
+          const delay = (ms: number) =>
+            new Promise((resolve) => setTimeout(resolve, ms));
+          await delay(2000);
+
+          const readErrorFile = async (path: string): Promise<string | null> => {
+            const { exitCode, stdout, stderr } = await workerExec({
+              workerSocket,
+              command: "bash",
+              args: [
+                "-lc",
+                `if [ -f ${path} ]; then cat ${path}; fi`,
+              ],
+              cwd: WORKSPACE_ROOT,
+              env: {},
+              timeout: 10000,
+            });
+
+            if (exitCode !== 0) {
+              serverLogger.warn(
+                `[AgentSpawner] Failed to read bootstrap error file ${path} (exit ${exitCode})`,
+                stderr?.slice(0, 500) ?? "",
+              );
+              return null;
+            }
+
+            const trimmed = stdout?.trim() ?? "";
+            return trimmed.length > 0 ? trimmed.slice(0, 2000) : null;
+          };
+
+          const maintenanceErrorMessage = maintenanceScript
+            ? await readErrorFile(MAINTENANCE_ERROR_FILE)
+            : null;
+          const devErrorMessage = devScript
+            ? await readErrorFile(DEV_ERROR_FILE)
+            : null;
+
+          await runWithAuth(
+            capturedAuthToken,
+            capturedAuthHeaderJson,
+            async () =>
+              retryOnOptimisticConcurrency(() =>
+                getConvex().mutation(api.taskRuns.updateEnvironmentError, {
+                  teamSlugOrId,
+                  id: taskRunId,
+                  maintenanceError: maintenanceErrorMessage ?? undefined,
+                  devError: devErrorMessage ?? undefined,
+                }),
+              ),
+          );
+        } catch (error) {
+          serverLogger.error(
+            `[AgentSpawner] Failed to record environment error from bootstrap scripts`,
+            error,
+          );
+        }
+      })();
+    }
 
     return {
       agentName: agent.name,
