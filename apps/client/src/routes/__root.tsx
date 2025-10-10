@@ -95,6 +95,27 @@ function useAutoUpdateNotifications() {
 
     if (!cmux?.on) return;
 
+    // Check if there's already a pending toast from before the renderer loaded
+    const getPendingToast = cmux?.autoUpdate
+      ? (cmux.autoUpdate as {
+          check: () => Promise<unknown>;
+          install: () => Promise<unknown>;
+          getPendingToast?: () => Promise<{ version: string | null } | null>;
+        }).getPendingToast
+      : undefined;
+
+    if (getPendingToast) {
+      void getPendingToast()
+        .then((pendingToast: { version: string | null } | null) => {
+          if (pendingToast) {
+            showToast(pendingToast.version);
+          }
+        })
+        .catch((error: unknown) => {
+          console.error("Failed to check for pending update toast", error);
+        });
+    }
+
     const handler = (payload: unknown) => {
       const version =
         payload && typeof payload === "object" && "version" in payload

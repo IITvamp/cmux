@@ -436,11 +436,15 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
                   toast.error("Failed to check for updates.");
                 }
               } else if (result.updateAvailable) {
+                // Update is available and downloading in the background.
+                // The update-downloaded event will show the "Restart now" dialog
+                // when the download completes.
                 const versionLabel = result.version
                   ? ` (${result.version})`
                   : "";
-                toast.success(
-                  `Update available${versionLabel}. Downloading in the background.`,
+                toast.info(
+                  `Update available${versionLabel}. Downloading in the background...`,
+                  { duration: 5000 },
                 );
               } else {
                 toast.info("You're up to date.");

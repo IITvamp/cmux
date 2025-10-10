@@ -41,6 +41,7 @@ declare global {
             version?: string | null;
           }>;
         install: () => Promise<{ ok: boolean; reason?: string }>;
+        getPendingToast: () => Promise<{ version: string | null } | null>;
       };
     };
   }

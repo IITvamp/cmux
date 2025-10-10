@@ -391,6 +391,18 @@ function registerAutoUpdateIpcHandlers(): void {
       throw err;
     }
   });
+
+  ipcMain.handle("cmux:auto-update:get-pending-toast", () => {
+    mainLog("Renderer requested pending update toast", {
+      hasPending: Boolean(queuedAutoUpdateToast),
+    });
+    const toast = queuedAutoUpdateToast;
+    // Clear the queue after returning it to avoid showing it multiple times
+    if (toast) {
+      queuedAutoUpdateToast = null;
+    }
+    return toast;
+  });
 }
 
 // Write critical errors to a file to aid debugging packaged crashes
@@ -920,13 +932,22 @@ app.whenReady().then(async () => {
               return;
             }
             try {
-              mainLog("Manual update check initiated");
+              mainLog("Manual update check initiated from menu");
               const result = await autoUpdater.checkForUpdates();
-              if (!result?.updateInfo) {
+              logUpdateCheckResult("Manual menu checkForUpdates", result);
+
+              const updateInfo = result?.updateInfo;
+              const isNewer = isUpdateNewerThanCurrent(updateInfo);
+
+              if (!isNewer) {
                 await dialog.showMessageBox({
                   type: "info",
-                  message: "You’re up to date.",
+                  message: "You're up to date.",
                 });
+              } else {
+                // Update is available and downloading (autoDownload: true)
+                // The update-downloaded event will trigger the toast
+                mainLog("Update available from manual check; downloading in background");
               }
             } catch (e) {
               mainWarn("Manual checkForUpdates failed", e);

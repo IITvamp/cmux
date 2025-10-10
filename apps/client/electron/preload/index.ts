@@ -159,6 +159,10 @@ const cmuxAPI = {
         ok: boolean;
         reason?: string;
       }>,
+    getPendingToast: () =>
+      ipcRenderer.invoke(
+        "cmux:auto-update:get-pending-toast"
+      ) as Promise<{ version: string | null } | null>,
   },
   webContentsView: {
     create: (options: {
