@@ -1,5 +1,9 @@
 import { ElectronAPI } from "@electron-toolkit/preload";
 
+type AutoUpdateToastPayload = {
+  version: string | null;
+};
+
 declare global {
   interface Window {
     electron: ElectronAPI;
@@ -41,6 +45,9 @@ declare global {
             version?: string | null;
           }>;
         install: () => Promise<{ ok: boolean; reason?: string }>;
+        getPendingToast: () =>
+          Promise<{ ok: boolean; toast: AutoUpdateToastPayload | null }>;
+        acknowledgeToast: () => Promise<{ ok: boolean }>;
       };
     };
   }

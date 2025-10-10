@@ -57,7 +57,25 @@ function useAutoUpdateNotifications() {
     const maybeWindow = typeof window === "undefined" ? undefined : window;
     const cmux = maybeWindow?.cmux;
 
+    if (!cmux?.on) return;
+
+    let lastToastKey: string | null = null;
+
+    const acknowledgeToast = () => {
+      const autoUpdate = cmux.autoUpdate;
+      if (!autoUpdate?.acknowledgeToast) return;
+      void autoUpdate
+        .acknowledgeToast()
+        .catch((error) =>
+          console.error("Failed to acknowledge auto-update toast", error)
+        );
+    };
+
     const showToast = (version: string | null) => {
+      const toastKey = JSON.stringify({ version });
+      if (lastToastKey === toastKey) return;
+      lastToastKey = toastKey;
+
       const versionLabel = version ? ` (${version})` : "";
 
       toast("New version available", {
@@ -65,7 +83,7 @@ function useAutoUpdateNotifications() {
         duration: 30000,
         description: `Restart cmux to apply the latest version${versionLabel}.`,
         className: "select-none",
-        action: cmux?.autoUpdate
+        action: cmux.autoUpdate
           ? {
               label: "Restart now",
               onClick: () => {
@@ -91,22 +109,41 @@ function useAutoUpdateNotifications() {
             }
           : undefined,
       });
+      acknowledgeToast();
     };
 
-    if (!cmux?.on) return;
+    const extractVersion = (payload: unknown): string | null => {
+      if (
+        payload &&
+        typeof payload === "object" &&
+        "version" in payload &&
+        typeof (payload as { version?: unknown }).version === "string"
+      ) {
+        return (payload as { version: string }).version;
+      }
+      return null;
+    };
 
     const handler = (payload: unknown) => {
-      const version =
-        payload && typeof payload === "object" && "version" in payload
-          ? typeof (payload as { version?: unknown }).version === "string"
-            ? (payload as { version: string }).version
-            : null
-          : null;
-
+      const version = extractVersion(payload);
       showToast(version);
     };
 
     const unsubscribe = cmux.on("auto-update:ready", handler);
+
+    const autoUpdate = cmux.autoUpdate;
+    if (autoUpdate?.getPendingToast) {
+      void autoUpdate
+        .getPendingToast()
+        .then((response) => {
+          if (response?.ok && response.toast) {
+            handler(response.toast);
+          }
+        })
+        .catch((error) => {
+          console.error("Failed to retrieve pending auto-update state", error);
+        });
+    }
 
     return () => {
       try {

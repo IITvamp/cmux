@@ -23,6 +23,10 @@ type RectanglePayload = {
 type LogListener = (entry: ElectronMainLogMessage) => void;
 const mainLogListeners = new Set<LogListener>();
 
+type AutoUpdateToastPayload = {
+  version: string | null;
+};
+
 // Cmux IPC API for Electron server communication
 const cmuxAPI = {
   // Get the current webContents ID
@@ -159,6 +163,13 @@ const cmuxAPI = {
         ok: boolean;
         reason?: string;
       }>,
+    getPendingToast: () =>
+      ipcRenderer.invoke("cmux:auto-update:get-pending-toast") as Promise<{
+        ok: boolean;
+        toast: AutoUpdateToastPayload | null;
+      }>,
+    acknowledgeToast: () =>
+      ipcRenderer.invoke("cmux:auto-update:ack-toast") as Promise<{ ok: boolean }>,
   },
   webContentsView: {
     create: (options: {

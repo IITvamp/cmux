@@ -66,6 +66,7 @@ type AutoUpdateToastPayload = {
 };
 
 let queuedAutoUpdateToast: AutoUpdateToastPayload | null = null;
+let autoUpdateToastAcknowledged = false;
 
 // Persistent log files
 let logsDir: string | null = null;
@@ -251,14 +252,13 @@ ipcMain.handle(
 );
 
 function emitAutoUpdateToastIfPossible(): void {
-  if (!queuedAutoUpdateToast) return;
+  if (!queuedAutoUpdateToast || autoUpdateToastAcknowledged) return;
   if (!mainWindow || mainWindow.isDestroyed() || !rendererLoaded) return;
   try {
     mainWindow.webContents.send(
       "cmux:event:auto-update:ready",
       queuedAutoUpdateToast
     );
-    queuedAutoUpdateToast = null;
   } catch (error) {
     mainWarn("Failed to send auto-update toast to renderer", error);
   }
@@ -266,6 +266,7 @@ function emitAutoUpdateToastIfPossible(): void {
 
 function queueAutoUpdateToast(payload: AutoUpdateToastPayload): void {
   queuedAutoUpdateToast = payload;
+  autoUpdateToastAcknowledged = false;
   emitAutoUpdateToastIfPossible();
 }
 
@@ -383,6 +384,7 @@ function registerAutoUpdateIpcHandlers(): void {
 
     try {
       queuedAutoUpdateToast = null;
+      autoUpdateToastAcknowledged = false;
       autoUpdater.quitAndInstall();
       return { ok: true } as const;
     } catch (error) {
@@ -390,6 +392,18 @@ function registerAutoUpdateIpcHandlers(): void {
       const err = error instanceof Error ? error : new Error(String(error));
       throw err;
     }
+  });
+
+  ipcMain.handle("cmux:auto-update:get-pending-toast", async () => {
+    return {
+      ok: true as const,
+      toast: autoUpdateToastAcknowledged ? null : queuedAutoUpdateToast,
+    };
+  });
+
+  ipcMain.handle("cmux:auto-update:ack-toast", async () => {
+    autoUpdateToastAcknowledged = true;
+    return { ok: true as const };
   });
 }
 

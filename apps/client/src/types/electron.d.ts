@@ -32,6 +32,10 @@ interface CmuxLogsAPI {
   copyAll: () => Promise<{ ok: boolean }>;
 }
 
+interface AutoUpdateToastPayload {
+  version: string | null;
+}
+
 interface CmuxRectangle {
   x: number;
   y: number;
@@ -116,6 +120,9 @@ interface CmuxAPI {
         version?: string | null;
       }>;
     install: () => Promise<{ ok: boolean; reason?: string }>;
+    getPendingToast: () =>
+      Promise<{ ok: boolean; toast: AutoUpdateToastPayload | null }>;
+    acknowledgeToast: () => Promise<{ ok: boolean }>;
   };
 }
 
