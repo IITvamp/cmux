@@ -114,9 +114,9 @@ if [[ -n "$base_ref" ]]; then
       if is_ignored_path "$f"; then continue; fi
       size=0
       if [[ -f "$f" ]]; then
-        size=$(wc -c <"$f" 2>/dev/null | tr -d '[:space:]' || echo 0)
+        size=$(wc -c <"$f" 2>/dev/null || echo 0)
       elif [[ -n "$merge_base" ]]; then
-        size=$(git cat-file -s "$merge_base:$f" 2>/dev/null | tr -d '[:space:]' || echo 0)
+        size=$(git cat-file -s "$merge_base:$f" 2>/dev/null || echo 0)
       fi
       case "$size" in
         ''|*[!0-9]*) size=0 ;;
@@ -128,7 +128,7 @@ if [[ -n "$base_ref" ]]; then
       [[ -n "$f" ]] || continue
       if is_ignored_path "$f"; then continue; fi
       if [[ -f "$f" ]]; then
-        size=$(wc -c <"$f" 2>/dev/null | tr -d '[:space:]' || echo 0)
+        size=$(wc -c <"$f" 2>/dev/null || echo 0)
         case "$size" in
           ''|*[!0-9]*) size=0 ;;
         esac
@@ -165,9 +165,9 @@ if [[ -n "$base_ref" ]]; then
       if is_ignored_path "$f"; then continue; fi
       size=0
       if git cat-file -e "HEAD:$f" 2>/dev/null; then
-        size=$(git cat-file -s "HEAD:$f" 2>/dev/null | tr -d '[:space:]' || echo 0)
+        size=$(git cat-file -s "HEAD:$f" 2>/dev/null || echo 0)
       elif git cat-file -e "$merge_base:$f" 2>/dev/null; then
-        size=$(git cat-file -s "$merge_base:$f" 2>/dev/null | tr -d '[:space:]' || echo 0)
+        size=$(git cat-file -s "$merge_base:$f" 2>/dev/null || echo 0)
       fi
       case "$size" in
         ''|*[!0-9]*) size=0 ;;
@@ -206,7 +206,7 @@ export GIT_INDEX_FILE="$tmp_index"
   [[ -n "$f" ]] || continue
   if is_ignored_path "$f"; then continue; fi
   if [[ -f "$f" ]]; then
-    size=$(wc -c <"$f" 2>/dev/null | tr -d '[:space:]' || echo 0)
+    size=$(wc -c <"$f" 2>/dev/null || echo 0)
     case "$size" in
       ''|*[!0-9]*) size=0 ;;
     esac

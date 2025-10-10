@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7-labs
 
-# Stage 1: Build stage (runs natively on ARM64, cross-compiles to x86_64)
+# Stage 1: Rust build stage
 ARG DOCKER_CHANNEL=stable
 ARG DOCKER_VERSION
 ARG DOCKER_COMPOSE_VERSION
@@ -15,6 +15,68 @@ ARG NODE_VERSION=24.9.0
 ARG GO_VERSION=1.25.2
 ARG GITHUB_TOKEN
 
+FROM --platform=$BUILDPLATFORM ubuntu:24.04 AS rust-builder
+
+ARG RUST_VERSION
+ARG BUILDPLATFORM
+ARG TARGETPLATFORM
+
+ENV RUSTUP_HOME=/usr/local/rustup \
+  CARGO_HOME=/usr/local/cargo \
+  PATH="/usr/local/cargo/bin:${PATH}"
+
+# Install minimal dependencies for Rust cross-compilation
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+  --mount=type=cache,target=/var/lib/apt,sharing=locked \
+  apt-get update && apt-get install -y --no-install-recommends \
+  ca-certificates \
+  curl \
+  gcc \
+  g++ \
+  libc6-dev \
+  gcc-x86-64-linux-gnu \
+  g++-x86-64-linux-gnu \
+  libc6-dev-amd64-cross
+
+# Install Rust toolchain with x86_64 cross-compilation support
+RUN bash <<'EOF'
+set -eux
+RUST_VERSION_RAW="${RUST_VERSION:-}"
+if [ -z "${RUST_VERSION_RAW}" ]; then
+  RUST_VERSION_RAW="$(curl -fsSL https://static.rust-lang.org/dist/channel-rust-stable.toml \
+    | awk '/\[pkg.rust\]/{flag=1;next}/\[pkg\./{flag=0}flag && /^version =/ {gsub(/"/,"",$3); split($3, parts, " "); print parts[1]; exit}')"
+fi
+RUST_VERSION="$(printf '%s' "${RUST_VERSION_RAW}" | tr -d '[:space:]')"
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+  sh -s -- -y --no-modify-path --profile minimal --default-toolchain "${RUST_VERSION}"
+rustup component add rustfmt --toolchain "${RUST_VERSION}"
+rustup target add x86_64-unknown-linux-gnu --toolchain "${RUST_VERSION}"
+cargo --version
+EOF
+
+WORKDIR /cmux
+
+# Copy only Rust crates
+COPY crates ./crates
+
+# Build Rust binaries
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+  --mount=type=cache,target=/usr/local/cargo/git \
+  --mount=type=cache,target=/cmux/crates/target \
+  if [ "$TARGETPLATFORM" = "linux/amd64" ] && [ "$BUILDPLATFORM" != "linux/amd64" ]; then \
+  # Cross-compile to x86_64 when building on a non-amd64 builder
+  export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc && \
+  export CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc && \
+  export CXX_x86_64_unknown_linux_gnu=x86_64-linux-gnu-g++ && \
+  cargo install --path crates/cmux-env --target x86_64-unknown-linux-gnu --locked --force && \
+  cargo install --path crates/cmux-proxy --target x86_64-unknown-linux-gnu --locked --force; \
+  else \
+  # Build natively for the requested platform (e.g., arm64 on Apple Silicon)
+  cargo install --path crates/cmux-env --locked --force && \
+  cargo install --path crates/cmux-proxy --locked --force; \
+  fi
+
+# Stage 2: Build stage (runs natively on ARM64, cross-compiles to x86_64)
 FROM --platform=$BUILDPLATFORM ubuntu:24.04 AS builder
 
 ARG GITHUB_TOKEN
@@ -33,12 +95,10 @@ ARG NODE_VERSION
 ARG NVM_VERSION
 ARG GO_VERSION
 
-ENV RUSTUP_HOME=/usr/local/rustup \
-  CARGO_HOME=/usr/local/cargo \
-  NVM_DIR=/root/.nvm \
-  PATH="/usr/local/cargo/bin:${PATH}"
+ENV NVM_DIR=/root/.nvm \
+  PATH="/usr/local/bin:${PATH}"
 
-# Install build dependencies + cross-compilation toolchain
+# Install build dependencies (Rust is in rust-builder stage)
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,target=/var/lib/apt,sharing=locked \
   apt-get update && apt-get install -y --no-install-recommends \
@@ -50,31 +110,12 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   python3 \
   make \
   g++ \
-  gcc-x86-64-linux-gnu \
-  g++-x86-64-linux-gnu \
-  libc6-dev-amd64-cross \
   bash \
   unzip \
   xz-utils \
   gnupg \
   ruby-full \
   perl
-
-# Install Rust toolchain with x86_64 cross-compilation support
-RUN bash <<'EOF'
-set -eux
-RUST_VERSION_RAW="${RUST_VERSION:-}"
-if [ -z "${RUST_VERSION_RAW}" ]; then
-  RUST_VERSION_RAW="$(curl -fsSL https://static.rust-lang.org/dist/channel-rust-stable.toml \
-    | awk '/\[pkg.rust\]/{flag=1;next}/\[pkg\./{flag=0}flag && /^version =/ {gsub(/"/,"",$3); split($3, parts, " "); print parts[1]; exit}')"
-fi
-RUST_VERSION="$(printf '%s' "${RUST_VERSION_RAW}" | tr -d '[:space:]')"
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
-  sh -s -- -y --no-modify-path --profile minimal --default-toolchain "${RUST_VERSION}"
-rustup component add rustfmt --toolchain "${RUST_VERSION}"
-rustup target add x86_64-unknown-linux-gnu --toolchain "${RUST_VERSION}"
-cargo --version
-EOF
 
 # Install Node.js 24.x without relying on external APT mirrors
 RUN <<EOF
@@ -222,33 +263,13 @@ COPY packages/vscode-extension/tsconfig.json ./packages/vscode-extension/
 COPY packages/vscode-extension/.vscodeignore ./packages/vscode-extension/
 COPY packages/vscode-extension/LICENSE.md ./packages/vscode-extension/
 
-# Copy vendored Rust crates
-COPY crates ./crates
-
-# Build Rust binaries for envctl/envd and cmux-proxy
-# Cross-compile to x86_64 only when the target platform requires it
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-  --mount=type=cache,target=/usr/local/cargo/git \
-  --mount=type=cache,target=/cmux/crates/target \
-  if [ "$TARGETPLATFORM" = "linux/amd64" ] && [ "$BUILDPLATFORM" != "linux/amd64" ]; then \
-  # Cross-compile to x86_64 when building on a non-amd64 builder
-  export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc && \
-  export CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc && \
-  export CXX_x86_64_unknown_linux_gnu=x86_64-linux-gnu-g++ && \
-  cargo install --path crates/cmux-env --target x86_64-unknown-linux-gnu --locked --force && \
-  cargo install --path crates/cmux-proxy --target x86_64-unknown-linux-gnu --locked --force; \
-  else \
-  # Build natively for the requested platform (e.g., arm64 on Apple Silicon)
-  cargo install --path crates/cmux-env --locked --force && \
-  cargo install --path crates/cmux-proxy --locked --force; \
-  fi
-
 # Build worker with bundling, using the installed node_modules
 RUN cd /cmux && \
   bun build ./apps/worker/src/index.ts \
   --target node \
   --outdir ./apps/worker/build \
   --external @cmux/convex \
+  --external convex \
   --external node:* && \
   echo "Built worker" && \
   cp -r ./apps/worker/build /builtins/build && \
@@ -638,10 +659,10 @@ for vsix in "$@"; do
 done
 EOF
 
-# Copy vendored Rust binaries from builder
-COPY --from=builder /usr/local/cargo/bin/envctl /usr/local/bin/envctl
-COPY --from=builder /usr/local/cargo/bin/envd /usr/local/bin/envd
-COPY --from=builder /usr/local/cargo/bin/cmux-proxy /usr/local/bin/cmux-proxy
+# Copy vendored Rust binaries from rust-builder
+COPY --from=rust-builder /usr/local/cargo/bin/envctl /usr/local/bin/envctl
+COPY --from=rust-builder /usr/local/cargo/bin/envd /usr/local/bin/envd
+COPY --from=rust-builder /usr/local/cargo/bin/cmux-proxy /usr/local/bin/cmux-proxy
 
 # Configure envctl/envd runtime defaults
 RUN chmod +x /usr/local/bin/envctl /usr/local/bin/envd /usr/local/bin/cmux-proxy && \
