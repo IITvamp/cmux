@@ -531,7 +531,7 @@ RUN curl -fsSL https://bun.sh/install | bash && \
 ENV PATH="/usr/local/bin:$PATH"
 
 RUN --mount=type=cache,target=/root/.bun/install/cache \
-  bun add -g @openai/codex@0.42.0 @anthropic-ai/claude-code@2.0.0 @google/gemini-cli@0.1.21 opencode-ai@0.6.4 codebuff @devcontainers/cli @sourcegraph/amp
+  bun add -g @openai/codex@0.42.0 @anthropic-ai/claude-code@2.0.13 @google/gemini-cli@0.1.21 opencode-ai@0.6.4 codebuff @devcontainers/cli @sourcegraph/amp
 
 # Install cursor cli
 RUN curl https://cursor.com/install -fsS | bash
@@ -572,8 +572,71 @@ RUN --mount=type=secret,id=github_token,required=false if [ -z "${CODE_RELEASE}"
 
 # Copy the cmux vscode extension from builder (it's just a .vsix file, platform-independent)
 COPY --from=builder /tmp/cmux-vscode-extension-0.0.1.vsix /tmp/cmux-vscode-extension-0.0.1.vsix
-RUN /app/openvscode-server/bin/openvscode-server --install-extension /tmp/cmux-vscode-extension-0.0.1.vsix && \
-  rm /tmp/cmux-vscode-extension-0.0.1.vsix
+RUN <<'EOF'
+set -eux
+export HOME=/root
+server_root="/app/openvscode-server"
+bin_path="${server_root}/bin/openvscode-server"
+if [ ! -x "${bin_path}" ]; then
+  echo "OpenVSCode binary not found at ${bin_path}" >&2
+  exit 1
+fi
+extensions_dir="/root/.openvscode-server/extensions"
+user_data_dir="/root/.openvscode-server/data"
+mkdir -p "${extensions_dir}" "${user_data_dir}"
+install_from_file() {
+  package_path="$1"
+  "${bin_path}" \
+    --install-extension "${package_path}" \
+    --force \
+    --extensions-dir "${extensions_dir}" \
+    --user-data-dir "${user_data_dir}"
+}
+install_from_file "/tmp/cmux-vscode-extension-0.0.1.vsix"
+rm -f /tmp/cmux-vscode-extension-0.0.1.vsix
+download_dir="$(mktemp -d)"
+cleanup() {
+  rm -rf "${download_dir}"
+}
+trap cleanup EXIT
+download_extension() {
+  publisher="$1"
+  name="$2"
+  version="$3"
+  destination="$4"
+  tmpfile="${destination}.download"
+  url="https://marketplace.visualstudio.com/_apis/public/gallery/publishers/${publisher}/vsextensions/${name}/${version}/vspackage"
+  if ! curl -fSL --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o "${tmpfile}" "${url}"; then
+    echo "Failed to download ${publisher}.${name}@${version}" >&2
+    rm -f "${tmpfile}"
+    return 1
+  fi
+  if gzip -t "${tmpfile}" >/dev/null 2>&1; then
+    gunzip -c "${tmpfile}" > "${destination}"
+    rm -f "${tmpfile}"
+  else
+    mv "${tmpfile}" "${destination}"
+  fi
+}
+while IFS='|' read -r publisher name version; do
+  [ -z "${publisher}" ] && continue
+  download_extension "${publisher}" "${name}" "${version}" "${download_dir}/${publisher}.${name}.vsix" &
+done <<'EXTENSIONS'
+anthropic|claude-code|2.0.13
+openai|chatgpt|0.5.19
+ms-vscode|vscode-typescript-next|5.9.20250531
+ms-python|python|2025.6.1
+ms-python|vscode-pylance|2025.8.100
+ms-python|debugpy|2025.14.0
+EXTENSIONS
+wait
+set -- "${download_dir}"/*.vsix
+for vsix in "$@"; do
+  if [ -f "${vsix}" ]; then
+    install_from_file "${vsix}"
+  fi
+done
+EOF
 
 # Copy vendored Rust binaries from builder
 COPY --from=builder /usr/local/cargo/bin/envctl /usr/local/bin/envctl
@@ -592,15 +655,6 @@ RUN chmod +x /usr/local/bin/envctl /usr/local/bin/envd /usr/local/bin/cmux-proxy
 
 # Install tmux configuration for better mouse scrolling behavior
 COPY configs/tmux.conf /etc/tmux.conf
-
-# Install Claude Code extension v2.0.0 from VS Code Marketplace
-# The vspackage endpoint returns a gzipped vsix, so we need to decompress it first
-RUN wget --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=15 -t 5 \
-  "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/anthropic/vsextensions/claude-code/2.0.0/vspackage" \
-  -O /tmp/claude-code.vsix.gz && \
-  gunzip /tmp/claude-code.vsix.gz && \
-  /app/openvscode-server/bin/openvscode-server --install-extension /tmp/claude-code.vsix && \
-  rm /tmp/claude-code.vsix
 
 # Create workspace and lifecycle directories
 RUN mkdir -p /workspace /root/workspace /root/lifecycle

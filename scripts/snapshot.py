@@ -1186,59 +1186,105 @@ async def task_install_openvscode(ctx: TaskContext) -> None:
 
 
 @registry.task(
+    name="package-vscode-extension",
+    deps=("install-repo-dependencies",),
+    description="Package the cmux VS Code extension for installation",
+)
+async def task_package_vscode_extension(ctx: TaskContext) -> None:
+    repo = shlex.quote(ctx.remote_repo_root)
+    cmd = textwrap.dedent(
+        f"""
+        set -euo pipefail
+        export PATH="/usr/local/bin:$PATH"
+        cd {repo}/packages/vscode-extension
+        bun run package
+        latest_vsix="$(ls -1t cmux-vscode-extension-*.vsix 2>/dev/null | head -n 1)"
+        if [ -z "${{latest_vsix}}" ] || [ ! -f "${{latest_vsix}}" ]; then
+          echo "cmux VS Code extension package not found" >&2
+          exit 1
+        fi
+        install -Dm0644 "${{latest_vsix}}" /tmp/cmux-vscode-extension.vsix
+        """
+    )
+    await ctx.run("package-vscode-extension", cmd)
+
+
+@registry.task(
     name="install-openvscode-extensions",
-    deps=("install-openvscode",),
+    deps=("install-openvscode", "package-vscode-extension"),
     description="Preinstall language extensions for OpenVSCode",
 )
 async def task_install_openvscode_extensions(ctx: TaskContext) -> None:
     cmd = textwrap.dedent(
         """
         set -eux
+        export HOME=/root
         server_root="/app/openvscode-server"
         bin_path="${server_root}/bin/openvscode-server"
         if [ ! -x "${bin_path}" ]; then
           echo "OpenVSCode binary not found at ${bin_path}" >&2
           exit 1
         fi
-        export HOME=/root
         extensions_dir="/root/.openvscode-server/extensions"
         user_data_dir="/root/.openvscode-server/data"
         mkdir -p "${extensions_dir}" "${user_data_dir}"
-        install_marketplace_extension() {
-          local publisher="$1"
-          local name="$2"
-          local version="${3:-latest}"
-          local tmp_dir
-          tmp_dir="$(mktemp -d)"
-          local download_path="${tmp_dir}/${name}.vsixpackage"
-          local package_path="${tmp_dir}/${name}.vsix"
-          local url="https://marketplace.visualstudio.com/_apis/public/gallery/publishers/${publisher}/vsextensions/${name}/${version}/vspackage"
-          curl -fSL --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o "${download_path}" "${url}" || {
-            rm -rf "${tmp_dir}"
-            echo "Failed to download ${publisher}.${name} from marketplace" >&2
-            return 1
-          }
-          if gzip -t "${download_path}" >/dev/null 2>&1; then
-            gunzip -c "${download_path}" > "${package_path}"
-          else
-            mv "${download_path}" "${package_path}"
-          fi
-          rm -f "${download_path}"
-          if [ ! -f "${package_path}" ]; then
-            echo "Failed to prepare VSIX for ${publisher}.${name}" >&2
-            rm -rf "${tmp_dir}"
-            return 1
-          fi
+        cmux_vsix="/tmp/cmux-vscode-extension.vsix"
+        if [ ! -f "${cmux_vsix}" ]; then
+          echo "cmux extension package missing at ${cmux_vsix}" >&2
+          exit 1
+        fi
+        install_from_file() {
+          local package_path="$1"
           "${bin_path}" \
             --install-extension "${package_path}" \
             --force \
             --extensions-dir "${extensions_dir}" \
             --user-data-dir "${user_data_dir}"
-          rm -rf "${tmp_dir}"
         }
-        install_marketplace_extension "ms-python" "python" "latest"
-        install_marketplace_extension "ms-python" "vscode-pylance" "latest"
-        install_marketplace_extension "ms-vscode" "vscode-typescript-next" "latest"
+        install_from_file "${cmux_vsix}"
+        rm -f "${cmux_vsix}"
+        download_dir="$(mktemp -d)"
+        cleanup() {
+          rm -rf "${download_dir}"
+        }
+        trap cleanup EXIT
+        download_extension() {
+          local publisher="$1"
+          local name="$2"
+          local version="$3"
+          local destination="$4"
+          local tmpfile="${destination}.download"
+          local url="https://marketplace.visualstudio.com/_apis/public/gallery/publishers/${publisher}/vsextensions/${name}/${version}/vspackage"
+          if ! curl -fSL --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o "${tmpfile}" "${url}"; then
+            echo "Failed to download ${publisher}.${name}@${version}" >&2
+            rm -f "${tmpfile}"
+            return 1
+          fi
+          if gzip -t "${tmpfile}" >/dev/null 2>&1; then
+            gunzip -c "${tmpfile}" > "${destination}"
+            rm -f "${tmpfile}"
+          else
+            mv "${tmpfile}" "${destination}"
+          fi
+        }
+        while IFS='|' read -r publisher name version; do
+          [ -z "${publisher}" ] && continue
+          download_extension "${publisher}" "${name}" "${version}" "${download_dir}/${publisher}.${name}.vsix" &
+        done <<'EXTENSIONS'
+        anthropic|claude-code|2.0.13
+        openai|chatgpt|0.5.19
+        ms-vscode|vscode-typescript-next|5.9.20250531
+        ms-python|python|2025.6.1
+        ms-python|vscode-pylance|2025.8.100
+        ms-python|debugpy|2025.14.0
+        EXTENSIONS
+        wait
+        set -- "${download_dir}"/*.vsix
+        for vsix in "$@"; do
+          if [ -f "${vsix}" ]; then
+            install_from_file "${vsix}"
+          fi
+        done
         """
     )
     await ctx.run("install-openvscode-extensions", cmd)
@@ -1269,7 +1315,7 @@ async def task_install_cursor(ctx: TaskContext) -> None:
 async def task_install_global_cli(ctx: TaskContext) -> None:
     cmd = textwrap.dedent(
         """
-        bun add -g @openai/codex@0.42.0 @anthropic-ai/claude-code@2.0.0 \
+        bun add -g @openai/codex@0.42.0 @anthropic-ai/claude-code@2.0.13 \
           @google/gemini-cli@0.1.21 opencode-ai@0.6.4 codebuff \
           @devcontainers/cli @sourcegraph/amp
         """
