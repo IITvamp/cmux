@@ -494,7 +494,13 @@ export async function spawnAgent(
 
     // Get ports if it's a Docker instance
     let ports:
-      | { vscode: string; worker: string; extension?: string; proxy?: string }
+      | {
+          vscode: string;
+          worker: string;
+          extension?: string;
+          proxy?: string;
+          vnc?: string;
+        }
       | undefined;
     if (vscodeInstance instanceof DockerVSCodeInstance) {
       const dockerPorts = vscodeInstance.getPorts();
@@ -506,6 +512,7 @@ export async function spawnAgent(
             ? { extension: dockerPorts.extension }
             : {}),
           ...(dockerPorts.proxy ? { proxy: dockerPorts.proxy } : {}),
+          ...(dockerPorts.vnc ? { vnc: dockerPorts.vnc } : {}),
         };
       }
     }

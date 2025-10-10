@@ -572,6 +572,8 @@ export const updateVSCodeInstance = authMutation({
           vscode: v.string(),
           worker: v.string(),
           extension: v.optional(v.string()),
+          proxy: v.optional(v.string()),
+          vnc: v.optional(v.string()),
         }),
       ),
       url: v.optional(v.string()),
