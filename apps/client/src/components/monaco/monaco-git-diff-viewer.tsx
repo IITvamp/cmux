@@ -486,6 +486,7 @@ function createDiffEditorMount({
     }
 
     const disposables: Array<{ dispose: () => void }> = [];
+    let isDisposed = false;
     const originalVisibility = container.style.visibility;
     const originalTransform = container.style.transform;
     let isContainerVisible = container.style.visibility !== "hidden";
@@ -518,46 +519,97 @@ function createDiffEditorMount({
     }
 
     const computeHeight = (targetEditor: editor.IStandaloneCodeEditor) => {
+      if (isDisposed) {
+        return targetMinHeight;
+      }
+
+      const model = targetEditor.getModel();
+      if (!model) {
+        return targetMinHeight;
+      }
+
       const contentHeight = targetEditor.getContentHeight();
-      if (contentHeight > 0) {
+      if (contentHeight > 0 && Number.isFinite(contentHeight)) {
         return contentHeight;
       }
 
       const lineHeight = targetEditor.getOption(
         monacoInstance.editor.EditorOption.lineHeight,
       );
-      const model = targetEditor.getModel();
-      const lineCount = model ? Math.max(1, model.getLineCount()) : 1;
+      const lineCount = Math.max(1, model.getLineCount());
 
       return lineCount * lineHeight;
     };
 
     container.style.minHeight = `${targetMinHeight}px`;
 
-    const applyLayout = () => {
+    let layoutRafHandle: number | null = null;
+
+    const runLayout = () => {
+      if (isDisposed) {
+        return;
+      }
+
+      const originalModel = originalEditor.getModel();
+      const modifiedModel = modifiedEditor.getModel();
+      if (!originalModel || !modifiedModel) {
+        return;
+      }
+
       const height = Math.max(
         computeHeight(originalEditor),
         computeHeight(modifiedEditor),
       );
 
+      const containerRect = container.getBoundingClientRect();
       const modifiedInfo = modifiedEditor.getLayoutInfo();
       const originalInfo = originalEditor.getLayoutInfo();
       const containerWidth =
         container.clientWidth ||
-        container.getBoundingClientRect().width ||
-        modifiedInfo.width ||
-        originalInfo.width;
+        containerRect.width ||
+        modifiedInfo?.width ||
+        originalInfo?.width ||
+        0;
 
       const enforcedHeight = Math.max(targetMinHeight, height);
 
-      if (containerWidth > 0 && enforcedHeight > 0) {
+      if (
+        containerWidth > 0 &&
+        Number.isFinite(containerWidth) &&
+        enforcedHeight > 0 &&
+        Number.isFinite(enforcedHeight)
+      ) {
         diffEditor.layout({ width: containerWidth, height: enforcedHeight });
       }
 
       scheduleVisibilityEvaluation();
     };
 
+    const applyLayout = () => {
+      if (isDisposed) {
+        return;
+      }
+
+      if (layoutRafHandle !== null && typeof window !== "undefined") {
+        window.cancelAnimationFrame(layoutRafHandle);
+        layoutRafHandle = null;
+      }
+
+      if (typeof window === "undefined") {
+        runLayout();
+        return;
+      }
+
+      layoutRafHandle = window.requestAnimationFrame(() => {
+        layoutRafHandle = null;
+        runLayout();
+      });
+    };
+
     const showContainer = () => {
+      if (isDisposed) {
+        return;
+      }
       if (isContainerVisible) {
         return;
       }
@@ -568,6 +620,9 @@ function createDiffEditorMount({
     };
 
     const hideContainer = () => {
+      if (isDisposed) {
+        return;
+      }
       if (!isContainerVisible) {
         return;
       }
@@ -578,7 +633,7 @@ function createDiffEditorMount({
     };
 
     const applyTargetMinHeight = () => {
-      if (collapsedState) {
+      if (isDisposed || collapsedState) {
         return;
       }
       container.style.minHeight = `${targetMinHeight}px`;
@@ -587,6 +642,9 @@ function createDiffEditorMount({
     };
 
     const updateCollapsedState = (collapsed: boolean) => {
+      if (isDisposed) {
+        return;
+      }
       collapsedState = collapsed;
       if (collapsed) {
         container.style.minHeight = "0px";
@@ -599,6 +657,9 @@ function createDiffEditorMount({
     };
 
     const updateTargetMinHeight = (nextTarget: number) => {
+      if (isDisposed) {
+        return;
+      }
       targetMinHeight = Math.max(nextTarget, DEFAULT_EDITOR_MIN_HEIGHT);
       if (!collapsedState) {
         applyTargetMinHeight();
@@ -625,6 +686,9 @@ function createDiffEditorMount({
     let visibilityRafHandle: number | null = null;
 
     const evaluateVisibility = () => {
+      if (isDisposed) {
+        return;
+      }
       if (!intersectionTarget) {
         return;
       }
@@ -651,6 +715,9 @@ function createDiffEditorMount({
     };
 
     const scheduleVisibilityEvaluation = () => {
+      if (isDisposed) {
+        return;
+      }
       if (typeof window === "undefined") {
         evaluateVisibility();
         return;
@@ -668,6 +735,9 @@ function createDiffEditorMount({
 
     const intersectionObserver = new IntersectionObserver(
       (entries) => {
+        if (isDisposed) {
+          return;
+        }
         const viewportHeight =
           typeof window === "undefined"
             ? 0
@@ -717,9 +787,15 @@ function createDiffEditorMount({
     }
 
     const onScroll = () => {
+      if (isDisposed) {
+        return;
+      }
       scheduleVisibilityEvaluation();
     };
     const onResize = () => {
+      if (isDisposed) {
+        return;
+      }
       scheduleVisibilityEvaluation();
     };
 
@@ -813,6 +889,18 @@ function createDiffEditorMount({
     );
 
     const disposeListener = diffEditor.onDidDispose(() => {
+      isDisposed = true;
+
+      if (visibilityRafHandle !== null && typeof window !== "undefined") {
+        window.cancelAnimationFrame(visibilityRafHandle);
+        visibilityRafHandle = null;
+      }
+
+      if (layoutRafHandle !== null && typeof window !== "undefined") {
+        window.cancelAnimationFrame(layoutRafHandle);
+        layoutRafHandle = null;
+      }
+
       disposables.forEach((disposable) => {
         try {
           disposable.dispose();
