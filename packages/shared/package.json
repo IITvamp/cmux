@@ -46,6 +46,10 @@
       "import": "./src/diff-types.ts",
       "types": "./src/diff-types.ts"
     },
+    "./sandboxPaths": {
+      "import": "./src/sandboxPaths.ts",
+      "types": "./src/sandboxPaths.ts"
+    },
     "./convex-ready": {
       "import": "./src/convex-ready.ts",
       "types": "./src/convex-ready.ts"

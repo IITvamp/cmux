@@ -5,6 +5,7 @@ import {
   type AgentConfig,
   type EnvironmentResult,
 } from "@cmux/shared/agentConfig";
+import { TMUX_SETUP_SCRIPT_PATH } from "@cmux/shared/sandboxPaths";
 import type {
   WorkerCreateTerminal,
   WorkerTerminalFailed,
@@ -637,6 +638,12 @@ export async function spawnAgent(
         "-lc",
         `${unsetCommand}exec ${commandString}`,
       ];
+
+    if (tmuxArgs.length > 0) {
+      const tmuxSetupCondition = `[ -x ${TMUX_SETUP_SCRIPT_PATH} ]`;
+      const tmuxSetupCommand = `run-shell "${TMUX_SETUP_SCRIPT_PATH} ${tmuxSessionName}"`;
+      tmuxArgs.push(";", "if-shell", tmuxSetupCondition, tmuxSetupCommand);
+    }
 
     const terminalCreationCommand: WorkerCreateTerminal = {
       terminalId: tmuxSessionName,
