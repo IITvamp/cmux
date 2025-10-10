@@ -493,6 +493,10 @@ function setupAutoUpdates(): void {
 
     mainLog("Update downloaded; notifying renderer", { version });
     queueAutoUpdateToast({ version });
+
+    // Also attempt to emit immediately in case renderer is already loaded
+    // This handles the case where the update downloads quickly
+    emitAutoUpdateToastIfPossible();
   });
 
   // Initial check and periodic re-checks
@@ -922,12 +926,38 @@ app.whenReady().then(async () => {
             try {
               mainLog("Manual update check initiated");
               const result = await autoUpdater.checkForUpdates();
-              if (!result?.updateInfo) {
+              const updateInfo = result?.updateInfo;
+
+              if (!updateInfo) {
                 await dialog.showMessageBox({
                   type: "info",
-                  message: "You’re up to date.",
+                  message: "You're up to date.",
                 });
+                return;
               }
+
+              // Check if the update is actually newer than current version
+              const isNewer = isUpdateNewerThanCurrent(updateInfo);
+              if (!isNewer) {
+                await dialog.showMessageBox({
+                  type: "info",
+                  message: "You're up to date.",
+                });
+                return;
+              }
+
+              // Update is available - show dialog
+              const version = typeof updateInfo.version === "string"
+                ? updateInfo.version
+                : null;
+              const versionLabel = version ? ` (${version})` : "";
+
+              const response = await dialog.showMessageBox({
+                type: "info",
+                message: `Update available${versionLabel}`,
+                detail: "The update will be downloaded in the background and installed when you restart the app.",
+                buttons: ["OK"],
+              });
             } catch (e) {
               mainWarn("Manual checkForUpdates failed", e);
               await dialog.showMessageBox({
