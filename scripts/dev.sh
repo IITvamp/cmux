@@ -280,6 +280,17 @@ echo -e "${GREEN}Starting www app on port 9779...${NC}"
 WWW_PID=$!
 check_process $WWW_PID "WWW App"
 
+# Warm up www server in background (non-blocking)
+(bash -c '
+  for i in {1..30}; do
+    if curl -s -f http://localhost:9779/api/health > /dev/null 2>&1; then
+      echo -e "'"${GREEN}"'WWW server ready and warmed up'"${NC}"'"
+      break
+    fi
+    sleep 0.5
+  done
+') &
+
 # Start the openapi client generator
 echo -e "${GREEN}Starting openapi client generator...${NC}"
 (cd "$APP_DIR/apps/www" && exec bash -c 'trap "kill -9 0" EXIT; bun run generate-openapi-client:watch 2>&1 | tee "$LOG_DIR/openapi-client.log" | prefix_output "OPENAPI-CLIENT" "$MAGENTA"') &
