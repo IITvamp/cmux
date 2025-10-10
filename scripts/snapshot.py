@@ -914,9 +914,11 @@ async def task_install_base_packages(ctx: TaskContext) -> None:
             xvfb \
             x11-xserver-utils xterm novnc \
             x11vnc \
+            tmux \
             gh \
             zsh \
-            zsh-autosuggestions
+            zsh-autosuggestions \
+            ripgrep
         
         # Download and install Chrome
         arch="$(dpkg --print-architecture)"

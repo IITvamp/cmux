@@ -43,6 +43,11 @@ interface DockerEvent {
   };
 }
 
+type HostConfigWithCgroupns =
+  Docker.ContainerCreateOptions["HostConfig"] & {
+    CgroupnsMode?: "host" | "private";
+  };
+
 export class DockerVSCodeInstance extends VSCodeInstance {
   private containerName: string;
   private imageName: string;
@@ -259,23 +264,31 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     }
 
     // Create container configuration
+    const hostConfig: HostConfigWithCgroupns = {
+      AutoRemove: true,
+      Privileged: true,
+      CgroupnsMode: "host",
+      PortBindings: {
+        "39375/tcp": [{ HostPort: "0" }], // Exec service port
+        "39378/tcp": [{ HostPort: "0" }], // VS Code port
+        "39377/tcp": [{ HostPort: "0" }], // Worker port
+        "39376/tcp": [{ HostPort: "0" }], // Extension socket port
+        "39379/tcp": [{ HostPort: "0" }], // cmux-proxy port
+        "39380/tcp": [{ HostPort: "0" }], // VNC websockify port
+        "39381/tcp": [{ HostPort: "0" }], // Chrome DevTools port
+      },
+      Tmpfs: {
+        "/run": "rw,mode=755",
+        "/run/lock": "rw,mode=755",
+      },
+      Binds: ["/sys/fs/cgroup:/sys/fs/cgroup:rw"],
+    };
+
     const createOptions: Docker.ContainerCreateOptions = {
       name: this.containerName,
       Image: this.imageName,
       Env: envVars,
-      HostConfig: {
-        AutoRemove: true,
-        Privileged: true,
-        PortBindings: {
-          "39375/tcp": [{ HostPort: "0" }], // Exec service port
-          "39378/tcp": [{ HostPort: "0" }], // VS Code port
-          "39377/tcp": [{ HostPort: "0" }], // Worker port
-          "39376/tcp": [{ HostPort: "0" }], // Extension socket port
-          "39379/tcp": [{ HostPort: "0" }], // cmux-proxy port
-          "39380/tcp": [{ HostPort: "0" }], // VNC websockify port
-          "39381/tcp": [{ HostPort: "0" }], // Chrome DevTools port
-        },
-      },
+      HostConfig: hostConfig,
       ExposedPorts: {
         "39375/tcp": {},
         "39378/tcp": {},
@@ -309,11 +322,15 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         const homeDir = os.homedir();
         const gitConfigPath = path.join(homeDir, ".gitconfig");
 
-        const binds = [
-          `${this.config.workspacePath}:/root/workspace`,
-          // Mount the origin directory at the same absolute path to preserve git references
-          `${originPath}:${originPath}:rw`, // Read-write mount for git operations
-        ];
+        const binds =
+          createOptions.HostConfig?.Binds ??
+          ["/sys/fs/cgroup:/sys/fs/cgroup:rw"];
+        if (!createOptions.HostConfig?.Binds) {
+          createOptions.HostConfig!.Binds = binds;
+        }
+        binds.push(`${this.config.workspacePath}:/root/workspace`);
+        // Mount the origin directory at the same absolute path to preserve git references
+        binds.push(`${originPath}:${originPath}:rw`); // Read-write mount for git operations
 
         // Mount SSH directory for git authentication
         const sshDir = path.join(homeDir, ".ssh");
@@ -364,7 +381,13 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         const homeDir = os.homedir();
         const gitConfigPath = path.join(homeDir, ".gitconfig");
 
-        const binds = [`${this.config.workspacePath}:/root/workspace`];
+        const binds =
+          createOptions.HostConfig?.Binds ??
+          ["/sys/fs/cgroup:/sys/fs/cgroup:rw"];
+        if (!createOptions.HostConfig?.Binds) {
+          createOptions.HostConfig!.Binds = binds;
+        }
+        binds.push(`${this.config.workspacePath}:/root/workspace`);
 
         // Mount SSH directory for git authentication
         const sshDir = path.join(homeDir, ".ssh");
