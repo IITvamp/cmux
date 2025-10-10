@@ -15,12 +15,12 @@ import { hmacSha256, safeEqualHex, sha256Hex } from "../_shared/crypto";
 import { bytesToHex } from "../_shared/encoding";
 import { streamInstallationRepositories } from "../_shared/githubApp";
 import {
-  sanitizeCheckRunEvent,
-  sanitizeDeploymentEvent,
-  sanitizeDeploymentStatusEvent,
-  sanitizePullRequestEvent,
-  sanitizeCommitStatusEvent,
-  sanitizeWorkflowRunEvent,
+  buildCheckRunPayload,
+  buildCommitStatusPayload,
+  buildDeploymentPayload,
+  buildDeploymentStatusPayload,
+  buildPullRequestPayload,
+  buildWorkflowRunPayload,
 } from "../_shared/github_webhook_validators";
 import { internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
@@ -68,20 +68,20 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
   if (!env.GITHUB_APP_WEBHOOK_SECRET) {
     return new Response("webhook not configured", { status: 501 });
   }
-  const payload = await req.text();
+  const rawPayload = await req.text();
   const event = req.headers.get("x-github-event");
   const delivery = req.headers.get("x-github-delivery");
   const signature = req.headers.get("x-hub-signature-256");
 
   if (
-    !(await verifySignature(env.GITHUB_APP_WEBHOOK_SECRET, payload, signature))
+    !(await verifySignature(env.GITHUB_APP_WEBHOOK_SECRET, rawPayload, signature))
   ) {
     return new Response("invalid signature", { status: 400 });
   }
 
   let body: WebhookEvent;
   try {
-    body = JSON.parse(payload) as WebhookEvent;
+    body = JSON.parse(rawPayload) as WebhookEvent;
   } catch {
     return new Response("invalid payload", { status: 400 });
   }
@@ -92,7 +92,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
 
   // Record delivery for idempotency/auditing
   if (delivery) {
-    const payloadHash = await sha256Hex(payload);
+    const payloadHash = await sha256Hex(rawPayload);
     const result = await _ctx.runMutation(internal.github_app.recordWebhookDelivery, {
       provider: "github",
       deliveryId: delivery,
@@ -257,7 +257,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
           }
 
 
-          const sanitizedPayload = sanitizeWorkflowRunEvent(workflowRunPayload);
+          const payload = buildWorkflowRunPayload(workflowRunPayload);
 
           await _ctx.runMutation(
             internal.github_workflows.upsertWorkflowRunFromWebhook,
@@ -265,7 +265,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
               installationId: installation,
               repoFullName,
               teamId,
-              payload: sanitizedPayload,
+              payload,
             },
           );
 
@@ -316,13 +316,13 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
           }
 
 
-          const sanitizedPayload = sanitizeCheckRunEvent(checkRunPayload);
+          const payload = buildCheckRunPayload(checkRunPayload);
 
           await _ctx.runMutation(internal.github_check_runs.upsertCheckRunFromWebhook, {
             installationId: installation,
             repoFullName,
             teamId,
-            payload: sanitizedPayload,
+            payload,
           });
 
         } catch (err) {
@@ -369,7 +369,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             break;
           }
 
-          const sanitizedPayload = sanitizeDeploymentEvent(deploymentPayload);
+          const payload = buildDeploymentPayload(deploymentPayload);
 
           await _ctx.runMutation(
             internal.github_deployments.upsertDeploymentFromWebhook,
@@ -377,7 +377,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
               installationId: installation,
               repoFullName,
               teamId,
-              payload: sanitizedPayload,
+              payload,
             },
           );
 
@@ -421,7 +421,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             break;
           }
 
-          const sanitizedPayload = sanitizeDeploymentStatusEvent(deploymentStatusPayload);
+          const payload = buildDeploymentStatusPayload(deploymentStatusPayload);
 
           await _ctx.runMutation(
             internal.github_deployments.updateDeploymentStatusFromWebhook,
@@ -429,7 +429,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
               installationId: installation,
               repoFullName,
               teamId,
-              payload: sanitizedPayload,
+              payload,
             },
           );
 
@@ -473,7 +473,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             break;
           }
 
-          const sanitizedPayload = sanitizeCommitStatusEvent(statusPayload);
+          const payload = buildCommitStatusPayload(statusPayload);
 
           await _ctx.runMutation(
             internal.github_commit_statuses.upsertCommitStatusFromWebhook,
@@ -481,7 +481,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
               installationId: installation,
               repoFullName,
               teamId,
-              payload: sanitizedPayload,
+              payload,
             },
           );
 
@@ -506,12 +506,12 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
           );
           const teamId = conn?.teamId;
           if (!teamId) break;
-          const sanitizedPayload = sanitizePullRequestEvent(prPayload);
+          const payload = buildPullRequestPayload(prPayload);
           await _ctx.runMutation(internal.github_prs.upsertFromWebhookPayload, {
             installationId: installation,
             repoFullName,
             teamId,
-            payload: sanitizedPayload,
+            payload,
           });
         } catch (err) {
           console.error("github_webhook pull_request handler failed", {

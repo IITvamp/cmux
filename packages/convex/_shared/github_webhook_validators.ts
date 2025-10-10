@@ -8,641 +8,459 @@ import type {
 } from "@octokit/webhooks-types";
 import { v, type Infer } from "convex/values";
 
-// GitHub webhook payloads validator
-// These match the structure from @octokit/webhooks-types
-// We define minimal schemas for the fields we actually use
+const pickString = (value: unknown): string | undefined =>
+  typeof value === "string" ? value : undefined;
 
-// Common user object in GitHub webhooks
-const githubUser = v.object({
+const pickNumber = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isFinite(value) ? value : undefined;
+
+const pickBoolean = (value: unknown): boolean | undefined =>
+  typeof value === "boolean" ? value : undefined;
+
+const githubUserFragment = v.object({
   login: v.optional(v.string()),
   id: v.optional(v.number()),
 });
+export type GithubUserFragment = Infer<typeof githubUserFragment>;
 
-// Repository object
-const githubRepository = v.object({
+const githubRepositoryFragment = v.object({
   id: v.optional(v.number()),
-  pushed_at: v.optional(v.union(v.string(), v.number(), v.null())),
+  pushed_at: v.optional(v.string()),
 });
+export type GithubRepositoryFragment = Infer<typeof githubRepositoryFragment>;
 
-// Branch ref object
-const githubBranchRef = v.object({
+const pullRequestBranchFragment = v.object({
   ref: v.optional(v.string()),
   sha: v.optional(v.string()),
-  repo: v.optional(v.union(githubRepository, v.null())),
+  repo: v.optional(githubRepositoryFragment),
 });
+type PullRequestBranchFragment = Infer<typeof pullRequestBranchFragment>;
 
-// Pull request object from webhook
-const githubPullRequest = v.object({
+const pullRequestFragment = v.object({
   number: v.optional(v.number()),
   id: v.optional(v.number()),
   title: v.optional(v.string()),
   state: v.optional(v.string()),
-  merged: v.optional(v.union(v.boolean(), v.null())),
-  draft: v.optional(v.union(v.boolean(), v.null())),
+  merged: v.optional(v.boolean()),
+  draft: v.optional(v.boolean()),
   html_url: v.optional(v.string()),
-  merge_commit_sha: v.optional(v.union(v.string(), v.null())),
-  created_at: v.optional(v.union(v.string(), v.null())),
-  updated_at: v.optional(v.union(v.string(), v.null())),
-  closed_at: v.optional(v.union(v.string(), v.null())),
-  merged_at: v.optional(v.union(v.string(), v.null())),
+  merge_commit_sha: v.optional(v.string()),
+  created_at: v.optional(v.string()),
+  updated_at: v.optional(v.string()),
+  closed_at: v.optional(v.string()),
+  merged_at: v.optional(v.string()),
   comments: v.optional(v.number()),
   review_comments: v.optional(v.number()),
   commits: v.optional(v.number()),
   additions: v.optional(v.number()),
   deletions: v.optional(v.number()),
   changed_files: v.optional(v.number()),
-  user: v.optional(githubUser),
-  base: v.optional(githubBranchRef),
-  head: v.optional(githubBranchRef),
+  user: v.optional(githubUserFragment),
+  base: v.optional(pullRequestBranchFragment),
+  head: v.optional(pullRequestBranchFragment),
 });
+type PullRequestFragment = Infer<typeof pullRequestFragment>;
 
-// Pull request webhook event
 export const pullRequestWebhookPayload = v.object({
-  pull_request: v.optional(githubPullRequest),
+  pull_request: v.optional(pullRequestFragment),
   number: v.optional(v.number()),
 });
+export type GithubPullRequestEventPayload = Infer<
+  typeof pullRequestWebhookPayload
+>;
 
-// App object for check runs
-const githubApp = v.object({
-  name: v.optional(v.string()),
-  slug: v.optional(v.string()),
-});
-
-// Check run object
-const githubCheckRun = v.object({
+const checkRunFragment = v.object({
   id: v.optional(v.number()),
   name: v.optional(v.string()),
   head_sha: v.optional(v.string()),
   status: v.optional(v.string()),
-  conclusion: v.optional(v.union(v.string(), v.null())),
+  conclusion: v.optional(v.string()),
   html_url: v.optional(v.string()),
-  app: v.optional(githubApp),
-  pull_requests: v.optional(v.array(v.object({
-    number: v.optional(v.number()),
-  }))),
-  updated_at: v.optional(v.union(v.string(), v.null())),
-  started_at: v.optional(v.union(v.string(), v.null())),
-  completed_at: v.optional(v.union(v.string(), v.null())),
+  app: v.optional(
+    v.object({
+      name: v.optional(v.string()),
+      slug: v.optional(v.string()),
+    }),
+  ),
+  pull_requests: v.optional(
+    v.array(
+      v.object({
+        number: v.optional(v.number()),
+      }),
+    ),
+  ),
+  updated_at: v.optional(v.string()),
+  started_at: v.optional(v.string()),
+  completed_at: v.optional(v.string()),
 });
 
-// Check run webhook event
 export const checkRunWebhookPayload = v.object({
-  check_run: v.optional(githubCheckRun),
-  repository: v.optional(githubRepository),
+  check_run: v.optional(checkRunFragment),
+  repository: v.optional(githubRepositoryFragment),
+});
+export type GithubCheckRunEventPayload = Infer<
+  typeof checkRunWebhookPayload
+>;
+
+const deploymentFragment = v.object({
+  id: v.optional(v.number()),
+  sha: v.optional(v.string()),
+  ref: v.optional(v.string()),
+  task: v.optional(v.string()),
+  environment: v.optional(v.string()),
+  description: v.optional(v.string()),
+  creator: v.optional(githubUserFragment),
+  created_at: v.optional(v.string()),
+  updated_at: v.optional(v.string()),
 });
 
-// Workflow run object
-const githubWorkflowRun = v.object({
+export const deploymentWebhookPayload = v.object({
+  deployment: v.optional(deploymentFragment),
+  repository: v.optional(githubRepositoryFragment),
+});
+export type GithubDeploymentEventPayload = Infer<
+  typeof deploymentWebhookPayload
+>;
+
+const deploymentStatusFragment = v.object({
+  state: v.optional(v.string()),
+  description: v.optional(v.string()),
+  log_url: v.optional(v.string()),
+  target_url: v.optional(v.string()),
+  environment_url: v.optional(v.string()),
+  updated_at: v.optional(v.string()),
+});
+
+export const deploymentStatusWebhookPayload = v.object({
+  deployment: v.optional(deploymentFragment),
+  deployment_status: v.optional(deploymentStatusFragment),
+  repository: v.optional(githubRepositoryFragment),
+});
+export type GithubDeploymentStatusEventPayload = Infer<
+  typeof deploymentStatusWebhookPayload
+>;
+
+const workflowRunFragment = v.object({
   id: v.optional(v.number()),
   run_number: v.optional(v.number()),
   workflow_id: v.optional(v.number()),
   name: v.optional(v.string()),
   event: v.optional(v.string()),
   status: v.optional(v.string()),
-  conclusion: v.optional(v.union(v.string(), v.null())),
+  conclusion: v.optional(v.string()),
   head_branch: v.optional(v.string()),
   head_sha: v.optional(v.string()),
   html_url: v.optional(v.string()),
   created_at: v.optional(v.string()),
   updated_at: v.optional(v.string()),
   run_started_at: v.optional(v.string()),
-  completed_at: v.optional(v.union(v.string(), v.null())),
-  actor: v.optional(githubUser),
-  pull_requests: v.optional(v.array(v.object({
-    number: v.optional(v.number()),
-  }))),
+  completed_at: v.optional(v.string()),
+  actor: v.optional(githubUserFragment),
+  pull_requests: v.optional(
+    v.array(
+      v.object({
+        number: v.optional(v.number()),
+      }),
+    ),
+  ),
 });
 
-// Workflow object
-const githubWorkflow = v.object({
+const workflowFragment = v.object({
   name: v.optional(v.string()),
 });
 
-// Workflow run webhook event
 export const workflowRunWebhookPayload = v.object({
-  workflow_run: v.optional(githubWorkflowRun),
-  workflow: v.optional(githubWorkflow),
-  repository: v.optional(githubRepository),
+  workflow_run: v.optional(workflowRunFragment),
+  workflow: v.optional(workflowFragment),
+  repository: v.optional(githubRepositoryFragment),
 });
+export type GithubWorkflowRunEventPayload = Infer<
+  typeof workflowRunWebhookPayload
+>;
 
-// Deployment object
-const githubDeployment = v.object({
-  id: v.optional(v.number()),
-  sha: v.optional(v.string()),
-  ref: v.optional(v.string()),
-  task: v.optional(v.string()),
-  environment: v.optional(v.string()),
-  description: v.optional(v.union(v.string(), v.null())),
-  creator: v.optional(githubUser),
-  created_at: v.optional(v.string()),
-  updated_at: v.optional(v.string()),
-});
-
-// Deployment webhook event
-export const deploymentWebhookPayload = v.object({
-  deployment: v.optional(githubDeployment),
-  repository: v.optional(githubRepository),
-});
-
-// Deployment status object
-const githubDeploymentStatus = v.object({
-  state: v.optional(v.string()),
-  description: v.optional(v.union(v.string(), v.null())),
-  log_url: v.optional(v.union(v.string(), v.null())),
-  target_url: v.optional(v.union(v.string(), v.null())),
-  environment_url: v.optional(v.union(v.string(), v.null())),
-  updated_at: v.optional(v.string()),
-});
-
-// Deployment status webhook event
-export const deploymentStatusWebhookPayload = v.object({
-  deployment: v.optional(githubDeployment),
-  deployment_status: v.optional(githubDeploymentStatus),
-  repository: v.optional(githubRepository),
-});
-
-// Commit status webhook event (StatusEvent from @octokit/webhooks-types)
-// Note: StatusEvent has top-level fields, not nested under 'status'
 export const commitStatusWebhookPayload = v.object({
   id: v.optional(v.number()),
   sha: v.optional(v.string()),
   state: v.optional(v.string()),
-  description: v.optional(v.union(v.string(), v.null())),
-  target_url: v.optional(v.union(v.string(), v.null())),
+  description: v.optional(v.string()),
+  target_url: v.optional(v.string()),
   context: v.optional(v.string()),
   created_at: v.optional(v.string()),
   updated_at: v.optional(v.string()),
-  repository: v.optional(githubRepository),
-  sender: v.optional(githubUser),
+  repository: v.optional(githubRepositoryFragment),
+  sender: v.optional(githubUserFragment),
 });
-
-export type GithubUserPayload = Infer<typeof githubUser>;
-export type GithubRepositoryPayload = Infer<typeof githubRepository>;
-export type GithubAppPayload = Infer<typeof githubApp>;
-export type GithubCheckRunPayload = Infer<typeof githubCheckRun>;
-export type GithubCheckRunEventPayload = Infer<typeof checkRunWebhookPayload>;
-export type GithubWorkflowPayload = Infer<typeof githubWorkflow>;
-export type GithubWorkflowRunPayload = Infer<typeof githubWorkflowRun>;
-export type GithubWorkflowRunEventPayload = Infer<typeof workflowRunWebhookPayload>;
-export type GithubPullRequestPayload = Infer<typeof githubPullRequest>;
-export type GithubPullRequestEventPayload = Infer<typeof pullRequestWebhookPayload>;
-export type GithubDeploymentPayload = Infer<typeof githubDeployment>;
-export type GithubDeploymentEventPayload = Infer<typeof deploymentWebhookPayload>;
-export type GithubDeploymentStatusPayload = Infer<typeof githubDeploymentStatus>;
-export type GithubDeploymentStatusEventPayload = Infer<
-  typeof deploymentStatusWebhookPayload
+export type GithubCommitStatusEventPayload = Infer<
+  typeof commitStatusWebhookPayload
 >;
-export type GithubCommitStatusEventPayload = Infer<typeof commitStatusWebhookPayload>;
 
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
-
-const asNumber = (value: unknown): number | undefined =>
-  typeof value === "number" && Number.isFinite(value) ? value : undefined;
-
-const asString = (value: unknown): string | undefined =>
-  typeof value === "string" ? value : undefined;
-
-const asStringOrNull = (value: unknown): string | null | undefined =>
-  typeof value === "string"
-    ? value
-    : value === null
-      ? null
-      : undefined;
-
-const sanitizeGithubUser = (user: unknown): GithubUserPayload | undefined => {
-  if (!isObject(user)) {
+function mapRepository(repo: unknown): GithubRepositoryFragment | undefined {
+  if (!repo || typeof repo !== "object") {
     return undefined;
   }
+  const objectRepo = repo as Record<string, unknown>;
+  const result: GithubRepositoryFragment = {};
+  const id = pickNumber(objectRepo.id);
+  if (id !== undefined) result.id = id;
+  const pushedAt = objectRepo.pushed_at;
+  if (typeof pushedAt === "string") {
+    result.pushed_at = pushedAt;
+  } else if (typeof pushedAt === "number" && Number.isFinite(pushedAt)) {
+    result.pushed_at = pushedAt.toString();
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
 
-  const sanitized: GithubUserPayload = {};
-  const login = asString(user.login);
-  if (login !== undefined) sanitized.login = login;
-  const id = asNumber(user.id);
-  if (id !== undefined) sanitized.id = id;
-  return Object.keys(sanitized).length > 0 ? sanitized : undefined;
-};
-
-const sanitizeGithubRepository = (
-  repository: unknown,
-): GithubRepositoryPayload | undefined => {
-  if (!isObject(repository)) {
+function mapBranchRef(
+  refValue: unknown,
+): PullRequestBranchFragment | undefined {
+  if (!refValue || typeof refValue !== "object") {
     return undefined;
   }
+  const value = refValue as Record<string, unknown>;
+  const result: PullRequestBranchFragment = {};
+  const ref = pickString(value.ref);
+  if (ref !== undefined) result.ref = ref;
+  const sha = pickString(value.sha);
+  if (sha !== undefined) result.sha = sha;
+  const repo = mapRepository(value.repo);
+  if (repo) result.repo = repo;
+  return Object.keys(result).length > 0 ? result : undefined;
+}
 
-  const sanitized: GithubRepositoryPayload = {};
-  const id = asNumber(repository.id);
-  if (id !== undefined) sanitized.id = id;
-  const pushedAt = repository.pushed_at;
-  if (
-    typeof pushedAt === "string" ||
-    typeof pushedAt === "number" ||
-    pushedAt === null
-  ) {
-    sanitized.pushed_at = pushedAt;
-  }
-  return Object.keys(sanitized).length > 0 ? sanitized : undefined;
-};
-
-const sanitizeGithubApp = (app: unknown): GithubAppPayload | undefined => {
-  if (!isObject(app)) {
+function mapPullRequest(pr: unknown): PullRequestFragment | undefined {
+  if (!pr || typeof pr !== "object") {
     return undefined;
   }
+  const value = pr as Record<string, unknown>;
+  const result: PullRequestFragment = {};
+  const number = pickNumber(value.number);
+  if (number !== undefined) result.number = number;
+  const id = pickNumber(value.id);
+  if (id !== undefined) result.id = id;
+  const title = pickString(value.title);
+  if (title !== undefined) result.title = title;
+  const state = pickString(value.state);
+  if (state !== undefined) result.state = state;
+  const merged = pickBoolean(value.merged);
+  if (merged !== undefined) result.merged = merged;
+  const draft = pickBoolean(value.draft);
+  if (draft !== undefined) result.draft = draft;
+  const htmlUrl = pickString(value.html_url);
+  if (htmlUrl !== undefined) result.html_url = htmlUrl;
+  const mergeCommitSha = pickString(value.merge_commit_sha);
+  if (mergeCommitSha !== undefined) result.merge_commit_sha = mergeCommitSha;
+  const createdAt = pickString(value.created_at);
+  if (createdAt !== undefined) result.created_at = createdAt;
+  const updatedAt = pickString(value.updated_at);
+  if (updatedAt !== undefined) result.updated_at = updatedAt;
+  const closedAt = pickString(value.closed_at);
+  if (closedAt !== undefined) result.closed_at = closedAt;
+  const mergedAt = pickString(value.merged_at);
+  if (mergedAt !== undefined) result.merged_at = mergedAt;
+  const comments = pickNumber(value.comments);
+  if (comments !== undefined) result.comments = comments;
+  const reviewComments = pickNumber(value.review_comments);
+  if (reviewComments !== undefined) result.review_comments = reviewComments;
+  const commits = pickNumber(value.commits);
+  if (commits !== undefined) result.commits = commits;
+  const additions = pickNumber(value.additions);
+  if (additions !== undefined) result.additions = additions;
+  const deletions = pickNumber(value.deletions);
+  if (deletions !== undefined) result.deletions = deletions;
+  const changedFiles = pickNumber(value.changed_files);
+  if (changedFiles !== undefined) result.changed_files = changedFiles;
+  const user = mapUser(value.user);
+  if (user) result.user = user;
+  const base = mapBranchRef(value.base);
+  if (base) result.base = base;
+  const head = mapBranchRef(value.head);
+  if (head) result.head = head;
+  return Object.keys(result).length > 0 ? result : undefined;
+}
 
-  const sanitized: GithubAppPayload = {};
-  const name = asString(app.name);
-  if (name !== undefined) sanitized.name = name;
-  const slug = asString(app.slug);
-  if (slug !== undefined) sanitized.slug = slug;
-  return Object.keys(sanitized).length > 0 ? sanitized : undefined;
-};
-
-const sanitizePullRequests = (
-  pullRequests: unknown,
-): GithubCheckRunPayload["pull_requests"] => {
-  if (!Array.isArray(pullRequests)) {
+function mapUser(user: unknown): GithubUserFragment | undefined {
+  if (!user || typeof user !== "object") {
     return undefined;
   }
+  const value = user as Record<string, unknown>;
+  const result: GithubUserFragment = {};
+  const login = pickString(value.login);
+  if (login !== undefined) result.login = login;
+  const id = pickNumber(value.id);
+  if (id !== undefined) result.id = id;
+  return Object.keys(result).length > 0 ? result : undefined;
+}
 
-  const sanitized = pullRequests
-    .map((item) => {
-      if (!isObject(item)) {
-        return undefined;
-      }
-      const prNumber = asNumber(item.number);
-      return prNumber !== undefined ? { number: prNumber } : {};
-    })
-    .filter((item) => item !== undefined);
-
-  return sanitized.length > 0 ? sanitized : undefined;
-};
-
-const sanitizeDeploymentPullRequests = (
-  pullRequests: unknown,
-): GithubWorkflowRunPayload["pull_requests"] => {
-  if (!Array.isArray(pullRequests)) {
-    return undefined;
+function mapCheckRun(event: CheckRunEvent): GithubCheckRunEventPayload {
+  const payload: GithubCheckRunEventPayload = {};
+  const checkRun = event.check_run as Record<string, unknown> | undefined;
+  if (checkRun) {
+    const mapped = {
+      id: pickNumber(checkRun.id),
+      name: pickString(checkRun.name),
+      head_sha: pickString(checkRun.head_sha),
+      status: pickString(checkRun.status),
+      conclusion: pickString(checkRun.conclusion),
+      html_url: pickString(checkRun.html_url),
+      app: (checkRun.app as Record<string, unknown> | undefined)
+        ? {
+            name: pickString((checkRun.app as Record<string, unknown>).name),
+            slug: pickString((checkRun.app as Record<string, unknown>).slug),
+          }
+        : undefined,
+      pull_requests: Array.isArray(checkRun.pull_requests)
+        ? (checkRun.pull_requests as unknown[])
+            .map((pr) => ({ number: pickNumber((pr as any)?.number) }))
+            .filter((pr) => pr.number !== undefined)
+        : undefined,
+      updated_at: pickString(checkRun.updated_at),
+      started_at: pickString(checkRun.started_at),
+      completed_at: pickString(checkRun.completed_at),
+    };
+    payload.check_run = Object.fromEntries(
+      Object.entries(mapped).filter(([, v]) => v !== undefined),
+    ) as GithubCheckRunEventPayload["check_run"];
   }
 
-  const sanitized = pullRequests
-    .map((item) => {
-      if (!isObject(item)) {
-        return undefined;
-      }
-      const prNumber = asNumber(item.number);
-      return prNumber !== undefined ? { number: prNumber } : {};
-    })
-    .filter((item) => item !== undefined);
+  const repo = mapRepository(event.repository);
+  if (repo) payload.repository = repo;
+  return payload;
+}
 
-  return sanitized.length > 0 ? sanitized : undefined;
-};
-
-const sanitizeGithubBranchRef = (
-  branchRef: unknown,
-): Infer<typeof githubBranchRef> | undefined => {
-  if (!isObject(branchRef)) {
-    return undefined;
-  }
-
-  const sanitized: Infer<typeof githubBranchRef> = {};
-  const ref = asString(branchRef.ref);
-  if (ref !== undefined) sanitized.ref = ref;
-  const sha = asString(branchRef.sha);
-  if (sha !== undefined) sanitized.sha = sha;
-  const repo = sanitizeGithubRepository(branchRef.repo);
-  if (repo !== undefined) sanitized.repo = repo;
-  return Object.keys(sanitized).length > 0 ? sanitized : undefined;
-};
-
-const sanitizeGithubPullRequest = (
-  pullRequest: unknown,
-): GithubPullRequestPayload | undefined => {
-  if (!isObject(pullRequest)) {
-    return undefined;
-  }
-
-  const sanitized: GithubPullRequestPayload = {};
-
-  const prNumber = asNumber(pullRequest.number);
-  if (prNumber !== undefined) sanitized.number = prNumber;
-  const id = asNumber(pullRequest.id);
-  if (id !== undefined) sanitized.id = id;
-  const title = asString(pullRequest.title);
-  if (title !== undefined) sanitized.title = title;
-  const state = asString(pullRequest.state);
-  if (state !== undefined) sanitized.state = state;
-  const merged = pullRequest.merged;
-  if (typeof merged === "boolean" || merged === null) sanitized.merged = merged;
-  const draft = pullRequest.draft;
-  if (typeof draft === "boolean" || draft === null) sanitized.draft = draft;
-  const htmlUrl = asString(pullRequest.html_url);
-  if (htmlUrl !== undefined) sanitized.html_url = htmlUrl;
-  const mergeCommitSha = pullRequest.merge_commit_sha;
-  if (typeof mergeCommitSha === "string" || mergeCommitSha === null) {
-    sanitized.merge_commit_sha = mergeCommitSha;
-  }
-  const createdAt = pullRequest.created_at;
-  if (typeof createdAt === "string" || createdAt === null) sanitized.created_at = createdAt;
-  const updatedAt = pullRequest.updated_at;
-  if (typeof updatedAt === "string" || updatedAt === null) sanitized.updated_at = updatedAt;
-  const closedAt = pullRequest.closed_at;
-  if (typeof closedAt === "string" || closedAt === null) sanitized.closed_at = closedAt;
-  const mergedAt = pullRequest.merged_at;
-  if (typeof mergedAt === "string" || mergedAt === null) sanitized.merged_at = mergedAt;
-  const comments = asNumber(pullRequest.comments);
-  if (comments !== undefined) sanitized.comments = comments;
-  const reviewComments = asNumber(pullRequest.review_comments);
-  if (reviewComments !== undefined) sanitized.review_comments = reviewComments;
-  const commits = asNumber(pullRequest.commits);
-  if (commits !== undefined) sanitized.commits = commits;
-  const additions = asNumber(pullRequest.additions);
-  if (additions !== undefined) sanitized.additions = additions;
-  const deletions = asNumber(pullRequest.deletions);
-  if (deletions !== undefined) sanitized.deletions = deletions;
-  const changedFiles = asNumber(pullRequest.changed_files);
-  if (changedFiles !== undefined) sanitized.changed_files = changedFiles;
-  const user = sanitizeGithubUser(pullRequest.user);
-  if (user) sanitized.user = user;
-  const base = sanitizeGithubBranchRef(pullRequest.base);
-  if (base) sanitized.base = base;
-  const head = sanitizeGithubBranchRef(pullRequest.head);
-  if (head) sanitized.head = head;
-
-  return Object.keys(sanitized).length > 0 ? sanitized : undefined;
-};
-
-export const sanitizePullRequestEvent = (
-  event: PullRequestEvent,
-): GithubPullRequestEventPayload => {
-  const sanitized: GithubPullRequestEventPayload = {};
-
-  const pullRequest = sanitizeGithubPullRequest(event.pull_request);
-  if (pullRequest) {
-    sanitized.pull_request = pullRequest;
-  }
-
-  const numberValue = asNumber(event.number);
-  if (numberValue !== undefined) sanitized.number = numberValue;
-
-  return sanitized;
-};
-
-export const sanitizeCheckRunEvent = (
-  event: CheckRunEvent,
-): GithubCheckRunEventPayload => {
-  const sanitized: GithubCheckRunEventPayload = {};
-
-  if (event.check_run) {
-    const checkRun: GithubCheckRunPayload = {};
-    const id = asNumber(event.check_run.id);
-    if (id !== undefined) checkRun.id = id;
-    const name = asString(event.check_run.name);
-    if (name !== undefined) checkRun.name = name;
-    const headSha = asString(event.check_run.head_sha);
-    if (headSha !== undefined) checkRun.head_sha = headSha;
-    const status = asString(event.check_run.status);
-    if (status !== undefined) checkRun.status = status;
-    const conclusion = asStringOrNull(event.check_run.conclusion);
-    if (conclusion !== undefined) checkRun.conclusion = conclusion;
-    const htmlUrl = asString(event.check_run.html_url);
-    if (htmlUrl !== undefined) checkRun.html_url = htmlUrl;
-    const app = sanitizeGithubApp(event.check_run.app);
-    if (app) checkRun.app = app;
-    const pullRequests = sanitizePullRequests(event.check_run.pull_requests);
-    if (pullRequests) checkRun.pull_requests = pullRequests;
-    if ("updated_at" in event.check_run) {
-      const updatedAt = asStringOrNull(
-        (event.check_run as { updated_at?: unknown }).updated_at,
-      );
-      if (updatedAt !== undefined) checkRun.updated_at = updatedAt;
-    }
-    if ("started_at" in event.check_run) {
-      const startedAt = asStringOrNull(
-        (event.check_run as { started_at?: unknown }).started_at,
-      );
-      if (startedAt !== undefined) checkRun.started_at = startedAt;
-    }
-    if ("completed_at" in event.check_run) {
-      const completedAt = asStringOrNull(
-        (event.check_run as { completed_at?: unknown }).completed_at,
-      );
-      if (completedAt !== undefined) checkRun.completed_at = completedAt;
-    }
-
-    if (Object.keys(checkRun).length > 0) {
-      sanitized.check_run = checkRun;
-    }
-  }
-
-  const repository = sanitizeGithubRepository(event.repository);
-  if (repository) {
-    sanitized.repository = repository;
-  }
-
-  return sanitized;
-};
-
-const sanitizeGithubDeployment = (
-  deployment: unknown,
-): GithubDeploymentPayload | undefined => {
-  if (!isObject(deployment)) {
-    return undefined;
-  }
-
-  const sanitized: GithubDeploymentPayload = {};
-  const id = asNumber(deployment.id);
-  if (id !== undefined) sanitized.id = id;
-  const sha = asString(deployment.sha);
-  if (sha !== undefined) sanitized.sha = sha;
-  const ref = asString(deployment.ref);
-  if (ref !== undefined) sanitized.ref = ref;
-  const task = asString(deployment.task);
-  if (task !== undefined) sanitized.task = task;
-  const environment = asString(deployment.environment);
-  if (environment !== undefined) sanitized.environment = environment;
-  const description = asStringOrNull(deployment.description);
-  if (description !== undefined) sanitized.description = description;
-  const creator = sanitizeGithubUser(
-    isObject(deployment.creator) ? deployment.creator : undefined,
-  );
-  if (creator) sanitized.creator = creator;
-  const createdAt = asString(deployment.created_at);
-  if (createdAt !== undefined) sanitized.created_at = createdAt;
-  const updatedAt = asString(deployment.updated_at);
-  if (updatedAt !== undefined) sanitized.updated_at = updatedAt;
-  return Object.keys(sanitized).length > 0 ? sanitized : undefined;
-};
-
-const sanitizeGithubDeploymentStatus = (
-  status: unknown,
-): GithubDeploymentStatusPayload | undefined => {
-  if (!isObject(status)) {
-    return undefined;
-  }
-
-  const sanitized: GithubDeploymentStatusPayload = {};
-  const state = asString(status.state);
-  if (state !== undefined) sanitized.state = state;
-  const description = asStringOrNull(status.description);
-  if (description !== undefined) sanitized.description = description;
-  const logUrl = asStringOrNull(status.log_url);
-  if (logUrl !== undefined) sanitized.log_url = logUrl;
-  const targetUrl = asStringOrNull(status.target_url);
-  if (targetUrl !== undefined) sanitized.target_url = targetUrl;
-  const environmentUrl = asStringOrNull(status.environment_url);
-  if (environmentUrl !== undefined) sanitized.environment_url = environmentUrl;
-  const updatedAt = asString(status.updated_at);
-  if (updatedAt !== undefined) sanitized.updated_at = updatedAt;
-  return Object.keys(sanitized).length > 0 ? sanitized : undefined;
-};
-
-export const sanitizeDeploymentEvent = (
-  event: DeploymentEvent,
-): GithubDeploymentEventPayload => {
-  const sanitized: GithubDeploymentEventPayload = {};
-
-  const deployment = sanitizeGithubDeployment(event.deployment);
+function mapDeployment(event: DeploymentEvent): GithubDeploymentEventPayload {
+  const payload: GithubDeploymentEventPayload = {};
+  const deployment = (event.deployment as unknown) as
+    | Record<string, unknown>
+    | undefined;
   if (deployment) {
-    sanitized.deployment = deployment;
+    const mapped = {
+      id: pickNumber(deployment.id),
+      sha: pickString(deployment.sha),
+      ref: pickString(deployment.ref),
+      task: pickString(deployment.task),
+      environment: pickString(deployment.environment),
+      description: pickString(
+        (deployment.description ?? undefined) as unknown,
+      ),
+      creator: mapUser(deployment.creator),
+      created_at: pickString(deployment.created_at),
+      updated_at: pickString(deployment.updated_at),
+    };
+    payload.deployment = Object.fromEntries(
+      Object.entries(mapped).filter(([, v]) => v !== undefined),
+    ) as GithubDeploymentEventPayload["deployment"];
   }
+  const repo = mapRepository(event.repository);
+  if (repo) payload.repository = repo;
+  return payload;
+}
 
-  const repository = sanitizeGithubRepository(event.repository);
-  if (repository) {
-    sanitized.repository = repository;
-  }
-
-  return sanitized;
-};
-
-export const sanitizeDeploymentStatusEvent = (
+function mapDeploymentStatus(
   event: DeploymentStatusEvent,
-): GithubDeploymentStatusEventPayload => {
-  const sanitized: GithubDeploymentStatusEventPayload = {};
-
-  const deployment = sanitizeGithubDeployment(event.deployment);
-  if (deployment) {
-    sanitized.deployment = deployment;
+): GithubDeploymentStatusEventPayload {
+  const base = mapDeployment(event as unknown as DeploymentEvent);
+  const payload: GithubDeploymentStatusEventPayload = {
+    ...base,
+  };
+  const status = (event.deployment_status as unknown) as
+    | Record<string, unknown>
+    | undefined;
+  if (status) {
+    const mapped = {
+      state: pickString(status.state),
+      description: pickString((status.description ?? undefined) as unknown),
+      log_url: pickString(status.log_url),
+      target_url: pickString(status.target_url),
+      environment_url: pickString(status.environment_url),
+      updated_at: pickString(status.updated_at),
+    };
+    (payload as any).deployment_status = Object.fromEntries(
+      Object.entries(mapped).filter(([, v]) => v !== undefined),
+    );
   }
+  return payload;
+}
 
-  const deploymentStatus = sanitizeGithubDeploymentStatus(event.deployment_status);
-  if (deploymentStatus) {
-    sanitized.deployment_status = deploymentStatus;
-  }
-
-  const repository = sanitizeGithubRepository(event.repository);
-  if (repository) {
-    sanitized.repository = repository;
-  }
-
-  return sanitized;
-};
-
-const sanitizeGithubWorkflowRun = (
-  workflowRun: unknown,
-): GithubWorkflowRunPayload | undefined => {
-  if (!isObject(workflowRun)) {
-    return undefined;
-  }
-
-  const sanitized: GithubWorkflowRunPayload = {};
-  const id = asNumber(workflowRun.id);
-  if (id !== undefined) sanitized.id = id;
-  const runNumber = asNumber(workflowRun.run_number);
-  if (runNumber !== undefined) sanitized.run_number = runNumber;
-  const workflowId = asNumber(workflowRun.workflow_id);
-  if (workflowId !== undefined) sanitized.workflow_id = workflowId;
-  const name = asString(workflowRun.name);
-  if (name !== undefined) sanitized.name = name;
-  const eventName = asString(workflowRun.event);
-  if (eventName !== undefined) sanitized.event = eventName;
-  const status = asString(workflowRun.status);
-  if (status !== undefined) sanitized.status = status;
-  const conclusion = asStringOrNull(workflowRun.conclusion);
-  if (conclusion !== undefined) sanitized.conclusion = conclusion;
-  const headBranch = asString(workflowRun.head_branch);
-  if (headBranch !== undefined) sanitized.head_branch = headBranch;
-  const headSha = asString(workflowRun.head_sha);
-  if (headSha !== undefined) sanitized.head_sha = headSha;
-  const htmlUrl = asString(workflowRun.html_url);
-  if (htmlUrl !== undefined) sanitized.html_url = htmlUrl;
-  const createdAt = asString(workflowRun.created_at);
-  if (createdAt !== undefined) sanitized.created_at = createdAt;
-  const updatedAt = asString(workflowRun.updated_at);
-  if (updatedAt !== undefined) sanitized.updated_at = updatedAt;
-  const runStartedAt = asString(workflowRun.run_started_at);
-  if (runStartedAt !== undefined) sanitized.run_started_at = runStartedAt;
-  const completedAt = asStringOrNull(workflowRun.completed_at);
-  if (completedAt !== undefined) sanitized.completed_at = completedAt;
-  const actor = sanitizeGithubUser(
-    isObject(workflowRun.actor) ? workflowRun.actor : undefined,
-  );
-  if (actor) sanitized.actor = actor;
-  const pullRequests = sanitizeDeploymentPullRequests(workflowRun.pull_requests);
-  if (pullRequests !== undefined) sanitized.pull_requests = pullRequests;
-  return Object.keys(sanitized).length > 0 ? sanitized : undefined;
-};
-
-const sanitizeGithubWorkflow = (
-  workflow: unknown,
-): GithubWorkflowPayload | undefined => {
-  if (!isObject(workflow)) {
-    return undefined;
-  }
-
-  const sanitized: GithubWorkflowPayload = {};
-  const name = asString(workflow.name);
-  if (name !== undefined) sanitized.name = name;
-  return Object.keys(sanitized).length > 0 ? sanitized : undefined;
-};
-
-export const sanitizeWorkflowRunEvent = (
+function mapWorkflowRun(
   event: WorkflowRunEvent,
-): GithubWorkflowRunEventPayload => {
-  const sanitized: GithubWorkflowRunEventPayload = {};
-
-  const workflowRun = sanitizeGithubWorkflowRun(event.workflow_run);
-  if (workflowRun) {
-    sanitized.workflow_run = workflowRun;
+): GithubWorkflowRunEventPayload {
+  const payload: GithubWorkflowRunEventPayload = {};
+  const run = (event.workflow_run as unknown) as
+    | Record<string, unknown>
+    | undefined;
+  if (run) {
+    const mapped = {
+      id: pickNumber(run.id),
+      run_number: pickNumber(run.run_number),
+      workflow_id: pickNumber(run.workflow_id),
+      name: pickString(run.name),
+      event: pickString(run.event),
+      status: pickString(run.status),
+      conclusion: pickString((run.conclusion ?? undefined) as unknown),
+      head_branch: pickString(run.head_branch),
+      head_sha: pickString(run.head_sha),
+      html_url: pickString(run.html_url),
+      created_at: pickString(run.created_at),
+      updated_at: pickString(run.updated_at),
+      run_started_at: pickString(run.run_started_at),
+      completed_at: pickString(run.completed_at),
+      actor: mapUser(run.actor),
+      pull_requests: Array.isArray(run.pull_requests)
+        ? (run.pull_requests as unknown[])
+            .map((pr) => ({ number: pickNumber((pr as any)?.number) }))
+            .filter((pr) => pr.number !== undefined)
+        : undefined,
+    };
+    payload.workflow_run = Object.fromEntries(
+      Object.entries(mapped).filter(([, v]) => v !== undefined),
+    ) as GithubWorkflowRunEventPayload["workflow_run"];
   }
-
-  const workflow = sanitizeGithubWorkflow(event.workflow);
-  if (workflow) {
-    sanitized.workflow = workflow;
+  const workflow = (event.workflow as unknown) as
+    | Record<string, unknown>
+    | undefined;
+  if (workflow && typeof workflow === "object") {
+    const name = pickString(workflow.name);
+    if (name !== undefined) payload.workflow = { name };
   }
+  const repo = mapRepository(event.repository);
+  if (repo) payload.repository = repo;
+  return payload;
+}
 
-  const repository = sanitizeGithubRepository(event.repository);
-  if (repository) {
-    sanitized.repository = repository;
-  }
+function mapCommitStatus(event: StatusEvent): GithubCommitStatusEventPayload {
+  const payload: GithubCommitStatusEventPayload = {
+    id: pickNumber((event as any).id),
+    sha: pickString(event.sha),
+    state: pickString(event.state),
+    description: pickString(event.description ?? undefined),
+    target_url: pickString(event.target_url ?? undefined),
+    context: pickString(event.context),
+    created_at: pickString(event.created_at),
+    updated_at: pickString(event.updated_at),
+  };
+  const repo = mapRepository(event.repository);
+  if (repo) payload.repository = repo;
+  const sender = mapUser(event.sender);
+  if (sender) payload.sender = sender;
+  return Object.fromEntries(
+    Object.entries(payload).filter(([, v]) => v !== undefined),
+  ) as GithubCommitStatusEventPayload;
+}
 
-  return sanitized;
-};
+export function buildPullRequestPayload(
+  event: PullRequestEvent,
+): GithubPullRequestEventPayload {
+  const payload: GithubPullRequestEventPayload = {};
+  const pullRequest = mapPullRequest(event.pull_request);
+  if (pullRequest) payload.pull_request = pullRequest;
+  const number = pickNumber((event as any).number);
+  if (number !== undefined) payload.number = number;
+  return payload;
+}
 
-export const sanitizeCommitStatusEvent = (
-  event: StatusEvent,
-): GithubCommitStatusEventPayload => {
-  const sanitized: GithubCommitStatusEventPayload = {};
-
-  const id = asNumber(event.id);
-  if (id !== undefined) sanitized.id = id;
-  const sha = asString(event.sha);
-  if (sha !== undefined) sanitized.sha = sha;
-  const state = asString(event.state);
-  if (state !== undefined) sanitized.state = state;
-  const description = asStringOrNull(event.description);
-  if (description !== undefined) sanitized.description = description;
-  const targetUrl = asStringOrNull(event.target_url);
-  if (targetUrl !== undefined) sanitized.target_url = targetUrl;
-  const context = asString(event.context);
-  if (context !== undefined) sanitized.context = context;
-  const createdAt = asString(event.created_at);
-  if (createdAt !== undefined) sanitized.created_at = createdAt;
-  const updatedAt = asString(event.updated_at);
-  if (updatedAt !== undefined) sanitized.updated_at = updatedAt;
-  const repository = sanitizeGithubRepository(event.repository);
-  if (repository) sanitized.repository = repository;
-  const sender = sanitizeGithubUser(event.sender);
-  if (sender) sanitized.sender = sender;
-
-  return sanitized;
-};
+export { mapCheckRun as buildCheckRunPayload };
+export { mapDeployment as buildDeploymentPayload };
+export { mapDeploymentStatus as buildDeploymentStatusPayload };
+export { mapWorkflowRun as buildWorkflowRunPayload };
+export { mapCommitStatus as buildCommitStatusPayload };
