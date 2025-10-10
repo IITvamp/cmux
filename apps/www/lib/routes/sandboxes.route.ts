@@ -19,7 +19,6 @@ import {
 import type { HydrateRepoConfig } from "./sandboxes/hydration";
 import { hydrateWorkspace } from "./sandboxes/hydration";
 import { resolveTeamAndSnapshot } from "./sandboxes/snapshot";
-import { runMaintenanceScript, startDevScript } from "./sandboxes/startDevAndMaintenanceScript";
 import {
   encodeEnvContentForEnvctl,
   envctlLoadCommand,
@@ -302,38 +301,47 @@ sandboxesRouter.openapi(
         return c.text("Failed to hydrate sandbox", 500);
       }
 
+      // Write scripts to well-known locations for tmux to run on attach
       if (maintenanceScript || devScript) {
         (async () => {
-          const maintenanceScriptResult = maintenanceScript
-            ? await runMaintenanceScript({
-              instance,
-              script: maintenanceScript,
-            })
-            : undefined;
-          const devScriptResult = devScript
-            ? await startDevScript({ instance, script: devScript })
-            : undefined;
-          if (
-            taskRunConvexId &&
-            (maintenanceScriptResult?.error || devScriptResult?.error)
-          ) {
-            try {
-              await convex.mutation(api.taskRuns.updateEnvironmentError, {
-                teamSlugOrId: body.teamSlugOrId,
-                id: taskRunConvexId,
-                maintenanceError: maintenanceScriptResult?.error || undefined,
-                devError: devScriptResult?.error || undefined,
-              });
-            } catch (mutationError) {
-              console.error(
-                "[sandboxes.start] Failed to record environment error to taskRun",
-                mutationError,
-              );
+          const CMUX_RUNTIME_DIR = "/var/tmp/cmux-scripts";
+
+          // Create the runtime directory
+          const mkdirCommand = `mkdir -p ${CMUX_RUNTIME_DIR}`;
+          await instance.exec(`bash -c ${JSON.stringify(mkdirCommand)}`);
+
+          // Write maintenance script if present
+          if (maintenanceScript) {
+            const maintenanceScriptPath = `${CMUX_RUNTIME_DIR}/maintenance-script.sh`;
+            const writeMaintCommand = `cat <<'CMUX_MAINTENANCE_EOF' > ${maintenanceScriptPath}
+${maintenanceScript}
+CMUX_MAINTENANCE_EOF
+chmod +x ${maintenanceScriptPath}`;
+            const result = await instance.exec(`bash -c ${JSON.stringify(writeMaintCommand)}`);
+            if (result.exit_code === 0) {
+              console.log("[sandboxes.start] Maintenance script written to", maintenanceScriptPath);
+            } else {
+              console.error("[sandboxes.start] Failed to write maintenance script", result.stderr);
+            }
+          }
+
+          // Write dev script if present
+          if (devScript) {
+            const devScriptPath = `${CMUX_RUNTIME_DIR}/dev-script.sh`;
+            const writeDevCommand = `cat <<'CMUX_DEV_EOF' > ${devScriptPath}
+${devScript}
+CMUX_DEV_EOF
+chmod +x ${devScriptPath}`;
+            const result = await instance.exec(`bash -c ${JSON.stringify(writeDevCommand)}`);
+            if (result.exit_code === 0) {
+              console.log("[sandboxes.start] Dev script written to", devScriptPath);
+            } else {
+              console.error("[sandboxes.start] Failed to write dev script", result.stderr);
             }
           }
         })().catch((error) => {
           console.error(
-            "[sandboxes.start] Background script execution failed:",
+            "[sandboxes.start] Failed to write scripts:",
             error,
           );
         });
