@@ -5,7 +5,7 @@ import {
   validateSlug,
   deriveSlugSuffix,
 } from "../_shared/teamSlug";
-import { stackMetadataField } from "../_shared/stack_metadata_validators";
+import { stackMetadataField, type StackMetadata } from "../_shared/stack_metadata_validators";
 import { internalMutation, type MutationCtx } from "./_generated/server";
 import { authMutation } from "./users/utils";
 
@@ -24,9 +24,9 @@ type UpsertUserArgs = {
   hasPassword: boolean;
   otpAuthEnabled: boolean;
   passkeyAuthEnabled: boolean;
-  clientMetadata?: unknown;
-  clientReadOnlyMetadata?: unknown;
-  serverMetadata?: unknown;
+  clientMetadata?: StackMetadata;
+  clientReadOnlyMetadata?: StackMetadata;
+  serverMetadata?: StackMetadata;
   isAnonymous: boolean;
   oauthProviders?: Array<{ id: string; accountId: string; email?: string }>;
 };
@@ -182,9 +182,9 @@ type UpsertTeamArgs = {
   id: string;
   displayName?: string;
   profileImageUrl?: string;
-  clientMetadata?: unknown;
-  clientReadOnlyMetadata?: unknown;
-  serverMetadata?: unknown;
+  clientMetadata?: StackMetadata;
+  clientReadOnlyMetadata?: StackMetadata;
+  serverMetadata?: StackMetadata;
   createdAtMillis: number;
 };
 
@@ -257,9 +257,9 @@ async function upsertTeamCore(ctx: MutationCtx, args: UpsertTeamArgs) {
   const patch: {
     displayName?: string;
     profileImageUrl?: string;
-    clientMetadata?: unknown;
-    clientReadOnlyMetadata?: unknown;
-    serverMetadata?: unknown;
+    clientMetadata?: StackMetadata;
+    clientReadOnlyMetadata?: StackMetadata;
+    serverMetadata?: StackMetadata;
     createdAtMillis: number;
     updatedAt: number;
     slug?: string;

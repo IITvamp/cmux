@@ -8,6 +8,7 @@ import {
 } from "@stackframe/js";
 import { v } from "convex/values";
 import { env } from "../_shared/convex-env";
+import { coerceStackMetadata } from "../_shared/stack_metadata_validators";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
 
@@ -97,10 +98,13 @@ export const backfillFromStack = internalAction({
             hasPassword: u.hasPassword,
             otpAuthEnabled: u.otpAuthEnabled,
             passkeyAuthEnabled: u.passkeyAuthEnabled,
-            clientMetadata: u.clientMetadata,
-            clientReadOnlyMetadata: u.clientReadOnlyMetadata,
-            serverMetadata: (u as unknown as { serverMetadata?: unknown })
-              .serverMetadata,
+            clientMetadata: coerceStackMetadata(u.clientMetadata),
+            clientReadOnlyMetadata: coerceStackMetadata(
+              u.clientReadOnlyMetadata,
+            ),
+            serverMetadata: coerceStackMetadata(
+              (u as unknown as { serverMetadata?: unknown }).serverMetadata,
+            ),
             isAnonymous: u.isAnonymous,
             // oauthProviders in SDK lacks accountId/email on list; skip
           });
@@ -125,10 +129,13 @@ export const backfillFromStack = internalAction({
           id: t.id,
           displayName: t.displayName ?? undefined,
           profileImageUrl: t.profileImageUrl ?? undefined,
-          clientMetadata: t.clientMetadata,
-          clientReadOnlyMetadata: t.clientReadOnlyMetadata,
-          serverMetadata: (t as unknown as { serverMetadata?: unknown })
-            .serverMetadata,
+          clientMetadata: coerceStackMetadata(t.clientMetadata),
+          clientReadOnlyMetadata: coerceStackMetadata(
+            t.clientReadOnlyMetadata,
+          ),
+          serverMetadata: coerceStackMetadata(
+            (t as unknown as { serverMetadata?: unknown }).serverMetadata,
+          ),
           createdAtMillis: t.createdAt.getTime(),
         });
       }

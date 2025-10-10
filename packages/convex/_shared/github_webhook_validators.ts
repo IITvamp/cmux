@@ -2,6 +2,7 @@ import type {
   CheckRunEvent,
   DeploymentEvent,
   DeploymentStatusEvent,
+  PullRequestEvent,
   StatusEvent,
   WorkflowRunEvent,
 } from "@octokit/webhooks-types";
@@ -183,6 +184,8 @@ export type GithubCheckRunEventPayload = Infer<typeof checkRunWebhookPayload>;
 export type GithubWorkflowPayload = Infer<typeof githubWorkflow>;
 export type GithubWorkflowRunPayload = Infer<typeof githubWorkflowRun>;
 export type GithubWorkflowRunEventPayload = Infer<typeof workflowRunWebhookPayload>;
+export type GithubPullRequestPayload = Infer<typeof githubPullRequest>;
+export type GithubPullRequestEventPayload = Infer<typeof pullRequestWebhookPayload>;
 export type GithubDeploymentPayload = Infer<typeof githubDeployment>;
 export type GithubDeploymentEventPayload = Infer<typeof deploymentWebhookPayload>;
 export type GithubDeploymentStatusPayload = Infer<typeof githubDeploymentStatus>;
@@ -298,6 +301,96 @@ const sanitizeDeploymentPullRequests = (
     .filter((item) => item !== undefined);
 
   return sanitized.length > 0 ? sanitized : undefined;
+};
+
+const sanitizeGithubBranchRef = (
+  branchRef: Maybe<Infer<typeof githubBranchRef>>,
+): Infer<typeof githubBranchRef> | undefined => {
+  if (!isObject(branchRef)) {
+    return undefined;
+  }
+
+  const sanitized: Infer<typeof githubBranchRef> = {};
+  const ref = asString(branchRef.ref);
+  if (ref !== undefined) sanitized.ref = ref;
+  const sha = asString(branchRef.sha);
+  if (sha !== undefined) sanitized.sha = sha;
+  const repo = sanitizeGithubRepository(branchRef.repo);
+  if (repo !== undefined) sanitized.repo = repo;
+  return Object.keys(sanitized).length > 0 ? sanitized : undefined;
+};
+
+const sanitizeGithubPullRequest = (
+  pullRequest: Maybe<Infer<typeof githubPullRequest>>,
+): GithubPullRequestPayload | undefined => {
+  if (!isObject(pullRequest)) {
+    return undefined;
+  }
+
+  const sanitized: GithubPullRequestPayload = {};
+
+  const prNumber = asNumber(pullRequest.number);
+  if (prNumber !== undefined) sanitized.number = prNumber;
+  const id = asNumber(pullRequest.id);
+  if (id !== undefined) sanitized.id = id;
+  const title = asString(pullRequest.title);
+  if (title !== undefined) sanitized.title = title;
+  const state = asString(pullRequest.state);
+  if (state !== undefined) sanitized.state = state;
+  const merged = pullRequest.merged;
+  if (typeof merged === "boolean" || merged === null) sanitized.merged = merged;
+  const draft = pullRequest.draft;
+  if (typeof draft === "boolean" || draft === null) sanitized.draft = draft;
+  const htmlUrl = asString(pullRequest.html_url);
+  if (htmlUrl !== undefined) sanitized.html_url = htmlUrl;
+  const mergeCommitSha = pullRequest.merge_commit_sha;
+  if (typeof mergeCommitSha === "string" || mergeCommitSha === null) {
+    sanitized.merge_commit_sha = mergeCommitSha;
+  }
+  const createdAt = pullRequest.created_at;
+  if (typeof createdAt === "string" || createdAt === null) sanitized.created_at = createdAt;
+  const updatedAt = pullRequest.updated_at;
+  if (typeof updatedAt === "string" || updatedAt === null) sanitized.updated_at = updatedAt;
+  const closedAt = pullRequest.closed_at;
+  if (typeof closedAt === "string" || closedAt === null) sanitized.closed_at = closedAt;
+  const mergedAt = pullRequest.merged_at;
+  if (typeof mergedAt === "string" || mergedAt === null) sanitized.merged_at = mergedAt;
+  const comments = asNumber(pullRequest.comments);
+  if (comments !== undefined) sanitized.comments = comments;
+  const reviewComments = asNumber(pullRequest.review_comments);
+  if (reviewComments !== undefined) sanitized.review_comments = reviewComments;
+  const commits = asNumber(pullRequest.commits);
+  if (commits !== undefined) sanitized.commits = commits;
+  const additions = asNumber(pullRequest.additions);
+  if (additions !== undefined) sanitized.additions = additions;
+  const deletions = asNumber(pullRequest.deletions);
+  if (deletions !== undefined) sanitized.deletions = deletions;
+  const changedFiles = asNumber(pullRequest.changed_files);
+  if (changedFiles !== undefined) sanitized.changed_files = changedFiles;
+  const user = sanitizeGithubUser(pullRequest.user);
+  if (user) sanitized.user = user;
+  const base = sanitizeGithubBranchRef(pullRequest.base);
+  if (base) sanitized.base = base;
+  const head = sanitizeGithubBranchRef(pullRequest.head);
+  if (head) sanitized.head = head;
+
+  return Object.keys(sanitized).length > 0 ? sanitized : undefined;
+};
+
+export const sanitizePullRequestEvent = (
+  event: PullRequestEvent,
+): GithubPullRequestEventPayload => {
+  const sanitized: GithubPullRequestEventPayload = {};
+
+  const pullRequest = sanitizeGithubPullRequest(event.pull_request);
+  if (pullRequest) {
+    sanitized.pull_request = pullRequest;
+  }
+
+  const numberValue = asNumber(event.number);
+  if (numberValue !== undefined) sanitized.number = numberValue;
+
+  return sanitized;
 };
 
 export const sanitizeCheckRunEvent = (

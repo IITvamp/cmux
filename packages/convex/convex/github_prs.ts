@@ -1,6 +1,9 @@
 import { v } from "convex/values";
 import { getTeamId } from "../_shared/team";
-import { pullRequestWebhookPayload } from "../_shared/github_webhook_validators";
+import {
+  pullRequestWebhookPayload,
+  type GithubPullRequestEventPayload,
+} from "../_shared/github_webhook_validators";
 import {
   internalMutation,
   internalQuery,
@@ -10,50 +13,7 @@ import { authMutation, authQuery } from "./users/utils";
 
 const SYSTEM_BRANCH_USER_ID = "__system__";
 
-type WebhookUser = {
-  login?: string;
-  id?: number;
-};
-
-type WebhookRepo = {
-  id?: number;
-  pushed_at?: string;
-};
-
-type WebhookBranchRef = {
-  ref?: string;
-  sha?: string;
-  repo?: WebhookRepo;
-};
-
-type WebhookPullRequest = {
-  number?: number;
-  id?: number;
-  title?: string;
-  state?: string;
-  merged?: boolean;
-  draft?: boolean;
-  html_url?: string;
-  merge_commit_sha?: string;
-  created_at?: string;
-  updated_at?: string;
-  closed_at?: string;
-  merged_at?: string;
-  comments?: number;
-  review_comments?: number;
-  commits?: number;
-  additions?: number;
-  deletions?: number;
-  changed_files?: number;
-  user?: WebhookUser;
-  base?: WebhookBranchRef;
-  head?: WebhookBranchRef;
-};
-
-type PullRequestWebhookEnvelope = {
-  pull_request?: WebhookPullRequest;
-  number?: number;
-};
+type PullRequestWebhookEnvelope = GithubPullRequestEventPayload;
 
 async function upsertBranchMetadata(
   ctx: MutationCtx,

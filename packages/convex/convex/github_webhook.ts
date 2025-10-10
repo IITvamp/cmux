@@ -18,6 +18,7 @@ import {
   sanitizeCheckRunEvent,
   sanitizeDeploymentEvent,
   sanitizeDeploymentStatusEvent,
+  sanitizePullRequestEvent,
   sanitizeCommitStatusEvent,
   sanitizeWorkflowRunEvent,
 } from "../_shared/github_webhook_validators";
@@ -505,11 +506,12 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
           );
           const teamId = conn?.teamId;
           if (!teamId) break;
+          const sanitizedPayload = sanitizePullRequestEvent(prPayload);
           await _ctx.runMutation(internal.github_prs.upsertFromWebhookPayload, {
             installationId: installation,
             repoFullName,
             teamId,
-            payload: prPayload,
+            payload: sanitizedPayload,
           });
         } catch (err) {
           console.error("github_webhook pull_request handler failed", {
