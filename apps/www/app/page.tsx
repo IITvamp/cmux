@@ -647,9 +647,6 @@ export default async function LandingPage() {
               Docker installed
             </div>
             <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-6 py-3">
-              Node.js 20+ or Bun 1.1.25+
-            </div>
-            <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-6 py-3">
               macOS or Linux
             </div>
           </div>

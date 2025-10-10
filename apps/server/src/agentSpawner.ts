@@ -262,6 +262,13 @@ export async function spawnAgent(
 
     let authFiles: EnvironmentResult["files"] = [];
     let startupCommands: string[] = [];
+    let unsetEnvVars: string[] = [];
+
+    // Fetch API keys from Convex BEFORE calling agent.environment()
+    // so agents can access them in their environment configuration
+    const apiKeys = await getConvex().query(api.apiKeys.getAllForAgents, {
+      teamSlugOrId,
+    });
 
     // Use environment property if available
     if (agent.environment) {
@@ -269,6 +276,7 @@ export async function spawnAgent(
         taskRunId: taskRunId,
         prompt: processedTaskDescription,
         taskRunJwt,
+        apiKeys,
       });
       envVars = {
         ...envVars,
@@ -276,12 +284,8 @@ export async function spawnAgent(
       };
       authFiles = envResult.files;
       startupCommands = envResult.startupCommands || [];
+      unsetEnvVars = envResult.unsetEnv || [];
     }
-
-    // Fetch API keys from Convex
-    const apiKeys = await getConvex().query(api.apiKeys.getAllForAgents, {
-      teamSlugOrId,
-    });
 
     // Apply API keys: prefer agent-provided hook if present; otherwise default env injection
     if (typeof agent.applyApiKeys === "function") {
@@ -293,6 +297,9 @@ export async function spawnAgent(
       if (applied.startupCommands && applied.startupCommands.length > 0) {
         startupCommands.push(...applied.startupCommands);
       }
+      if (applied.unsetEnv && applied.unsetEnv.length > 0) {
+        unsetEnvVars.push(...applied.unsetEnv);
+      }
     } else if (agent.apiKeys) {
       for (const keyConfig of agent.apiKeys) {
         const key = apiKeys[keyConfig.envVar];
@@ -300,6 +307,16 @@ export async function spawnAgent(
           const injectName = keyConfig.mapToEnvVar || keyConfig.envVar;
           envVars[injectName] = key;
         }
+      }
+    }
+
+    // Remove environment variables specified by the agent
+    for (const envVar of unsetEnvVars) {
+      if (envVar in envVars) {
+        delete envVars[envVar];
+        serverLogger.info(
+          `[AgentSpawner] Removed ${envVar} from environment for ${agent.name} as requested by agent config`,
+        );
       }
     }
 
@@ -588,6 +605,11 @@ export async function spawnAgent(
       serverLogger.info(`[AgentSpawner] Codex raw args:`, actualArgs);
     }
 
+    // Build unset command for environment variables
+    const unsetCommand = unsetEnvVars.length > 0
+      ? `unset ${unsetEnvVars.join(" ")}; `
+      : "";
+
     // For Codex agents, use direct command execution to preserve notify argument
     // The notify command contains complex JSON that gets mangled through shell layers
     const tmuxArgs = agent.name.toLowerCase().includes("codex")
@@ -614,7 +636,7 @@ export async function spawnAgent(
         tmuxSessionName,
         "bash",
         "-lc",
-        `exec ${commandString}`,
+        `${unsetCommand}exec ${commandString}`,
       ];
 
     const terminalCreationCommand: WorkerCreateTerminal = {

@@ -190,9 +190,19 @@ jobs:
             basename="${artifact##*/}"
             extension="${basename##*.}"
             name="${basename%.*}"
-            renamed="${name}-x64.${extension}"
-            echo "Uploading $artifact as $renamed to $repo@$release_tag"
-            gh release upload "$release_tag" "$artifact#$renamed" --repo "$repo" --clobber
+
+            if [[ "$extension" == "dmg" ]]; then
+              base="$name"
+              if [[ "$base" == *"-x64" ]]; then
+                base="${base%-x64}"
+              fi
+              renamed="${base}-x64.dmg"
+              echo "Uploading $artifact as $renamed to $repo@$release_tag"
+              gh release upload "$release_tag" "$artifact#$renamed" --repo "$repo" --clobber
+            else
+              echo "Uploading $artifact to $repo@$release_tag without renaming"
+              gh release upload "$release_tag" "$artifact" --repo "$repo" --clobber
+            fi
           done
 
   mac-arm64:
