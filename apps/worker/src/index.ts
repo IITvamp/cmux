@@ -410,6 +410,7 @@ managementIO.on("connection", (socket) => {
         agentModel: validated.agentModel,
         startupCommands: validated.startupCommands,
         taskRunContext: validated.taskRunContext,
+        tmuxScripts: validated.tmuxScripts,
       });
 
       callback({
@@ -843,6 +844,11 @@ async function createTerminal(
     agentModel?: string;
     startupCommands?: string[];
     taskRunContext: WorkerTaskRunContext;
+    tmuxScripts?: Array<{
+      name: string;
+      script: string;
+      continuous: boolean;
+    }>;
   },
 ): Promise<void> {
   const {
@@ -943,6 +949,65 @@ async function createTerminal(
       ? { GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND }
       : {}),
   };
+
+  // Run optional tmux scripts before spawning the main agent process
+  if (options.tmuxScripts && options.tmuxScripts.length > 0) {
+    log(
+      "INFO",
+      `Starting ${options.tmuxScripts.length} tmux script(s) before main command`,
+      { tmuxScripts: options.tmuxScripts.map(s => ({ name: s.name, continuous: s.continuous })) },
+    );
+
+    const sessionName = sanitizeTmuxSessionName(terminalId);
+    const CMUX_RUNTIME_DIR = "/var/tmp/cmux-scripts";
+
+    // Ensure runtime directory exists
+    try {
+      await execAsync(`mkdir -p ${CMUX_RUNTIME_DIR}`);
+    } catch (error) {
+      log("ERROR", "Failed to create runtime directory", error);
+    }
+
+    // Check if tmux session exists
+    let sessionExists = false;
+    try {
+      await execAsync(`tmux has-session -t ${sessionName} 2>/dev/null`);
+      sessionExists = true;
+    } catch {
+      // Session doesn't exist yet
+    }
+
+    for (let i = 0; i < options.tmuxScripts.length; i++) {
+      const tmuxScript = options.tmuxScripts[i];
+      try {
+        const scriptPath = `${CMUX_RUNTIME_DIR}/${sanitizeTmuxSessionName(tmuxScript.name)}.sh`;
+        const windowName = sanitizeTmuxSessionName(tmuxScript.name);
+
+        // Write the script to a file
+        await fs.writeFile(scriptPath, tmuxScript.script, { mode: 0o755 });
+        log("INFO", `Created script file for tmux window: ${windowName}`, { scriptPath });
+
+        let tmuxCommand: string;
+        if (!sessionExists && i === 0) {
+          // Create session with first script window
+          tmuxCommand = `tmux new-session -d -s ${sessionName} -n ${windowName} bash -lc "cd ${cwd} && bash -eu -o pipefail ${scriptPath}"`;
+          sessionExists = true;
+        } else {
+          // Add new window to existing session
+          tmuxCommand = `tmux new-window -t ${sessionName} -n ${windowName} bash -lc "cd ${cwd} && bash -eu -o pipefail ${scriptPath}"`;
+        }
+
+        await execAsync(tmuxCommand, { cwd, env: ptyEnv });
+        log("INFO", `Started tmux window for script: ${windowName}`);
+      } catch (error) {
+        log(
+          "ERROR",
+          `Failed to start tmux script: ${tmuxScript.name}`,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      }
+    }
+  }
 
   // Run optional startup commands prior to spawning the agent process
   if (startupCommands && startupCommands.length > 0) {

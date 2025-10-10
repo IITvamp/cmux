@@ -64,6 +64,11 @@ export async function spawnAgent(
     }>;
     theme?: "dark" | "light" | "system";
     newBranch?: string; // Optional pre-generated branch name
+    tmuxScripts?: Array<{
+      name: string;
+      script: string;
+      continuous: boolean;
+    }>;
   },
   teamSlugOrId: string,
 ): Promise<AgentSpawnResult> {
@@ -655,6 +660,7 @@ export async function spawnAgent(
       authFiles,
       startupCommands,
       cwd: "/root/workspace",
+      tmuxScripts: options.tmuxScripts,
     };
 
     const switchBranch = async () => {

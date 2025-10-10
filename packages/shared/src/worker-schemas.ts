@@ -57,6 +57,13 @@ export const WorkerTaskRunContextSchema = z.object({
   convexUrl: z.string(),
 });
 
+// Tmux script schema for running scripts in tmux windows
+export const TmuxScriptSchema = z.object({
+  name: z.string(), // Name of the tmux window (e.g., "maintenance", "dev")
+  script: z.string(), // The script content to run
+  continuous: z.boolean().default(false), // If true, script runs continuously; if false, runs once
+});
+
 // Terminal operation schemas for server<>worker communication
 export const WorkerCreateTerminalSchema = z.object({
   terminalId: z.string(),
@@ -74,6 +81,8 @@ export const WorkerCreateTerminalSchema = z.object({
   agentModel: z.string().optional(),
   authFiles: z.array(AuthFileSchema).optional(),
   startupCommands: z.array(z.string()).optional(),
+  // Scripts to run in separate tmux windows before the main command
+  tmuxScripts: z.array(TmuxScriptSchema).optional(),
 });
 
 export const WorkerTerminalInputSchema = z.object({
@@ -190,6 +199,7 @@ export const ServerToWorkerCommandSchema = z.object({
 
 // Type exports
 export type AuthFile = z.infer<typeof AuthFileSchema>;
+export type TmuxScript = z.infer<typeof TmuxScriptSchema>;
 export type WorkerRegister = z.infer<typeof WorkerRegisterSchema>;
 export type WorkerHeartbeat = z.infer<typeof WorkerHeartbeatSchema>;
 export type TerminalAssignment = z.infer<typeof TerminalAssignmentSchema>;
