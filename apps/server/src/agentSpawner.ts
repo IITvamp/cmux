@@ -36,7 +36,358 @@ import rawSwitchBranchScript from "../scripts/switch-branch.ts?raw";
 
 const SWITCH_BRANCH_BUN_SCRIPT = rawSwitchBranchScript;
 
-const { getApiEnvironmentsByIdVars } = await getWwwOpenApiModule();
+const WORKSPACE_ROOT = "/root/workspace";
+const CMUX_RUNTIME_DIR = "/var/tmp/cmux-scripts";
+const CMUX_LOG_DIR = "/var/log/cmux";
+const MAINTENANCE_SCRIPT_PATH = `${CMUX_RUNTIME_DIR}/maintenance-script.sh`;
+const DEV_SCRIPT_PATH = `${CMUX_RUNTIME_DIR}/dev-script.sh`;
+const MAINTENANCE_RUNNER_PATH = `${CMUX_RUNTIME_DIR}/maintenance-runner.sh`;
+const DEV_RUNNER_PATH = `${CMUX_RUNTIME_DIR}/dev-runner.sh`;
+const MAINTENANCE_EXIT_FILE = `${CMUX_RUNTIME_DIR}/maintenance-exit-code`;
+const DEV_EXIT_FILE = `${CMUX_RUNTIME_DIR}/dev-script-exit-code`;
+const DEV_PID_FILE = `${CMUX_LOG_DIR}/dev-script.pid`;
+const MAINTENANCE_LOG_FILE = `${CMUX_LOG_DIR}/maintenance-script.log`;
+const DEV_LOG_FILE = `${CMUX_LOG_DIR}/dev-script.log`;
+
+const { getApiEnvironmentsByIdVars, getApiEnvironmentsById } =
+  await getWwwOpenApiModule();
+
+const shellQuote = (value: string): string =>
+  `'${value.replace(/'/g, "'\\''")}'`;
+
+const maskSensitive = (value: string): string =>
+  value.replace(/:[^@]*@/g, ":***@");
+
+const previewOutput = (
+  value: string | undefined,
+  maxLength = 2500,
+): string | null => {
+  if (!value) {
+    return null;
+  }
+  const sanitized = maskSensitive(value).trim();
+  if (sanitized.length === 0) {
+    return null;
+  }
+  if (sanitized.length <= maxLength) {
+    return sanitized;
+  }
+  return `${sanitized.slice(0, maxLength)}…`;
+};
+
+const buildScriptFileCommand = (path: string, contents: string): string => `
+cat <<'CMUX_SCRIPT_EOF' > ${path}
+${contents}
+CMUX_SCRIPT_EOF
+chmod +x ${path}
+`;
+
+const maintenanceRunnerScript = String.raw`#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_PATH='${MAINTENANCE_SCRIPT_PATH}'
+LOG_FILE='${MAINTENANCE_LOG_FILE}'
+EXIT_FILE='${MAINTENANCE_EXIT_FILE}'
+
+mkdir -p "$(dirname "$LOG_FILE")"
+: > "$LOG_FILE"
+
+set +e
+bash -eu -o pipefail "$SCRIPT_PATH" 2>&1 | tee -a "$LOG_FILE"
+status=\${PIPESTATUS[0]}
+set -e
+printf "%s" "$status" > "$EXIT_FILE"
+if [ "$status" -ne 0 ]; then
+  printf "\nMaintenance script exited with status %s. Press Ctrl+C to close.\n" "$status"
+  while true; do sleep 60; done
+fi
+`;
+
+const devRunnerScript = String.raw`#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_PATH='${DEV_SCRIPT_PATH}'
+LOG_FILE='${DEV_LOG_FILE}'
+PID_FILE='${DEV_PID_FILE}'
+EXIT_FILE='${DEV_EXIT_FILE}'
+
+mkdir -p "$(dirname "$LOG_FILE")"
+: > "$LOG_FILE"
+rm -f "$EXIT_FILE"
+
+cleanup() {
+  rm -f "$PID_FILE"
+}
+
+echo "$$" > "$PID_FILE"
+trap cleanup EXIT
+
+set +e
+bash -eu -o pipefail "$SCRIPT_PATH" 2>&1 | tee -a "$LOG_FILE"
+status=\${PIPESTATUS[0]}
+set -e
+printf "%s" "$status" > "$EXIT_FILE"
+if [ "$status" -ne 0 ]; then
+  printf "\nDev script exited with status %s. Press Ctrl+C to close.\n" "$status"
+  while true; do sleep 60; done
+fi
+`;
+
+type WorkerSocket = Parameters<typeof workerExec>[0]["workerSocket"];
+
+interface EnvironmentScriptResult {
+  maintenanceError: string | null;
+  devError: string | null;
+}
+
+const waitForMaintenanceScript = async (
+  workerSocket: WorkerSocket,
+): Promise<{ exitCode: number; stderr: string; stdout: string }> => {
+  const command = [
+    "set -euo pipefail",
+    `EXIT_FILE=${shellQuote(MAINTENANCE_EXIT_FILE)}`,
+    `LOG_FILE=${shellQuote(MAINTENANCE_LOG_FILE)}`,
+    "while [ ! -f \"$EXIT_FILE\" ]; do",
+    "  sleep 1",
+    "done",
+    "STATUS=$(cat \"$EXIT_FILE\" 2>/dev/null | tr -d ' \\\t\\r\\n')",
+    "if [ -z \"$STATUS\" ]; then",
+    "  STATUS=1",
+    "fi",
+    "if [ \"$STATUS\" -ne 0 ]; then",
+    "  if [ -f \"$LOG_FILE\" ]; then",
+    "    tail -n 50 \"$LOG_FILE\" >&2",
+    "  fi",
+    "  exit \"$STATUS\"",
+    "fi",
+    "exit 0",
+  ].join("\n");
+
+  return workerExec({
+    workerSocket,
+    command: "bash",
+    args: ["-lc", command],
+    cwd: WORKSPACE_ROOT,
+    env: {},
+    timeout: 15 * 60 * 1000,
+  });
+};
+
+const verifyDevScriptRunning = async (
+  workerSocket: WorkerSocket,
+  tmuxSessionName: string,
+): Promise<{ exitCode: number; stderr: string; stdout: string }> => {
+  const command = [
+    "set -euo pipefail",
+    `TMUX_SESSION=${shellQuote(tmuxSessionName)}`,
+    `PID_FILE=${shellQuote(DEV_PID_FILE)}`,
+    `EXIT_FILE=${shellQuote(DEV_EXIT_FILE)}`,
+    `LOG_FILE=${shellQuote(DEV_LOG_FILE)}`,
+    "sleep 1",
+    "if [ -f \"$EXIT_FILE\" ]; then",
+    "  STATUS=$(cat \"$EXIT_FILE\" 2>/dev/null | tr -d ' \\\t\\r\\n')",
+    "  if [ -z \"$STATUS\" ]; then",
+    "    STATUS=1",
+    "  fi",
+    "  if [ \"$STATUS\" -ne 0 ]; then",
+    "    if [ -f \"$LOG_FILE\" ]; then",
+    "      tail -n 50 \"$LOG_FILE\" >&2",
+    "    fi",
+    "    exit \"$STATUS\"",
+    "  fi",
+    "fi",
+    "if [ -f \"$PID_FILE\" ]; then",
+    "  PID=$(cat \"$PID_FILE\" 2>/dev/null | tr -d ' \\\t\\r\\n')",
+    "  if [ -n \"$PID\" ] && kill -0 \"$PID\" 2>/dev/null; then",
+    "    exit 0",
+    "  fi",
+    "fi",
+    "if tmux list-windows -t \"$TMUX_SESSION\" -F '#{window_name}' 2>/dev/null | grep -Fqx 'dev'; then",
+    "  if tmux list-panes -t \"$TMUX_SESSION:dev\" -F '#{pane_dead}' 2>/dev/null | grep -q '1'; then",
+    "    if [ -f \"$LOG_FILE\" ]; then",
+    "      tail -n 50 \"$LOG_FILE\" >&2",
+    "    fi",
+    "    exit 1",
+    "  fi",
+    "  exit 0",
+    "fi",
+    "echo \"Dev script window not found\" >&2",
+    "exit 1",
+  ].join("\n");
+
+  return workerExec({
+    workerSocket,
+    command: "bash",
+    args: ["-lc", command],
+    cwd: WORKSPACE_ROOT,
+    env: {},
+  });
+};
+
+const startEnvironmentScripts = async ({
+  workerSocket,
+  maintenanceScript,
+  devScript,
+  tmuxSessionName,
+}: {
+  workerSocket: WorkerSocket;
+  maintenanceScript: string | null;
+  devScript: string | null;
+  tmuxSessionName: string;
+}): Promise<EnvironmentScriptResult> => {
+  const maintenance =
+    maintenanceScript && maintenanceScript.trim().length > 0
+      ? maintenanceScript
+      : null;
+  const dev =
+    devScript && devScript.trim().length > 0 ? devScript : null;
+
+  if (!maintenance && !dev) {
+    return { maintenanceError: null, devError: null };
+  }
+
+  const setupParts: string[] = [
+    "set -euo pipefail",
+    `TMUX_SESSION=${shellQuote(tmuxSessionName)}`,
+    `mkdir -p ${shellQuote(CMUX_RUNTIME_DIR)}`,
+    `mkdir -p ${shellQuote(CMUX_LOG_DIR)}`,
+  ];
+
+  if (maintenance) {
+    setupParts.push(`rm -f ${shellQuote(MAINTENANCE_EXIT_FILE)}`);
+    setupParts.push(buildScriptFileCommand(MAINTENANCE_SCRIPT_PATH, maintenance));
+    setupParts.push(
+      buildScriptFileCommand(MAINTENANCE_RUNNER_PATH, maintenanceRunnerScript),
+    );
+  } else {
+    setupParts.push(
+      `rm -f ${shellQuote(MAINTENANCE_SCRIPT_PATH)} ${shellQuote(
+        MAINTENANCE_RUNNER_PATH,
+      )} ${shellQuote(MAINTENANCE_EXIT_FILE)}`,
+    );
+  }
+
+  if (dev) {
+    setupParts.push(
+      `rm -f ${shellQuote(DEV_EXIT_FILE)} ${shellQuote(DEV_PID_FILE)}`,
+    );
+    setupParts.push(buildScriptFileCommand(DEV_SCRIPT_PATH, dev));
+    setupParts.push(buildScriptFileCommand(DEV_RUNNER_PATH, devRunnerScript));
+  } else {
+    setupParts.push(
+      `rm -f ${shellQuote(DEV_SCRIPT_PATH)} ${shellQuote(DEV_RUNNER_PATH)} ${shellQuote(
+        DEV_EXIT_FILE,
+      )} ${shellQuote(DEV_PID_FILE)}`,
+    );
+  }
+
+  setupParts.push(
+    "tmux start-server",
+    `if ! tmux has-session -t \"$TMUX_SESSION\" 2>/dev/null; then`,
+    `  echo \"Tmux session $TMUX_SESSION not ready\" >&2`,
+    "  exit 1",
+    "fi",
+  );
+
+  if (maintenance) {
+    setupParts.push(
+      `tmux kill-window -t \"$TMUX_SESSION:maintenance\" 2>/dev/null || true`,
+      `tmux new-window -d -t \"$TMUX_SESSION\" -n "maintenance" ${shellQuote(
+        `cd ${WORKSPACE_ROOT} && bash ${MAINTENANCE_RUNNER_PATH}`,
+      )}`,
+      `tmux set-option -t \"$TMUX_SESSION:maintenance\" remain-on-exit on`,
+    );
+  }
+
+  if (dev) {
+    setupParts.push(
+      "DEV_WINDOW_EXISTS=0",
+      `if tmux list-windows -t \"$TMUX_SESSION\" -F '#{window_name}' 2>/dev/null | grep -Fqx 'dev'; then`,
+      `  if tmux list-panes -t \"$TMUX_SESSION:dev\" -F '#{pane_dead}' 2>/dev/null | grep -q '1'; then`,
+      `    tmux kill-window -t \"$TMUX_SESSION:dev\" 2>/dev/null || true`,
+      "  else",
+      "    DEV_WINDOW_EXISTS=1",
+      "  fi",
+      "fi",
+      "if [ \"$DEV_WINDOW_EXISTS\" -eq 0 ]; then",
+      `  tmux new-window -d -t \"$TMUX_SESSION\" -n "dev" ${shellQuote(
+        `cd ${WORKSPACE_ROOT} && bash ${DEV_RUNNER_PATH}`,
+      )}`,
+      `  tmux set-option -t \"$TMUX_SESSION:dev\" remain-on-exit on`,
+      "fi",
+    );
+  }
+
+  const setupResult = await workerExec({
+    workerSocket,
+    command: "bash",
+    args: ["-lc", setupParts.join("\n")],
+    cwd: WORKSPACE_ROOT,
+    env: {},
+  });
+
+  let maintenanceError: string | null = null;
+  let devError: string | null = null;
+
+  if (setupResult.exitCode !== 0) {
+    const stderrPreview = previewOutput(setupResult.stderr, 2000);
+    const stdoutPreview = previewOutput(setupResult.stdout, 500);
+    const baseMessage =
+      stderrPreview || stdoutPreview || "Unknown error starting scripts";
+    maintenanceError = maintenance
+      ? `Failed to start maintenance script: ${baseMessage}`
+      : null;
+    devError = dev ? `Failed to start dev script: ${baseMessage}` : null;
+    return { maintenanceError, devError };
+  }
+
+  if (maintenance) {
+    try {
+      const maintenanceResult = await waitForMaintenanceScript(workerSocket);
+      if (maintenanceResult.exitCode !== 0) {
+        const stderrPreview = previewOutput(maintenanceResult.stderr, 2000);
+        const stdoutPreview = previewOutput(maintenanceResult.stdout, 500);
+        const messageParts = [
+          `Maintenance script failed with exit code ${maintenanceResult.exitCode}`,
+          stderrPreview ? `stderr: ${stderrPreview}` : null,
+          stdoutPreview ? `stdout: ${stdoutPreview}` : null,
+        ].filter((part): part is string => part !== null);
+        maintenanceError = messageParts.join(" | ");
+      }
+    } catch (error) {
+      maintenanceError =
+        error instanceof Error
+          ? `Maintenance script monitoring failed: ${error.message}`
+          : `Maintenance script monitoring failed: ${String(error)}`;
+    }
+  }
+
+  if (dev) {
+    try {
+      const devResult = await verifyDevScriptRunning(
+        workerSocket,
+        tmuxSessionName,
+      );
+      if (devResult.exitCode !== 0) {
+        const stderrPreview = previewOutput(devResult.stderr, 2000);
+        const stdoutPreview = previewOutput(devResult.stdout, 500);
+        const messageParts = [
+          `Dev script failed immediately after start (exit ${devResult.exitCode})`,
+          stderrPreview ? `stderr: ${stderrPreview}` : null,
+          stdoutPreview ? `stdout: ${stdoutPreview}` : null,
+        ].filter((part): part is string => part !== null);
+        devError = messageParts.join(" | ");
+      }
+    } catch (error) {
+      devError =
+        error instanceof Error
+          ? `Dev script monitoring failed: ${error.message}`
+          : `Dev script monitoring failed: ${String(error)}`;
+    }
+  }
+
+  return { maintenanceError, devError };
+};
 
 export interface AgentSpawnResult {
   agentName: string;
@@ -222,14 +573,25 @@ export async function spawnAgent(
       PROMPT: processedTaskDescription,
     };
 
+    let environmentMaintenanceScript: string | null = null;
+    let environmentDevScript: string | null = null;
+
     if (options.environmentId) {
       try {
-        const envRes = await getApiEnvironmentsByIdVars({
-          client: getWwwClient(),
-          path: { id: String(options.environmentId) },
-          query: { teamSlugOrId },
-        });
-        const envContent = envRes.data?.envVarsContent;
+        const [envVarsRes, envDetailsRes] = await Promise.all([
+          getApiEnvironmentsByIdVars({
+            client: getWwwClient(),
+            path: { id: String(options.environmentId) },
+            query: { teamSlugOrId },
+          }),
+          getApiEnvironmentsById({
+            client: getWwwClient(),
+            path: { id: String(options.environmentId) },
+            query: { teamSlugOrId },
+          }),
+        ]);
+
+        const envContent = envVarsRes.data?.envVarsContent;
         if (envContent && envContent.trim().length > 0) {
           const parsed = parseDotenv(envContent);
           if (Object.keys(parsed).length > 0) {
@@ -250,9 +612,22 @@ export async function spawnAgent(
             );
           }
         }
+
+        const environmentDetails = envDetailsRes.data;
+        const rawMaintenanceScript =
+          environmentDetails?.maintenanceScript?.trim();
+        const rawDevScript = environmentDetails?.devScript?.trim();
+        environmentMaintenanceScript =
+          rawMaintenanceScript && rawMaintenanceScript.length > 0
+            ? environmentDetails?.maintenanceScript ?? null
+            : null;
+        environmentDevScript =
+          rawDevScript && rawDevScript.length > 0
+            ? environmentDetails?.devScript ?? null
+            : null;
       } catch (error) {
         serverLogger.error(
-          `[AgentSpawner] Failed to load environment env vars for ${String(
+          `[AgentSpawner] Failed to load environment configuration for ${String(
             options.environmentId,
           )}`,
           error,
@@ -890,6 +1265,49 @@ exit $EXIT_CODE
         `[AgentSpawner] Emitted worker:create-terminal at ${new Date().toISOString()}`,
       );
     });
+
+    let maintenanceScriptError: string | null = null;
+    let devScriptError: string | null = null;
+
+    try {
+      const scriptResults = await startEnvironmentScripts({
+        workerSocket,
+        maintenanceScript: environmentMaintenanceScript,
+        devScript: environmentDevScript,
+        tmuxSessionName,
+      });
+      maintenanceScriptError = scriptResults.maintenanceError;
+      devScriptError = scriptResults.devError;
+    } catch (error) {
+      serverLogger.error(
+        "[AgentSpawner] Failed to start environment scripts",
+        error,
+      );
+      const fallbackMessage =
+        error instanceof Error ? error.message : String(error);
+      if (environmentMaintenanceScript) {
+        maintenanceScriptError = `Environment maintenance script failed: ${fallbackMessage}`;
+      }
+      if (environmentDevScript) {
+        devScriptError = `Environment dev script failed: ${fallbackMessage}`;
+      }
+    }
+
+    if ((maintenanceScriptError || devScriptError) && taskRunId) {
+      try {
+        await getConvex().mutation(api.taskRuns.updateEnvironmentError, {
+          teamSlugOrId,
+          id: taskRunId,
+          maintenanceError: maintenanceScriptError ?? undefined,
+          devError: devScriptError ?? undefined,
+        });
+      } catch (mutationError) {
+        serverLogger.error(
+          "[AgentSpawner] Failed to record environment script errors",
+          mutationError,
+        );
+      }
+    }
 
     return {
       agentName: agent.name,
