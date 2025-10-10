@@ -329,6 +329,7 @@ export async function spawnAgent(
     });
 
     const agentCommand = `${agent.command} ${processedArgs.join(" ")}`;
+    const isCodexAgent = agent.name.toLowerCase().includes("codex");
 
     // Build the tmux session command that will be sent via socket.io
     const tmuxSessionName = sanitizeTmuxSessionName("cmux");
@@ -422,6 +423,8 @@ export async function spawnAgent(
 
     // Start the VSCode instance
     const vscodeInfo = await vscodeInstance.start();
+    const maintenanceScriptPath = vscodeInfo.maintenanceScriptPath;
+    const devScriptPath = vscodeInfo.devScriptPath;
     const vscodeUrl = vscodeInfo.workspaceUrl;
 
     serverLogger.info(
@@ -597,7 +600,7 @@ export async function spawnAgent(
       .join(" ");
 
     // Log the actual command for Codex agents to debug notify command
-    if (agent.name.toLowerCase().includes("codex")) {
+    if (isCodexAgent) {
       serverLogger.info(
         `[AgentSpawner] Codex command string: ${commandString}`,
       );
@@ -611,7 +614,13 @@ export async function spawnAgent(
 
     // For Codex agents, use direct command execution to preserve notify argument
     // The notify command contains complex JSON that gets mangled through shell layers
-    const tmuxArgs = agent.name.toLowerCase().includes("codex")
+    const finalAgentArgs = isCodexAgent
+      ? actualArgs.map((arg) =>
+        arg === "$CMUX_PROMPT" ? processedTaskDescription : arg,
+      )
+      : actualArgs;
+
+    const tmuxArgs = isCodexAgent
       ? [
         "new-session",
         "-d",
@@ -620,13 +629,7 @@ export async function spawnAgent(
         "-c",
         "/root/workspace",
         actualCommand,
-        ...actualArgs.map((arg) => {
-          // Replace $CMUX_PROMPT with actual prompt value
-          if (arg === "$CMUX_PROMPT") {
-            return processedTaskDescription;
-          }
-          return arg;
-        }),
+        ...finalAgentArgs,
       ]
       : [
         "new-session",
@@ -637,6 +640,20 @@ export async function spawnAgent(
         "-lc",
         `${unsetCommand}exec ${commandString}`,
       ];
+
+    const sandboxScripts =
+      maintenanceScriptPath || devScriptPath
+        ? {
+          maintenanceScriptPath: maintenanceScriptPath ?? undefined,
+          devScriptPath: devScriptPath ?? undefined,
+          agent: {
+            command: actualCommand,
+            args: finalAgentArgs,
+            useShellCommandString: !isCodexAgent,
+            ...(isCodexAgent ? {} : { shellCommandString: commandString }),
+          },
+        }
+        : undefined;
 
     const terminalCreationCommand: WorkerCreateTerminal = {
       terminalId: tmuxSessionName,
@@ -655,6 +672,7 @@ export async function spawnAgent(
       authFiles,
       startupCommands,
       cwd: "/root/workspace",
+      ...(sandboxScripts ? { sandboxScripts } : {}),
     };
 
     const switchBranch = async () => {

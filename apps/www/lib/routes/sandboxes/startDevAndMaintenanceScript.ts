@@ -3,9 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { MorphInstance } from "./git";
 import { maskSensitive, singleQuote } from "./shell";
 
-const WORKSPACE_ROOT = "/root/workspace";
 const CMUX_RUNTIME_DIR = "/var/tmp/cmux-scripts";
-const LOG_DIR = "/var/log/cmux";
 
 const previewOutput = (
   value: string | undefined,
@@ -32,134 +30,102 @@ CMUX_SCRIPT_EOF
 chmod +x ${path}
 `;
 
-const ensurePidStoppedCommand = (pidFile: string): string => `
-if [ -f ${pidFile} ]; then
-  (
-    set -euo pipefail
-    trap 'status=$?; echo "Failed to stop process recorded in ${pidFile} (pid \${EXISTING_PID:-unknown}) (exit $status)" >&2' ERR
-    EXISTING_PID=$(cat ${pidFile} 2>/dev/null || true)
-    if [ -n "\${EXISTING_PID}" ] && kill -0 \${EXISTING_PID} 2>/dev/null; then
-      if kill \${EXISTING_PID} 2>/dev/null; then
-        sleep 0.2
-      elif kill -0 \${EXISTING_PID} 2>/dev/null; then
-        echo "Unable to terminate process \${EXISTING_PID}" >&2
-        exit 1
-      fi
+type PreparedScript = {
+  scriptPath: string | null;
+  error: string | null;
+};
 
-      if kill -0 \${EXISTING_PID} 2>/dev/null; then
-        echo "Process \${EXISTING_PID} still running after SIGTERM" >&2
-        exit 1
-      fi
-    fi
-  )
-fi
+async function writeScriptFile({
+  instance,
+  script,
+  targetPath,
+}: {
+  instance: MorphInstance;
+  script: string;
+  targetPath: string;
+}): Promise<{ success: boolean; stdout?: string; stderr?: string }> {
+  const command = `
+set -euo pipefail
+${buildScriptFileCommand(targetPath, script)}
 `;
 
-export async function runMaintenanceScript({
+  const result = await instance.exec(`bash -lc ${singleQuote(command)}`);
+  if (result.exit_code !== 0) {
+    return { success: false, stdout: result.stdout, stderr: result.stderr };
+  }
+  return { success: true, stdout: result.stdout, stderr: result.stderr };
+}
+
+export async function prepareMaintenanceScript({
   instance,
   script,
 }: {
   instance: MorphInstance;
   script: string;
-}): Promise<{ error: string | null }> {
-  const maintenanceScriptPath = `${CMUX_RUNTIME_DIR}/maintenance-script.sh`;
-  const command = `
-set -euo pipefail
-trap 'rm -f ${maintenanceScriptPath}' EXIT
-${buildScriptFileCommand(maintenanceScriptPath, script)}
-cd ${WORKSPACE_ROOT}
-bash -eu -o pipefail ${maintenanceScriptPath}
-`;
+}): Promise<PreparedScript> {
+  const maintenanceScriptPath = `${CMUX_RUNTIME_DIR}/maintenance-${randomUUID().replace(/-/g, "")}.sh`;
 
   try {
-    const result = await instance.exec(`bash -lc ${singleQuote(command)}`);
+    const result = await writeScriptFile({
+      instance,
+      script,
+      targetPath: maintenanceScriptPath,
+    });
 
-    if (result.exit_code !== 0) {
+    if (!result.success) {
       const stderrPreview = previewOutput(result.stderr, 2000);
       const stdoutPreview = previewOutput(result.stdout, 500);
-      const messageParts = [
-        `Maintenance script failed with exit code ${result.exit_code}`,
+      const parts = [
+        `Failed to prepare maintenance script`,
         stderrPreview ? `stderr: ${stderrPreview}` : null,
         stdoutPreview ? `stdout: ${stdoutPreview}` : null,
       ].filter((part): part is string => part !== null);
-      return { error: messageParts.join(" | ") };
+      return { scriptPath: null, error: parts.join(" | ") };
     }
 
-    return { error: null };
+    return { scriptPath: maintenanceScriptPath, error: null };
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    return { error: `Maintenance script execution failed: ${errorMessage}` };
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      scriptPath: null,
+      error: `Failed to prepare maintenance script: ${message}`,
+    };
   }
 }
 
-export async function startDevScript({
+export async function prepareDevScript({
   instance,
   script,
 }: {
   instance: MorphInstance;
   script: string;
-}): Promise<{ error: string | null }> {
-  const devScriptRunId = randomUUID().replace(/-/g, "");
-  const devScriptDir = `${CMUX_RUNTIME_DIR}/${devScriptRunId}`;
-  const devScriptPath = `${devScriptDir}/dev-script.sh`;
-  const pidFile = `${LOG_DIR}/dev-script.pid`;
-  const logFile = `${LOG_DIR}/dev-script.log`;
-
-  const command = `
-set -euo pipefail
-mkdir -p ${LOG_DIR}
-mkdir -p ${devScriptDir}
-${ensurePidStoppedCommand(pidFile)}
-${buildScriptFileCommand(devScriptPath, script)}
-cd ${WORKSPACE_ROOT}
-nohup bash -eu -o pipefail ${devScriptPath} > ${logFile} 2>&1 &
-echo $! > ${pidFile}
-`;
+}): Promise<PreparedScript> {
+  const devScriptPath = `${CMUX_RUNTIME_DIR}/dev-${randomUUID().replace(/-/g, "")}.sh`;
 
   try {
-    const result = await instance.exec(`bash -lc ${singleQuote(command)}`);
+    const result = await writeScriptFile({
+      instance,
+      script,
+      targetPath: devScriptPath,
+    });
 
-    if (result.exit_code !== 0) {
+    if (!result.success) {
       const stderrPreview = previewOutput(result.stderr, 2000);
       const stdoutPreview = previewOutput(result.stdout, 500);
-      const messageParts = [
-        `Dev script failed to start with exit code ${result.exit_code}`,
+      const parts = [
+        `Failed to prepare dev script`,
         stderrPreview ? `stderr: ${stderrPreview}` : null,
         stdoutPreview ? `stdout: ${stdoutPreview}` : null,
       ].filter((part): part is string => part !== null);
-      return { error: messageParts.join(" | ") };
+      return { scriptPath: null, error: parts.join(" | ") };
     }
 
-    // Check if the process started successfully and is still running
-    const checkCommand = `
-if [ -f ${pidFile} ]; then
-  PID=$(cat ${pidFile} 2>/dev/null || echo "")
-  if [ -n "\$PID" ]; then
-    sleep 0.5
-    if ! kill -0 \$PID 2>/dev/null; then
-      if [ -f ${logFile} ]; then
-        tail -n 50 ${logFile}
-      fi
-      exit 1
-    fi
-  fi
-fi
-`;
-
-    const checkResult = await instance.exec(
-      `bash -c ${singleQuote(checkCommand)}`,
-    );
-
-    if (checkResult.exit_code !== 0) {
-      const logPreview = previewOutput(checkResult.stdout, 2000);
-      return {
-        error: `Dev script failed immediately after start${logPreview ? ` | log: ${logPreview}` : ""}`,
-      };
-    }
-
-    return { error: null };
+    return { scriptPath: devScriptPath, error: null };
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    return { error: `Dev script execution failed: ${errorMessage}` };
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      scriptPath: null,
+      error: `Failed to prepare dev script: ${message}`,
+    };
   }
 }

@@ -439,6 +439,8 @@ export type StartSandboxResponse = {
     vscodeUrl: string;
     workerUrl: string;
     provider?: 'morph';
+    maintenanceScriptPath?: string;
+    devScriptPath?: string;
 };
 
 export type StartSandboxBody = {

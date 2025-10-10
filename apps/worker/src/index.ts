@@ -3,6 +3,7 @@ import {
   WorkerConfigureGitSchema,
   WorkerCreateTerminalSchema,
   WorkerExecSchema,
+  type WorkerSandboxScripts,
   type ClientToServerEvents,
   type InterServerEvents,
   type ServerToClientEvents,
@@ -31,7 +32,7 @@ import {
 } from "node:child_process";
 import { promises as fs } from "node:fs";
 import { createServer } from "node:http";
-import { cpus, platform, totalmem } from "node:os";
+import { cpus, platform, totalmem, tmpdir } from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { Server, type Namespace, type Socket } from "socket.io";
@@ -42,6 +43,63 @@ import { FileWatcher, computeGitDiff, getFileWithDiff } from "./fileWatcher";
 import { log } from "./logger";
 
 const execAsync = promisify(exec);
+
+const shellQuote = (value: string): string =>
+  `'${value.replace(/'/g, "'\\''")}'`;
+
+const buildAgentScriptContent = (
+  agent: WorkerSandboxScripts["agent"],
+): string => {
+  if (agent.useShellCommandString && agent.shellCommandString) {
+    return [
+      "#!/bin/bash",
+      "set -euo pipefail",
+      `exec ${agent.shellCommandString}`,
+      "",
+    ].join("\n");
+  }
+
+  const parts = [
+    shellQuote(agent.command),
+    ...agent.args.map((arg) => shellQuote(arg)),
+  ].join(" ");
+
+  return [
+    "#!/bin/bash",
+    "set -euo pipefail",
+    `exec ${parts}`,
+    "",
+  ].join("\n");
+};
+
+const buildBootstrapScriptContent = (): string =>
+  [
+    "#!/bin/bash",
+    "set -euo pipefail",
+    "",
+    'SESSION_NAME="$1"',
+    'WORK_DIR="$2"',
+    'MAINTENANCE_SCRIPT="$3"',
+    'DEV_SCRIPT="$4"',
+    'AGENT_SCRIPT="$5"',
+    "",
+    'if [[ -n "$WORK_DIR" && -d "$WORK_DIR" ]]; then',
+    '  cd "$WORK_DIR"',
+    "else",
+    '  WORK_DIR="$(pwd)"',
+    "fi",
+    "",
+    'if [[ -n "$MAINTENANCE_SCRIPT" && -f "$MAINTENANCE_SCRIPT" ]]; then',
+    '  bash -eu -o pipefail "$MAINTENANCE_SCRIPT"',
+    "fi",
+    "",
+    'if [[ -n "$DEV_SCRIPT" && -f "$DEV_SCRIPT" ]]; then',
+    '  tmux new-window -d -t "$SESSION_NAME" -n cmux_dev -c "$WORK_DIR" bash -lc "set -euo pipefail; exec bash -eu -o pipefail \\\"$DEV_SCRIPT\\\""',
+    "fi",
+    "",
+    'exec "$AGENT_SCRIPT"',
+    "",
+  ].join("\n");
 
 const Terminal = xtermHeadless.Terminal;
 
@@ -842,6 +900,7 @@ async function createTerminal(
     taskRunId?: Id<"taskRuns">;
     agentModel?: string;
     startupCommands?: string[];
+    sandboxScripts?: WorkerSandboxScripts;
     taskRunContext: WorkerTaskRunContext;
   },
 ): Promise<void> {
@@ -853,6 +912,7 @@ async function createTerminal(
     command,
     args = [],
     startupCommands = [],
+    sandboxScripts,
     taskRunContext,
   } = options;
 
@@ -889,8 +949,28 @@ async function createTerminal(
   // Prepare the spawn command and args
   let spawnCommand: string;
   let spawnArgs: string[];
+  const sessionName = sanitizeTmuxSessionName(terminalId);
 
-  if (command === "tmux") {
+  if (sandboxScripts) {
+    spawnCommand = "tmux";
+    spawnArgs = [
+      "new-session",
+      "-d",
+      "-s",
+      sessionName,
+      "-c",
+      cwd,
+      "-x",
+      cols.toString(),
+      "-y",
+      rows.toString(),
+      "bash",
+    ];
+    log("INFO", `[createTerminal] Creating tmux session with sandbox scripts`, {
+      spawnCommand,
+      spawnArgs,
+    });
+  } else if (command === "tmux") {
     // Direct tmux command from agent spawner
     spawnCommand = command;
     spawnArgs = args;
@@ -905,7 +985,7 @@ async function createTerminal(
       "new-session",
       "-A",
       "-s",
-      sanitizeTmuxSessionName(terminalId),
+      sessionName,
     ];
     spawnArgs.push("-x", cols.toString(), "-y", rows.toString());
 
@@ -942,6 +1022,80 @@ async function createTerminal(
     ...(process.env.GIT_SSH_COMMAND
       ? { GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND }
       : {}),
+  };
+
+  const runTmuxCommand = (tmuxArgs: string[]): Promise<void> =>
+    new Promise((resolve, reject) => {
+      const proc = spawn("tmux", tmuxArgs, {
+        cwd,
+        env: ptyEnv,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let stderrBuffer = "";
+      proc.stderr.on("data", (data: Buffer) => {
+        stderrBuffer += data.toString();
+      });
+      proc.on("exit", (code) => {
+        if (code === 0) {
+          resolve();
+        } else {
+          const truncated = stderrBuffer.slice(0, 2000).trim();
+          reject(
+            new Error(
+              `tmux ${tmuxArgs.join(" ")} failed with exit ${code}${
+                truncated ? `: ${truncated}` : ""
+              }`,
+            ),
+          );
+        }
+      });
+      proc.on("error", reject);
+    });
+
+  const bootstrapSandboxScripts = async (
+    config: WorkerSandboxScripts,
+  ): Promise<void> => {
+    const tempDir = await fs.mkdtemp(path.join(tmpdir(), "cmux-sandbox-"));
+    const bootstrapPath = path.join(tempDir, "bootstrap.sh");
+    const agentPath = path.join(tempDir, "agent.sh");
+
+    await fs.writeFile(agentPath, buildAgentScriptContent(config.agent), "utf8");
+    await fs.chmod(agentPath, 0o700);
+
+    await fs.writeFile(bootstrapPath, buildBootstrapScriptContent(), "utf8");
+    await fs.chmod(bootstrapPath, 0o700);
+
+    const maintenanceArg = config.maintenanceScriptPath ?? "";
+    const devArg = config.devScriptPath ?? "";
+
+    const bootstrapArgs = [
+      shellQuote(sessionName),
+      shellQuote(cwd),
+      shellQuote(maintenanceArg),
+      shellQuote(devArg),
+      shellQuote(agentPath),
+    ];
+
+    const bootstrapInvocation = `${shellQuote(bootstrapPath)} ${bootstrapArgs.join(
+      " ",
+    )}`;
+
+    // Allow tmux session to fully initialize before sending keys
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    await runTmuxCommand([
+      "send-keys",
+      "-t",
+      `${sessionName}:0.0`,
+      `bash -lc ${shellQuote(bootstrapInvocation)}`,
+      "C-m",
+    ]);
+
+    log("INFO", "[createTerminal] Scheduled sandbox scripts", {
+      terminalId,
+      maintenance: maintenanceArg.length > 0,
+      dev: devArg.length > 0,
+    });
   };
 
   // Run optional startup commands prior to spawning the agent process
@@ -1016,6 +1170,18 @@ async function createTerminal(
   } catch (error) {
     log("ERROR", "Failed to spawn process", error);
     return;
+  }
+
+  if (sandboxScripts) {
+    try {
+      await bootstrapSandboxScripts(sandboxScripts);
+    } catch (error) {
+      log(
+        "ERROR",
+        "[createTerminal] Failed to bootstrap sandbox scripts",
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    }
   }
 
   const headlessTerminal = new Terminal({

@@ -19,7 +19,10 @@ import {
 import type { HydrateRepoConfig } from "./sandboxes/hydration";
 import { hydrateWorkspace } from "./sandboxes/hydration";
 import { resolveTeamAndSnapshot } from "./sandboxes/snapshot";
-import { runMaintenanceScript, startDevScript } from "./sandboxes/startDevAndMaintenanceScript";
+import {
+  prepareDevScript,
+  prepareMaintenanceScript,
+} from "./sandboxes/startDevAndMaintenanceScript";
 import {
   encodeEnvContentForEnvctl,
   envctlLoadCommand,
@@ -53,6 +56,8 @@ const StartSandboxResponse = z
     vscodeUrl: z.string(),
     workerUrl: z.string(),
     provider: z.enum(["morph"]).default("morph"),
+    maintenanceScriptPath: z.string().optional(),
+    devScriptPath: z.string().optional(),
   })
   .openapi("StartSandboxResponse");
 
@@ -302,41 +307,55 @@ sandboxesRouter.openapi(
         return c.text("Failed to hydrate sandbox", 500);
       }
 
-      if (maintenanceScript || devScript) {
-        (async () => {
-          const maintenanceScriptResult = maintenanceScript
-            ? await runMaintenanceScript({
-              instance,
-              script: maintenanceScript,
-            })
-            : undefined;
-          const devScriptResult = devScript
-            ? await startDevScript({ instance, script: devScript })
-            : undefined;
-          if (
-            taskRunConvexId &&
-            (maintenanceScriptResult?.error || devScriptResult?.error)
-          ) {
-            try {
-              await convex.mutation(api.taskRuns.updateEnvironmentError, {
-                teamSlugOrId: body.teamSlugOrId,
-                id: taskRunConvexId,
-                maintenanceError: maintenanceScriptResult?.error || undefined,
-                devError: devScriptResult?.error || undefined,
-              });
-            } catch (mutationError) {
-              console.error(
-                "[sandboxes.start] Failed to record environment error to taskRun",
-                mutationError,
-              );
-            }
-          }
-        })().catch((error) => {
-          console.error(
-            "[sandboxes.start] Background script execution failed:",
-            error,
-          );
+      let maintenanceScriptPath: string | null = null;
+      let devScriptPath: string | null = null;
+      let maintenanceScriptError: string | null = null;
+      let devScriptError: string | null = null;
+
+      if (maintenanceScript) {
+        const result = await prepareMaintenanceScript({
+          instance,
+          script: maintenanceScript,
         });
+        maintenanceScriptPath = result.scriptPath;
+        maintenanceScriptError = result.error;
+        if (result.error) {
+          console.error(
+            "[sandboxes.start] Failed to prepare maintenance script:",
+            result.error,
+          );
+        }
+      }
+
+      if (devScript) {
+        const result = await prepareDevScript({
+          instance,
+          script: devScript,
+        });
+        devScriptPath = result.scriptPath;
+        devScriptError = result.error;
+        if (result.error) {
+          console.error(
+            "[sandboxes.start] Failed to prepare dev script:",
+            result.error,
+          );
+        }
+      }
+
+      if (taskRunConvexId && (maintenanceScriptError || devScriptError)) {
+        try {
+          await convex.mutation(api.taskRuns.updateEnvironmentError, {
+            teamSlugOrId: body.teamSlugOrId,
+            id: taskRunConvexId,
+            maintenanceError: maintenanceScriptError ?? undefined,
+            devError: devScriptError ?? undefined,
+          });
+        } catch (mutationError) {
+          console.error(
+            "[sandboxes.start] Failed to record environment error to taskRun",
+            mutationError,
+          );
+        }
       }
 
       await configureGitIdentityTask;
@@ -346,6 +365,10 @@ sandboxesRouter.openapi(
         vscodeUrl: vscodeService.url,
         workerUrl: workerService.url,
         provider: "morph",
+        ...(maintenanceScriptPath
+          ? { maintenanceScriptPath }
+          : {}),
+        ...(devScriptPath ? { devScriptPath } : {}),
       });
     } catch (error) {
       if (error instanceof HTTPException) {

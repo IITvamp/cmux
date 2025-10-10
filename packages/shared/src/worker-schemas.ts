@@ -57,6 +57,19 @@ export const WorkerTaskRunContextSchema = z.object({
   convexUrl: z.string(),
 });
 
+const WorkerSandboxAgentSchema = z.object({
+  command: z.string(),
+  args: z.array(z.string()),
+  useShellCommandString: z.boolean(),
+  shellCommandString: z.string().optional(),
+});
+
+export const WorkerSandboxScriptsSchema = z.object({
+  maintenanceScriptPath: z.string().optional(),
+  devScriptPath: z.string().optional(),
+  agent: WorkerSandboxAgentSchema,
+});
+
 // Terminal operation schemas for server<>worker communication
 export const WorkerCreateTerminalSchema = z.object({
   terminalId: z.string(),
@@ -74,6 +87,7 @@ export const WorkerCreateTerminalSchema = z.object({
   agentModel: z.string().optional(),
   authFiles: z.array(AuthFileSchema).optional(),
   startupCommands: z.array(z.string()).optional(),
+  sandboxScripts: WorkerSandboxScriptsSchema.optional(),
 });
 
 export const WorkerTerminalInputSchema = z.object({
@@ -195,6 +209,8 @@ export type WorkerHeartbeat = z.infer<typeof WorkerHeartbeatSchema>;
 export type TerminalAssignment = z.infer<typeof TerminalAssignmentSchema>;
 export type WorkerStatus = z.infer<typeof WorkerStatusSchema>;
 export type WorkerTaskRunContext = z.infer<typeof WorkerTaskRunContextSchema>;
+export type WorkerSandboxAgent = z.infer<typeof WorkerSandboxAgentSchema>;
+export type WorkerSandboxScripts = z.infer<typeof WorkerSandboxScriptsSchema>;
 export type ServerToWorkerCommand = z.infer<typeof ServerToWorkerCommandSchema>;
 export type WorkerCreateTerminal = z.infer<typeof WorkerCreateTerminalSchema>;
 export type WorkerTerminalInput = z.infer<typeof WorkerTerminalInputSchema>;
