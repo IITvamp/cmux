@@ -408,11 +408,12 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     await this.container.start();
     dockerLogger.info(`Container started`);
 
-    // Fire-and-forget: bootstrap GitHub auth and devcontainer in background
+    // Fire-and-forget: bootstrap GitHub auth in background
     // Do not block agent startup
-    this.bootstrapContainerEnvironment().catch((err) => {
+    // Note: devcontainer and dev/maintenance scripts are now handled via tmux-session-init.sh
+    this.bootstrapGitHubAuth().catch((err) => {
       dockerLogger.warn(
-        `Container bootstrap skipped or failed for ${this.containerName}:`,
+        `GitHub auth bootstrap skipped or failed for ${this.containerName}:`,
         err
       );
     });
@@ -734,13 +735,14 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     return logs;
   }
 
-  // Bootstrap container environment including GitHub auth and devcontainer
+  // Bootstrap container environment including GitHub auth
   private async bootstrapContainerEnvironment(): Promise<void> {
     // First, set up GitHub authentication
     await this.bootstrapGitHubAuth();
 
-    // Then, bootstrap devcontainer if present
-    await this.bootstrapDevcontainerIfPresent();
+    // Note: devcontainer bootstrapping is now handled via tmux-session-init.sh
+    // to ensure dev/maintenance scripts run from tmux attach
+    // await this.bootstrapDevcontainerIfPresent();
   }
 
   // Authenticate GitHub CLI using token from host

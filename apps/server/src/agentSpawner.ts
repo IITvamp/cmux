@@ -429,15 +429,17 @@ export async function spawnAgent(
     );
 
     if (options.isCloudMode && vscodeInstance instanceof CmuxVSCodeInstance) {
-      console.log("[AgentSpawner] [isCloudMode] Setting up devcontainer");
-      void vscodeInstance
-        .setupDevcontainer()
-        .catch((err) =>
-          serverLogger.error(
-            "[AgentSpawner] setupDevcontainer encountered an error",
-            err,
-          ),
-        );
+      // Note: devcontainer setup is now handled via tmux-session-init.sh
+      // to ensure dev/maintenance scripts run from tmux attach
+      // console.log("[AgentSpawner] [isCloudMode] Setting up devcontainer");
+      // void vscodeInstance
+      //   .setupDevcontainer()
+      //   .catch((err) =>
+      //     serverLogger.error(
+      //       "[AgentSpawner] setupDevcontainer encountered an error",
+      //       err,
+      //     ),
+      //   );
     }
 
     // Start file watching for real-time diff updates
@@ -619,6 +621,7 @@ export async function spawnAgent(
         tmuxSessionName,
         "-c",
         "/root/workspace",
+        "/root/workspace/scripts/tmux-session-init.sh",
         actualCommand,
         ...actualArgs.map((arg) => {
           // Replace $CMUX_PROMPT with actual prompt value
@@ -633,6 +636,7 @@ export async function spawnAgent(
         "-d",
         "-s",
         tmuxSessionName,
+        "/root/workspace/scripts/tmux-session-init.sh",
         "bash",
         "-lc",
         `${unsetCommand}exec ${commandString}`,
