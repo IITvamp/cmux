@@ -81,6 +81,12 @@ export async function runMaintenanceScript({
   identifiers?: ScriptIdentifiers;
 }): Promise<ScriptResult> {
   const ids = identifiers ?? buildScriptId("maintenance");
+  console.log("[cmux] runMaintenanceScript", {
+    session: ids.sessionName,
+    runnerPath: ids.runnerPath,
+    hasIdentifiers: Boolean(identifiers),
+    scriptSample: script.slice(0, 80),
+  });
   const command = `
 set -euo pipefail
 mkdir -p ${LOG_DIR}
@@ -90,9 +96,9 @@ cat <<'CMUX_MAINT_RUNNER_EOF' > ${ids.runnerPath}
 set -euo pipefail
 cleanup() {
   status=$?
-  printf '%s' "\${status}" > ${ids.exitFile}
+  printf '%s' "\\${status}" > ${ids.exitFile}
   tmux wait-for -S ${ids.waitName}
-  exit "\${status}"
+  exit "\\${status}"
 }
 trap cleanup EXIT
 cd ${WORKSPACE_ROOT}
@@ -109,18 +115,18 @@ tmux send-keys -t ${ids.sessionName}:0 "${ids.runnerPath}" C-m
 tmux wait-for -L ${ids.waitName}
 status=$(cat ${ids.exitFile} 2>/dev/null || echo '1')
 rm -f ${ids.exitFile}
-if [ "${status}" = "0" ]; then
+if [ "\\${status}" = "0" ]; then
   tmux send-keys -t ${ids.sessionName}:0 "printf \"\\n[cmux] Maintenance script completed successfully. Closing session.\\n\"" C-m
   sleep 0.2
   tmux kill-session -t ${ids.sessionName} 2>/dev/null || true
   rm -f ${ids.runnerPath} ${ids.scriptPath}
 else
-  tmux send-keys -t ${ids.sessionName}:0 "printf \"\\n[cmux] Maintenance script failed with exit code \$status. Session left open for inspection.\\n\"" C-m
+  tmux send-keys -t ${ids.sessionName}:0 "printf \"\\n[cmux] Maintenance script failed with exit code \${status}. Session left open for inspection.\\n\"" C-m
 fi
 if [ ! -f ${ids.logFile} ]; then
   touch ${ids.logFile}
 fi
-exit "${status}"
+exit "\\${status}"
 `;
 
   try {
@@ -166,6 +172,12 @@ export async function startDevScript({
   identifiers?: ScriptIdentifiers;
 }): Promise<ScriptResult> {
   const ids = identifiers ?? buildScriptId("dev");
+  console.log("[cmux] startDevScript", {
+    session: ids.sessionName,
+    runnerPath: ids.runnerPath,
+    hasIdentifiers: Boolean(identifiers),
+    scriptSample: script.slice(0, 80),
+  });
   const devScriptDir = `${CMUX_RUNTIME_DIR}/${ids.id}`;
   const devScriptPath = `${devScriptDir}/dev-script.sh`;
   const command = `
@@ -178,8 +190,8 @@ cat <<'CMUX_DEV_RUNNER_EOF' > ${ids.runnerPath}
 set -euo pipefail
 cleanup() {
   status=$?
-  printf '%s' "\\${status}" > ${ids.exitFile}
-  exit "\\${status}"
+  printf '%s' "\\\${status}" > ${ids.exitFile}
+  exit "\\\${status}"
 }
 trap cleanup EXIT
 cd ${WORKSPACE_ROOT}
@@ -196,12 +208,12 @@ tmux send-keys -t ${ids.sessionName}:0 "${ids.runnerPath}" C-m
 sleep 1
 if [ -f ${ids.exitFile} ]; then
   status=$(cat ${ids.exitFile} 2>/dev/null || echo '1')
-  if [ "${status}" = "0" ]; then
+  if [ "\\${status}" = "0" ]; then
     tmux send-keys -t ${ids.sessionName}:0 "printf \"\\n[cmux] Dev script exited immediately with status 0. Session left open for debugging.\\n\"" C-m
     exit 1
   fi
-  tmux send-keys -t ${ids.sessionName}:0 "printf \"\\n[cmux] Dev script exited with status \$status. Session left open for debugging.\\n\"" C-m
-  exit "${status}"
+  tmux send-keys -t ${ids.sessionName}:0 "printf \"\\n[cmux] Dev script exited with status \${status}. Session left open for debugging.\\n\"" C-m
+  exit "\\${status}"
 fi
 if [ ! -f ${ids.logFile} ]; then
   touch ${ids.logFile}
