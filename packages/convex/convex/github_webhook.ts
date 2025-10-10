@@ -15,12 +15,12 @@ import { hmacSha256, safeEqualHex, sha256Hex } from "../_shared/crypto";
 import { bytesToHex } from "../_shared/encoding";
 import { streamInstallationRepositories } from "../_shared/githubApp";
 import {
-  buildCheckRunPayload,
-  buildCommitStatusPayload,
-  buildDeploymentPayload,
-  buildDeploymentStatusPayload,
-  buildPullRequestPayload,
-  buildWorkflowRunPayload,
+  type GithubCheckRunEventPayload,
+  type GithubCommitStatusEventPayload,
+  type GithubDeploymentEventPayload,
+  type GithubDeploymentStatusEventPayload,
+  type GithubPullRequestEventPayload,
+  type GithubWorkflowRunEventPayload,
 } from "../_shared/github_webhook_validators";
 import { internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
@@ -257,7 +257,40 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
           }
 
 
-          const payload = buildWorkflowRunPayload(workflowRunPayload);
+          const payload: GithubWorkflowRunEventPayload = {
+            workflow_run: workflowRunPayload.workflow_run ? {
+              id: workflowRunPayload.workflow_run.id,
+              run_number: workflowRunPayload.workflow_run.run_number,
+              workflow_id: workflowRunPayload.workflow_run.workflow_id,
+              name: workflowRunPayload.workflow_run.name,
+              event: workflowRunPayload.workflow_run.event,
+              status: workflowRunPayload.workflow_run.status,
+              conclusion: ((workflowRunPayload.workflow_run as unknown as Record<string, unknown>).conclusion as string | null | undefined) ?? undefined,
+              head_branch: workflowRunPayload.workflow_run.head_branch,
+              head_sha: workflowRunPayload.workflow_run.head_sha,
+              html_url: workflowRunPayload.workflow_run.html_url,
+              created_at: workflowRunPayload.workflow_run.created_at,
+              updated_at: workflowRunPayload.workflow_run.updated_at,
+              run_started_at: workflowRunPayload.workflow_run.run_started_at,
+              completed_at: ((workflowRunPayload.workflow_run as unknown as Record<string, unknown>).completed_at as string | null | undefined) ?? undefined,
+              actor: workflowRunPayload.workflow_run.actor ? {
+                login: workflowRunPayload.workflow_run.actor.login,
+                id: workflowRunPayload.workflow_run.actor.id,
+              } : undefined,
+              pull_requests: workflowRunPayload.workflow_run.pull_requests?.map(pr => ({
+                number: pr.number,
+              })),
+            } : undefined,
+            workflow: workflowRunPayload.workflow ? {
+              name: workflowRunPayload.workflow.name,
+            } : undefined,
+            repository: workflowRunPayload.repository ? {
+              id: workflowRunPayload.repository.id,
+              pushed_at: typeof workflowRunPayload.repository.pushed_at === "string"
+                ? workflowRunPayload.repository.pushed_at
+                : undefined,
+            } : undefined,
+          };
 
           await _ctx.runMutation(
             internal.github_workflows.upsertWorkflowRunFromWebhook,
@@ -316,7 +349,32 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
           }
 
 
-          const payload = buildCheckRunPayload(checkRunPayload);
+          const payload: GithubCheckRunEventPayload = {
+            check_run: checkRunPayload.check_run ? {
+              id: checkRunPayload.check_run.id,
+              name: checkRunPayload.check_run.name,
+              head_sha: checkRunPayload.check_run.head_sha,
+              status: checkRunPayload.check_run.status,
+              conclusion: ((checkRunPayload.check_run as Record<string, unknown>).conclusion as string | null | undefined) ?? undefined,
+              html_url: checkRunPayload.check_run.html_url,
+              updated_at: ((checkRunPayload.check_run as Record<string, unknown>).updated_at as string | null | undefined) ?? undefined,
+              started_at: ((checkRunPayload.check_run as Record<string, unknown>).started_at as string | null | undefined) ?? undefined,
+              completed_at: ((checkRunPayload.check_run as Record<string, unknown>).completed_at as string | null | undefined) ?? undefined,
+              app: checkRunPayload.check_run.app ? {
+                name: checkRunPayload.check_run.app.name,
+                slug: checkRunPayload.check_run.app.slug,
+              } : undefined,
+              pull_requests: checkRunPayload.check_run.pull_requests?.map(pr => ({
+                number: pr.number,
+              })),
+            } : undefined,
+            repository: checkRunPayload.repository ? {
+              id: checkRunPayload.repository.id,
+              pushed_at: typeof checkRunPayload.repository.pushed_at === "string"
+                ? checkRunPayload.repository.pushed_at
+                : undefined,
+            } : undefined,
+          };
 
           await _ctx.runMutation(internal.github_check_runs.upsertCheckRunFromWebhook, {
             installationId: installation,
@@ -369,7 +427,28 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             break;
           }
 
-          const payload = buildDeploymentPayload(deploymentPayload);
+          const payload: GithubDeploymentEventPayload = {
+            deployment: deploymentPayload.deployment ? {
+              id: deploymentPayload.deployment.id,
+              sha: deploymentPayload.deployment.sha,
+              ref: deploymentPayload.deployment.ref,
+              task: deploymentPayload.deployment.task,
+              environment: deploymentPayload.deployment.environment,
+              description: deploymentPayload.deployment.description ?? undefined,
+              creator: deploymentPayload.deployment.creator ? {
+                login: deploymentPayload.deployment.creator.login,
+                id: deploymentPayload.deployment.creator.id,
+              } : undefined,
+              created_at: deploymentPayload.deployment.created_at,
+              updated_at: deploymentPayload.deployment.updated_at,
+            } : undefined,
+            repository: deploymentPayload.repository ? {
+              id: deploymentPayload.repository.id,
+              pushed_at: typeof deploymentPayload.repository.pushed_at === "string"
+                ? deploymentPayload.repository.pushed_at
+                : undefined,
+            } : undefined,
+          };
 
           await _ctx.runMutation(
             internal.github_deployments.upsertDeploymentFromWebhook,
@@ -421,7 +500,36 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             break;
           }
 
-          const payload = buildDeploymentStatusPayload(deploymentStatusPayload);
+          const payload: GithubDeploymentStatusEventPayload = {
+            deployment: deploymentStatusPayload.deployment ? {
+              id: deploymentStatusPayload.deployment.id,
+              sha: deploymentStatusPayload.deployment.sha,
+              ref: deploymentStatusPayload.deployment.ref,
+              task: deploymentStatusPayload.deployment.task,
+              environment: deploymentStatusPayload.deployment.environment,
+              description: deploymentStatusPayload.deployment.description ?? undefined,
+              creator: deploymentStatusPayload.deployment.creator ? {
+                login: deploymentStatusPayload.deployment.creator.login,
+                id: deploymentStatusPayload.deployment.creator.id,
+              } : undefined,
+              created_at: deploymentStatusPayload.deployment.created_at,
+              updated_at: deploymentStatusPayload.deployment.updated_at,
+            } : undefined,
+            deployment_status: deploymentStatusPayload.deployment_status ? {
+              state: deploymentStatusPayload.deployment_status.state,
+              description: deploymentStatusPayload.deployment_status.description ?? undefined,
+              log_url: deploymentStatusPayload.deployment_status.log_url,
+              target_url: deploymentStatusPayload.deployment_status.target_url,
+              environment_url: deploymentStatusPayload.deployment_status.environment_url,
+              updated_at: deploymentStatusPayload.deployment_status.updated_at,
+            } : undefined,
+            repository: deploymentStatusPayload.repository ? {
+              id: deploymentStatusPayload.repository.id,
+              pushed_at: typeof deploymentStatusPayload.repository.pushed_at === "string"
+                ? deploymentStatusPayload.repository.pushed_at
+                : undefined,
+            } : undefined,
+          };
 
           await _ctx.runMutation(
             internal.github_deployments.updateDeploymentStatusFromWebhook,
@@ -473,7 +581,26 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             break;
           }
 
-          const payload = buildCommitStatusPayload(statusPayload);
+          const payload: GithubCommitStatusEventPayload = {
+            id: statusPayload.id,
+            sha: statusPayload.sha,
+            state: statusPayload.state,
+            description: statusPayload.description ?? undefined,
+            target_url: statusPayload.target_url ?? undefined,
+            context: statusPayload.context,
+            created_at: statusPayload.created_at,
+            updated_at: statusPayload.updated_at,
+            repository: statusPayload.repository ? {
+              id: statusPayload.repository.id,
+              pushed_at: typeof statusPayload.repository.pushed_at === "string"
+                ? statusPayload.repository.pushed_at
+                : undefined,
+            } : undefined,
+            sender: statusPayload.sender ? {
+              login: statusPayload.sender.login,
+              id: statusPayload.sender.id,
+            } : undefined,
+          }
 
           await _ctx.runMutation(
             internal.github_commit_statuses.upsertCommitStatusFromWebhook,
@@ -506,7 +633,53 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
           );
           const teamId = conn?.teamId;
           if (!teamId) break;
-          const payload = buildPullRequestPayload(prPayload);
+          const payload: GithubPullRequestEventPayload = {
+            pull_request: prPayload.pull_request ? {
+              number: prPayload.pull_request.number,
+              id: prPayload.pull_request.id,
+              title: prPayload.pull_request.title,
+              state: prPayload.pull_request.state,
+              merged: prPayload.pull_request.merged ?? undefined,
+              draft: prPayload.pull_request.draft,
+              html_url: prPayload.pull_request.html_url ?? undefined,
+              merge_commit_sha: prPayload.pull_request.merge_commit_sha ?? undefined,
+              created_at: prPayload.pull_request.created_at ?? undefined,
+              updated_at: prPayload.pull_request.updated_at ?? undefined,
+              closed_at: prPayload.pull_request.closed_at ?? undefined,
+              merged_at: prPayload.pull_request.merged_at ?? undefined,
+              comments: prPayload.pull_request.comments,
+              review_comments: prPayload.pull_request.review_comments,
+              commits: prPayload.pull_request.commits,
+              additions: prPayload.pull_request.additions,
+              deletions: prPayload.pull_request.deletions,
+              changed_files: prPayload.pull_request.changed_files,
+              user: prPayload.pull_request.user ? {
+                login: prPayload.pull_request.user.login,
+                id: prPayload.pull_request.user.id,
+              } : undefined,
+              base: prPayload.pull_request.base ? {
+                ref: prPayload.pull_request.base.ref,
+                sha: prPayload.pull_request.base.sha,
+                repo: prPayload.pull_request.base.repo ? {
+                  id: prPayload.pull_request.base.repo.id,
+                  pushed_at: typeof prPayload.pull_request.base.repo.pushed_at === "string"
+                    ? prPayload.pull_request.base.repo.pushed_at
+                    : undefined,
+                } : undefined,
+              } : undefined,
+              head: prPayload.pull_request.head ? {
+                ref: prPayload.pull_request.head.ref,
+                sha: prPayload.pull_request.head.sha,
+                repo: prPayload.pull_request.head.repo ? {
+                  id: prPayload.pull_request.head.repo.id,
+                  pushed_at: typeof prPayload.pull_request.head.repo.pushed_at === "string"
+                    ? prPayload.pull_request.head.repo.pushed_at
+                    : undefined,
+                } : undefined,
+              } : undefined,
+            } : undefined,
+            number: prPayload.number,
+          };
           await _ctx.runMutation(internal.github_prs.upsertFromWebhookPayload, {
             installationId: installation,
             repoFullName,
