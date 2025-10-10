@@ -3,8 +3,9 @@ mod linux_only {
     use std::env;
     use std::io::{Read, Write};
     use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use std::process::{Command, Stdio};
+    use std::sync::OnceLock;
     use std::time::Duration;
 
     use cmux_proxy::workspace_ip_from_name;
@@ -47,6 +48,27 @@ mod linux_only {
         dir
     }
 
+    fn ensure_ldpreload_lib() -> &'static Path {
+        static LIB_PATH: OnceLock<PathBuf> = OnceLock::new();
+        LIB_PATH
+            .get_or_init(|| {
+                let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("ldpreload");
+                let lib_path = dir.join("libworkspace_net.so");
+                let needs_build = std::fs::metadata(&lib_path)
+                    .map(|meta| meta.len() == 0)
+                    .unwrap_or(true);
+                if needs_build {
+                    let status = Command::new("make")
+                        .current_dir(&dir)
+                        .status()
+                        .expect("spawn make");
+                    assert!(status.success(), "failed to build ldpreload library");
+                }
+                lib_path
+            })
+            .as_path()
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_ld_preload_connect_rewrite() {
         let ws_ip = workspace_ip_from_name("workspace-1").expect("mapping");
@@ -65,19 +87,7 @@ mod linux_only {
         });
 
         // Build LD_PRELOAD path
-        let lib_path = format!(
-            "{}/ldpreload/libworkspace_net.so",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        if !Path::new(&lib_path).exists() {
-            // Try to build it if missing
-            let status = Command::new("make")
-                .arg("-C")
-                .arg(format!("{}/ldpreload", env!("CARGO_MANIFEST_DIR")))
-                .status()
-                .expect("spawn make");
-            assert!(status.success(), "failed to build ldpreload library");
-        }
+        let lib_path = ensure_ldpreload_lib();
 
         // Use bash's /dev/tcp to make a TCP connection to 127.0.0.1:port
         // LD_PRELOAD should rewrite to ws_ip:port
@@ -88,7 +98,7 @@ mod linux_only {
         let mut child = Command::new("bash")
             .arg("-lc")
             .arg(script)
-            .env("LD_PRELOAD", &lib_path)
+            .env("LD_PRELOAD", lib_path)
             .env("CMUX_WORKSPACE_INTERNAL", "workspace-1")
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -130,18 +140,7 @@ mod linux_only {
         });
 
         // Build LD_PRELOAD path
-        let lib_path = format!(
-            "{}/ldpreload/libworkspace_net.so",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        if !Path::new(&lib_path).exists() {
-            let status = Command::new("make")
-                .arg("-C")
-                .arg(format!("{}/ldpreload", env!("CARGO_MANIFEST_DIR")))
-                .status()
-                .expect("spawn make");
-            assert!(status.success(), "failed to build ldpreload library");
-        }
+        let lib_path = ensure_ldpreload_lib();
 
         // Prepare workspace directory and run child with that CWD
         let ws_dir = temp_workspace_dir(ws_name);
@@ -164,7 +163,7 @@ mod linux_only {
             Err(_) => true,
         };
         if need_set {
-            cmd.env("LD_PRELOAD", &lib_path);
+            cmd.env("LD_PRELOAD", lib_path);
         }
         let mut child = cmd.spawn().expect("spawn bash");
 
@@ -197,18 +196,7 @@ mod linux_only {
         start_upstream_http_on_fixed(ip_a, port, "ok-from-A").await;
 
         // Build LD_PRELOAD path (compile if missing)
-        let lib_path = format!(
-            "{}/ldpreload/libworkspace_net.so",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        if !Path::new(&lib_path).exists() {
-            let status = Command::new("make")
-                .arg("-C")
-                .arg(format!("{}/ldpreload", env!("CARGO_MANIFEST_DIR")))
-                .status()
-                .expect("spawn make");
-            assert!(status.success(), "failed to build ldpreload library");
-        }
+        let lib_path = ensure_ldpreload_lib();
 
         // Create workspace directories for CWD-based detection
         let ws_dir_a = temp_workspace_dir(ws_a);
@@ -237,7 +225,7 @@ mod linux_only {
             Err(_) => true,
         };
         if need_set {
-            cmd_a.env("LD_PRELOAD", &lib_path);
+            cmd_a.env("LD_PRELOAD", lib_path);
         }
         let mut child_a = cmd_a.spawn().expect("spawn curl A");
         let mut out_a = Vec::new();
@@ -262,7 +250,7 @@ mod linux_only {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         if need_set {
-            cmd_b.env("LD_PRELOAD", &lib_path);
+            cmd_b.env("LD_PRELOAD", lib_path);
         }
         let mut child_b = cmd_b.spawn().expect("spawn curl B");
         let status_b = timeout(Duration::from_secs(10), async { child_b.wait() })
