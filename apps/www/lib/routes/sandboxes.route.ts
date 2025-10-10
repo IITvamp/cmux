@@ -19,7 +19,7 @@ import {
 import type { HydrateRepoConfig } from "./sandboxes/hydration";
 import { hydrateWorkspace } from "./sandboxes/hydration";
 import { resolveTeamAndSnapshot } from "./sandboxes/snapshot";
-import { runMaintenanceScript, startDevScript } from "./sandboxes/startDevAndMaintenanceScript";
+import { setupTmuxScripts } from "./sandboxes/tmuxScripts";
 import {
   encodeEnvContentForEnvctl,
   envctlLoadCommand,
@@ -304,25 +304,19 @@ sandboxesRouter.openapi(
 
       if (maintenanceScript || devScript) {
         (async () => {
-          const maintenanceScriptResult = maintenanceScript
-            ? await runMaintenanceScript({
-              instance,
-              script: maintenanceScript,
-            })
-            : undefined;
-          const devScriptResult = devScript
-            ? await startDevScript({ instance, script: devScript })
-            : undefined;
-          if (
-            taskRunConvexId &&
-            (maintenanceScriptResult?.error || devScriptResult?.error)
-          ) {
+          const scriptsResult = await setupTmuxScripts({
+            instance,
+            maintenanceScript,
+            devScript,
+          });
+
+          if (taskRunConvexId && scriptsResult?.error) {
             try {
               await convex.mutation(api.taskRuns.updateEnvironmentError, {
                 teamSlugOrId: body.teamSlugOrId,
                 id: taskRunConvexId,
-                maintenanceError: maintenanceScriptResult?.error || undefined,
-                devError: devScriptResult?.error || undefined,
+                maintenanceError: scriptsResult.error,
+                devError: undefined,
               });
             } catch (mutationError) {
               console.error(
