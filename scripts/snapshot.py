@@ -1383,7 +1383,7 @@ async def task_install_service_scripts(ctx: TaskContext) -> None:
     cmd = textwrap.dedent(
         f"""
         install -d /usr/local/lib/cmux
-        install -m 0755 {repo}/configs/systemd/bin/cmux-start-vnc /usr/local/lib/cmux/cmux-start-vnc
+        install -m 0755 {repo}/configs/systemd/bin/cmux-start-chrome /usr/local/lib/cmux/cmux-start-chrome
         """
     )
     await ctx.run("install-service-scripts", cmd)
@@ -1436,7 +1436,11 @@ async def task_install_systemd_units(ctx: TaskContext) -> None:
         install -Dm0644 {repo}/configs/systemd/cmux-worker.service /usr/lib/systemd/system/cmux-worker.service
         install -Dm0644 {repo}/configs/systemd/cmux-proxy.service /usr/lib/systemd/system/cmux-proxy.service
         install -Dm0644 {repo}/configs/systemd/cmux-dockerd.service /usr/lib/systemd/system/cmux-dockerd.service
-        install -Dm0644 {repo}/configs/systemd/cmux-vnc.service /usr/lib/systemd/system/cmux-vnc.service
+        install -Dm0644 {repo}/configs/systemd/cmux-devtools.service /usr/lib/systemd/system/cmux-devtools.service
+        install -Dm0644 {repo}/configs/systemd/cmux-xvfb.service /usr/lib/systemd/system/cmux-xvfb.service
+        install -Dm0644 {repo}/configs/systemd/cmux-x11vnc.service /usr/lib/systemd/system/cmux-x11vnc.service
+        install -Dm0644 {repo}/configs/systemd/cmux-websockify.service /usr/lib/systemd/system/cmux-websockify.service
+        install -Dm0644 {repo}/configs/systemd/cmux-cdp-proxy.service /usr/lib/systemd/system/cmux-cdp-proxy.service
         install -Dm0755 {repo}/configs/systemd/bin/configure-openvscode /usr/local/lib/cmux/configure-openvscode
         touch /usr/local/lib/cmux/dockerd.flag
         mkdir -p /var/log/cmux
@@ -1447,7 +1451,11 @@ async def task_install_systemd_units(ctx: TaskContext) -> None:
         ln -sf /usr/lib/systemd/system/cmux-worker.service /etc/systemd/system/cmux.target.wants/cmux-worker.service
         ln -sf /usr/lib/systemd/system/cmux-proxy.service /etc/systemd/system/cmux.target.wants/cmux-proxy.service
         ln -sf /usr/lib/systemd/system/cmux-dockerd.service /etc/systemd/system/cmux.target.wants/cmux-dockerd.service
-        ln -sf /usr/lib/systemd/system/cmux-vnc.service /etc/systemd/system/cmux.target.wants/cmux-vnc.service
+        ln -sf /usr/lib/systemd/system/cmux-devtools.service /etc/systemd/system/cmux.target.wants/cmux-devtools.service
+        ln -sf /usr/lib/systemd/system/cmux-xvfb.service /etc/systemd/system/cmux.target.wants/cmux-xvfb.service
+        ln -sf /usr/lib/systemd/system/cmux-x11vnc.service /etc/systemd/system/cmux.target.wants/cmux-x11vnc.service
+        ln -sf /usr/lib/systemd/system/cmux-websockify.service /etc/systemd/system/cmux.target.wants/cmux-websockify.service
+        ln -sf /usr/lib/systemd/system/cmux-cdp-proxy.service /etc/systemd/system/cmux.target.wants/cmux-cdp-proxy.service
         systemctl daemon-reload
         systemctl enable cmux.target
         chown root:root /usr/local
@@ -1807,7 +1815,10 @@ async def task_check_vnc(ctx: TaskContext) -> None:
           sleep 2
         done
         echo "ERROR: VNC endpoint not reachable after 30s" >&2
-        systemctl status cmux-vnc.service --no-pager || true
+        systemctl status cmux-xvfb.service --no-pager || true
+        systemctl status cmux-x11vnc.service --no-pager || true
+        systemctl status cmux-websockify.service --no-pager || true
+        systemctl status cmux-devtools.service --no-pager || true
         tail -n 60 /var/log/cmux/xvfb.log || true
         tail -n 40 /var/log/cmux/chrome.log || true
         tail -n 40 /var/log/cmux/x11vnc.log || true
@@ -1839,7 +1850,9 @@ async def task_check_devtools(ctx: TaskContext) -> None:
           sleep 2
         done
         echo "ERROR: DevTools endpoint not reachable after 90s" >&2
-        systemctl status cmux-vnc.service --no-pager || true
+        systemctl status cmux-devtools.service --no-pager || true
+        systemctl status cmux-xvfb.service --no-pager || true
+        systemctl status cmux-cdp-proxy.service --no-pager || true
         ss -ltnp | grep 3938 || true
         tail -n 100 /var/log/cmux/chrome.log || true
         tail -n 40 /var/log/cmux/x11vnc.log || true

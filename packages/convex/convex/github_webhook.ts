@@ -2,6 +2,7 @@ import type {
   CheckRunEvent,
   DeploymentEvent,
   DeploymentStatusEvent,
+  EventPayloadMap,
   InstallationEvent,
   InstallationRepositoriesEvent,
   PullRequestEvent,
@@ -24,7 +25,7 @@ const DEBUG_FLAGS = {
 async function verifySignature(
   secret: string,
   payload: string,
-  signatureHeader: string | null,
+  signatureHeader: string | null
 ): Promise<boolean> {
   if (!signatureHeader || !signatureHeader.startsWith("sha256=")) return false;
   const expectedHex = signatureHeader.slice("sha256=".length).toLowerCase();
@@ -36,7 +37,7 @@ async function verifySignature(
 const MILLIS_THRESHOLD = 1_000_000_000_000;
 
 function normalizeTimestamp(
-  value: number | string | null | undefined,
+  value: number | string | null | undefined
 ): number | undefined {
   if (value === null || value === undefined) return undefined;
   if (typeof value === "number") {
@@ -85,12 +86,15 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
   // Record delivery for idempotency/auditing
   if (delivery) {
     const payloadHash = await sha256Hex(payload);
-    const result = await _ctx.runMutation(internal.github_app.recordWebhookDelivery, {
-      provider: "github",
-      deliveryId: delivery,
-      installationId,
-      payloadHash,
-    });
+    const result = await _ctx.runMutation(
+      internal.github_app.recordWebhookDelivery,
+      {
+        provider: "github",
+        deliveryId: delivery,
+        installationId,
+        payloadHash,
+      }
+    );
     if (!result.created) {
       return new Response("ok (duplicate)", { status: 200 });
     }
@@ -101,9 +105,13 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
     return new Response("pong", { status: 200 });
   }
 
+  const typedEvent = event as keyof EventPayloadMap;
+  const { [typedEvent]: typedBody } = body;
+
   try {
-    switch (event) {
+    switch (typedEvent) {
       case "installation": {
+        type WebhookEvent = EventPayloadMap[typeof typedEvent];
         const inst = body as InstallationEvent;
         const action = inst?.action as string | undefined;
         if (!action) break;
@@ -118,7 +126,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
                 accountId: Number(account.id ?? 0),
                 accountType:
                   account.type === "Organization" ? "Organization" : "User",
-              },
+              }
             );
           }
         } else if (action === "deleted") {
@@ -127,7 +135,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
               internal.github_app.deactivateProviderConnection,
               {
                 installationId,
-              },
+              }
             );
           }
         }
@@ -136,14 +144,16 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
       case "installation_repositories": {
         try {
           const inst = body as InstallationRepositoriesEvent;
-          const installation = Number(inst.installation?.id ?? installationId ?? 0);
+          const installation = Number(
+            inst.installation?.id ?? installationId ?? 0
+          );
           if (!installation) {
             break;
           }
 
           const connection = await _ctx.runQuery(
             internal.github_app.getProviderConnectionByInstallationId,
-            { installationId: installation },
+            { installationId: installation }
           );
           if (!connection) {
             console.warn(
@@ -151,7 +161,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
               {
                 installation,
                 delivery,
-              },
+              }
             );
             break;
           }
@@ -166,7 +176,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
                 teamId,
                 userId,
                 delivery,
-              },
+              }
             );
             break;
           }
@@ -176,12 +186,15 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             (repos, currentPageIndex) =>
               (async () => {
                 try {
-                  await _ctx.runMutation(internal.github.syncReposForInstallation, {
-                    teamId,
-                    userId,
-                    connectionId: connection._id,
-                    repos,
-                  });
+                  await _ctx.runMutation(
+                    internal.github.syncReposForInstallation,
+                    {
+                      teamId,
+                      userId,
+                      connectionId: connection._id,
+                      repos,
+                    }
+                  );
                 } catch (error) {
                   console.error(
                     "[github_webhook] Failed to sync installation repositories from webhook",
@@ -191,10 +204,10 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
                       pageIndex: currentPageIndex,
                       repoCount: repos.length,
                       error,
-                    },
+                    }
                   );
                 }
-              })(),
+              })()
           );
         } catch (error) {
           console.error(
@@ -202,7 +215,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             {
               error,
               delivery,
-            },
+            }
           );
         }
         break;
@@ -219,23 +232,25 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
         try {
           const workflowRunPayload = body as WorkflowRunEvent;
           const repoFullName = String(
-            workflowRunPayload.repository?.full_name ?? "",
+            workflowRunPayload.repository?.full_name ?? ""
           );
           const installation = Number(workflowRunPayload.installation?.id ?? 0);
 
-
           if (!repoFullName || !installation) {
-            console.warn("[workflow_run] Missing repoFullName or installation", {
-              repoFullName,
-              installation,
-              delivery,
-            });
+            console.warn(
+              "[workflow_run] Missing repoFullName or installation",
+              {
+                repoFullName,
+                installation,
+                delivery,
+              }
+            );
             break;
           }
 
           const conn = await _ctx.runQuery(
             internal.github_app.getProviderConnectionByInstallationId,
-            { installationId: installation },
+            { installationId: installation }
           );
           const teamId = conn?.teamId;
 
@@ -248,7 +263,6 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             break;
           }
 
-
           await _ctx.runMutation(
             internal.github_workflows.upsertWorkflowRunFromWebhook,
             {
@@ -256,9 +270,8 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
               repoFullName,
               teamId,
               payload: workflowRunPayload,
-            },
+            }
           );
-
         } catch (err) {
           console.error("[workflow_run] Handler failed", {
             err,
@@ -277,9 +290,10 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
       case "check_run": {
         try {
           const checkRunPayload = body as CheckRunEvent;
-          const repoFullName = String(checkRunPayload.repository?.full_name ?? "");
+          const repoFullName = String(
+            checkRunPayload.repository?.full_name ?? ""
+          );
           const installation = Number(checkRunPayload.installation?.id ?? 0);
-
 
           if (!repoFullName || !installation) {
             console.warn("[check_run] Missing repoFullName or installation", {
@@ -292,7 +306,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
 
           const conn = await _ctx.runQuery(
             internal.github_app.getProviderConnectionByInstallationId,
-            { installationId: installation },
+            { installationId: installation }
           );
           const teamId = conn?.teamId;
 
@@ -305,14 +319,15 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             break;
           }
 
-
-          await _ctx.runMutation(internal.github_check_runs.upsertCheckRunFromWebhook, {
-            installationId: installation,
-            repoFullName,
-            teamId,
-            payload: checkRunPayload,
-          });
-
+          await _ctx.runMutation(
+            internal.github_check_runs.upsertCheckRunFromWebhook,
+            {
+              installationId: installation,
+              repoFullName,
+              teamId,
+              payload: checkRunPayload,
+            }
+          );
         } catch (err) {
           console.error("[check_run] Handler failed", {
             err,
@@ -329,9 +344,10 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
       case "deployment": {
         try {
           const deploymentPayload = body as DeploymentEvent;
-          const repoFullName = String(deploymentPayload.repository?.full_name ?? "");
+          const repoFullName = String(
+            deploymentPayload.repository?.full_name ?? ""
+          );
           const installation = Number(deploymentPayload.installation?.id ?? 0);
-
 
           if (!repoFullName || !installation) {
             console.warn("[deployment] Missing repoFullName or installation", {
@@ -344,7 +360,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
 
           const conn = await _ctx.runQuery(
             internal.github_app.getProviderConnectionByInstallationId,
-            { installationId: installation },
+            { installationId: installation }
           );
           const teamId = conn?.teamId;
 
@@ -364,9 +380,8 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
               repoFullName,
               teamId,
               payload: deploymentPayload,
-            },
+            }
           );
-
         } catch (err) {
           console.error("[deployment] Handler failed", {
             err,
@@ -379,31 +394,40 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
       case "deployment_status": {
         try {
           const deploymentStatusPayload = body as DeploymentStatusEvent;
-          const repoFullName = String(deploymentStatusPayload.repository?.full_name ?? "");
-          const installation = Number(deploymentStatusPayload.installation?.id ?? 0);
-
+          const repoFullName = String(
+            deploymentStatusPayload.repository?.full_name ?? ""
+          );
+          const installation = Number(
+            deploymentStatusPayload.installation?.id ?? 0
+          );
 
           if (!repoFullName || !installation) {
-            console.warn("[deployment_status] Missing repoFullName or installation", {
-              repoFullName,
-              installation,
-              delivery,
-            });
+            console.warn(
+              "[deployment_status] Missing repoFullName or installation",
+              {
+                repoFullName,
+                installation,
+                delivery,
+              }
+            );
             break;
           }
 
           const conn = await _ctx.runQuery(
             internal.github_app.getProviderConnectionByInstallationId,
-            { installationId: installation },
+            { installationId: installation }
           );
           const teamId = conn?.teamId;
 
           if (!teamId) {
-            console.warn("[deployment_status] No teamId found for installation", {
-              installation,
-              delivery,
-              connectionFound: !!conn,
-            });
+            console.warn(
+              "[deployment_status] No teamId found for installation",
+              {
+                installation,
+                delivery,
+                connectionFound: !!conn,
+              }
+            );
             break;
           }
 
@@ -414,9 +438,8 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
               repoFullName,
               teamId,
               payload: deploymentStatusPayload,
-            },
+            }
           );
-
         } catch (err) {
           console.error("[deployment_status] Handler failed", {
             err,
@@ -429,9 +452,10 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
       case "status": {
         try {
           const statusPayload = body as StatusEvent;
-          const repoFullName = String(statusPayload.repository?.full_name ?? "");
+          const repoFullName = String(
+            statusPayload.repository?.full_name ?? ""
+          );
           const installation = Number(statusPayload.installation?.id ?? 0);
-
 
           if (!repoFullName || !installation) {
             console.warn("[status] Missing repoFullName or installation", {
@@ -444,7 +468,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
 
           const conn = await _ctx.runQuery(
             internal.github_app.getProviderConnectionByInstallationId,
-            { installationId: installation },
+            { installationId: installation }
           );
           const teamId = conn?.teamId;
 
@@ -464,9 +488,8 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
               repoFullName,
               teamId,
               payload: statusPayload,
-            },
+            }
           );
-
         } catch (err) {
           console.error("[status] Handler failed", {
             err,
@@ -484,7 +507,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
           if (!repoFullName || !installation) break;
           const conn = await _ctx.runQuery(
             internal.github_app.getProviderConnectionByInstallationId,
-            { installationId: installation },
+            { installationId: installation }
           );
           const teamId = conn?.teamId;
           if (!teamId) break;
@@ -510,15 +533,15 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
           if (!repoFullName || !installation) break;
           const conn = await _ctx.runQuery(
             internal.github_app.getProviderConnectionByInstallationId,
-            { installationId: installation },
+            { installationId: installation }
           );
           const teamId = conn?.teamId;
           if (!teamId) break;
           const repoPushedAt = normalizeTimestamp(
-            pushPayload.repository?.pushed_at,
+            pushPayload.repository?.pushed_at
           );
           const headCommitAt = normalizeTimestamp(
-            pushPayload.head_commit?.timestamp,
+            pushPayload.head_commit?.timestamp
           );
           const pushedAtMillis = repoPushedAt ?? headCommitAt ?? Date.now();
           const providerRepoId =
@@ -541,7 +564,7 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
               repoFullName,
               pushedAt: pushedAtMillis,
               providerRepoId,
-            },
+            }
           );
         } catch (err) {
           console.error("github_webhook push handler failed", {

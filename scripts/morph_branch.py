@@ -1,14 +1,17 @@
 from morphcloud.api import MorphCloudClient
 
 
-SNAPSHOT_ID = "snapshot_hy6zkmme"
+SNAPSHOT_ID = "snapshot_edx10psw"
+
 
 
 def main() -> None:
     client = MorphCloudClient()
 
-    print("booting instance...")
-    instance = client.instances.boot(snapshot_id=SNAPSHOT_ID)
+    base_instance = client.instances.get(instance_id="morphvm_81dj11k0")
+
+    print("branching instance...")
+    _snapshot, [instance] = base_instance.branch(1)
     print(f"Created instance: {instance.id}")
 
     print("waiting for instance to be ready...")

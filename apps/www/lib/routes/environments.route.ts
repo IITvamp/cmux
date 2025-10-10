@@ -78,6 +78,24 @@ const GetEnvironmentVarsResponse = z
   })
   .openapi("GetEnvironmentVarsResponse");
 
+const UpdateEnvironmentBody = z
+  .object({
+    teamSlugOrId: z.string(),
+    name: z.string().trim().min(1).optional(),
+    description: z.string().optional(),
+    maintenanceScript: z.string().optional(),
+    devScript: z.string().optional(),
+  })
+  .refine(
+    (value) =>
+      value.name !== undefined ||
+      value.description !== undefined ||
+      value.maintenanceScript !== undefined ||
+      value.devScript !== undefined,
+    "At least one field must be provided",
+  )
+  .openapi("UpdateEnvironmentBody");
+
 const ExposedService = z
   .object({
     port: z.number(),
@@ -109,6 +127,8 @@ const SnapshotVersionResponse = z
     createdByUserId: z.string(),
     label: z.string().optional(),
     isActive: z.boolean(),
+    maintenanceScript: z.string().optional(),
+    devScript: z.string().optional(),
   })
   .openapi("SnapshotVersionResponse");
 
@@ -122,6 +142,8 @@ const CreateSnapshotVersionBody = z
     morphInstanceId: z.string(),
     label: z.string().optional(),
     activate: z.boolean().optional(),
+    maintenanceScript: z.string().optional(),
+    devScript: z.string().optional(),
   })
   .openapi("CreateSnapshotVersionBody");
 
@@ -461,6 +483,98 @@ environmentsRouter.openapi(
   }
 );
 
+// Update metadata for an environment
+environmentsRouter.openapi(
+  createRoute({
+    method: "patch" as const,
+    path: "/environments/{id}",
+    tags: ["Environments"],
+    summary: "Update environment metadata",
+    request: {
+      params: z.object({
+        id: z.string(),
+      }),
+      body: {
+        content: {
+          "application/json": {
+            schema: UpdateEnvironmentBody,
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        content: {
+          "application/json": {
+            schema: GetEnvironmentResponse,
+          },
+        },
+        description: "Environment updated successfully",
+      },
+      401: { description: "Unauthorized" },
+      403: { description: "Forbidden" },
+      404: { description: "Environment not found" },
+      500: { description: "Failed to update environment" },
+    },
+  }),
+  async (c) => {
+    const accessToken = await getAccessTokenFromRequest(c.req.raw);
+    if (!accessToken) return c.text("Unauthorized", 401);
+
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const environmentId = typedZid("environments").parse(id);
+
+    try {
+      await verifyTeamAccess({
+        req: c.req.raw,
+        teamSlugOrId: body.teamSlugOrId,
+      });
+
+      const convexClient = getConvex({ accessToken });
+      await convexClient.mutation(api.environments.update, {
+        teamSlugOrId: body.teamSlugOrId,
+        id: environmentId,
+        name: body.name,
+        description: body.description,
+        maintenanceScript: body.maintenanceScript,
+        devScript: body.devScript,
+      });
+
+      const updated = await convexClient.query(api.environments.get, {
+        teamSlugOrId: body.teamSlugOrId,
+        id: environmentId,
+      });
+
+      if (!updated) {
+        return c.text("Environment not found", 404);
+      }
+
+      return c.json({
+        id: updated._id,
+        name: updated.name,
+        morphSnapshotId: updated.morphSnapshotId,
+        dataVaultKey: updated.dataVaultKey,
+        selectedRepos: updated.selectedRepos ?? undefined,
+        description: updated.description ?? undefined,
+        maintenanceScript: updated.maintenanceScript ?? undefined,
+        devScript: updated.devScript ?? undefined,
+        exposedPorts: updated.exposedPorts ?? undefined,
+        createdAt: updated.createdAt,
+        updatedAt: updated.updatedAt,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "Environment not found") {
+        return c.text("Environment not found", 404);
+      }
+
+      console.error("Failed to update environment:", error);
+      return c.text("Failed to update environment", 500);
+    }
+  }
+);
+
 // Update exposed ports for an environment
 environmentsRouter.openapi(
   createRoute({
@@ -677,6 +791,8 @@ environmentsRouter.openapi(
         createdByUserId: version.createdByUserId,
         label: version.label ?? undefined,
         isActive: version.isActive,
+        maintenanceScript: version.maintenanceScript ?? undefined,
+        devScript: version.devScript ?? undefined,
       }));
 
       return c.json(mapped);
@@ -765,6 +881,8 @@ environmentsRouter.openapi(
           morphSnapshotId: snapshot.id,
           label: body.label,
           activate: body.activate,
+          maintenanceScript: body.maintenanceScript,
+          devScript: body.devScript,
         }
       );
 
