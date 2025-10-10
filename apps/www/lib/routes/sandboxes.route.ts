@@ -19,7 +19,10 @@ import {
 import type { HydrateRepoConfig } from "./sandboxes/hydration";
 import { hydrateWorkspace } from "./sandboxes/hydration";
 import { resolveTeamAndSnapshot } from "./sandboxes/snapshot";
-import { runMaintenanceScript, startDevScript } from "./sandboxes/startDevAndMaintenanceScript";
+import {
+  writeMaintenanceScript,
+  writeDevScript,
+} from "./sandboxes/startDevAndMaintenanceScript";
 import {
   encodeEnvContentForEnvctl,
   envctlLoadCommand,
@@ -302,16 +305,17 @@ sandboxesRouter.openapi(
         return c.text("Failed to hydrate sandbox", 500);
       }
 
+      // Write maintenance and dev scripts to filesystem (they will be executed on tmux attach)
       if (maintenanceScript || devScript) {
         (async () => {
           const maintenanceScriptResult = maintenanceScript
-            ? await runMaintenanceScript({
+            ? await writeMaintenanceScript({
               instance,
               script: maintenanceScript,
             })
             : undefined;
           const devScriptResult = devScript
-            ? await startDevScript({ instance, script: devScript })
+            ? await writeDevScript({ instance, script: devScript })
             : undefined;
           if (
             taskRunConvexId &&
@@ -331,9 +335,16 @@ sandboxesRouter.openapi(
               );
             }
           }
+          console.log(
+            "[sandboxes.start] Scripts written to filesystem, will execute on tmux attach",
+            {
+              hasMaintenanceScript: !!maintenanceScript,
+              hasDevScript: !!devScript,
+            },
+          );
         })().catch((error) => {
           console.error(
-            "[sandboxes.start] Background script execution failed:",
+            "[sandboxes.start] Failed to write scripts to filesystem:",
             error,
           );
         });

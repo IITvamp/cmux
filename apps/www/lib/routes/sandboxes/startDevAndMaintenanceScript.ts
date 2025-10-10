@@ -163,3 +163,86 @@ fi
     return { error: `Dev script execution failed: ${errorMessage}` };
   }
 }
+
+/**
+ * Write maintenance script to the instance filesystem without executing it.
+ * The script will be executed later on tmux attach.
+ */
+export async function writeMaintenanceScript({
+  instance,
+  script,
+}: {
+  instance: MorphInstance;
+  script: string;
+}): Promise<{ error: string | null }> {
+  const maintenanceScriptPath = `${CMUX_RUNTIME_DIR}/maintenance-script.sh`;
+  const command = `
+set -euo pipefail
+${buildScriptFileCommand(maintenanceScriptPath, script)}
+echo "Maintenance script written to ${maintenanceScriptPath}"
+`;
+
+  try {
+    const result = await instance.exec(`bash -lc ${singleQuote(command)}`);
+
+    if (result.exit_code !== 0) {
+      const stderrPreview = previewOutput(result.stderr, 2000);
+      const stdoutPreview = previewOutput(result.stdout, 500);
+      const messageParts = [
+        `Failed to write maintenance script with exit code ${result.exit_code}`,
+        stderrPreview ? `stderr: ${stderrPreview}` : null,
+        stdoutPreview ? `stdout: ${stdoutPreview}` : null,
+      ].filter((part): part is string => part !== null);
+      return { error: messageParts.join(" | ") };
+    }
+
+    return { error: null };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return { error: `Failed to write maintenance script: ${errorMessage}` };
+  }
+}
+
+/**
+ * Write dev script to the instance filesystem without starting it.
+ * The script will be started later on tmux attach.
+ */
+export async function writeDevScript({
+  instance,
+  script,
+}: {
+  instance: MorphInstance;
+  script: string;
+}): Promise<{ error: string | null }> {
+  const devScriptRunId = randomUUID().replace(/-/g, "");
+  const devScriptDir = `${CMUX_RUNTIME_DIR}/${devScriptRunId}`;
+  const devScriptPath = `${devScriptDir}/dev-script.sh`;
+
+  const command = `
+set -euo pipefail
+mkdir -p ${LOG_DIR}
+mkdir -p ${devScriptDir}
+${buildScriptFileCommand(devScriptPath, script)}
+echo "Dev script written to ${devScriptPath}"
+`;
+
+  try {
+    const result = await instance.exec(`bash -lc ${singleQuote(command)}`);
+
+    if (result.exit_code !== 0) {
+      const stderrPreview = previewOutput(result.stderr, 2000);
+      const stdoutPreview = previewOutput(result.stdout, 500);
+      const messageParts = [
+        `Failed to write dev script with exit code ${result.exit_code}`,
+        stderrPreview ? `stderr: ${stderrPreview}` : null,
+        stdoutPreview ? `stdout: ${stdoutPreview}` : null,
+      ].filter((part): part is string => part !== null);
+      return { error: messageParts.join(" | ") };
+    }
+
+    return { error: null };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return { error: `Failed to write dev script: ${errorMessage}` };
+  }
+}
