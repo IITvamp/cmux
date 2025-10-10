@@ -410,6 +410,8 @@ managementIO.on("connection", (socket) => {
         agentModel: validated.agentModel,
         startupCommands: validated.startupCommands,
         taskRunContext: validated.taskRunContext,
+        maintenanceScript: validated.maintenanceScript,
+        devScript: validated.devScript,
       });
 
       callback({
@@ -843,6 +845,8 @@ async function createTerminal(
     agentModel?: string;
     startupCommands?: string[];
     taskRunContext: WorkerTaskRunContext;
+    maintenanceScript?: string;
+    devScript?: string;
   },
 ): Promise<void> {
   const {
@@ -854,6 +858,8 @@ async function createTerminal(
     args = [],
     startupCommands = [],
     taskRunContext,
+    maintenanceScript,
+    devScript,
   } = options;
 
   const taskRunToken = taskRunContext.taskRunToken;
@@ -894,9 +900,60 @@ async function createTerminal(
     // Direct tmux command from agent spawner
     spawnCommand = command;
     spawnArgs = args;
+
+    // If we have maintenance or dev scripts, we need to wrap the agent command
+    if (maintenanceScript || devScript) {
+      log("INFO", `[createTerminal] Wrapping tmux command with maintenance/dev scripts`);
+
+      // Find the agent command in the tmux args
+      // The args format is: ["new-session", "-d", "-s", sessionName, "bash", "-lc", agentCommand]
+      // or: ["new-session", "-d", "-s", sessionName, "-c", cwd, command, ...args]
+
+      const bashLcIndex = spawnArgs.indexOf("-lc");
+      const sessionNameIndex = spawnArgs.indexOf("-s");
+
+      if (bashLcIndex !== -1 && bashLcIndex + 1 < spawnArgs.length) {
+        // We have a bash -lc command, wrap it
+        const originalCommand = spawnArgs[bashLcIndex + 1] || "";
+
+        // Build the wrapper script
+        let wrapperScript = "set -e\n";
+
+        // Add maintenance script
+        if (maintenanceScript) {
+          log("INFO", `[createTerminal] Adding maintenance script to wrapper`);
+          wrapperScript += `\n# Run maintenance script\n`;
+          wrapperScript += maintenanceScript + "\n";
+        }
+
+        // Add dev script in background
+        if (devScript) {
+          log("INFO", `[createTerminal] Adding dev script to wrapper (background)`);
+          wrapperScript += `\n# Start dev script in background\n`;
+          wrapperScript += `(\n${devScript}\n) > /var/log/cmux/dev-script.log 2>&1 &\n`;
+          wrapperScript += `DEV_SCRIPT_PID=$!\n`;
+          wrapperScript += `echo "Dev script started with PID $DEV_SCRIPT_PID"\n`;
+        }
+
+        // Add the agent command
+        wrapperScript += `\n# Run agent command\n`;
+        wrapperScript += originalCommand;
+
+        // Replace the command in spawnArgs
+        spawnArgs[bashLcIndex + 1] = wrapperScript;
+
+        log("INFO", `[createTerminal] Wrapped tmux command with scripts`, {
+          hasMaintenanceScript: !!maintenanceScript,
+          hasDevScript: !!devScript,
+        });
+      } else {
+        log("WARN", `[createTerminal] Could not find bash -lc in tmux args to wrap scripts`);
+      }
+    }
+
     log("INFO", `[createTerminal] Using direct tmux command:`, {
       spawnCommand,
-      spawnArgs,
+      spawnArgs: spawnArgs.slice(0, 8), // Log first 8 args to avoid huge logs
     });
   } else {
     // Create tmux session with command

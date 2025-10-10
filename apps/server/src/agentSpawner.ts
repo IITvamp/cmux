@@ -638,6 +638,21 @@ export async function spawnAgent(
         `${unsetCommand}exec ${commandString}`,
       ];
 
+    // Get maintenance and dev scripts from CmuxVSCodeInstance (if available)
+    const maintenanceScript = vscodeInstance instanceof CmuxVSCodeInstance
+      ? vscodeInstance.getMaintenanceScript()
+      : undefined;
+    const devScript = vscodeInstance instanceof CmuxVSCodeInstance
+      ? vscodeInstance.getDevScript()
+      : undefined;
+
+    if (maintenanceScript) {
+      serverLogger.info(`[AgentSpawner] Adding maintenance script to terminal creation`);
+    }
+    if (devScript) {
+      serverLogger.info(`[AgentSpawner] Adding dev script to terminal creation`);
+    }
+
     const terminalCreationCommand: WorkerCreateTerminal = {
       terminalId: tmuxSessionName,
       command: "tmux",
@@ -655,6 +670,8 @@ export async function spawnAgent(
       authFiles,
       startupCommands,
       cwd: "/root/workspace",
+      maintenanceScript,
+      devScript,
     };
 
     const switchBranch = async () => {

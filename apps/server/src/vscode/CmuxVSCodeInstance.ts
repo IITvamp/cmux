@@ -24,6 +24,8 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
   private newBranch?: string;
   private environmentId?: string;
   private taskRunJwt?: string;
+  private maintenanceScript?: string;
+  private devScript?: string;
 
   constructor(config: VSCodeInstanceConfig) {
     super(config);
@@ -39,6 +41,14 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
     this.newBranch = cfg.newBranch;
     this.environmentId = cfg.environmentId;
     this.taskRunJwt = cfg.taskRunJwt;
+  }
+
+  getMaintenanceScript(): string | undefined {
+    return this.maintenanceScript;
+  }
+
+  getDevScript(): string | undefined {
+    return this.devScript;
   }
 
   async start(): Promise<VSCodeInstanceInfo> {
@@ -76,6 +86,8 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
     this.vscodeBaseUrl = data.vscodeUrl;
     this.workerUrl = data.workerUrl;
     this.provider = data.provider || "morph";
+    this.maintenanceScript = data.maintenanceScript;
+    this.devScript = data.devScript;
 
     const workspaceUrl = this.getWorkspaceUrl(this.vscodeBaseUrl);
     dockerLogger.info(`[CmuxVSCodeInstance] VS Code URL: ${workspaceUrl}`);

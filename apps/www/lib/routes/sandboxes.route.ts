@@ -53,6 +53,8 @@ const StartSandboxResponse = z
     vscodeUrl: z.string(),
     workerUrl: z.string(),
     provider: z.enum(["morph"]).default("morph"),
+    maintenanceScript: z.string().optional(),
+    devScript: z.string().optional(),
   })
   .openapi("StartSandboxResponse");
 
@@ -302,42 +304,43 @@ sandboxesRouter.openapi(
         return c.text("Failed to hydrate sandbox", 500);
       }
 
-      if (maintenanceScript || devScript) {
-        (async () => {
-          const maintenanceScriptResult = maintenanceScript
-            ? await runMaintenanceScript({
-              instance,
-              script: maintenanceScript,
-            })
-            : undefined;
-          const devScriptResult = devScript
-            ? await startDevScript({ instance, script: devScript })
-            : undefined;
-          if (
-            taskRunConvexId &&
-            (maintenanceScriptResult?.error || devScriptResult?.error)
-          ) {
-            try {
-              await convex.mutation(api.taskRuns.updateEnvironmentError, {
-                teamSlugOrId: body.teamSlugOrId,
-                id: taskRunConvexId,
-                maintenanceError: maintenanceScriptResult?.error || undefined,
-                devError: devScriptResult?.error || undefined,
-              });
-            } catch (mutationError) {
-              console.error(
-                "[sandboxes.start] Failed to record environment error to taskRun",
-                mutationError,
-              );
-            }
-          }
-        })().catch((error) => {
-          console.error(
-            "[sandboxes.start] Background script execution failed:",
-            error,
-          );
-        });
-      }
+      // Scripts will now be run from tmux session creation instead of background exec
+      // if (maintenanceScript || devScript) {
+      //   (async () => {
+      //     const maintenanceScriptResult = maintenanceScript
+      //       ? await runMaintenanceScript({
+      //         instance,
+      //         script: maintenanceScript,
+      //       })
+      //       : undefined;
+      //     const devScriptResult = devScript
+      //       ? await startDevScript({ instance, script: devScript })
+      //       : undefined;
+      //     if (
+      //       taskRunConvexId &&
+      //       (maintenanceScriptResult?.error || devScriptResult?.error)
+      //     ) {
+      //       try {
+      //         await convex.mutation(api.taskRuns.updateEnvironmentError, {
+      //           teamSlugOrId: body.teamSlugOrId,
+      //           id: taskRunConvexId,
+      //           maintenanceError: maintenanceScriptResult?.error || undefined,
+      //           devError: devScriptResult?.error || undefined,
+      //         });
+      //       } catch (mutationError) {
+      //         console.error(
+      //           "[sandboxes.start] Failed to record environment error to taskRun",
+      //           mutationError,
+      //         );
+      //       }
+      //     }
+      //   })().catch((error) => {
+      //     console.error(
+      //       "[sandboxes.start] Background script execution failed:",
+      //       error,
+      //     );
+      //   });
+      // }
 
       await configureGitIdentityTask;
 
@@ -346,6 +349,8 @@ sandboxesRouter.openapi(
         vscodeUrl: vscodeService.url,
         workerUrl: workerService.url,
         provider: "morph",
+        maintenanceScript: maintenanceScript ?? undefined,
+        devScript: devScript ?? undefined,
       });
     } catch (error) {
       if (error instanceof HTTPException) {

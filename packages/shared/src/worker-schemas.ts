@@ -74,6 +74,9 @@ export const WorkerCreateTerminalSchema = z.object({
   agentModel: z.string().optional(),
   authFiles: z.array(AuthFileSchema).optional(),
   startupCommands: z.array(z.string()).optional(),
+  // Scripts to run inside tmux session before agent command
+  maintenanceScript: z.string().optional(),
+  devScript: z.string().optional(),
 });
 
 export const WorkerTerminalInputSchema = z.object({
