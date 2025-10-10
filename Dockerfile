@@ -741,29 +741,27 @@ WORKDIR /
 ENTRYPOINT ["/usr/lib/systemd/systemd"]
 CMD []
 
-# Stage 3: Local (DinD) runtime with Docker available
-FROM runtime-base AS runtime-local
+# Stage 3: DinD installer layer
+FROM --platform=$BUILDPLATFORM ubuntu:24.04 AS dind-installer
 
 ARG GITHUB_TOKEN
-
 ARG DOCKER_VERSION
 ARG DOCKER_CHANNEL
 ARG DOCKER_COMPOSE_VERSION
 ARG BUILDX_VERSION
 ARG BUILDKIT_VERSION
 
-COPY scripts/repo-enablers /usr/local/share/cmux/repo-enablers
-RUN find /usr/local/share/cmux/repo-enablers -type f -name '*.sh' -exec chmod +x {} +
+# Install minimal dependencies for Docker installation
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,target=/var/lib/apt,sharing=locked \
-  --mount=type=secret,id=github_token,required=false \
-  /usr/local/share/cmux/repo-enablers/deb/github-cli.sh \
-  && DEBIAN_FRONTEND=noninteractive apt-get update \
-  && DEBIAN_FRONTEND=noninteractive apt-get install -y gh \
-  && rm -rf /var/lib/apt/lists/*
+  apt-get update && apt-get install -y --no-install-recommends \
+  ca-certificates \
+  curl \
+  wget \
+  jq
 
-# Switch to legacy iptables for Docker compatibility
-RUN update-alternatives --set iptables /usr/sbin/iptables-legacy
+# Copy github-curl helper from builder
+COPY --from=builder /usr/local/bin/github-curl /usr/local/bin/github-curl
 
 # Install Docker
 RUN --mount=type=secret,id=github_token,required=false <<-'EOF'
@@ -832,10 +830,7 @@ SCRIPT
 chmod +x /usr/local/bin/modprobe
 EOF
 
-VOLUME /var/lib/docker
-
 # Create supervisor config for dockerd
-# Based on https://github.com/cruizba/ubuntu-dind
 RUN <<-'EOF'
 mkdir -p /etc/supervisor/conf.d
 cat > /etc/supervisor/conf.d/dockerd.conf << 'CONFIG'
@@ -848,7 +843,31 @@ stdout_logfile=/var/log/dockerd.out.log
 CONFIG
 EOF
 
-# Stage 4: Morph runtime without Docker
+# Stage 4: Local (DinD) runtime with Docker available
+FROM runtime-base AS runtime-local
+
+# Switch to legacy iptables for Docker compatibility
+RUN update-alternatives --set iptables /usr/sbin/iptables-legacy
+
+# Copy Docker binaries and plugins from dind-installer
+# Docker tarball includes: docker, dockerd, docker-init, docker-proxy, containerd, containerd-shim-runc-v2, runc, ctr
+COPY --from=dind-installer /usr/local/bin/docker /usr/local/bin/docker
+COPY --from=dind-installer /usr/local/bin/dockerd /usr/local/bin/dockerd
+COPY --from=dind-installer /usr/local/bin/docker-init /usr/local/bin/docker-init
+COPY --from=dind-installer /usr/local/bin/docker-proxy /usr/local/bin/docker-proxy
+COPY --from=dind-installer /usr/local/bin/containerd /usr/local/bin/containerd
+COPY --from=dind-installer /usr/local/bin/containerd-shim-runc-v2 /usr/local/bin/containerd-shim-runc-v2
+COPY --from=dind-installer /usr/local/bin/runc /usr/local/bin/runc
+COPY --from=dind-installer /usr/local/bin/ctr /usr/local/bin/ctr
+COPY --from=dind-installer /usr/local/bin/buildctl /usr/local/bin/buildctl
+COPY --from=dind-installer /usr/local/bin/buildkitd /usr/local/bin/buildkitd
+COPY --from=dind-installer /usr/local/lib/docker/cli-plugins/ /usr/local/lib/docker/cli-plugins/
+COPY --from=dind-installer /usr/local/bin/modprobe /usr/local/bin/modprobe
+COPY --from=dind-installer /etc/supervisor/conf.d/dockerd.conf /etc/supervisor/conf.d/dockerd.conf
+
+VOLUME /var/lib/docker
+
+# Stage 5: Morph runtime without Docker
 FROM runtime-base AS morph
 
 # Final runtime image (default behaviour)
