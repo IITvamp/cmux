@@ -1,6 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+STATE_DIR="/var/tmp/cmux-tmux-hooks"
+LOG_FILE="${STATE_DIR}/start-core-scripts.log"
+
+mkdir -p "${STATE_DIR}"
+touch "${LOG_FILE}"
+
+log() {
+  local message="$1"
+  local timestamp="$(date '+%Y-%m-%dT%H:%M:%S%z')"
+  echo "${timestamp} ${message}" >> "${LOG_FILE}"
+  echo "${message}" >&2
+}
+
 resolve_session_name() {
   local value="$1"
   if [[ -z "${value}" ]]; then
@@ -44,21 +57,9 @@ MAINTENANCE_SCRIPT="${WORKSPACE_DIR}/scripts/maintenance.sh"
 CMUX_RUNTIME_DIR="/var/tmp/cmux-scripts"
 DEV_OVERRIDE_SCRIPT="${CMUX_RUNTIME_DIR}/dev-script.sh"
 MAINTENANCE_OVERRIDE_SCRIPT="${CMUX_RUNTIME_DIR}/maintenance-script.sh"
-STATE_DIR="/var/tmp/cmux-tmux-hooks"
-LOG_FILE="${STATE_DIR}/start-core-scripts.log"
 DEV_WINDOW_NAME="dev"
 MAINTENANCE_WINDOW_NAME="maintenance"
 MAINTENANCE_MARKER="${STATE_DIR}/${SESSION_NAME}-maintenance.launched"
-
-mkdir -p "${STATE_DIR}"
-touch "${LOG_FILE}"
-
-log() {
-  local message="$1"
-  local timestamp="$(date '+%Y-%m-%dT%H:%M:%S%z')"
-  echo "${timestamp} ${message}" >> "${LOG_FILE}"
-  echo "${message}" >&2
-}
 
 list_windows() {
   tmux list-windows -t "${SESSION_NAME}" -F '#{window_name}' 2>/dev/null || true
