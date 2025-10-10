@@ -36,7 +36,7 @@ import rawSwitchBranchScript from "../scripts/switch-branch.ts?raw";
 
 const SWITCH_BRANCH_BUN_SCRIPT = rawSwitchBranchScript;
 
-const { getApiEnvironmentsByIdVars } = await getWwwOpenApiModule();
+const { getApiEnvironmentsByIdVars, getApiEnvironmentsById } = await getWwwOpenApiModule();
 
 export interface AgentSpawnResult {
   agentName: string;
@@ -602,6 +602,40 @@ export async function spawnAgent(
         `[AgentSpawner] Codex command string: ${commandString}`,
       );
       serverLogger.info(`[AgentSpawner] Codex raw args:`, actualArgs);
+    }
+
+    // Get maintenance and dev scripts from environment if it's cloud mode
+    if (options.isCloudMode && options.environmentId) {
+      try {
+        const envFullRes = await getApiEnvironmentsById({
+          client: getWwwClient(),
+          path: { id: String(options.environmentId) },
+          query: { teamSlugOrId },
+        });
+
+        if (envFullRes.data) {
+          const { maintenanceScript, devScript } = envFullRes.data;
+
+          // Add scripts as environment variables for the tmux wrapper
+          if (maintenanceScript) {
+            envVars.CMUX_MAINTENANCE_SCRIPT = maintenanceScript;
+            serverLogger.info(
+              `[AgentSpawner] Added maintenance script to environment for ${agent.name}`
+            );
+          }
+          if (devScript) {
+            envVars.CMUX_DEV_SCRIPT = devScript;
+            serverLogger.info(
+              `[AgentSpawner] Added dev script to environment for ${agent.name}`
+            );
+          }
+        }
+      } catch (error) {
+        serverLogger.error(
+          `[AgentSpawner] Failed to get environment scripts for ${options.environmentId}`,
+          error
+        );
+      }
     }
 
     // Build unset command for environment variables

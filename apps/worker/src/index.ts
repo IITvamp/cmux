@@ -890,14 +890,97 @@ async function createTerminal(
   let spawnCommand: string;
   let spawnArgs: string[];
 
+  // Check if we have dev or maintenance scripts to run
+  const hasDevScript = env.CMUX_DEV_SCRIPT && env.CMUX_DEV_SCRIPT.trim().length > 0;
+  const hasMaintenanceScript = env.CMUX_MAINTENANCE_SCRIPT && env.CMUX_MAINTENANCE_SCRIPT.trim().length > 0;
+
   if (command === "tmux") {
     // Direct tmux command from agent spawner
-    spawnCommand = command;
-    spawnArgs = args;
-    log("INFO", `[createTerminal] Using direct tmux command:`, {
-      spawnCommand,
-      spawnArgs,
-    });
+    // If we have scripts to run, we need to wrap the command
+    if (hasDevScript || hasMaintenanceScript) {
+      // Create a wrapper script that runs maintenance, dev, then the agent
+      const wrapperScript = `/tmp/tmux-wrapper-${Date.now()}.sh`;
+      let scriptContent = '#!/bin/bash\nset -e\n';
+
+      // Ensure log directory exists
+      scriptContent += 'mkdir -p /var/log/cmux\n\n';
+
+      // Add maintenance script if present
+      if (hasMaintenanceScript) {
+        scriptContent += 'echo "[Maintenance] Running maintenance script..."\n';
+        scriptContent += `cat <<'CMUX_MAINTENANCE_EOF' | bash\n${env.CMUX_MAINTENANCE_SCRIPT}\nCMUX_MAINTENANCE_EOF\n`;
+        scriptContent += 'echo "[Maintenance] Completed"\n\n';
+      }
+
+      // Add dev script in background if present
+      if (hasDevScript) {
+        scriptContent += 'echo "[Dev] Starting development server..."\n';
+        scriptContent += `cat <<'CMUX_DEV_EOF' | nohup bash >> /var/log/cmux/dev-script.log 2>&1 &\n${env.CMUX_DEV_SCRIPT}\nCMUX_DEV_EOF\n`;
+        scriptContent += 'DEV_PID=$!\n';
+        scriptContent += 'echo $DEV_PID > /var/log/cmux/dev-script.pid\n';
+        scriptContent += 'echo "[Dev] Development server started (PID: $DEV_PID)"\n';
+        scriptContent += 'sleep 2\n\n';
+      }
+
+      // Now run the original agent command
+      scriptContent += 'echo "[Agent] Starting agent..."\necho ""\n';
+
+      // Extract the actual agent command from tmux args
+      const sessionIndex = args.indexOf("-s");
+      const sessionName = sessionIndex !== -1 ? args[sessionIndex + 1] : "cmux";
+
+      // Find where the actual command starts (after tmux options)
+      let agentCommandIndex = -1;
+      for (let i = 0; i < args.length; i++) {
+        if (args[i] === "-c" && i + 1 < args.length) {
+          // Skip -c and directory
+          i++;
+        } else if (args[i] === "-s" && i + 1 < args.length) {
+          // Skip -s and session name
+          i++;
+        } else if (args[i] === "-d" || args[i] === "-x" || args[i] === "-y") {
+          // Skip these flags
+          if (args[i] === "-x" || args[i] === "-y") i++;
+        } else if (args[i] && !args[i]!.startsWith("-")) {
+          // Found the command
+          agentCommandIndex = i;
+          break;
+        }
+      }
+
+      if (agentCommandIndex >= 0) {
+        // Get the agent command and its args
+        const agentCmd = args.slice(agentCommandIndex);
+        scriptContent += `exec ${agentCmd.map(arg => {
+          // Properly escape arguments
+          if (arg.includes(' ') || arg.includes('"') || arg.includes("'")) {
+            return `'${arg.replace(/'/g, "'\\''")}'`;
+          }
+          return arg;
+        }).join(' ')}\n`;
+      }
+
+      // Write the wrapper script
+      await fs.writeFile(wrapperScript, scriptContent);
+      await fs.chmod(wrapperScript, 0o755);
+
+      // Modify tmux args to run our wrapper script
+      spawnCommand = command;
+      spawnArgs = args.slice(0, agentCommandIndex).concat([wrapperScript]);
+
+      log("INFO", `[createTerminal] Using wrapper script for tmux with dev/maintenance:`, {
+        wrapperScript,
+        hasMaintenanceScript,
+        hasDevScript,
+      });
+    } else {
+      spawnCommand = command;
+      spawnArgs = args;
+      log("INFO", `[createTerminal] Using direct tmux command:`, {
+        spawnCommand,
+        spawnArgs,
+      });
+    }
   } else {
     // Create tmux session with command
     spawnCommand = "tmux";

@@ -302,42 +302,47 @@ sandboxesRouter.openapi(
         return c.text("Failed to hydrate sandbox", 500);
       }
 
-      if (maintenanceScript || devScript) {
-        (async () => {
-          const maintenanceScriptResult = maintenanceScript
-            ? await runMaintenanceScript({
-              instance,
-              script: maintenanceScript,
-            })
-            : undefined;
-          const devScriptResult = devScript
-            ? await startDevScript({ instance, script: devScript })
-            : undefined;
-          if (
-            taskRunConvexId &&
-            (maintenanceScriptResult?.error || devScriptResult?.error)
-          ) {
-            try {
-              await convex.mutation(api.taskRuns.updateEnvironmentError, {
-                teamSlugOrId: body.teamSlugOrId,
-                id: taskRunConvexId,
-                maintenanceError: maintenanceScriptResult?.error || undefined,
-                devError: devScriptResult?.error || undefined,
-              });
-            } catch (mutationError) {
-              console.error(
-                "[sandboxes.start] Failed to record environment error to taskRun",
-                mutationError,
-              );
-            }
-          }
-        })().catch((error) => {
-          console.error(
-            "[sandboxes.start] Background script execution failed:",
-            error,
-          );
-        });
-      }
+      // Note: Maintenance and dev scripts are now run inside the tmux session
+      // by the worker when creating the terminal, so we don't need to run them
+      // separately here anymore. This ensures they run as part of the agent's
+      // tmux session and are visible when attaching.
+
+      // if (maintenanceScript || devScript) {
+      //   (async () => {
+      //     const maintenanceScriptResult = maintenanceScript
+      //       ? await runMaintenanceScript({
+      //         instance,
+      //         script: maintenanceScript,
+      //       })
+      //       : undefined;
+      //     const devScriptResult = devScript
+      //       ? await startDevScript({ instance, script: devScript })
+      //       : undefined;
+      //     if (
+      //       taskRunConvexId &&
+      //       (maintenanceScriptResult?.error || devScriptResult?.error)
+      //     ) {
+      //       try {
+      //         await convex.mutation(api.taskRuns.updateEnvironmentError, {
+      //           teamSlugOrId: body.teamSlugOrId,
+      //           id: taskRunConvexId,
+      //           maintenanceError: maintenanceScriptResult?.error || undefined,
+      //           devError: devScriptResult?.error || undefined,
+      //         });
+      //       } catch (mutationError) {
+      //         console.error(
+      //           "[sandboxes.start] Failed to record environment error to taskRun",
+      //           mutationError,
+      //         );
+      //       }
+      //     }
+      //   })().catch((error) => {
+      //     console.error(
+      //       "[sandboxes.start] Background script execution failed:",
+      //       error,
+      //     );
+      //   });
+      // }
 
       await configureGitIdentityTask;
 
