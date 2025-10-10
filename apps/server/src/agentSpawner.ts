@@ -36,7 +36,97 @@ import rawSwitchBranchScript from "../scripts/switch-branch.ts?raw";
 
 const SWITCH_BRANCH_BUN_SCRIPT = rawSwitchBranchScript;
 
-const { getApiEnvironmentsByIdVars } = await getWwwOpenApiModule();
+const CMUX_RUNTIME_DIR = "/var/tmp/cmux-scripts";
+const LOG_DIR = "/var/log/cmux";
+const MAINTENANCE_SCRIPT_PATH = `${CMUX_RUNTIME_DIR}/maintenance-script.sh`;
+const DEV_SCRIPT_PATH = `${CMUX_RUNTIME_DIR}/dev-script.sh`;
+const DEV_RUNNER_SCRIPT_PATH = `${CMUX_RUNTIME_DIR}/dev-runner.sh`;
+const BOOTSTRAP_SCRIPT_PATH = `${CMUX_RUNTIME_DIR}/agent-bootstrap.sh`;
+const MAINTENANCE_STATUS_PATH = `${LOG_DIR}/maintenance-script.status`;
+const DEV_STATUS_PATH = `${LOG_DIR}/dev-script.status`;
+const MAINTENANCE_LOG_PATH = `${LOG_DIR}/maintenance-script.log`;
+const DEV_LOG_PATH = `${LOG_DIR}/dev-script.log`;
+
+const buildScriptFileCommand = (path: string, contents: string): string => `
+cat <<'CMUX_SCRIPT_EOF' > ${path}
+${contents}
+CMUX_SCRIPT_EOF
+chmod +x ${path}
+`;
+
+const buildBootstrapScript = (options: {
+  includeMaintenance: boolean;
+  includeDev: boolean;
+  unsetEnvVars: readonly string[];
+  commandString: string;
+}): string => {
+  const maintenanceBlock = options.includeMaintenance
+    ? `if [ -f '${MAINTENANCE_SCRIPT_PATH}' ]; then
+  echo 'running' > '${MAINTENANCE_STATUS_PATH}'
+  if bash -eu -o pipefail '${MAINTENANCE_SCRIPT_PATH}' 2>&1 | tee '${MAINTENANCE_LOG_PATH}'; then
+    echo 'success' > '${MAINTENANCE_STATUS_PATH}'
+  else
+    status=$?
+    echo "error:$status" > '${MAINTENANCE_STATUS_PATH}'
+  fi
+fi
+`
+    : "";
+
+  const devBlock = options.includeDev
+    ? `if [ -f '${DEV_SCRIPT_PATH}' ]; then
+  if tmux list-windows -F '#{window_name}' | grep -qx 'dev'; then
+    tmux kill-window -t dev >/dev/null 2>&1 || true
+  fi
+  tmux new-window -d -n dev "bash -lc 'exec bash ${DEV_RUNNER_SCRIPT_PATH}'"
+fi
+`
+    : "";
+
+  const unsetBlock = options.unsetEnvVars.length > 0
+    ? `unset ${options.unsetEnvVars.join(" ")}
+`
+    : "";
+
+  return `#!/bin/bash
+set -uo pipefail
+
+cd /root/workspace
+mkdir -p '${LOG_DIR}'
+rm -f '${MAINTENANCE_STATUS_PATH}' '${DEV_STATUS_PATH}'
+rm -f '${MAINTENANCE_LOG_PATH}' '${DEV_LOG_PATH}'
+
+${maintenanceBlock}${devBlock}${unsetBlock}exec ${options.commandString}
+`;
+};
+
+const buildDevRunnerScript = (): string => `#!/bin/bash
+set -euo pipefail
+
+cd /root/workspace
+mkdir -p '${LOG_DIR}'
+
+status_file='${DEV_STATUS_PATH}'
+log_file='${DEV_LOG_PATH}'
+
+echo 'running' > "$status_file"
+
+cleanup() {
+  status=$?
+  if [ $status -eq 0 ]; then
+    echo 'success' > "$status_file"
+  else
+    echo "error:$status" > "$status_file"
+  fi
+}
+
+trap cleanup EXIT
+
+bash -eu -o pipefail '${DEV_SCRIPT_PATH}' 2>&1 | tee "$log_file"
+`;
+
+const { getApiEnvironmentsById, getApiEnvironmentsByIdVars } =
+  await getWwwOpenApiModule();
 
 export interface AgentSpawnResult {
   agentName: string;
@@ -222,6 +312,9 @@ export async function spawnAgent(
       PROMPT: processedTaskDescription,
     };
 
+    let maintenanceScript: string | null = null;
+    let devScript: string | null = null;
+
     if (options.environmentId) {
       try {
         const envRes = await getApiEnvironmentsByIdVars({
@@ -253,6 +346,28 @@ export async function spawnAgent(
       } catch (error) {
         serverLogger.error(
           `[AgentSpawner] Failed to load environment env vars for ${String(
+            options.environmentId,
+          )}`,
+          error,
+        );
+      }
+
+      try {
+        const envDetailRes = await getApiEnvironmentsById({
+          client: getWwwClient(),
+          path: { id: String(options.environmentId) },
+          query: { teamSlugOrId },
+        });
+        const envData = envDetailRes.data;
+        if (envData) {
+          const maintenance = envData.maintenanceScript?.trim() ?? "";
+          maintenanceScript = maintenance.length > 0 ? maintenance : null;
+          const dev = envData.devScript?.trim() ?? "";
+          devScript = dev.length > 0 ? dev : null;
+        }
+      } catch (error) {
+        serverLogger.error(
+          `[AgentSpawner] Failed to load environment scripts for ${String(
             options.environmentId,
           )}`,
           error,
@@ -581,62 +696,78 @@ export async function spawnAgent(
 
     const actualCommand = agent.command;
     const actualArgs = processedArgs;
+    const isCodexAgent = agent.name.toLowerCase().includes("codex");
 
     // Build a shell command string so CMUX env vars expand inside tmux session
-    const shellEscaped = (s: string) => {
-      // If this arg references any CMUX env var (e.g., $CMUX_PROMPT, $CMUX_TASK_RUN_ID),
-      // wrap in double quotes to allow shell expansion.
-      if (s.includes("$CMUX_")) {
-        return `"${s.replace(/"/g, '\\"')}"`;
+    const shellEscaped = (arg: string) => {
+      if (arg.includes("$CMUX_")) {
+        return `"${arg.replace(/"/g, '\\"')}"`;
       }
-      // Otherwise single-quote and escape any existing single quotes
-      return `'${s.replace(/'/g, "'\\''")}'`;
+      return `'${arg.replace(/'/g, "'\\''")}'`;
     };
-    const commandString = [actualCommand, ...actualArgs]
+
+    const argsForCommandString = isCodexAgent
+      ? actualArgs.map((arg) =>
+        arg === "$CMUX_PROMPT" ? processedTaskDescription : arg,
+      )
+      : actualArgs;
+
+    const commandString = [actualCommand, ...argsForCommandString]
       .map(shellEscaped)
       .join(" ");
 
-    // Log the actual command for Codex agents to debug notify command
-    if (agent.name.toLowerCase().includes("codex")) {
+    if (isCodexAgent) {
       serverLogger.info(
         `[AgentSpawner] Codex command string: ${commandString}`,
       );
-      serverLogger.info(`[AgentSpawner] Codex raw args:`, actualArgs);
+      serverLogger.info(`[AgentSpawner] Codex raw args:`, argsForCommandString);
     }
 
-    // Build unset command for environment variables
-    const unsetCommand = unsetEnvVars.length > 0
-      ? `unset ${unsetEnvVars.join(" ")}; `
-      : "";
+    const scriptSetupCommands: string[] = [
+      `mkdir -p ${CMUX_RUNTIME_DIR}`,
+      `mkdir -p ${LOG_DIR}`,
+      `rm -f ${MAINTENANCE_STATUS_PATH} ${DEV_STATUS_PATH}`,
+      `rm -f ${MAINTENANCE_LOG_PATH} ${DEV_LOG_PATH}`,
+      `rm -f ${MAINTENANCE_SCRIPT_PATH} ${DEV_SCRIPT_PATH} ${DEV_RUNNER_SCRIPT_PATH} ${BOOTSTRAP_SCRIPT_PATH}`,
+    ];
 
-    // For Codex agents, use direct command execution to preserve notify argument
-    // The notify command contains complex JSON that gets mangled through shell layers
-    const tmuxArgs = agent.name.toLowerCase().includes("codex")
-      ? [
-        "new-session",
-        "-d",
-        "-s",
-        tmuxSessionName,
-        "-c",
-        "/root/workspace",
-        actualCommand,
-        ...actualArgs.map((arg) => {
-          // Replace $CMUX_PROMPT with actual prompt value
-          if (arg === "$CMUX_PROMPT") {
-            return processedTaskDescription;
-          }
-          return arg;
-        }),
-      ]
-      : [
-        "new-session",
-        "-d",
-        "-s",
-        tmuxSessionName,
-        "bash",
-        "-lc",
-        `${unsetCommand}exec ${commandString}`,
-      ];
+    if (maintenanceScript) {
+      scriptSetupCommands.push(
+        buildScriptFileCommand(MAINTENANCE_SCRIPT_PATH, maintenanceScript),
+      );
+    }
+
+    if (devScript) {
+      scriptSetupCommands.push(
+        buildScriptFileCommand(DEV_SCRIPT_PATH, devScript),
+      );
+      scriptSetupCommands.push(
+        buildScriptFileCommand(DEV_RUNNER_SCRIPT_PATH, buildDevRunnerScript()),
+      );
+    }
+
+    const bootstrapScriptContents = buildBootstrapScript({
+      includeMaintenance: Boolean(maintenanceScript),
+      includeDev: Boolean(devScript),
+      unsetEnvVars,
+      commandString,
+    });
+
+    scriptSetupCommands.push(
+      buildScriptFileCommand(BOOTSTRAP_SCRIPT_PATH, bootstrapScriptContents),
+    );
+
+    startupCommands.push(...scriptSetupCommands);
+
+    const tmuxArgs = [
+      "new-session",
+      "-d",
+      "-s",
+      tmuxSessionName,
+      "bash",
+      "-lc",
+      `exec bash ${BOOTSTRAP_SCRIPT_PATH}`,
+    ];
 
     const terminalCreationCommand: WorkerCreateTerminal = {
       terminalId: tmuxSessionName,
@@ -890,6 +1021,157 @@ exit $EXIT_CODE
         `[AgentSpawner] Emitted worker:create-terminal at ${new Date().toISOString()}`,
       );
     });
+
+    if (maintenanceScript || devScript) {
+      const formatScriptError = (
+        status: unknown,
+        logContent: unknown,
+        label: string,
+      ): string | null => {
+        if (typeof status !== "string" || status.trim().length === 0) {
+          return null;
+        }
+        if (!status.startsWith("error")) {
+          return null;
+        }
+        const [, exitCode = ""] = status.split(":", 2);
+        const trimmedLog =
+          typeof logContent === "string" ? logContent.trim() : "";
+        const preview =
+          trimmedLog.length > 600
+            ? trimmedLog.slice(trimmedLog.length - 600)
+            : trimmedLog;
+        const baseMessage = exitCode
+          ? `${label} failed (exit ${exitCode})`
+          : `${label} failed`;
+        return preview.length > 0 ? `${baseMessage}: ${preview}` : baseMessage;
+      };
+
+      const monitorEnvironmentScripts = async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10000));
+
+        const statusCommand = `node - <<'CMUX_STATUS'
+const { existsSync, readFileSync } = require('node:fs');
+
+const readStatus = (path) => {
+  if (!existsSync(path)) {
+    return '';
+  }
+  try {
+    return readFileSync(path, 'utf8').trim();
+  } catch (error) {
+    return '';
+  }
+};
+
+const readLog = (path) => {
+  if (!existsSync(path)) {
+    return '';
+  }
+  try {
+    const contents = readFileSync(path, 'utf8').trim();
+    if (contents.length > 4000) {
+      return contents.slice(contents.length - 4000);
+    }
+    return contents;
+  } catch (error) {
+    return '';
+  }
+};
+
+const result = {
+  maintenanceStatus: readStatus('${MAINTENANCE_STATUS_PATH}'),
+  maintenanceLog: readLog('${MAINTENANCE_LOG_PATH}'),
+  devStatus: readStatus('${DEV_STATUS_PATH}'),
+  devLog: readLog('${DEV_LOG_PATH}'),
+};
+
+console.log(JSON.stringify(result));
+CMUX_STATUS
+`;
+
+        try {
+          const { exitCode, stdout, stderr } = await workerExec({
+            workerSocket,
+            command: "bash",
+            args: ["-lc", statusCommand],
+            cwd: "/root/workspace",
+            env: {},
+            timeout: 60000,
+          });
+
+          if (exitCode !== 0) {
+            serverLogger.warn(
+              `[AgentSpawner] Script status command exited with ${exitCode}`,
+              {
+                stderr: stderr?.slice(0, 500),
+              },
+            );
+            return;
+          }
+
+          const output = stdout?.trim();
+          if (!output) {
+            return;
+          }
+
+          let parsed: {
+            maintenanceStatus?: unknown;
+            maintenanceLog?: unknown;
+            devStatus?: unknown;
+            devLog?: unknown;
+          };
+          try {
+            parsed = JSON.parse(output);
+          } catch (parseError) {
+            serverLogger.error(
+              `[AgentSpawner] Failed to parse environment script status JSON`,
+              parseError,
+            );
+            return;
+          }
+
+          const maintenanceErrorMessage = formatScriptError(
+            parsed.maintenanceStatus,
+            parsed.maintenanceLog,
+            "Maintenance script",
+          );
+          const devErrorMessage = formatScriptError(
+            parsed.devStatus,
+            parsed.devLog,
+            "Dev script",
+          );
+
+          if (!maintenanceErrorMessage && !devErrorMessage) {
+            return;
+          }
+
+          await runWithAuth(
+            capturedAuthToken,
+            capturedAuthHeaderJson,
+            async () =>
+              retryOnOptimisticConcurrency(() =>
+                getConvex().mutation(
+                  api.taskRuns.updateEnvironmentError,
+                  {
+                    teamSlugOrId,
+                    id: taskRunId,
+                    maintenanceError: maintenanceErrorMessage ?? undefined,
+                    devError: devErrorMessage ?? undefined,
+                  },
+                ),
+              ),
+          );
+        } catch (error) {
+          serverLogger.error(
+            `[AgentSpawner] Failed to monitor environment scripts`,
+            error,
+          );
+        }
+      };
+
+      void monitorEnvironmentScripts();
+    }
 
     return {
       agentName: agent.name,
