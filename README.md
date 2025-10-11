@@ -44,3 +44,7 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+Agents spawn and code
+Parallel minds weave solutions
+Docker dreams take flight
