@@ -787,12 +787,12 @@ function TaskRunDetails({
           <p className="font-medium text-sm text-neutral-200">Environment Issue</p>
           {environmentError?.maintenanceError && (
             <p className="text-xs text-neutral-400">
-              Maintenance script: {environmentError.maintenanceError}
+              Maintenance: {environmentError.maintenanceError}
             </p>
           )}
           {environmentError?.devError && (
             <p className="text-xs text-neutral-400">
-              Dev script: {environmentError.devError}
+              Dev: {environmentError.devError}
             </p>
           )}
         </div>

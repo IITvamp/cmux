@@ -59,58 +59,45 @@ function PreviewPage() {
   const paneBorderRadius = 6;
 
   return (
-    <>
-      {previewUrl ? (
-        <ElectronPreviewBrowser
-          persistKey={persistKey}
-          src={previewUrl}
-          borderRadius={paneBorderRadius}
-        />
-      ) : (
-        // isElectron ? (
-        //   <ElectronPreviewBrowser
-        //     persistKey={persistKey}
-        //     src={previewUrl}
-        //     borderRadius={paneBorderRadius}
-        //   />
-        // ) : (
-        //   <PersistentWebView
-        //     persistKey={persistKey}
-        //     src={previewUrl}
-        //     className="w-full h-full border-0"
-        //     borderRadius={paneBorderRadius}
-        //     sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-downloads"
-        //   />
-        // )
-        <div className="flex items-center justify-center h-full bg-white dark:bg-neutral-950">
-          <div className="text-center">
-            <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-2">
-              {selectedRun
-                ? `Port ${port} is not available for this run`
-                : "Loading..."}
-            </p>
-            {selectedRun?.networking && selectedRun.networking.length > 0 && (
-              <div className="mt-4">
-                <p className="text-xs text-neutral-400 dark:text-neutral-500 mb-2">
-                  Available ports:
-                </p>
-                <div className="flex gap-2 justify-center">
-                  {selectedRun.networking
-                    .filter((s) => s.status === "running")
-                    .map((service) => (
-                      <span
-                        key={service.port}
-                        className="px-2 py-1 text-xs bg-neutral-100 dark:bg-neutral-800 rounded"
-                      >
-                        {service.port}
-                      </span>
-                    ))}
+    <div className="flex h-full flex-col bg-white dark:bg-neutral-950">
+      <div className="flex-1 min-h-0">
+        {previewUrl ? (
+          <ElectronPreviewBrowser
+            persistKey={persistKey}
+            src={previewUrl}
+            borderRadius={paneBorderRadius}
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center">
+            <div className="text-center">
+              <p className="mb-2 text-sm text-neutral-500 dark:text-neutral-400">
+                {selectedRun
+                  ? `Port ${port} is not available for this run`
+                  : "Loading..."}
+              </p>
+              {selectedRun?.networking && selectedRun.networking.length > 0 && (
+                <div className="mt-4">
+                  <p className="mb-2 text-xs text-neutral-400 dark:text-neutral-500">
+                    Available ports:
+                  </p>
+                  <div className="flex justify-center gap-2">
+                    {selectedRun.networking
+                      .filter((s) => s.status === "running")
+                      .map((service) => (
+                        <span
+                          key={service.port}
+                          className="rounded px-2 py-1 text-xs bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-200"
+                        >
+                          {service.port}
+                        </span>
+                      ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
-      )}
-    </>
+        )}
+      </div>
+    </div>
   );
 }

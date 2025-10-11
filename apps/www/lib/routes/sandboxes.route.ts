@@ -19,7 +19,10 @@ import {
 import type { HydrateRepoConfig } from "./sandboxes/hydration";
 import { hydrateWorkspace } from "./sandboxes/hydration";
 import { resolveTeamAndSnapshot } from "./sandboxes/snapshot";
-import { runMaintenanceScript, startDevScript } from "./sandboxes/startDevAndMaintenanceScript";
+import {
+  allocateScriptIdentifiers,
+  runMaintenanceAndDevScripts,
+} from "./sandboxes/startDevAndMaintenanceScript";
 import {
   encodeEnvContentForEnvctl,
   envctlLoadCommand,
@@ -169,6 +172,11 @@ sandboxesRouter.openapi(
       const maintenanceScript = environmentMaintenanceScript ?? null;
       const devScript = environmentDevScript ?? null;
 
+      const scriptIdentifiers =
+        maintenanceScript || devScript
+          ? allocateScriptIdentifiers()
+          : null;
+
       const gitIdentityPromise = githubAccessTokenPromise.then(
         ({ githubAccessToken }) => {
           if (!githubAccessToken) {
@@ -304,25 +312,19 @@ sandboxesRouter.openapi(
 
       if (maintenanceScript || devScript) {
         (async () => {
-          const maintenanceScriptResult = maintenanceScript
-            ? await runMaintenanceScript({
-              instance,
-              script: maintenanceScript,
-            })
-            : undefined;
-          const devScriptResult = devScript
-            ? await startDevScript({ instance, script: devScript })
-            : undefined;
-          if (
-            taskRunConvexId &&
-            (maintenanceScriptResult?.error || devScriptResult?.error)
-          ) {
+          const result = await runMaintenanceAndDevScripts({
+            instance,
+            maintenanceScript: maintenanceScript || undefined,
+            devScript: devScript || undefined,
+            identifiers: scriptIdentifiers ?? undefined,
+          });
+          if (taskRunConvexId && (result.maintenanceError || result.devError)) {
             try {
               await convex.mutation(api.taskRuns.updateEnvironmentError, {
                 teamSlugOrId: body.teamSlugOrId,
                 id: taskRunConvexId,
-                maintenanceError: maintenanceScriptResult?.error || undefined,
-                devError: devScriptResult?.error || undefined,
+                maintenanceError: result.maintenanceError ?? undefined,
+                devError: result.devError ?? undefined,
               });
             } catch (mutationError) {
               console.error(

@@ -1131,11 +1131,16 @@ export const updateEnvironmentError = authMutation({
     const maintenanceError = truncate(args.maintenanceError);
     const devError = truncate(args.devError);
 
+    const environmentError = {
+      ...(maintenanceError ? { maintenanceError } : {}),
+      ...(devError ? { devError } : {}),
+    } as {
+      maintenanceError?: string;
+      devError?: string;
+    };
+
     await ctx.db.patch(args.id, {
-      environmentError: {
-        ...(maintenanceError ? { maintenanceError } : {}),
-        ...(devError ? { devError } : {}),
-      },
+      environmentError,
       updatedAt: Date.now(),
     });
   },
