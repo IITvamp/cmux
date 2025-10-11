@@ -92,7 +92,7 @@ SCRIPT_EOF
 chmod +x ${ids.maintenance.scriptPath}
 ${waitForTmuxSession}
 tmux new-window -t cmux: -n ${ids.maintenance.windowName} -d
-tmux send-keys -t cmux:${ids.maintenance.windowName} "bash ${ids.maintenance.scriptPath}" C-m
+tmux send-keys -t cmux:${ids.maintenance.windowName} "bash -l ${ids.maintenance.scriptPath}" C-m
 sleep 2
 if tmux list-windows -t cmux | grep -q "${ids.maintenance.windowName}"; then
   echo "[MAINTENANCE] Window is running"
@@ -140,7 +140,7 @@ SCRIPT_EOF
 chmod +x ${ids.dev.scriptPath}
 ${waitForTmuxSession}
 tmux new-window -t cmux: -n ${ids.dev.windowName} -d
-tmux send-keys -t cmux:${ids.dev.windowName} "bash ${ids.dev.scriptPath}" C-m
+tmux send-keys -t cmux:${ids.dev.windowName} "bash -l ${ids.dev.scriptPath}" C-m
 sleep 2
 if tmux list-windows -t cmux | grep -q "${ids.dev.windowName}"; then
   echo "[DEV] Window is running"
