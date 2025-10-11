@@ -2202,7 +2202,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--snapshot-id",
-        default="snapshot_i7l4i12s",
+        default="snapshot_3fjuvxbs",
         help="Base snapshot id to boot from",
     )
     parser.add_argument(
