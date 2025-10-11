@@ -44,3 +44,7 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+Silent build scripts breathe
+Over terminals they sing
+Deploy dreams tonight
