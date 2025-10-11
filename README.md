@@ -44,3 +44,7 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+Parallel minds hum
+Spinning tasks in quiet docks
+Code blooms, dawn alights
