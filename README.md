@@ -44,3 +44,9 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+---
+
+Code agents unite
+Parallel tasks come alive
+Docker streams their work
