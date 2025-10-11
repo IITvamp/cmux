@@ -44,3 +44,9 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+---
+
+*Parallel tasks bloom*
+*Each agent in its Docker*
+*Code multiplexed new*
