@@ -127,12 +127,18 @@ jobs:
           set -euo pipefail
           echo "Ensuring local node_modules in $(pwd)..."
           # First try a local bun install to materialize node_modules
-          bun install --frozen-lockfile || true
+          bun install --frozen-lockfile --production || true
           if [ ! -d node_modules ]; then
-            echo "Local node_modules missing; copying from workspace root..."
-            # Copy the hoisted workspace root node_modules into the app package
-            # -L to dereference any symlinks so the packaged app has real files
-            rsync -aL --delete ../../node_modules/ node_modules/ || true
+            echo "Local node_modules missing; copying production deps from workspace root..."
+            # Copy only production dependencies, excluding dev-only packages like electron
+            mkdir -p node_modules
+            rsync -aL --delete \
+              --exclude='electron' \
+              --exclude='electron-builder' \
+              --exclude='electron-vite' \
+              --exclude='@electron' \
+              --exclude='@electron-toolkit' \
+              ../../node_modules/ node_modules/ || true
           fi
           if [ ! -d node_modules ]; then
             echo "ERROR: apps/client/node_modules still missing after attempts." >&2
@@ -241,12 +247,18 @@ jobs:
           set -euo pipefail
           echo "Ensuring local node_modules in $(pwd)..."
           # First try a local bun install to materialize node_modules
-          bun install --frozen-lockfile || true
+          bun install --frozen-lockfile --production || true
           if [ ! -d node_modules ]; then
-            echo "Local node_modules missing; copying from workspace root..."
-            # Copy the hoisted workspace root node_modules into the app package
-            # -L to dereference any symlinks so the packaged app has real files
-            rsync -aL --delete ../../node_modules/ node_modules/ || true
+            echo "Local node_modules missing; copying production deps from workspace root..."
+            # Copy only production dependencies, excluding dev-only packages like electron
+            mkdir -p node_modules
+            rsync -aL --delete \
+              --exclude='electron' \
+              --exclude='electron-builder' \
+              --exclude='electron-vite' \
+              --exclude='@electron' \
+              --exclude='@electron-toolkit' \
+              ../../node_modules/ node_modules/ || true
           fi
           if [ ! -d node_modules ]; then
             echo "ERROR: apps/client/node_modules still missing after attempts." >&2

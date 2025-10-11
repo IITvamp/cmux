@@ -17,7 +17,11 @@
     "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
     "!**/node_modules/**/*.d.ts",
     "!**/node_modules/.bin",
-    "!**/*.map"
+    "!**/*.map",
+    "!**/node_modules/electron",
+    "!**/node_modules/electron-builder",
+    "!**/node_modules/electron-vite",
+    "!**/node_modules/@electron/**"
   ],
   "asar": true,
   "compression": "maximum",
