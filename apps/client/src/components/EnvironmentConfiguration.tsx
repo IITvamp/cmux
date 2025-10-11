@@ -42,6 +42,7 @@ export function EnvironmentConfiguration({
   teamSlugOrId,
   instanceId,
   vscodeUrl,
+  browserUrl,
   isProvisioning,
   mode = "new",
   sourceEnvironmentId,
@@ -55,6 +56,7 @@ export function EnvironmentConfiguration({
   teamSlugOrId: string;
   instanceId?: string;
   vscodeUrl?: string;
+  browserUrl?: string;
   isProvisioning: boolean;
   mode?: "new" | "snapshot";
   sourceEnvironmentId?: Id<"environments">;
@@ -100,6 +102,10 @@ export function EnvironmentConfiguration({
   const [localVscodeUrl, setLocalVscodeUrl] = useState<string | undefined>(
     () => vscodeUrl
   );
+  const [localBrowserUrl, setLocalBrowserUrl] = useState<string | undefined>(
+    () => browserUrl
+  );
+  const [viewMode, setViewMode] = useState<"vscode" | "browser">("vscode");
 
   useEffect(() => {
     setLocalInstanceId(instanceId);
@@ -108,6 +114,10 @@ export function EnvironmentConfiguration({
   useEffect(() => {
     setLocalVscodeUrl(vscodeUrl);
   }, [vscodeUrl]);
+
+  useEffect(() => {
+    setLocalBrowserUrl(browserUrl);
+  }, [browserUrl]);
 
   const createEnvironmentMutation = useRQMutation(
     postApiEnvironmentsMutation()
@@ -137,10 +147,10 @@ export function EnvironmentConfiguration({
     }
   }, [pendingFocusIndex, envVars]);
 
-  // Reset iframe loading state when URL changes
+  // Reset iframe loading state when URL or view mode changes
   useEffect(() => {
     setIframeLoaded(false);
-  }, [localVscodeUrl]);
+  }, [localVscodeUrl, localBrowserUrl, viewMode]);
 
   // no-op placeholder removed; using onSnapshot instead
 
@@ -679,25 +689,54 @@ export function EnvironmentConfiguration({
     </div>
   );
 
+  const currentUrl = viewMode === "vscode" ? localVscodeUrl : localBrowserUrl;
+
   const rightPane = (
-    <div className="h-full bg-neutral-50 dark:bg-neutral-950">
-      {isProvisioning ? (
-        <div className="flex items-center justify-center h-full">
-          <div className="text-center max-w-md px-6">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-lg bg-neutral-200 dark:bg-neutral-800 flex items-center justify-center">
-              <Settings className="w-8 h-8 text-neutral-500 dark:text-neutral-400" />
-            </div>
-            <h3 className="text-lg font-medium text-neutral-900 dark:text-neutral-100 mb-2">
-              Launching Environment
-            </h3>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
-              {mode === "snapshot"
-                ? "Creating instance from snapshot. Once ready, VS Code will appear here so you can test your changes."
-                : "Your development environment is launching. Once ready, VS Code will appear here so you can configure and test your setup."}
-            </p>
-          </div>
+    <div className="h-full bg-neutral-50 dark:bg-neutral-950 flex flex-col">
+      {!isProvisioning && (localVscodeUrl || localBrowserUrl) && (
+        <div className="flex items-center justify-center gap-1 p-2 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800">
+          <button
+            onClick={() => setViewMode("vscode")}
+            className={clsx(
+              "px-3 py-1.5 text-sm rounded-md transition-colors",
+              viewMode === "vscode"
+                ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
+                : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            )}
+          >
+            VS Code
+          </button>
+          <button
+            onClick={() => setViewMode("browser")}
+            className={clsx(
+              "px-3 py-1.5 text-sm rounded-md transition-colors",
+              viewMode === "browser"
+                ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
+                : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            )}
+          >
+            Browser
+          </button>
         </div>
-      ) : localVscodeUrl ? (
+      )}
+      <div className="flex-1">
+        {isProvisioning ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center max-w-md px-6">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-lg bg-neutral-200 dark:bg-neutral-800 flex items-center justify-center">
+                <Settings className="w-8 h-8 text-neutral-500 dark:text-neutral-400" />
+              </div>
+              <h3 className="text-lg font-medium text-neutral-900 dark:text-neutral-100 mb-2">
+                Launching Environment
+              </h3>
+              <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
+                {mode === "snapshot"
+                  ? "Creating instance from snapshot. Once ready, VS Code will appear here so you can test your changes."
+                  : "Your development environment is launching. Once ready, VS Code will appear here so you can configure and test your setup."}
+              </p>
+            </div>
+          </div>
+        ) : currentUrl ? (
         <div className="relative h-full">
           <div
             aria-hidden={iframeLoaded}
@@ -712,29 +751,30 @@ export function EnvironmentConfiguration({
             <div className="text-center">
               <Loader2 className="w-6 h-6 mx-auto mb-3 animate-spin text-neutral-500 dark:text-neutral-400" />
               <p className="text-sm text-neutral-700 dark:text-neutral-300">
-                Loading VS Code...
+                Loading {viewMode === "vscode" ? "VS Code" : "Browser"}...
               </p>
             </div>
           </div>
           <iframe
-            src={localVscodeUrl}
+            src={currentUrl}
             className="w-full h-full border-0"
-            title="VSCode Environment"
+            title={viewMode === "vscode" ? "VSCode Environment" : "Browser Environment"}
             sandbox="allow-downloads allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation allow-top-navigation-by-user-activation"
             allow="accelerometer; camera; encrypted-media; fullscreen; geolocation; gyroscope; magnetometer; microphone; midi; payment; usb; xr-spatial-tracking"
             onLoad={() => setIframeLoaded(true)}
           />
         </div>
-      ) : (
-        <div className="flex items-center justify-center h-full">
-          <div className="text-center">
-            <X className="w-8 h-8 mx-auto mb-4 text-red-500" />
-            <p className="text-sm text-neutral-600 dark:text-neutral-400">
-              Waiting for environment URL...
-            </p>
+        ) : (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <X className="w-8 h-8 mx-auto mb-4 text-red-500" />
+              <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                Waiting for environment URL...
+              </p>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 

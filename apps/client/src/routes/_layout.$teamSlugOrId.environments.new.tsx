@@ -32,6 +32,11 @@ function EnvironmentsPage() {
     const hostId = urlInstanceId.replace(/_/g, "-");
     return `https://port-39378-${hostId}.http.cloud.morph.so/?folder=/root/workspace`;
   }, [urlInstanceId]);
+  const derivedBrowserUrl = useMemo(() => {
+    if (!urlInstanceId) return undefined;
+    const hostId = urlInstanceId.replace(/_/g, "-");
+    return `https://port-37380-${hostId}.http.cloud.morph.so/vnc.html`;
+  }, [urlInstanceId]);
 
   return (
     <FloatingPane header={<TitleBar title="Environments" />}>
@@ -53,6 +58,7 @@ function EnvironmentsPage() {
             teamSlugOrId={teamSlugOrId}
             instanceId={urlInstanceId}
             vscodeUrl={derivedVscodeUrl}
+            browserUrl={derivedBrowserUrl}
             isProvisioning={false}
           />
         )}

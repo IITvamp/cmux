@@ -47,6 +47,11 @@ function NewSnapshotVersionPage() {
     const hostId = urlInstanceId.replace(/_/g, "-");
     return `https://port-39378-${hostId}.http.cloud.morph.so/?folder=/root/workspace`;
   }, [urlInstanceId]);
+  const derivedBrowserUrl = useMemo(() => {
+    if (!urlInstanceId) return undefined;
+    const hostId = urlInstanceId.replace(/_/g, "-");
+    return `https://port-37380-${hostId}.http.cloud.morph.so/vnc.html`;
+  }, [urlInstanceId]);
 
   const environmentQuery = useQuery({
     ...getApiEnvironmentsByIdOptions({
@@ -138,6 +143,7 @@ function NewSnapshotVersionPage() {
             teamSlugOrId={teamSlugOrId}
             instanceId={urlInstanceId}
             vscodeUrl={effectiveVscodeUrl}
+            browserUrl={derivedBrowserUrl}
             isProvisioning={false}
             mode="snapshot"
             sourceEnvironmentId={sourceEnvironmentId}
