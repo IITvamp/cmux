@@ -7,15 +7,18 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@cmux/convex": "workspace:*",
     "@cmux/shared": "workspace:*",
+    "@cmux/www-openapi-client": "workspace:*",
     "@daytonaio/sdk": "^0.22.1",
-    "convex": "^1.27.1",
+    "@stackframe/js": "^2.8.41",
     "commander": "^12.1.0",
-    "prompts": "^2.4.2",
+    "convex": "^1.27.1",
     "dotenv": "^16.6.1",
     "ignore": "^6.0.2",
     "morphcloud": "^0.0.18",
     "node-ssh": "^13.2.0",
+    "prompts": "^2.4.2",
     "socket.io-client": "^4.8.1"
   },
   "devDependencies": {

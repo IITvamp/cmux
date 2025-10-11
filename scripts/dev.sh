@@ -97,15 +97,39 @@ if [ "$IS_DEVCONTAINER" = "false" ]; then
 fi
 
 # Build Docker image (different logic for devcontainer vs host)
+# Allow overriding the build platform for cross-architecture builds
+DOCKER_BUILD_ARGS=(-t cmux-worker:0.0.1)
+if [ -n "${CMUX_DOCKER_PLATFORM:-}" ]; then
+    DOCKER_BUILD_ARGS+=(--platform "${CMUX_DOCKER_PLATFORM}")
+fi
+
+# Allow passing a GitHub token to avoid API rate limiting during docker builds.
+# Prefer an existing GITHUB_TOKEN environment variable, otherwise fall back to `gh auth token`.
+EFFECTIVE_GITHUB_TOKEN="${GITHUB_TOKEN:-}"
+if [ -z "${EFFECTIVE_GITHUB_TOKEN}" ] && command -v gh >/dev/null 2>&1; then
+    GH_AUTH_TOKEN="$(gh auth token 2>/dev/null || true)"
+    # Guard against carriage returns when running on Windows hosts.
+    GH_AUTH_TOKEN="${GH_AUTH_TOKEN//$'\r'/}"
+    if [ -n "${GH_AUTH_TOKEN}" ]; then
+        EFFECTIVE_GITHUB_TOKEN="${GH_AUTH_TOKEN}"
+    fi
+fi
+
+if [ -n "${EFFECTIVE_GITHUB_TOKEN}" ]; then
+    export GITHUB_TOKEN="${EFFECTIVE_GITHUB_TOKEN}"
+    export DOCKER_BUILDKIT="${DOCKER_BUILDKIT:-1}"
+    DOCKER_BUILD_ARGS+=(--build-arg GITHUB_TOKEN --secret id=github_token,env=GITHUB_TOKEN)
+fi
+
 if [ "$IS_DEVCONTAINER" = "true" ]; then
     # In devcontainer, always build since we have access to docker socket
     echo "Building Docker image..."
-    docker build -t cmux-worker:0.0.1 "$APP_DIR" || exit 1
+    docker build "${DOCKER_BUILD_ARGS[@]}" "$APP_DIR" || exit 1
 else
     # On host, build by default unless explicitly skipped
     if [ "$SKIP_DOCKER_BUILD" != "true" ] || [ "$FORCE_DOCKER_BUILD" = "true" ]; then
         echo "Building Docker image..."
-        docker build -t cmux-worker:0.0.1 . || exit 1
+        docker build "${DOCKER_BUILD_ARGS[@]}" . || exit 1
     else
         echo "Skipping Docker build (SKIP_DOCKER_BUILD=true)"
     fi
@@ -255,6 +279,17 @@ echo -e "${GREEN}Starting www app on port 9779...${NC}"
 (cd "$APP_DIR/apps/www" && exec bash -c 'trap "kill -9 0" EXIT; bun run dev 2>&1 | tee "$LOG_DIR/www.log" | prefix_output "WWW" "$GREEN"') &
 WWW_PID=$!
 check_process $WWW_PID "WWW App"
+
+# Warm up www server in background (non-blocking)
+(bash -c '
+  for i in {1..30}; do
+    if curl -s -f http://localhost:9779/api/health > /dev/null 2>&1; then
+      echo -e "'"${GREEN}"'WWW server ready and warmed up'"${NC}"'"
+      break
+    fi
+    sleep 0.5
+  done
+') &
 
 # Start the openapi client generator
 echo -e "${GREEN}Starting openapi client generator...${NC}"
