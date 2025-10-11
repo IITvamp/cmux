@@ -44,3 +44,9 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+---
+
+Code agents in flight  
+Docker containers take wing  
+Parallel dreams code
