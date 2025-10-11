@@ -135,13 +135,13 @@ if [ ! -d "node_modules" ]; then
   bun install --frozen-lockfile --production
 fi
 
-echo "Copying dependencies..."
-if [ -d "node_modules" ]; then
-  cp -r node_modules "$APP_ASAR_DIR/"
-else
-  echo "ERROR: node_modules still missing after install. Aborting." >&2
-  exit 1
-fi
+# echo "Copying dependencies..."
+# if [ -d "node_modules" ]; then
+#   cp -r node_modules "$APP_ASAR_DIR/"
+# else
+#   echo "ERROR: node_modules still missing after install. Aborting." >&2
+#   exit 1
+# fi
 
 # Update Info.plist
 echo "Updating app metadata..."

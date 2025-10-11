@@ -6,6 +6,12 @@ import { getTaskRunPersistKey } from "./persistent-webview-keys";
  * @param taskRunIds - Array of task run IDs to preload
  * @returns Promise that resolves when all iframes are loaded
  */
+export const TASK_RUN_IFRAME_ALLOW =
+  "clipboard-read; clipboard-write; usb; serial; hid; cross-origin-isolated; autoplay; camera; microphone; geolocation; payment; fullscreen";
+
+export const TASK_RUN_IFRAME_SANDBOX =
+  "allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-top-navigation";
+
 export async function preloadTaskRunIframes(
   data: { url: string; taskRunId: string }[]
 ): Promise<void> {
@@ -14,10 +20,8 @@ export async function preloadTaskRunIframes(
     return {
       key,
       url,
-      allow:
-        "clipboard-read; clipboard-write; usb; serial; hid; cross-origin-isolated; autoplay; camera; microphone; geolocation; payment; fullscreen",
-      sandbox:
-        "allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-top-navigation",
+      allow: TASK_RUN_IFRAME_ALLOW,
+      sandbox: TASK_RUN_IFRAME_SANDBOX,
     };
   });
 
@@ -34,10 +38,8 @@ export async function preloadTaskRunIframe(
   url: string
 ): Promise<void> {
   await persistentIframeManager.preloadIframe(getTaskRunPersistKey(taskRunId), url, {
-    allow:
-      "clipboard-read; clipboard-write; usb; serial; hid; cross-origin-isolated; autoplay; camera; microphone; geolocation; payment; fullscreen",
-    sandbox:
-      "allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-top-navigation",
+    allow: TASK_RUN_IFRAME_ALLOW,
+    sandbox: TASK_RUN_IFRAME_SANDBOX,
   });
 }
 
