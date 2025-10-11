@@ -8,7 +8,11 @@ import { useCallback } from "react";
 import { PersistentWebView } from "@/components/persistent-webview";
 import { getTaskRunPersistKey } from "@/lib/persistent-webview-keys";
 import { toProxyWorkspaceUrl } from "@/lib/toProxyWorkspaceUrl";
-import { preloadTaskRunIframes } from "../lib/preloadTaskRunIframes";
+import {
+  TASK_RUN_IFRAME_ALLOW,
+  TASK_RUN_IFRAME_SANDBOX,
+  preloadTaskRunIframes,
+} from "../lib/preloadTaskRunIframes";
 
 export const Route = createFileRoute(
   "/_layout/$teamSlugOrId/task/$taskId/run/$runId/"
@@ -77,8 +81,8 @@ function TaskRunComponent() {
               src={workspaceUrl}
               className="grow flex relative"
               iframeClassName="select-none"
-              allow="*"
-              sandbox="*"
+              allow={TASK_RUN_IFRAME_ALLOW}
+              sandbox={TASK_RUN_IFRAME_SANDBOX}
               retainOnUnmount
               suspended={!hasWorkspace}
               onLoad={onLoad}
