@@ -42,6 +42,7 @@ export function EnvironmentConfiguration({
   teamSlugOrId,
   instanceId,
   vscodeUrl,
+  browserUrl,
   isProvisioning,
   mode = "new",
   sourceEnvironmentId,
@@ -55,6 +56,7 @@ export function EnvironmentConfiguration({
   teamSlugOrId: string;
   instanceId?: string;
   vscodeUrl?: string;
+  browserUrl?: string;
   isProvisioning: boolean;
   mode?: "new" | "snapshot";
   sourceEnvironmentId?: Id<"environments">;
@@ -100,6 +102,12 @@ export function EnvironmentConfiguration({
   const [localVscodeUrl, setLocalVscodeUrl] = useState<string | undefined>(
     () => vscodeUrl
   );
+  const [localBrowserUrl, setLocalBrowserUrl] = useState<string | undefined>(
+    () => browserUrl
+  );
+  const [activeView, setActiveView] = useState<"vscode" | "browser">(() =>
+    browserUrl && !vscodeUrl ? "browser" : "vscode"
+  );
 
   useEffect(() => {
     setLocalInstanceId(instanceId);
@@ -108,6 +116,21 @@ export function EnvironmentConfiguration({
   useEffect(() => {
     setLocalVscodeUrl(vscodeUrl);
   }, [vscodeUrl]);
+
+  useEffect(() => {
+    setLocalBrowserUrl(browserUrl);
+  }, [browserUrl]);
+
+  const hasVscodeView = Boolean(localVscodeUrl);
+  const hasBrowserView = Boolean(localBrowserUrl);
+
+  useEffect(() => {
+    if (hasBrowserView && !hasVscodeView && activeView !== "browser") {
+      setActiveView("browser");
+    } else if (hasVscodeView && !hasBrowserView && activeView !== "vscode") {
+      setActiveView("vscode");
+    }
+  }, [hasBrowserView, hasVscodeView, activeView]);
 
   const createEnvironmentMutation = useRQMutation(
     postApiEnvironmentsMutation()
@@ -137,10 +160,10 @@ export function EnvironmentConfiguration({
     }
   }, [pendingFocusIndex, envVars]);
 
-  // Reset iframe loading state when URL changes
+  // Reset iframe loading state when the active view or URLs change
   useEffect(() => {
     setIframeLoaded(false);
-  }, [localVscodeUrl]);
+  }, [activeView, localVscodeUrl, localBrowserUrl]);
 
   // no-op placeholder removed; using onSnapshot instead
 
@@ -679,6 +702,35 @@ export function EnvironmentConfiguration({
     </div>
   );
 
+  const showViewSwitch = hasVscodeView && hasBrowserView;
+  const effectiveView = showViewSwitch
+    ? activeView
+    : hasVscodeView
+      ? "vscode"
+      : hasBrowserView
+        ? "browser"
+        : null;
+  const activeUrl =
+    effectiveView === "browser"
+      ? localBrowserUrl
+      : effectiveView === "vscode"
+        ? localVscodeUrl
+        : undefined;
+  const loadingMessage =
+    effectiveView === "browser"
+      ? "Loading browser..."
+      : effectiveView === "vscode"
+        ? "Loading VS Code..."
+        : "Loading preview...";
+  const waitingMessage =
+    effectiveView === "browser"
+      ? "Waiting for browser URL..."
+      : "Waiting for environment URL...";
+  const iframeTitle =
+    effectiveView === "browser"
+      ? "Browser Environment"
+      : "VSCode Environment";
+
   const rightPane = (
     <div className="h-full bg-neutral-50 dark:bg-neutral-950">
       {isProvisioning ? (
@@ -692,45 +744,67 @@ export function EnvironmentConfiguration({
             </h3>
             <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
               {mode === "snapshot"
-                ? "Creating instance from snapshot. Once ready, VS Code will appear here so you can test your changes."
-                : "Your development environment is launching. Once ready, VS Code will appear here so you can configure and test your setup."}
+                ? "Creating instance from snapshot. Once ready, VS Code and the browser preview will appear here so you can test your changes."
+                : "Your development environment is launching. Once ready, you can open VS Code or the browser preview here to configure and test your setup."}
             </p>
           </div>
         </div>
-      ) : localVscodeUrl ? (
-        <div className="relative h-full">
-          <div
-            aria-hidden={iframeLoaded}
-            className={clsx(
-              "absolute inset-0 z-[var(--z-low)] flex items-center justify-center backdrop-blur-sm transition-opacity duration-300",
-              "bg-white/60 dark:bg-neutral-950/60",
-              iframeLoaded
-                ? "opacity-0 pointer-events-none"
-                : "opacity-100 pointer-events-auto"
-            )}
-          >
-            <div className="text-center">
-              <Loader2 className="w-6 h-6 mx-auto mb-3 animate-spin text-neutral-500 dark:text-neutral-400" />
-              <p className="text-sm text-neutral-700 dark:text-neutral-300">
-                Loading VS Code...
-              </p>
+      ) : activeUrl ? (
+        <div className="flex h-full flex-col">
+          {showViewSwitch ? (
+            <div className="flex items-center gap-2 border-b border-neutral-200 bg-white px-4 py-2 dark:border-neutral-800 dark:bg-neutral-950">
+              {(["vscode", "browser"] as const).map((view) => (
+                <button
+                  key={view}
+                  type="button"
+                  onClick={() => setActiveView(view)}
+                  className={clsx(
+                    "rounded-md border px-3 py-1.5 text-sm font-medium transition-colors",
+                    activeView === view
+                      ? "border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900"
+                      : "border-transparent bg-transparent text-neutral-600 hover:bg-neutral-200/60 dark:text-neutral-400 dark:hover:bg-neutral-800/60"
+                  )}
+                  aria-pressed={activeView === view}
+                >
+                  {view === "vscode" ? "VS Code" : "Browser"}
+                </button>
+              ))}
             </div>
+          ) : null}
+          <div className="relative flex-1">
+            <div
+              aria-hidden={iframeLoaded}
+              className={clsx(
+                "absolute inset-0 z-[var(--z-low)] flex items-center justify-center backdrop-blur-sm transition-opacity duration-300",
+                "bg-white/60 dark:bg-neutral-950/60",
+                iframeLoaded
+                  ? "opacity-0 pointer-events-none"
+                  : "opacity-100 pointer-events-auto"
+              )}
+            >
+              <div className="text-center">
+                <Loader2 className="w-6 h-6 mx-auto mb-3 animate-spin text-neutral-500 dark:text-neutral-400" />
+                <p className="text-sm text-neutral-700 dark:text-neutral-300">
+                  {loadingMessage}
+                </p>
+              </div>
+            </div>
+            <iframe
+              src={activeUrl}
+              className="h-full w-full border-0"
+              title={iframeTitle}
+              sandbox="allow-downloads allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation allow-top-navigation-by-user-activation"
+              allow="accelerometer; camera; encrypted-media; fullscreen; geolocation; gyroscope; magnetometer; microphone; midi; payment; usb; xr-spatial-tracking"
+              onLoad={() => setIframeLoaded(true)}
+            />
           </div>
-          <iframe
-            src={localVscodeUrl}
-            className="w-full h-full border-0"
-            title="VSCode Environment"
-            sandbox="allow-downloads allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation allow-top-navigation-by-user-activation"
-            allow="accelerometer; camera; encrypted-media; fullscreen; geolocation; gyroscope; magnetometer; microphone; midi; payment; usb; xr-spatial-tracking"
-            onLoad={() => setIframeLoaded(true)}
-          />
         </div>
       ) : (
-        <div className="flex items-center justify-center h-full">
+        <div className="flex h-full items-center justify-center">
           <div className="text-center">
             <X className="w-8 h-8 mx-auto mb-4 text-red-500" />
             <p className="text-sm text-neutral-600 dark:text-neutral-400">
-              Waiting for environment URL...
+              {waitingMessage}
             </p>
           </div>
         </div>

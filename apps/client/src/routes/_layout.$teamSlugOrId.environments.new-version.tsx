@@ -23,6 +23,7 @@ const searchSchema = z.object({
   sourceEnvironmentId: z.string(),
   step: z.enum(["select", "configure"]).default("configure"),
   vscodeUrl: z.string().optional(),
+  browserUrl: z.string().optional(),
 });
 
 export const Route = createFileRoute(
@@ -41,11 +42,18 @@ function NewSnapshotVersionPage() {
   const urlSelectedRepos = searchParams.selectedRepos ?? [];
   const urlInstanceId = searchParams.instanceId;
   const urlVscodeUrl = searchParams.vscodeUrl;
+  const urlBrowserUrl = searchParams.browserUrl;
 
   const derivedVscodeUrl = useMemo(() => {
     if (!urlInstanceId) return undefined;
     const hostId = urlInstanceId.replace(/_/g, "-");
     return `https://port-39378-${hostId}.http.cloud.morph.so/?folder=/root/workspace`;
+  }, [urlInstanceId]);
+
+  const derivedBrowserUrl = useMemo(() => {
+    if (!urlInstanceId) return undefined;
+    const hostId = urlInstanceId.replace(/_/g, "-");
+    return `https://port-37380-${hostId}.http.cloud.morph.so/vnc.html`;
   }, [urlInstanceId]);
 
   const environmentQuery = useQuery({
@@ -120,6 +128,7 @@ function NewSnapshotVersionPage() {
   }, [snapshotVersionsQuery.data, environment?.maintenanceScript, environment?.devScript]);
 
   const effectiveVscodeUrl = urlVscodeUrl ?? derivedVscodeUrl;
+  const effectiveBrowserUrl = urlBrowserUrl ?? derivedBrowserUrl;
 
   return (
     <FloatingPane header={<TitleBar title="New Snapshot Version" />}>
@@ -138,6 +147,7 @@ function NewSnapshotVersionPage() {
             teamSlugOrId={teamSlugOrId}
             instanceId={urlInstanceId}
             vscodeUrl={effectiveVscodeUrl}
+            browserUrl={effectiveBrowserUrl}
             isProvisioning={false}
             mode="snapshot"
             sourceEnvironmentId={sourceEnvironmentId}
