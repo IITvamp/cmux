@@ -75,7 +75,7 @@ fi`;
   let devError: string | null = null;
 
   if (maintenanceScript && maintenanceScript.trim().length > 0) {
-    const maintenanceScriptContent = `#!/bin/bash
+    const maintenanceScriptContent = `#!/bin/zsh
 set -eux
 cd ${WORKSPACE_ROOT}
 
@@ -92,7 +92,7 @@ SCRIPT_EOF
 chmod +x ${ids.maintenance.scriptPath}
 ${waitForTmuxSession}
 tmux new-window -t cmux: -n ${ids.maintenance.windowName} -d
-tmux send-keys -t cmux:${ids.maintenance.windowName} "bash -l ${ids.maintenance.scriptPath}" C-m
+tmux send-keys -t cmux:${ids.maintenance.windowName} "zsh ${ids.maintenance.scriptPath}" C-m
 sleep 2
 if tmux list-windows -t cmux | grep -q "${ids.maintenance.windowName}"; then
   echo "[MAINTENANCE] Window is running"
@@ -103,7 +103,7 @@ fi
 
     try {
       const result = await instance.exec(
-        `bash -lc ${singleQuote(maintenanceCommand)}`,
+        `zsh -lc ${singleQuote(maintenanceCommand)}`,
       );
 
       if (result.exit_code !== 0) {
@@ -124,7 +124,7 @@ fi
   }
 
   if (devScript && devScript.trim().length > 0) {
-    const devScriptContent = `#!/bin/bash
+    const devScriptContent = `#!/bin/zsh
 set -ux
 cd ${WORKSPACE_ROOT}
 
@@ -140,7 +140,7 @@ SCRIPT_EOF
 chmod +x ${ids.dev.scriptPath}
 ${waitForTmuxSession}
 tmux new-window -t cmux: -n ${ids.dev.windowName} -d
-tmux send-keys -t cmux:${ids.dev.windowName} "bash -l ${ids.dev.scriptPath}" C-m
+tmux send-keys -t cmux:${ids.dev.windowName} "zsh ${ids.dev.scriptPath}" C-m
 sleep 2
 if tmux list-windows -t cmux | grep -q "${ids.dev.windowName}"; then
   echo "[DEV] Window is running"
@@ -151,7 +151,7 @@ fi
 `;
 
     try {
-      const result = await instance.exec(`bash -lc ${singleQuote(devCommand)}`);
+      const result = await instance.exec(`zsh -lc ${singleQuote(devCommand)}`);
 
       if (result.exit_code !== 0) {
         const stderr = result.stderr?.trim() || "";
