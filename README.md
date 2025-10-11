@@ -44,3 +44,9 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+---
+
+Parallel agents run  
+Docker worlds spin with code  
+Creativity flows
