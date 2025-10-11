@@ -44,3 +44,15 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+Silent code whispers  
+Pixels dance on glowing screens  
+Bugs lurk in the night
+
+Silent code whispers  
+Pixels dance on glowing screens  
+Bugs lurk in the night
+
+Silent code whispers  
+Pixels dance on glowing screens  
+Bugs lurk in the night
