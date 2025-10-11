@@ -157,10 +157,6 @@ const convexSchema = defineSchema({
       v.object({
         devError: v.optional(v.string()),
         maintenanceError: v.optional(v.string()),
-        devSessionName: v.optional(v.string()),
-        devLogPath: v.optional(v.string()),
-        maintenanceSessionName: v.optional(v.string()),
-        maintenanceLogPath: v.optional(v.string()),
       }),
     ),
     errorMessage: v.optional(v.string()), // Error message when run fails early

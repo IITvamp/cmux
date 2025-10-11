@@ -1100,10 +1100,6 @@ export const updateEnvironmentError = authMutation({
     id: v.id("taskRuns"),
     maintenanceError: v.optional(v.string()),
     devError: v.optional(v.string()),
-    maintenanceSessionName: v.optional(v.string()),
-    maintenanceLogPath: v.optional(v.string()),
-    devSessionName: v.optional(v.string()),
-    devLogPath: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
@@ -1130,21 +1126,9 @@ export const updateEnvironmentError = authMutation({
     const environmentError = {
       ...(maintenanceError ? { maintenanceError } : {}),
       ...(devError ? { devError } : {}),
-      ...(args.maintenanceSessionName
-        ? { maintenanceSessionName: args.maintenanceSessionName }
-        : {}),
-      ...(args.maintenanceLogPath
-        ? { maintenanceLogPath: args.maintenanceLogPath }
-        : {}),
-      ...(args.devSessionName ? { devSessionName: args.devSessionName } : {}),
-      ...(args.devLogPath ? { devLogPath: args.devLogPath } : {}),
     } as {
       maintenanceError?: string;
       devError?: string;
-      maintenanceSessionName?: string;
-      maintenanceLogPath?: string;
-      devSessionName?: string;
-      devLogPath?: string;
     };
 
     await ctx.db.patch(args.id, {

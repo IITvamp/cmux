@@ -56,10 +56,6 @@ const StartSandboxResponse = z
     vscodeUrl: z.string(),
     workerUrl: z.string(),
     provider: z.enum(["morph"]).default("morph"),
-    maintenanceScriptSessionName: z.string().nullable().optional(),
-    maintenanceScriptLogPath: z.string().nullable().optional(),
-    devScriptSessionName: z.string().nullable().optional(),
-    devScriptLogPath: z.string().nullable().optional(),
   })
   .openapi("StartSandboxResponse");
 
@@ -329,10 +325,6 @@ sandboxesRouter.openapi(
                 id: taskRunConvexId,
                 maintenanceError: result.maintenanceError ?? undefined,
                 devError: result.devError ?? undefined,
-                maintenanceSessionName: result.maintenanceWindowName ?? undefined,
-                maintenanceLogPath: result.maintenanceLogFile ?? undefined,
-                devSessionName: result.devWindowName ?? undefined,
-                devLogPath: result.devLogFile ?? undefined,
               });
             } catch (mutationError) {
               console.error(
@@ -356,10 +348,6 @@ sandboxesRouter.openapi(
         vscodeUrl: vscodeService.url,
         workerUrl: workerService.url,
         provider: "morph",
-        maintenanceScriptSessionName: scriptIdentifiers?.maintenanceWindowName ?? null,
-        maintenanceScriptLogPath: scriptIdentifiers?.maintenanceLogFile ?? null,
-        devScriptSessionName: scriptIdentifiers?.devWindowName ?? null,
-        devScriptLogPath: scriptIdentifiers?.devLogFile ?? null,
       });
     } catch (error) {
       if (error instanceof HTTPException) {

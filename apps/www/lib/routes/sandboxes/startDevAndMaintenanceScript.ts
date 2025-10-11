@@ -5,17 +5,14 @@ import { singleQuote } from "./shell";
 
 const WORKSPACE_ROOT = "/root/workspace";
 const CMUX_RUNTIME_DIR = "/var/tmp/cmux-scripts";
-const LOG_DIR = "/var/log/cmux";
 
 export type ScriptIdentifiers = {
   maintenanceId: string;
   maintenanceWindowName: string;
   maintenanceScriptPath: string;
-  maintenanceLogFile: string;
   devId: string;
   devWindowName: string;
   devScriptPath: string;
-  devLogFile: string;
 };
 
 export const allocateScriptIdentifiers = (): ScriptIdentifiers => {
@@ -25,21 +22,15 @@ export const allocateScriptIdentifiers = (): ScriptIdentifiers => {
     maintenanceId,
     maintenanceWindowName: `maintenance-${maintenanceId}`,
     maintenanceScriptPath: `${CMUX_RUNTIME_DIR}/maintenance-${maintenanceId}.sh`,
-    maintenanceLogFile: `${LOG_DIR}/maintenance-${maintenanceId}.log`,
     devId,
     devWindowName: `dev-${devId}`,
     devScriptPath: `${CMUX_RUNTIME_DIR}/dev-${devId}.sh`,
-    devLogFile: `${LOG_DIR}/dev-${devId}.log`,
   };
 };
 
 type ScriptResult = {
   maintenanceError: string | null;
-  maintenanceWindowName: string | null;
-  maintenanceLogFile: string | null;
   devError: string | null;
-  devWindowName: string | null;
-  devLogFile: string | null;
 };
 
 export async function runMaintenanceAndDevScripts({
@@ -61,11 +52,7 @@ export async function runMaintenanceAndDevScripts({
   ) {
     return {
       maintenanceError: "Both maintenance and dev scripts are empty",
-      maintenanceWindowName: null,
-      maintenanceLogFile: null,
       devError: null,
-      devWindowName: null,
-      devLogFile: null,
     };
   }
 
@@ -94,7 +81,6 @@ echo "=== Maintenance Script Completed at \$(date) ==="
 `;
 
     const maintenanceCommand = `set -eu
-mkdir -p ${LOG_DIR}
 mkdir -p ${CMUX_RUNTIME_DIR}
 cat > ${ids.maintenanceScriptPath} <<'SCRIPT_EOF'
 ${maintenanceScriptContent}
@@ -102,14 +88,12 @@ SCRIPT_EOF
 chmod +x ${ids.maintenanceScriptPath}
 ${waitForTmuxSession}
 tmux new-window -t cmux: -n ${ids.maintenanceWindowName} -d
-tmux send-keys -t cmux:${ids.maintenanceWindowName} "bash ${ids.maintenanceScriptPath} 2>&1 | tee ${ids.maintenanceLogFile}" C-m
+tmux send-keys -t cmux:${ids.maintenanceWindowName} "bash ${ids.maintenanceScriptPath}" C-m
 sleep 2
 if tmux list-windows -t cmux | grep -q "${ids.maintenanceWindowName}"; then
   echo "[MAINTENANCE] Window is running"
-  tail -20 ${ids.maintenanceLogFile} || echo "[MAINTENANCE] Log file not yet available"
 else
   echo "[MAINTENANCE] Window may have exited (normal if script completed)"
-  tail -20 ${ids.maintenanceLogFile} 2>/dev/null || echo "[MAINTENANCE] No logs available"
 fi
 `;
 
@@ -145,7 +129,6 @@ ${devScript}
 `;
 
     const devCommand = `set -eu
-mkdir -p ${LOG_DIR}
 mkdir -p ${CMUX_RUNTIME_DIR}
 cat > ${ids.devScriptPath} <<'SCRIPT_EOF'
 ${devScriptContent}
@@ -153,11 +136,10 @@ SCRIPT_EOF
 chmod +x ${ids.devScriptPath}
 ${waitForTmuxSession}
 tmux new-window -t cmux: -n ${ids.devWindowName} -d
-tmux send-keys -t cmux:${ids.devWindowName} "bash ${ids.devScriptPath} 2>&1 | tee ${ids.devLogFile}" C-m
+tmux send-keys -t cmux:${ids.devWindowName} "bash ${ids.devScriptPath}" C-m
 sleep 2
 if tmux list-windows -t cmux | grep -q "${ids.devWindowName}"; then
   echo "[DEV] Window is running"
-  tail -20 ${ids.devLogFile} || echo "[DEV] Log file not yet available"
 else
   echo "[DEV] ERROR: Window not found" >&2
   exit 1
@@ -186,10 +168,6 @@ fi
 
   return {
     maintenanceError,
-    maintenanceWindowName: maintenanceScript ? ids.maintenanceWindowName : null,
-    maintenanceLogFile: maintenanceScript ? ids.maintenanceLogFile : null,
     devError,
-    devWindowName: devScript ? ids.devWindowName : null,
-    devLogFile: devScript ? ids.devLogFile : null,
   };
 }
