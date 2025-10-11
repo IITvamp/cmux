@@ -60,43 +60,5 @@ export const clearTaskRunsLog = migrations.define({
   },
 });
 
-// Remove deprecated log and session fields from environmentError
-export const cleanupEnvironmentErrorFields = migrations.define({
-  table: "taskRuns",
-  migrateOne: (_ctx, doc) => {
-    if (!doc.environmentError) {
-      return;
-    }
-
-    const oldError = doc.environmentError as {
-      devError?: string;
-      maintenanceError?: string;
-      devSessionName?: string;
-      devLogPath?: string;
-      maintenanceSessionName?: string;
-      maintenanceLogPath?: string;
-    };
-
-    const hasOldFields =
-      "devSessionName" in oldError ||
-      "devLogPath" in oldError ||
-      "maintenanceSessionName" in oldError ||
-      "maintenanceLogPath" in oldError;
-
-    if (!hasOldFields) {
-      return;
-    }
-
-    const cleanedError = {
-      ...(oldError.devError ? { devError: oldError.devError } : {}),
-      ...(oldError.maintenanceError
-        ? { maintenanceError: oldError.maintenanceError }
-        : {}),
-    };
-
-    return { environmentError: cleanedError };
-  },
-});
-
 // Generic runner; choose migrations from CLI or dashboard when invoking
 export const run = migrations.runner();
