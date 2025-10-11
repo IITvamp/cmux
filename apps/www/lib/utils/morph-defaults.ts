@@ -7,4 +7,4 @@
 // export const DEFAULT_MORPH_SNAPSHOT_ID = "snapshot_bp1tdp4o";
 // export const DEFAULT_MORPH_SNAPSHOT_ID = "snapshot_s7dbgujd";
 // export const DEFAULT_MORPH_SNAPSHOT_ID = "snapshot_tlugo1we"; // 10cpu/32ram
-export const DEFAULT_MORPH_SNAPSHOT_ID = "snapshot_b8qutz8d";
+export const DEFAULT_MORPH_SNAPSHOT_ID = "snapshot_jy6ye3kl";
