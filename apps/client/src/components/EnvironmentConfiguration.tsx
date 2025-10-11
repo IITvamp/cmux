@@ -16,7 +16,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { Id } from "@cmux/convex/dataModel";
 import clsx from "clsx";
 import { ArrowLeft, Loader2, Minus, Plus, Settings, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import TextareaAutosize from "react-textarea-autosize";
 
 export type EnvVar = { name: string; value: string; isSecret: boolean };
@@ -100,6 +100,13 @@ export function EnvironmentConfiguration({
   const [localVscodeUrl, setLocalVscodeUrl] = useState<string | undefined>(
     () => vscodeUrl
   );
+  const [viewMode, setViewMode] = useState<'vscode' | 'browser'>('vscode');
+
+  const derivedVncUrl = useMemo(() => {
+    if (!localInstanceId) return undefined;
+    const hostId = localInstanceId.replace(/_/g, "-");
+    return `https://port-37380-${hostId}.http.cloud.morph.so/vnc.html`;
+  }, [localInstanceId]);
 
   useEffect(() => {
     setLocalInstanceId(instanceId);
@@ -140,7 +147,7 @@ export function EnvironmentConfiguration({
   // Reset iframe loading state when URL changes
   useEffect(() => {
     setIframeLoaded(false);
-  }, [localVscodeUrl]);
+  }, [localVscodeUrl, derivedVncUrl, viewMode]);
 
   // no-op placeholder removed; using onSnapshot instead
 
@@ -680,8 +687,38 @@ export function EnvironmentConfiguration({
   );
 
   const rightPane = (
-    <div className="h-full bg-neutral-50 dark:bg-neutral-950">
-      {isProvisioning ? (
+    <div className="h-full bg-neutral-50 dark:bg-neutral-950 flex flex-col">
+      <div className="flex items-center justify-between p-3 border-b border-neutral-200 dark:border-neutral-800">
+        <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+          Environment View
+        </h3>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setViewMode('vscode')}
+            className={clsx(
+              "px-3 py-1 text-xs rounded-md transition-colors",
+              viewMode === 'vscode'
+                ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
+                : "bg-neutral-200 text-neutral-700 hover:bg-neutral-300 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
+            )}
+          >
+            VS Code
+          </button>
+          <button
+            onClick={() => setViewMode('browser')}
+            className={clsx(
+              "px-3 py-1 text-xs rounded-md transition-colors",
+              viewMode === 'browser'
+                ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
+                : "bg-neutral-200 text-neutral-700 hover:bg-neutral-300 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
+            )}
+          >
+            Browser
+          </button>
+        </div>
+      </div>
+      <div className="flex-1">
+        {isProvisioning ? (
         <div className="flex items-center justify-center h-full">
           <div className="text-center max-w-md px-6">
             <div className="w-16 h-16 mx-auto mb-4 rounded-lg bg-neutral-200 dark:bg-neutral-800 flex items-center justify-center">
@@ -692,12 +729,12 @@ export function EnvironmentConfiguration({
             </h3>
             <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
               {mode === "snapshot"
-                ? "Creating instance from snapshot. Once ready, VS Code will appear here so you can test your changes."
-                : "Your development environment is launching. Once ready, VS Code will appear here so you can configure and test your setup."}
+                ? "Creating instance from snapshot. Once ready, you can view it in VS Code or browser mode."
+                : "Your development environment is launching. Once ready, you can view it in VS Code or browser mode."}
             </p>
           </div>
         </div>
-      ) : localVscodeUrl ? (
+      ) : (localVscodeUrl && viewMode === 'vscode') || (derivedVncUrl && viewMode === 'browser') ? (
         <div className="relative h-full">
           <div
             aria-hidden={iframeLoaded}
@@ -712,14 +749,15 @@ export function EnvironmentConfiguration({
             <div className="text-center">
               <Loader2 className="w-6 h-6 mx-auto mb-3 animate-spin text-neutral-500 dark:text-neutral-400" />
               <p className="text-sm text-neutral-700 dark:text-neutral-300">
-                Loading VS Code...
+                Loading {viewMode === 'vscode' ? 'VS Code' : 'Browser'}...
               </p>
             </div>
           </div>
           <iframe
-            src={localVscodeUrl}
+            key={viewMode} // Force re-render when switching modes
+            src={viewMode === 'vscode' ? localVscodeUrl : derivedVncUrl}
             className="w-full h-full border-0"
-            title="VSCode Environment"
+            title={viewMode === 'vscode' ? "VSCode Environment" : "Browser Environment"}
             sandbox="allow-downloads allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation allow-top-navigation-by-user-activation"
             allow="accelerometer; camera; encrypted-media; fullscreen; geolocation; gyroscope; magnetometer; microphone; midi; payment; usb; xr-spatial-tracking"
             onLoad={() => setIframeLoaded(true)}
@@ -731,6 +769,9 @@ export function EnvironmentConfiguration({
             <X className="w-8 h-8 mx-auto mb-4 text-red-500" />
             <p className="text-sm text-neutral-600 dark:text-neutral-400">
               Waiting for environment URL...
+            </p>
+            <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-2">
+              Switch between VS Code and Browser views once ready.
             </p>
           </div>
         </div>
