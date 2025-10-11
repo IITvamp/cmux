@@ -44,3 +44,9 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+## Haiku
+
+Code storms weave new threads
+Agents share one terminal
+Cmux hums in sync
