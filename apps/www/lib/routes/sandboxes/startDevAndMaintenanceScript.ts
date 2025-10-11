@@ -1,30 +1,34 @@
-import { randomUUID } from "node:crypto";
-
 import type { MorphInstance } from "./git";
 import { singleQuote } from "./shell";
 
 const WORKSPACE_ROOT = "/root/workspace";
 const CMUX_RUNTIME_DIR = "/var/tmp/cmux-scripts";
+const MAINTENANCE_WINDOW_NAME = "maintenance";
+const MAINTENANCE_SCRIPT_FILENAME = "maintenance.sh";
+const DEV_WINDOW_NAME = "dev";
+const DEV_SCRIPT_FILENAME = "dev.sh";
 
 export type ScriptIdentifiers = {
-  maintenanceId: string;
-  maintenanceWindowName: string;
-  maintenanceScriptPath: string;
-  devId: string;
-  devWindowName: string;
-  devScriptPath: string;
+  maintenance: {
+    windowName: string;
+    scriptPath: string;
+  };
+  dev: {
+    windowName: string;
+    scriptPath: string;
+  };
 };
 
 export const allocateScriptIdentifiers = (): ScriptIdentifiers => {
-  const maintenanceId = randomUUID().replace(/-/g, "").slice(0, 16);
-  const devId = randomUUID().replace(/-/g, "").slice(0, 16);
   return {
-    maintenanceId,
-    maintenanceWindowName: `maintenance-${maintenanceId}`,
-    maintenanceScriptPath: `${CMUX_RUNTIME_DIR}/maintenance-${maintenanceId}.sh`,
-    devId,
-    devWindowName: `dev-${devId}`,
-    devScriptPath: `${CMUX_RUNTIME_DIR}/dev-${devId}.sh`,
+    maintenance: {
+      windowName: MAINTENANCE_WINDOW_NAME,
+      scriptPath: `${CMUX_RUNTIME_DIR}/${MAINTENANCE_SCRIPT_FILENAME}`,
+    },
+    dev: {
+      windowName: DEV_WINDOW_NAME,
+      scriptPath: `${CMUX_RUNTIME_DIR}/${DEV_SCRIPT_FILENAME}`,
+    },
   };
 };
 
@@ -82,15 +86,15 @@ echo "=== Maintenance Script Completed at \$(date) ==="
 
     const maintenanceCommand = `set -eu
 mkdir -p ${CMUX_RUNTIME_DIR}
-cat > ${ids.maintenanceScriptPath} <<'SCRIPT_EOF'
+cat > ${ids.maintenance.scriptPath} <<'SCRIPT_EOF'
 ${maintenanceScriptContent}
 SCRIPT_EOF
-chmod +x ${ids.maintenanceScriptPath}
+chmod +x ${ids.maintenance.scriptPath}
 ${waitForTmuxSession}
-tmux new-window -t cmux: -n ${ids.maintenanceWindowName} -d
-tmux send-keys -t cmux:${ids.maintenanceWindowName} "bash ${ids.maintenanceScriptPath}" C-m
+tmux new-window -t cmux: -n ${ids.maintenance.windowName} -d
+tmux send-keys -t cmux:${ids.maintenance.windowName} "bash ${ids.maintenance.scriptPath}" C-m
 sleep 2
-if tmux list-windows -t cmux | grep -q "${ids.maintenanceWindowName}"; then
+if tmux list-windows -t cmux | grep -q "${ids.maintenance.windowName}"; then
   echo "[MAINTENANCE] Window is running"
 else
   echo "[MAINTENANCE] Window may have exited (normal if script completed)"
@@ -130,15 +134,15 @@ ${devScript}
 
     const devCommand = `set -eu
 mkdir -p ${CMUX_RUNTIME_DIR}
-cat > ${ids.devScriptPath} <<'SCRIPT_EOF'
+cat > ${ids.dev.scriptPath} <<'SCRIPT_EOF'
 ${devScriptContent}
 SCRIPT_EOF
-chmod +x ${ids.devScriptPath}
+chmod +x ${ids.dev.scriptPath}
 ${waitForTmuxSession}
-tmux new-window -t cmux: -n ${ids.devWindowName} -d
-tmux send-keys -t cmux:${ids.devWindowName} "bash ${ids.devScriptPath}" C-m
+tmux new-window -t cmux: -n ${ids.dev.windowName} -d
+tmux send-keys -t cmux:${ids.dev.windowName} "bash ${ids.dev.scriptPath}" C-m
 sleep 2
-if tmux list-windows -t cmux | grep -q "${ids.devWindowName}"; then
+if tmux list-windows -t cmux | grep -q "${ids.dev.windowName}"; then
   echo "[DEV] Window is running"
 else
   echo "[DEV] ERROR: Window not found" >&2
