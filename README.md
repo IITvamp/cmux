@@ -44,3 +44,7 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+Silent lines of code  
+Whisper secrets to the screen  
+Bugs flee in the light
