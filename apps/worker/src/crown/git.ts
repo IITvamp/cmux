@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
 import { log } from "../logger";
 import { WORKSPACE_ROOT, execAsync, execFileAsync } from "./utils";
 
@@ -11,6 +12,24 @@ type ExecError = Error & {
 };
 
 let gitRepoPath: string | null = null;
+
+const resolveHomeDirectory = (): string => {
+  const envHome = process.env.HOME?.trim();
+  if (envHome) {
+    return envHome;
+  }
+
+  try {
+    const osHome = homedir();
+    if (osHome) {
+      return osHome;
+    }
+  } catch {
+    // no-op, fall through to default
+  }
+
+  return "/root";
+};
 
 export async function detectGitRepoPath(): Promise<string> {
   if (gitRepoPath) {
@@ -68,6 +87,10 @@ export async function runGitCommand(
     const result = await execAsync(command, {
       cwd: repoPath,
       maxBuffer: 10 * 1024 * 1024,
+      env: {
+        ...process.env,
+        HOME: resolveHomeDirectory(),
+      },
     });
     const stdout = formatOutput(result.stdout);
     const stderr = formatOutput(result.stderr);
@@ -109,6 +132,10 @@ export async function runGitCommandSafe(
     const result = await execFileAsync("git", args, {
       cwd: repoPath,
       maxBuffer: 10 * 1024 * 1024,
+      env: {
+        ...process.env,
+        HOME: resolveHomeDirectory(),
+      },
     });
     const stdout = formatOutput(result.stdout);
     const stderr = formatOutput(result.stderr);
