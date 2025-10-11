@@ -79,6 +79,8 @@ export type DevServerResponse = {
     instanceId: string;
     vscodeUrl: string;
     workerUrl: string;
+    vncUrl: string;
+    cdpUrl: string;
     status: string;
     taskId: string;
     terminalCreated: boolean;

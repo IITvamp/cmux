@@ -25,6 +25,7 @@
     }
   },
   "dependencies": {
+    "@cmux/shared": "workspace:*",
     "@ai-sdk/anthropic": "^2.0.18",
     "@ai-sdk/gateway": "^1.0.28",
     "@ai-sdk/provider-utils": "^3.0.9",

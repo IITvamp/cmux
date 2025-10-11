@@ -466,6 +466,24 @@ managementIO.on("connection", (socket) => {
       const validated = WorkerConfigureGitSchema.parse(data);
       console.log(`Worker ${WORKER_ID} configuring git...`);
 
+      const credentialStorePath = "/root/.git-credentials";
+      const normalizeCredentialHelper = (
+        helper: string,
+      ): string | null => {
+        const trimmed = helper.trim();
+        if (trimmed.includes("/opt/homebrew/bin/gh")) {
+          return "!gh auth git-credential";
+        }
+        if (
+          trimmed.includes("osxkeychain") ||
+          trimmed.includes("wincred") ||
+          trimmed.includes("manager-core")
+        ) {
+          return null;
+        }
+        return trimmed.length > 0 ? trimmed : null;
+      };
+
       // Create a custom git config file that includes the mounted one
       const customGitConfigPath = "/root/.gitconfig.custom";
 
@@ -512,19 +530,46 @@ managementIO.on("connection", (socket) => {
         // No mounted config
       }
 
-      // Add the store credential helper
-      if (!configSections.has("credential")) {
-        configSections.set("credential", new Map());
+      for (const [section, settings] of configSections) {
+        if (!section.startsWith("credential")) {
+          continue;
+        }
+        const helperValue = settings.get("helper");
+        if (!helperValue) {
+          continue;
+        }
+        const normalized = normalizeCredentialHelper(helperValue);
+        if (normalized) {
+          settings.set("helper", normalized);
+        } else {
+          settings.delete("helper");
+          if (settings.size === 0) {
+            configSections.delete(section);
+          }
+        }
       }
-      configSections.get("credential")?.set("helper", "store");
 
       // Create .git-credentials file if GitHub token is provided
       if (validated.githubToken) {
-        const credentialsPath = "/root/.git-credentials";
+        if (!configSections.has("credential")) {
+          configSections.set("credential", new Map());
+        }
+        configSections
+          .get("credential")
+          ?.set("helper", `store --file ${credentialStorePath}`);
+
         const credentialsContent = `https://oauth:${validated.githubToken}@github.com\n`;
-        await fs.writeFile(credentialsPath, credentialsContent);
-        await fs.chmod(credentialsPath, 0o600);
+        await fs.writeFile(credentialStorePath, credentialsContent);
+        await fs.chmod(credentialStorePath, 0o600);
         console.log("GitHub credentials stored in .git-credentials");
+      } else {
+        const credentialSection = configSections.get("credential");
+        if (credentialSection?.get("helper")) {
+          credentialSection.delete("helper");
+        }
+        if (credentialSection && credentialSection.size === 0) {
+          configSections.delete("credential");
+        }
       }
 
       // Add additional git settings if provided
@@ -1276,10 +1321,20 @@ httpServer.listen(WORKER_PORT, () => {
 });
 
 // Start AMP proxy via shared provider module
+const parsedAmpProxyPort = Number.parseInt(
+  process.env.AMP_PROXY_PORT ?? "",
+  10,
+);
+const ampProxyPort = Number.isNaN(parsedAmpProxyPort)
+  ? undefined
+  : parsedAmpProxyPort;
+
 startAmpProxy({
   ampUrl: process.env.AMP_URL,
+  ampUpstreamUrl: process.env.AMP_UPSTREAM_URL,
+  port: ampProxyPort,
   workerId: WORKER_ID,
-  emitToMainServer: emitToMainServer,
+  emitToMainServer,
 });
 
 // Periodic maintenance for pending events
