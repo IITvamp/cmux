@@ -107,10 +107,10 @@ export function ElectronPreviewBrowser({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const isNavigatingRef = useRef(false);
   const pendingRefocusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
+    null
   );
   const windowHasFocusRef = useRef(
-    typeof document !== "undefined" ? document.hasFocus() : true,
+    typeof document !== "undefined" ? document.hasFocus() : true
   );
 
   const { progress, visible } = useLoadingProgress(isLoading);
@@ -162,7 +162,7 @@ export function ElectronPreviewBrowser({
         isNavigatingRef.current = false;
       }
     },
-    [isEditing],
+    [isEditing]
   );
 
   useEffect(() => {
@@ -197,7 +197,7 @@ export function ElectronPreviewBrowser({
           applyState(event.state, event.reason);
           return;
         }
-      },
+      }
     );
     return () => {
       unsubscribe?.();
@@ -234,7 +234,7 @@ export function ElectronPreviewBrowser({
           console.warn("Failed to navigate WebContentsView", error);
         });
     },
-    [addressValue, viewHandle],
+    [addressValue, viewHandle]
   );
 
   const initialSelectHandled = useRef(false);
@@ -246,7 +246,7 @@ export function ElectronPreviewBrowser({
       inputFocused.current = true;
       // event.currentTarget.select();
     },
-    [],
+    []
   );
 
   const handleInputBlur = useCallback(
@@ -324,7 +324,7 @@ export function ElectronPreviewBrowser({
                 .catch((error: unknown) => {
                   console.warn(
                     "Failed to refocus WebContentsView on blur",
-                    error,
+                    error
                   );
                 });
             }
@@ -332,7 +332,7 @@ export function ElectronPreviewBrowser({
         }, 0);
       }
     },
-    [committedUrl, viewHandle],
+    [committedUrl, viewHandle]
   );
 
   const handleInputMouseUp = useCallback(
@@ -343,7 +343,7 @@ export function ElectronPreviewBrowser({
       initialSelectHandled.current = true;
       event.currentTarget.select();
     },
-    [],
+    []
   );
 
   const handleInputKeyDown = useCallback(
@@ -355,7 +355,7 @@ export function ElectronPreviewBrowser({
         // Blur will handle refocusing the WebContentsView
       }
     },
-    [committedUrl],
+    [committedUrl]
   );
 
   const handleToggleDevTools = useCallback(() => {
@@ -446,7 +446,7 @@ export function ElectronPreviewBrowser({
         ? CSS.escape(persistKey)
         : persistKey.replace(/"/g, '\\"');
     const iframe = document.querySelector<HTMLIFrameElement>(
-      `[data-iframe-key="${escapedKey}"] iframe`,
+      `[data-iframe-key="${escapedKey}"] iframe`
     );
     if (!iframe?.contentWindow) {
       return;
@@ -528,7 +528,7 @@ export function ElectronPreviewBrowser({
           // And one more time after a small delay to handle slow focus transfers
           timeoutId = setTimeout(focusInput, 50);
         });
-      },
+      }
     );
 
     return () => {
@@ -608,7 +608,7 @@ export function ElectronPreviewBrowser({
                 .catch((error: unknown) => {
                   console.warn(
                     "Failed to refocus WebContentsView on window focus",
-                    error,
+                    error
                   );
                 });
             }
@@ -658,7 +658,7 @@ export function ElectronPreviewBrowser({
           <div
             className={cn(
               "relative flex items-center gap-1 border border-neutral-200 bg-white px-2 pt-0.5 pb-[3px]",
-              "dark:border-neutral-800 dark:bg-neutral-900",
+              "dark:border-neutral-800 dark:bg-neutral-900"
             )}
           >
             <div className="flex items-center gap-1">
@@ -739,7 +739,7 @@ export function ElectronPreviewBrowser({
                     size="icon"
                     className={clsx(
                       "size-7 rounded-full p-0 text-neutral-600 hover:text-neutral-800 disabled:opacity-30 disabled:hover:text-neutral-400 dark:text-neutral-500 dark:hover:text-neutral-100 dark:disabled:hover:text-neutral-500",
-                      devtoolsOpen && "text-primary hover:text-primary",
+                      devtoolsOpen && "text-primary hover:text-primary"
                     )}
                     onClick={handleToggleDevTools}
                     disabled={!viewHandle}
@@ -772,7 +772,7 @@ export function ElectronPreviewBrowser({
             src={src}
             className="h-full w-full border-0"
             borderRadius={0}
-            sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-downloads"
+            sandbox="allow-scripts allow-popups allow-forms allow-modals allow-downloads"
             onElectronViewReady={handleViewReady}
             onElectronViewDestroyed={handleViewDestroyed}
             forceWebContentsViewIfElectron
