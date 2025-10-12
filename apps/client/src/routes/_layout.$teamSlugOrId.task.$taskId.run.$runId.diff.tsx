@@ -2,6 +2,7 @@ import { FloatingPane } from "@/components/floating-pane";
 import { type GitDiffViewerProps } from "@/components/git-diff-viewer";
 import { RunDiffSection } from "@/components/RunDiffSection";
 import { TaskDetailHeader } from "@/components/task-detail-header";
+import { TaskRunChecks } from "@/components/TaskRunChecks";
 import { useTheme } from "@/components/theme/use-theme";
 import { Button } from "@/components/ui/button";
 import {
@@ -658,17 +659,24 @@ function RunDiffPage() {
             onCollapseAll={diffControls?.collapseAll}
             teamSlugOrId={teamSlugOrId}
           />
-          {task?.text && (
-            <div className="mb-2 px-3.5">
-              <div className="text-xs text-neutral-600 dark:text-neutral-300">
-                <span className="text-neutral-500 dark:text-neutral-400 select-none">
-                  Prompt:{" "}
-                </span>
-                <span className="font-medium">{task.text}</span>
-              </div>
-            </div>
-          )}
-          <div className="bg-white dark:bg-neutral-900 grow flex flex-col">
+           {task?.text && (
+             <div className="mb-2 px-3.5">
+               <div className="text-xs text-neutral-600 dark:text-neutral-300">
+                 <span className="text-neutral-500 dark:text-neutral-400 select-none">
+                   Prompt:{" "}
+                 </span>
+                 <span className="font-medium">{task.text}</span>
+               </div>
+             </div>
+           )}
+           {selectedRun && selectedRun.pullRequestState === "open" && (
+             <TaskRunChecks
+               teamSlugOrId={teamSlugOrId}
+               pullRequests={selectedRun.pullRequests || []}
+               headSha={selectedRun.newBranch}
+             />
+           )}
+           <div className="bg-white dark:bg-neutral-900 grow flex flex-col">
             <Suspense
               fallback={
                 <div className="flex items-center justify-center h-full">
