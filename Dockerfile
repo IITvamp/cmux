@@ -194,6 +194,28 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 [ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"
 PROFILE
+
+# Configure nvm for bash
+cat <<'BASHRC' >> /root/.bashrc
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"
+BASHRC
+
+# Configure nvm for zsh
+mkdir -p /root
+cat <<'ZSHRC' >> /root/.zshrc
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"
+ZSHRC
+
+cat <<'ZPROFILE' >> /root/.zprofile
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"
+ZPROFILE
+
 bash -lc 'source /etc/profile.d/nvm.sh && nvm --version'
 EOF
 
@@ -337,6 +359,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   git \
   python3 \
   bash \
+  zsh \
   nano \
   net-tools \
   lsof \
@@ -539,7 +562,33 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 [ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"
 PROFILE
+
+# Configure nvm for bash
+cat <<'BASHRC' >> /root/.bashrc
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"
+BASHRC
+
+# Configure nvm for zsh (both zshrc and zprofile for interactive and login shells)
+mkdir -p /root
+cat <<'ZSHRC' >> /root/.zshrc
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"
+ZSHRC
+
+cat <<'ZPROFILE' >> /root/.zprofile
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"
+ZPROFILE
+
+# Test nvm is working
 bash -lc 'source /etc/profile.d/nvm.sh && nvm --version'
+if command -v zsh >/dev/null 2>&1; then
+  zsh -lc 'nvm --version'
+fi
 EOF
 
 # Install Bun natively (since runtime is x86_64, we can't copy from ARM64 builder)
