@@ -72,7 +72,7 @@ function deriveGeneratedBranchName(branch?: string | null): string | undefined {
 
 type EnvironmentSummary = Pick<
   Doc<"environments">,
-  "_id" | "name" | "selectedRepos"
+  "_id" | "name" | "selectedRepos" | "hiddenPorts"
 >;
 
 type TaskRunWithChildren = Doc<"taskRuns"> & {
@@ -117,6 +117,7 @@ async function fetchTaskRunsForTask(
         _id: environment._id,
         name: environment.name,
         selectedRepos: environment.selectedRepos,
+        hiddenPorts: environment.hiddenPorts,
       });
     }
   }

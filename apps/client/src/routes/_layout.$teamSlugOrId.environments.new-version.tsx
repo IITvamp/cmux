@@ -149,6 +149,11 @@ function NewSnapshotVersionPage() {
                 ? environment.exposedPorts.join(", ")
                 : ""
             }
+            initialHiddenPorts={
+              environment.hiddenPorts && environment.hiddenPorts.length > 0
+                ? environment.hiddenPorts.join(", ")
+                : ""
+            }
             initialEnvVars={initialEnvVars}
           />
         )}

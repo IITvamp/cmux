@@ -2,7 +2,7 @@ import { type Doc } from "@cmux/convex/dataModel";
 
 export type RunEnvironmentSummary = Pick<
   Doc<"environments">,
-  "_id" | "name" | "selectedRepos"
+  "_id" | "name" | "selectedRepos" | "hiddenPorts"
 >;
 
 export interface TaskRunWithChildren extends Doc<"taskRuns"> {

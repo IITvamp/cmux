@@ -541,11 +541,15 @@ function TaskRunTreeInner({
     [hasActiveVSCode, run]
   );
 
-  // Collect running preview ports
+  // Collect running preview ports, filtering out hidden ports
   const previewServices = useMemo(() => {
     if (!run.networking) return [];
-    return run.networking.filter((service) => service.status === "running");
-  }, [run.networking]);
+    const hiddenPorts = run.environment?.hiddenPorts ?? [];
+    return run.networking.filter(
+      (service) =>
+        service.status === "running" && !hiddenPorts.includes(service.port)
+    );
+  }, [run.networking, run.environment]);
 
   const {
     actions: openWithActions,

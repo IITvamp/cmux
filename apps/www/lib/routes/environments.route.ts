@@ -42,6 +42,7 @@ const CreateEnvironmentBody = z
     maintenanceScript: z.string().optional(),
     devScript: z.string().optional(),
     exposedPorts: z.array(z.number()).optional(),
+    hiddenPorts: z.array(z.number()).optional(),
   })
   .openapi("CreateEnvironmentBody");
 
@@ -63,6 +64,7 @@ const GetEnvironmentResponse = z
     maintenanceScript: z.string().optional(),
     devScript: z.string().optional(),
     exposedPorts: z.array(z.number()).optional(),
+    hiddenPorts: z.array(z.number()).optional(),
     createdAt: z.number(),
     updatedAt: z.number(),
   })
@@ -217,6 +219,11 @@ environmentsRouter.openapi(
           ? sanitizePortsOrThrow(body.exposedPorts)
           : [];
 
+      const sanitizedHiddenPorts =
+        body.hiddenPorts && body.hiddenPorts.length > 0
+          ? sanitizePortsOrThrow(body.hiddenPorts)
+          : [];
+
       // Create Morph snapshot from instance
       const client = new MorphCloudClient({ apiKey: env.MORPH_API_KEY });
       const instance = await client.instances.get({
@@ -265,6 +272,7 @@ environmentsRouter.openapi(
           maintenanceScript: body.maintenanceScript,
           devScript: body.devScript,
           exposedPorts: sanitizedPorts.length > 0 ? sanitizedPorts : undefined,
+          hiddenPorts: sanitizedHiddenPorts.length > 0 ? sanitizedHiddenPorts : undefined,
         }
       );
 
@@ -331,6 +339,7 @@ environmentsRouter.openapi(
         maintenanceScript: env.maintenanceScript,
         devScript: env.devScript,
         exposedPorts: env.exposedPorts,
+        hiddenPorts: env.hiddenPorts,
         createdAt: env.createdAt,
         updatedAt: env.updatedAt,
       }));
@@ -402,6 +411,7 @@ environmentsRouter.openapi(
         maintenanceScript: environment.maintenanceScript,
         devScript: environment.devScript,
         exposedPorts: environment.exposedPorts,
+        hiddenPorts: environment.hiddenPorts,
         createdAt: environment.createdAt,
         updatedAt: environment.updatedAt,
       };
@@ -561,6 +571,7 @@ environmentsRouter.openapi(
         maintenanceScript: updated.maintenanceScript ?? undefined,
         devScript: updated.devScript ?? undefined,
         exposedPorts: updated.exposedPorts ?? undefined,
+        hiddenPorts: updated.hiddenPorts ?? undefined,
         createdAt: updated.createdAt,
         updatedAt: updated.updatedAt,
       });

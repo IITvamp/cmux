@@ -64,6 +64,7 @@ export const create = authMutation({
     maintenanceScript: v.optional(v.string()),
     devScript: v.optional(v.string()),
     exposedPorts: v.optional(v.array(v.number())),
+    hiddenPorts: v.optional(v.array(v.number())),
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
@@ -72,6 +73,7 @@ export const create = authMutation({
     }
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
     const sanitizedPorts = normalizeExposedPorts(args.exposedPorts ?? []);
+    const sanitizedHiddenPorts = normalizeExposedPorts(args.hiddenPorts ?? []);
     const createdAt = Date.now();
     const normalizeScript = (script: string | undefined): string | undefined => {
       if (script === undefined) {
@@ -95,6 +97,8 @@ export const create = authMutation({
       devScript,
       exposedPorts:
         sanitizedPorts.length > 0 ? sanitizedPorts : undefined,
+      hiddenPorts:
+        sanitizedHiddenPorts.length > 0 ? sanitizedHiddenPorts : undefined,
       createdAt,
       updatedAt: createdAt,
     });
@@ -192,6 +196,40 @@ export const updateExposedPorts = authMutation({
       patch.exposedPorts = sanitizedPorts;
     } else {
       patch.exposedPorts = undefined;
+    }
+
+    await ctx.db.patch(args.id, patch);
+
+    return sanitizedPorts;
+  },
+});
+
+export const updateHiddenPorts = authMutation({
+  args: {
+    teamSlugOrId: v.string(),
+    id: v.id("environments"),
+    ports: v.array(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+    const environment = await ctx.db.get(args.id);
+
+    if (!environment || environment.teamId !== teamId) {
+      throw new Error("Environment not found");
+    }
+
+    const sanitizedPorts = normalizeExposedPorts(args.ports);
+    const patch: {
+      hiddenPorts?: number[];
+      updatedAt: number;
+    } = {
+      updatedAt: Date.now(),
+    };
+
+    if (sanitizedPorts.length > 0) {
+      patch.hiddenPorts = sanitizedPorts;
+    } else {
+      patch.hiddenPorts = undefined;
     }
 
     await ctx.db.patch(args.id, patch);
