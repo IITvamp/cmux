@@ -4,7 +4,7 @@ import { convexQuery } from "@convex-dev/react-query";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import clsx from "clsx";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import z from "zod";
 import { PersistentWebView } from "@/components/persistent-webview";
 import { getTaskRunPersistKey } from "@/lib/persistent-webview-keys";
@@ -62,9 +62,11 @@ function VSCodeComponent() {
     : null;
   const persistKey = getTaskRunPersistKey(taskRunId);
   const hasWorkspace = workspaceUrl !== null;
+  const [iframeLoaded, setIframeLoaded] = useState(false);
 
   const onLoad = useCallback(() => {
     console.log(`Workspace view loaded for task run ${taskRunId}`);
+    setIframeLoaded(true);
   }, [taskRunId]);
 
   const onError = useCallback(
@@ -101,8 +103,8 @@ function VSCodeComponent() {
             className={clsx(
               "absolute inset-0 flex items-center justify-center transition pointer-events-none",
               {
-                "opacity-100": !hasWorkspace,
-                "opacity-0": hasWorkspace,
+                "opacity-100": hasWorkspace && !iframeLoaded,
+                "opacity-0": !hasWorkspace || iframeLoaded,
               }
             )}
           >
