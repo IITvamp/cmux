@@ -75,6 +75,11 @@ fi`;
   let devError: string | null = null;
 
   if (maintenanceScript && maintenanceScript.trim().length > 0) {
+    const maintenanceRunId = `maintenance_${Date.now().toString(36)}_${Math.random()
+      .toString(36)
+      .slice(2, 10)}`;
+    const maintenanceExitCodePath = `${ids.maintenance.scriptPath}.${maintenanceRunId}.exit-code`;
+
     const maintenanceScriptContent = `#!/bin/zsh
 set -eux
 cd ${WORKSPACE_ROOT}
@@ -84,21 +89,44 @@ ${maintenanceScript}
 echo "=== Maintenance Script Completed at \$(date) ==="
 `;
 
+    const maintenanceWindowCommand = `zsh "${ids.maintenance.scriptPath}"
+EXIT_CODE=$?
+echo "$EXIT_CODE" > "${maintenanceExitCodePath}"
+if [ "$EXIT_CODE" -ne 0 ]; then
+  echo "[MAINTENANCE] Script exited with code $EXIT_CODE" >&2
+else
+  echo "[MAINTENANCE] Script completed successfully"
+fi
+exec zsh`;
+
     const maintenanceCommand = `set -eu
 mkdir -p ${CMUX_RUNTIME_DIR}
 cat > ${ids.maintenance.scriptPath} <<'SCRIPT_EOF'
 ${maintenanceScriptContent}
 SCRIPT_EOF
 chmod +x ${ids.maintenance.scriptPath}
+rm -f ${maintenanceExitCodePath}
 ${waitForTmuxSession}
-tmux new-window -t cmux: -n ${ids.maintenance.windowName} -d
-tmux send-keys -t cmux:${ids.maintenance.windowName} "zsh ${ids.maintenance.scriptPath}" C-m
+tmux new-window -t cmux: -n ${ids.maintenance.windowName} -d ${singleQuote(maintenanceWindowCommand)}
 sleep 2
 if tmux list-windows -t cmux | grep -q "${ids.maintenance.windowName}"; then
   echo "[MAINTENANCE] Window is running"
 else
   echo "[MAINTENANCE] Window may have exited (normal if script completed)"
 fi
+while [ ! -f ${maintenanceExitCodePath} ]; do
+  sleep 1
+done
+MAINTENANCE_EXIT_CODE=0
+if [ -f ${maintenanceExitCodePath} ]; then
+  MAINTENANCE_EXIT_CODE=$(cat ${maintenanceExitCodePath} || echo 0)
+else
+  echo "[MAINTENANCE] Missing exit code file; assuming failure" >&2
+  MAINTENANCE_EXIT_CODE=1
+fi
+rm -f ${maintenanceExitCodePath}
+echo "[MAINTENANCE] Wait complete with exit code $MAINTENANCE_EXIT_CODE"
+exit $MAINTENANCE_EXIT_CODE
 `;
 
     try {
@@ -110,7 +138,7 @@ fi
         const stderr = result.stderr?.trim() || "";
         const stdout = result.stdout?.trim() || "";
         const messageParts = [
-          `Failed to start maintenance script with exit code ${result.exit_code}`,
+          `Maintenance script finished with exit code ${result.exit_code}`,
           stderr ? `stderr: ${stderr}` : null,
           stdout ? `stdout: ${stdout}` : null,
         ].filter((part): part is string => part !== null);
