@@ -519,6 +519,7 @@ function SocketActions({
   repoDiffTargets: RepoDiffTarget[];
   teamSlugOrId: string;
 }) {
+  const navigate = useNavigate();
   const { socket } = useSocketSuspense();
   const pullRequests = useMemo(
     () => selectedRun?.pullRequests ?? [],
@@ -569,11 +570,14 @@ function SocketActions({
           return (query.data ?? []).length > 0;
         });
 
-  const openUrls = (prs: Array<{ url?: string | null }>) => {
-    prs.forEach((pr) => {
-      if (pr.url) {
-        window.open(pr.url, "_blank", "noopener,noreferrer");
-      }
+  const navigateToPrView = () => {
+    navigate({
+      to: "/$teamSlugOrId/task/$taskId/run/$runId/pr",
+      params: {
+        teamSlugOrId,
+        taskId: selectedRun?.taskId ?? ("" as Id<"tasks">),
+        runId: taskRunId,
+      },
     });
   };
 
@@ -633,7 +637,7 @@ function SocketActions({
         (result) => result.url && !result.error,
       );
       if (actionable.length > 0) {
-        openUrls(actionable);
+        navigateToPrView();
       }
       toast.success(openedLabel, {
         id: context?.toastId,
@@ -642,7 +646,7 @@ function SocketActions({
           actionable.length > 0
             ? {
                 label: actionable.length === 1 ? "View PR" : "View PRs",
-                onClick: () => openUrls(actionable),
+                onClick: navigateToPrView,
               }
             : undefined,
       });
@@ -695,7 +699,7 @@ function SocketActions({
         (result) => result.url && !result.error,
       );
       if (actionable.length > 0) {
-        openUrls(actionable);
+        navigateToPrView();
       }
       toast.success(openedDraftLabel, {
         id: context?.toastId,
@@ -704,7 +708,7 @@ function SocketActions({
           actionable.length > 0
             ? {
                 label: actionable.length === 1 ? "View draft" : "View drafts",
-                onClick: () => openUrls(actionable),
+                onClick: navigateToPrView,
               }
             : undefined,
       });
@@ -793,12 +797,7 @@ function SocketActions({
   };
 
   const handleViewPRs = () => {
-    const existing = pullRequests.filter((pr) => pr.url);
-    if (existing.length > 0) {
-      openUrls(existing);
-      return;
-    }
-    handleOpenDraftPRs();
+    navigateToPrView();
   };
 
   const handleMerge = (method: MergeMethod) => {
@@ -850,11 +849,7 @@ function SocketActions({
                 <Dropdown.Item
                   key={repoName}
                   disabled={!hasUrl}
-                  onClick={() => {
-                    if (pr?.url) {
-                      window.open(pr.url, "_blank", "noopener,noreferrer");
-                    }
-                  }}
+                  onClick={navigateToPrView}
                 >
                   <span className="truncate">{repoName}</span>
                 </Dropdown.Item>
