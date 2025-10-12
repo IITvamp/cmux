@@ -513,6 +513,7 @@ const convexSchema = defineSchema({
     authorLogin: v.optional(v.string()),
     authorId: v.optional(v.number()),
     htmlUrl: v.optional(v.string()),
+    cmuxEyesCommentPostedAt: v.optional(v.number()),
 
     // Branch and commit info
     baseRef: v.optional(v.string()),

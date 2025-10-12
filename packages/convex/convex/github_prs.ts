@@ -1,13 +1,84 @@
 import { v } from "convex/values";
+import { fetchInstallationAccessToken } from "../_shared/githubApp";
 import { getTeamId } from "../_shared/team";
 import {
   internalMutation,
   internalQuery,
   type MutationCtx,
 } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { authMutation, authQuery } from "./users/utils";
 
 const SYSTEM_BRANCH_USER_ID = "__system__";
+
+const EYES_COMMENT_BODY = "\u{1F440}"; // 👀
+
+async function postEyesComment({
+  installationId,
+  repoFullName,
+  pullNumber,
+}: {
+  installationId: number;
+  repoFullName: string;
+  pullNumber: number;
+}): Promise<boolean> {
+  const [owner, repo] = repoFullName.split("/", 2);
+  if (!owner || !repo) {
+    console.warn("[github_prs] Invalid repo full name for eyes comment", {
+      repoFullName,
+      pullNumber,
+    });
+    return false;
+  }
+
+  const accessToken = await fetchInstallationAccessToken(installationId);
+  if (!accessToken) {
+    console.warn("[github_prs] Missing access token for eyes comment", {
+      installationId,
+      repoFullName,
+      pullNumber,
+    });
+    return false;
+  }
+
+  try {
+    const response = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/issues/${pullNumber}/comments`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/vnd.github+json",
+          "Content-Type": "application/json",
+          "User-Agent": "cmux-app",
+        },
+        body: JSON.stringify({ body: EYES_COMMENT_BODY }),
+      },
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("[github_prs] Failed to post eyes comment", {
+        installationId,
+        repoFullName,
+        pullNumber,
+        status: response.status,
+        errorText,
+      });
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("[github_prs] Unexpected error posting eyes comment", {
+      installationId,
+      repoFullName,
+      pullNumber,
+      error,
+    });
+    return false;
+  }
+}
 
 type WebhookUser = {
   login?: string;
@@ -52,6 +123,7 @@ type WebhookPullRequest = {
 type PullRequestWebhookEnvelope = {
   pull_request?: WebhookPullRequest;
   number?: number;
+  action?: string;
 };
 
 async function upsertBranchMetadata(
@@ -178,7 +250,7 @@ async function upsertCore(
       changedFiles?: number;
     };
   }
-) {
+): Promise<{ id: Id<"pullRequests">; created: boolean }> {
   const existing = await ctx.db
     .query("pullRequests")
     .withIndex("by_team_repo_number", (q) =>
@@ -194,7 +266,7 @@ async function upsertCore(
       provider: "github",
       teamId,
     });
-    return existing._id;
+    return { id: existing._id, created: false };
   }
   const id = await ctx.db.insert("pullRequests", {
     provider: "github",
@@ -204,7 +276,7 @@ async function upsertCore(
     number,
     ...record,
   });
-  return id;
+  return { id, created: true };
 }
 
 export const upsertPullRequestInternal = internalMutation({
@@ -240,8 +312,16 @@ export const upsertPullRequestInternal = internalMutation({
       changedFiles: v.optional(v.number()),
     }),
   },
-  handler: async (ctx, { teamId, installationId, repoFullName, number, record }) =>
-    upsertCore(ctx, { teamId, installationId, repoFullName, number, record }),
+  handler: async (ctx, { teamId, installationId, repoFullName, number, record }) => {
+    const { id } = await upsertCore(ctx, {
+      teamId,
+      installationId,
+      repoFullName,
+      number,
+      record,
+    });
+    return id;
+  },
 });
 
 export const listPullRequests = authQuery({
@@ -337,6 +417,7 @@ export const upsertFromWebhookPayload = internalMutation({
         const n = Date.parse(s);
         return Number.isFinite(n) ? n : undefined;
       };
+      const action = mapStr(envelope.action);
       const baseRef = mapStr(pr.base?.ref);
       const headRef = mapStr(pr.head?.ref);
       const baseSha = mapStr(pr.base?.sha);
@@ -348,7 +429,7 @@ export const upsertFromWebhookPayload = internalMutation({
         ts(pr.updated_at) ??
         Date.now();
 
-      await upsertCore(ctx, {
+      const { id, created } = await upsertCore(ctx, {
         teamId,
         installationId,
         repoFullName,
@@ -400,6 +481,23 @@ export const upsertFromWebhookPayload = internalMutation({
           activityTimestamp: ts(pr.updated_at) ?? Date.now(),
         });
       }
+
+      const prDoc = await ctx.db.get(id);
+      if (prDoc && prDoc.cmuxEyesCommentPostedAt === undefined) {
+        const shouldAttemptComment = created || action === "opened";
+        if (shouldAttemptComment) {
+          const posted = await postEyesComment({
+            installationId,
+            repoFullName,
+            pullNumber: number,
+          });
+          if (posted) {
+            await ctx.db.patch(prDoc._id, {
+              cmuxEyesCommentPostedAt: Date.now(),
+            });
+          }
+        }
+      }
       return { ok: true as const };
     } catch (_e) {
       return { ok: false as const };
@@ -442,6 +540,13 @@ export const upsertFromServer = authMutation({
   },
   handler: async (ctx, { teamSlugOrId, installationId, repoFullName, number, record }) => {
     const teamId = await getTeamId(ctx, teamSlugOrId);
-    return await upsertCore(ctx, { teamId, installationId, repoFullName, number, record });
+    const { id } = await upsertCore(ctx, {
+      teamId,
+      installationId,
+      repoFullName,
+      number,
+      record,
+    });
+    return id;
   },
 });
