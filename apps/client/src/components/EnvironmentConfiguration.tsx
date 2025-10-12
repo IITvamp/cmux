@@ -49,6 +49,7 @@ export function EnvironmentConfiguration({
   initialMaintenanceScript = "",
   initialDevScript = "",
   initialExposedPorts = "",
+  initialHiddenPorts = "",
   initialEnvVars,
 }: {
   selectedRepos: string[];
@@ -62,6 +63,7 @@ export function EnvironmentConfiguration({
   initialMaintenanceScript?: string;
   initialDevScript?: string;
   initialExposedPorts?: string;
+  initialHiddenPorts?: string;
   initialEnvVars?: EnvVar[];
 }) {
   const navigate = useNavigate();
@@ -89,6 +91,8 @@ export function EnvironmentConfiguration({
   const [devScript, setDevScript] = useState(() => initialDevScript);
   const [exposedPorts, setExposedPorts] = useState(() => initialExposedPorts);
   const [portsError, setPortsError] = useState<string | null>(null);
+  const [hiddenPorts, setHiddenPorts] = useState(() => initialHiddenPorts);
+  const [hiddenPortsError, setHiddenPortsError] = useState<string | null>(null);
   const keyInputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [pendingFocusIndex, setPendingFocusIndex] = useState<number | null>(
     null
@@ -235,7 +239,42 @@ export function EnvironmentConfiguration({
     }
 
     setPortsError(null);
+    setHiddenPortsError(null);
     const ports = validation.sanitized;
+
+    const parsedHiddenPorts = hiddenPorts
+      .split(",")
+      .map((p) => Number.parseInt(p.trim(), 10))
+      .filter((n) => Number.isFinite(n));
+
+    const hiddenValidation = validateExposedPorts(parsedHiddenPorts);
+    if (hiddenValidation.reserved.length > 0) {
+      setHiddenPortsError(
+        `Reserved ports cannot be hidden: ${hiddenValidation.reserved.join(", ")}`
+      );
+      return;
+    }
+    if (hiddenValidation.invalid.length > 0) {
+      setHiddenPortsError("Hidden ports must be positive integers.");
+      return;
+    }
+
+    const sanitizedHiddenPorts = hiddenValidation.sanitized.filter((port) =>
+      ports.includes(port)
+    );
+
+    if (sanitizedHiddenPorts.length !== hiddenValidation.sanitized.length) {
+      const missing = hiddenValidation.sanitized.filter(
+        (port) => !ports.includes(port)
+      );
+      setHiddenPortsError(
+        `Hidden ports must also be exposed: ${missing.join(", ")}`
+      );
+      return;
+    }
+
+    const hiddenPortPayload =
+      sanitizedHiddenPorts.length > 0 ? sanitizedHiddenPorts : undefined;
 
     if (mode === "snapshot" && sourceEnvironmentId) {
       // Create a new snapshot version
@@ -286,6 +325,7 @@ export function EnvironmentConfiguration({
             maintenanceScript: requestMaintenanceScript,
             devScript: requestDevScript,
             exposedPorts: ports.length > 0 ? ports : undefined,
+            hiddenPorts: hiddenPortPayload,
             description: undefined,
           },
         },
@@ -632,7 +672,11 @@ export function EnvironmentConfiguration({
                 <input
                   type="text"
                   value={exposedPorts}
-                  onChange={(e) => setExposedPorts(e.target.value)}
+                  onChange={(e) => {
+                    setExposedPorts(e.target.value);
+                    setPortsError(null);
+                    setHiddenPortsError(null);
+                  }}
                   placeholder="3000, 8080, 5432"
                   className="w-full rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700"
                 />
@@ -642,6 +686,28 @@ export function EnvironmentConfiguration({
                 </p>
                 {portsError && (
                   <p className="text-xs text-red-500">{portsError}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                  Hidden preview ports
+                </label>
+                <input
+                  type="text"
+                  value={hiddenPorts}
+                  onChange={(e) => {
+                    setHiddenPorts(e.target.value);
+                    setHiddenPortsError(null);
+                  }}
+                  placeholder="3001, 9229"
+                  className="w-full rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700"
+                />
+                <p className="text-xs text-neutral-500 dark:text-neutral-500">
+                  These ports remain exposed but will be hidden from sidebar previews.
+                  They must also appear in the exposed ports list.
+                </p>
+                {hiddenPortsError && (
+                  <p className="text-xs text-red-500">{hiddenPortsError}</p>
                 )}
               </div>
             </div>

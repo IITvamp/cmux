@@ -72,7 +72,7 @@ function deriveGeneratedBranchName(branch?: string | null): string | undefined {
 
 type EnvironmentSummary = Pick<
   Doc<"environments">,
-  "_id" | "name" | "selectedRepos"
+  "_id" | "name" | "selectedRepos" | "hiddenPorts"
 >;
 
 type TaskRunWithChildren = Doc<"taskRuns"> & {
@@ -117,6 +117,7 @@ async function fetchTaskRunsForTask(
         _id: environment._id,
         name: environment.name,
         selectedRepos: environment.selectedRepos,
+        hiddenPorts: environment.hiddenPorts,
       });
     }
   }
@@ -125,10 +126,18 @@ async function fetchTaskRunsForTask(
   const rootRuns: TaskRunWithChildren[] = [];
 
   runs.forEach((run) => {
-    const networking = run.networking?.map((item) => ({
-      ...item,
-      url: rewriteMorphUrl(item.url),
-    }));
+    const hiddenPorts =
+      run.environmentId !== undefined
+        ? environmentSummaries.get(run.environmentId)?.hiddenPorts
+        : undefined;
+    const hiddenPortSet = hiddenPorts ? new Set(hiddenPorts) : undefined;
+
+    const networking = run.networking
+      ?.filter((item) => !hiddenPortSet?.has(item.port))
+      .map((item) => ({
+        ...item,
+        url: rewriteMorphUrl(item.url),
+      }));
 
     runMap.set(run._id, {
       ...run,

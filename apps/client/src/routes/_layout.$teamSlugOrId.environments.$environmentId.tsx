@@ -33,6 +33,8 @@ import {
   ArrowLeft,
   Calendar,
   Code,
+  Eye,
+  EyeOff,
   GitBranch,
   Loader2,
   Package,
@@ -88,6 +90,7 @@ function EnvironmentDetailsPage() {
   if (!environment) {
     throw new Error("Environment not found");
   }
+  const environmentHiddenSet = new Set(environment.hiddenPorts ?? []);
   const snapshotsQuery = convexQuery(api.environmentSnapshots.list, {
     teamSlugOrId,
     environmentId,
@@ -116,6 +119,9 @@ function EnvironmentDetailsPage() {
   const [isEditingPorts, setIsEditingPorts] = useState(false);
   const [portsDraft, setPortsDraft] = useState<number[]>(
     environment.exposedPorts ?? [],
+  );
+  const [hiddenPortsDraft, setHiddenPortsDraft] = useState<number[]>(
+    environment.hiddenPorts ?? [],
   );
   const [portInput, setPortInput] = useState("");
   const [portsError, setPortsError] = useState<string | null>(null);
@@ -182,9 +188,18 @@ function EnvironmentDetailsPage() {
 
   useEffect(() => {
     if (!isEditingPorts) {
-      setPortsDraft(environment.exposedPorts ?? []);
+      const nextPorts = environment.exposedPorts ?? [];
+      setPortsDraft(nextPorts);
+      const nextHidden = (environment.hiddenPorts ?? []).filter((port) =>
+        nextPorts.includes(port),
+      );
+      setHiddenPortsDraft(nextHidden);
     }
-  }, [environment.exposedPorts, isEditingPorts]);
+  }, [
+    environment.exposedPorts,
+    environment.hiddenPorts,
+    isEditingPorts,
+  ]);
 
   useEffect(() => {
     if (!isEditingDevScript) {
@@ -200,6 +215,9 @@ function EnvironmentDetailsPage() {
 
   const handleStartEditingPorts = () => {
     setPortsDraft(environment.exposedPorts ?? []);
+    setHiddenPortsDraft((environment.hiddenPorts ?? []).filter((port) =>
+      (environment.exposedPorts ?? []).includes(port),
+    ));
     setPortInput("");
     setPortsError(null);
     setIsEditingPorts(true);
@@ -208,6 +226,9 @@ function EnvironmentDetailsPage() {
   const handleCancelPorts = () => {
     setIsEditingPorts(false);
     setPortsDraft(environment.exposedPorts ?? []);
+    setHiddenPortsDraft((environment.hiddenPorts ?? []).filter((port) =>
+      (environment.exposedPorts ?? []).includes(port),
+    ));
     setPortInput("");
     setPortsError(null);
   };
@@ -313,16 +334,32 @@ function EnvironmentDetailsPage() {
       return;
     }
 
-    setPortsDraft(validation.sanitized);
+    const sanitizedPorts = validation.sanitized;
+    setPortsDraft(sanitizedPorts);
+    setHiddenPortsDraft((prev) =>
+      prev.filter((port) => sanitizedPorts.includes(port)),
+    );
     setPortInput("");
     setPortsError(null);
   };
 
   const handleRemovePort = (port: number) => {
     setPortsDraft((prev) => prev.filter((value) => value !== port));
+    setHiddenPortsDraft((prev) => prev.filter((value) => value !== port));
   };
 
-  const handleSavePorts = () => {
+  const handleToggleHiddenPort = (port: number) => {
+    setHiddenPortsDraft((prev) => {
+      if (prev.includes(port)) {
+        return prev.filter((value) => value !== port);
+      }
+      const sanitized = validateExposedPorts([...prev, port]).sanitized;
+      return sanitized.filter((value) => portsDraft.includes(value));
+    });
+    setPortsError(null);
+  };
+
+  const handleSavePorts = async () => {
     const validation = validateExposedPorts(portsDraft);
     if (validation.reserved.length > 0) {
       setPortsError(
@@ -335,27 +372,57 @@ function EnvironmentDetailsPage() {
       return;
     }
 
-    setPortsError(null);
-    updatePortsMutation.mutate(
-      {
-        path: { id: String(environmentId) },
-        body: { teamSlugOrId, ports: validation.sanitized },
-      },
-      {
-        onSuccess: async () => {
-          setIsEditingPorts(false);
-          setPortInput("");
-          toast.success("Exposed ports updated");
-        },
-        onError: (error) => {
-          setPortsError(
-            error instanceof Error
-              ? error.message
-              : "Failed to update exposed ports",
-          );
-        },
-      },
+    const hiddenValidation = validateExposedPorts(hiddenPortsDraft);
+    if (hiddenValidation.reserved.length > 0) {
+      setPortsError(
+        `Reserved ports cannot be hidden: ${hiddenValidation.reserved.join(", ")}`,
+      );
+      return;
+    }
+    if (hiddenValidation.invalid.length > 0) {
+      setPortsError("Hidden ports must be positive integers.");
+      return;
+    }
+
+    const sanitizedPorts = validation.sanitized;
+    const sanitizedHidden = hiddenValidation.sanitized.filter((port) =>
+      sanitizedPorts.includes(port),
     );
+
+    if (sanitizedHidden.length !== hiddenValidation.sanitized.length) {
+      const missing = hiddenValidation.sanitized.filter(
+        (port) => !sanitizedPorts.includes(port),
+      );
+      setPortsError(
+        `Hidden ports must also be exposed: ${missing.join(", ")}`,
+      );
+      return;
+    }
+
+    setPortsError(null);
+    try {
+      const response = await updatePortsMutation.mutateAsync({
+        path: { id: String(environmentId) },
+        body: {
+          teamSlugOrId,
+          ports: sanitizedPorts,
+          hiddenPorts:
+            sanitizedHidden.length > 0 ? sanitizedHidden : undefined,
+        },
+      });
+      setPortsDraft(response.exposedPorts);
+      setHiddenPortsDraft(response.hiddenPorts ?? []);
+      setIsEditingPorts(false);
+      setPortInput("");
+      toast.success("Exposed ports updated");
+      await queryClient.invalidateQueries({ queryKey: environmentQuery.queryKey });
+    } catch (error) {
+      setPortsError(
+        error instanceof Error
+          ? error.message
+          : "Failed to update exposed ports",
+      );
+    }
   };
 
   const handleActivateSnapshot = (
@@ -826,28 +893,59 @@ function EnvironmentDetailsPage() {
                   <div className="space-y-3">
                     <div className="flex flex-wrap gap-2">
                       {portsDraft.length > 0 ? (
-                        portsDraft.map((port) => (
-                          <span
-                            key={port}
-                            className="inline-flex items-center rounded-full bg-neutral-100 dark:bg-neutral-900 px-3 py-1 text-sm text-neutral-700 dark:text-neutral-300"
-                          >
-                            {port}
-                            <button
-                              type="button"
-                              onClick={() => handleRemovePort(port)}
-                              className="ml-2 text-neutral-500 hover:text-neutral-800 dark:text-neutral-500 dark:hover:text-neutral-200"
-                              aria-label={`Remove port ${port}`}
+                        portsDraft.map((port) => {
+                          const isHidden = hiddenPortsDraft.includes(port);
+                          return (
+                            <span
+                              key={port}
+                              className="inline-flex items-center gap-2 rounded-full bg-neutral-100 dark:bg-neutral-900 px-3 py-1 text-sm text-neutral-700 dark:text-neutral-300"
                             >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </span>
-                        ))
+                              <span className="flex items-center gap-1">
+                                {port}
+                                {isHidden ? (
+                                  <EyeOff
+                                    className="w-3 h-3 text-neutral-500 dark:text-neutral-500"
+                                    aria-hidden="true"
+                                  />
+                                ) : null}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleHiddenPort(port)}
+                                className="text-neutral-500 hover:text-neutral-800 dark:text-neutral-500 dark:hover:text-neutral-200"
+                              >
+                                {isHidden ? (
+                                  <Eye className="w-3 h-3" aria-hidden="true" />
+                                ) : (
+                                  <EyeOff className="w-3 h-3" aria-hidden="true" />
+                                )}
+                                <span className="sr-only">
+                                  {isHidden
+                                    ? `Show port ${port} in previews`
+                                    : `Hide port ${port} in previews`}
+                                </span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRemovePort(port)}
+                                className="text-neutral-500 hover:text-neutral-800 dark:text-neutral-500 dark:hover:text-neutral-200"
+                                aria-label={`Remove port ${port}`}
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          );
+                        })
                       ) : (
                         <span className="text-sm text-neutral-500 dark:text-neutral-500">
                           No ports selected.
                         </span>
                       )}
                     </div>
+                    <p className="flex items-center gap-1 text-xs text-neutral-500 dark:text-neutral-500">
+                      <EyeOff className="w-3 h-3" aria-hidden="true" />
+                      Hidden ports stay exposed but are removed from previews.
+                    </p>
                     <div className="flex items-center gap-2">
                       <input
                         type="number"
@@ -891,24 +989,41 @@ function EnvironmentDetailsPage() {
                   <div className="space-y-3">
                     {environment.exposedPorts &&
                     environment.exposedPorts.length > 0 ? (
-                      <div className="flex flex-wrap gap-2">
-                        {environment.exposedPorts.map((port: number) => (
-                          <span
-                            key={port}
-                            className="inline-flex items-center rounded-full bg-neutral-100 px-3 py-1 text-sm text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300"
+                      <>
+                        <div className="flex flex-wrap gap-2">
+                          {environment.exposedPorts.map((port: number) => {
+                            const isHidden = environmentHiddenSet.has(port);
+                            return (
+                            <span
+                              key={port}
+                              className="inline-flex items-center gap-1 rounded-full bg-neutral-100 px-3 py-1 text-sm text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300"
+                            >
+                              {port}
+                              {isHidden ? (
+                                <EyeOff
+                                  className="w-3 h-3 text-neutral-500 dark:text-neutral-500"
+                                  aria-hidden="true"
+                                />
+                              ) : null}
+                            </span>
+                            );
+                          })}
+                          <button
+                            type="button"
+                            onClick={handleStartEditingPorts}
+                            className="inline-flex h-7 items-center gap-1 rounded-md border border-neutral-300 px-3 text-sm font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
                           >
-                            {port}
-                          </span>
-                        ))}
-                        <button
-                          type="button"
-                          onClick={handleStartEditingPorts}
-                          className="inline-flex h-7 items-center gap-1 rounded-md border border-neutral-300 px-3 text-sm font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
-                        >
-                          <Plus className="w-3 h-3" />
-                          Add port
-                        </button>
-                      </div>
+                            <Plus className="w-3 h-3" />
+                            Add port
+                          </button>
+                        </div>
+                        {environmentHiddenSet.size > 0 ? (
+                          <p className="flex items-center gap-1 text-xs text-neutral-500 dark:text-neutral-500">
+                            <EyeOff className="w-3 h-3" aria-hidden="true" />
+                            Hidden ports stay exposed but are removed from previews.
+                          </p>
+                        ) : null}
+                      </>
                     ) : (
                       <div className="flex flex-col items-start gap-2">
                         <span className="text-sm text-neutral-500 dark:text-neutral-500">

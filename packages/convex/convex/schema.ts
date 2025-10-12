@@ -445,6 +445,7 @@ const convexSchema = defineSchema({
     maintenanceScript: v.optional(v.string()),
     devScript: v.optional(v.string()),
     exposedPorts: v.optional(v.array(v.number())),
+    hiddenPorts: v.optional(v.array(v.number())),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

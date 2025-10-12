@@ -24,6 +24,39 @@ const normalizeExposedPorts = (
   return result.sanitized;
 };
 
+const normalizeHiddenPorts = (
+  hidden: readonly number[] | undefined,
+  exposed: readonly number[]
+): number[] => {
+  if (!hidden || hidden.length === 0) {
+    return [];
+  }
+
+  const result = validateExposedPorts(hidden);
+  if (result.reserved.length > 0) {
+    throw new Error(
+      `Reserved ports cannot be hidden: ${result.reserved.join(", ")}`
+    );
+  }
+  if (result.invalid.length > 0) {
+    throw new Error(
+      `Invalid ports provided for hiding: ${result.invalid.join(", ")}`
+    );
+  }
+
+  const exposedSet = new Set(exposed);
+  const sanitizedHidden = result.sanitized.filter((port) => exposedSet.has(port));
+
+  if (sanitizedHidden.length !== result.sanitized.length) {
+    const missing = result.sanitized.filter((port) => !exposedSet.has(port));
+    throw new Error(
+      `Hidden ports must be a subset of exposed ports. Invalid: ${missing.join(", ")}`
+    );
+  }
+
+  return sanitizedHidden;
+};
+
 export const list = authQuery({
   args: { teamSlugOrId: v.string() },
   handler: async (ctx, args) => {
@@ -64,6 +97,7 @@ export const create = authMutation({
     maintenanceScript: v.optional(v.string()),
     devScript: v.optional(v.string()),
     exposedPorts: v.optional(v.array(v.number())),
+    hiddenPorts: v.optional(v.array(v.number())),
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
@@ -72,6 +106,10 @@ export const create = authMutation({
     }
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
     const sanitizedPorts = normalizeExposedPorts(args.exposedPorts ?? []);
+    const sanitizedHiddenPorts = normalizeHiddenPorts(
+      args.hiddenPorts ?? [],
+      sanitizedPorts
+    );
     const createdAt = Date.now();
     const normalizeScript = (script: string | undefined): string | undefined => {
       if (script === undefined) {
@@ -95,6 +133,8 @@ export const create = authMutation({
       devScript,
       exposedPorts:
         sanitizedPorts.length > 0 ? sanitizedPorts : undefined,
+      hiddenPorts:
+        sanitizedHiddenPorts.length > 0 ? sanitizedHiddenPorts : undefined,
       createdAt,
       updatedAt: createdAt,
     });
@@ -171,6 +211,7 @@ export const updateExposedPorts = authMutation({
     teamSlugOrId: v.string(),
     id: v.id("environments"),
     ports: v.array(v.number()),
+    hiddenPorts: v.optional(v.array(v.number())),
   },
   handler: async (ctx, args) => {
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
@@ -181,8 +222,13 @@ export const updateExposedPorts = authMutation({
     }
 
     const sanitizedPorts = normalizeExposedPorts(args.ports);
+    const sanitizedHiddenPorts = normalizeHiddenPorts(
+      args.hiddenPorts ?? [],
+      sanitizedPorts
+    );
     const patch: {
       exposedPorts?: number[];
+      hiddenPorts?: number[];
       updatedAt: number;
     } = {
       updatedAt: Date.now(),
@@ -194,9 +240,18 @@ export const updateExposedPorts = authMutation({
       patch.exposedPorts = undefined;
     }
 
+    if (sanitizedHiddenPorts.length > 0) {
+      patch.hiddenPorts = sanitizedHiddenPorts;
+    } else {
+      patch.hiddenPorts = undefined;
+    }
+
     await ctx.db.patch(args.id, patch);
 
-    return sanitizedPorts;
+    return {
+      exposedPorts: sanitizedPorts,
+      hiddenPorts: sanitizedHiddenPorts,
+    };
   },
 });
 

@@ -352,6 +352,7 @@ export type CreateEnvironmentBody = {
     maintenanceScript?: string;
     devScript?: string;
     exposedPorts?: Array<number>;
+    hiddenPorts?: Array<number>;
 };
 
 export type GetEnvironmentResponse = {
@@ -364,6 +365,7 @@ export type GetEnvironmentResponse = {
     maintenanceScript?: string;
     devScript?: string;
     exposedPorts?: Array<number>;
+    hiddenPorts?: Array<number>;
     createdAt: number;
     updatedAt: number;
 };
@@ -389,12 +391,14 @@ export type ExposedService = {
 
 export type UpdateEnvironmentPortsResponse = {
     exposedPorts: Array<number>;
+    hiddenPorts?: Array<number>;
     services?: Array<ExposedService>;
 };
 
 export type UpdateEnvironmentPortsBody = {
     teamSlugOrId: string;
     ports: Array<number>;
+    hiddenPorts?: Array<number>;
     morphInstanceId?: string;
 };
 

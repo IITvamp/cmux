@@ -29,6 +29,36 @@ const sanitizePortsOrThrow = (ports: readonly number[]): number[] => {
   return validation.sanitized;
 };
 
+const sanitizeHiddenPortsOrThrow = (
+  ports: readonly number[],
+  exposedPorts: readonly number[]
+): number[] => {
+  if (ports.length === 0) {
+    return [];
+  }
+  const validation = validateExposedPorts(ports);
+  if (validation.reserved.length > 0) {
+    throw new HTTPException(400, {
+      message: `Reserved ports cannot be hidden: ${validation.reserved.join(", ")}`,
+    });
+  }
+  if (validation.invalid.length > 0) {
+    throw new HTTPException(400, {
+      message: `Invalid ports provided for hiding: ${validation.invalid.join(", ")}`,
+    });
+  }
+
+  const exposedSet = new Set(exposedPorts);
+  const missing = validation.sanitized.filter((port) => !exposedSet.has(port));
+  if (missing.length > 0) {
+    throw new HTTPException(400, {
+      message: `Hidden ports must also be exposed: ${missing.join(", ")}`,
+    });
+  }
+
+  return validation.sanitized;
+};
+
 const serviceNameForPort = (port: number): string => `port-${port}`;
 
 const CreateEnvironmentBody = z
@@ -42,6 +72,7 @@ const CreateEnvironmentBody = z
     maintenanceScript: z.string().optional(),
     devScript: z.string().optional(),
     exposedPorts: z.array(z.number()).optional(),
+    hiddenPorts: z.array(z.number()).optional(),
   })
   .openapi("CreateEnvironmentBody");
 
@@ -63,6 +94,7 @@ const GetEnvironmentResponse = z
     maintenanceScript: z.string().optional(),
     devScript: z.string().optional(),
     exposedPorts: z.array(z.number()).optional(),
+    hiddenPorts: z.array(z.number()).optional(),
     createdAt: z.number(),
     updatedAt: z.number(),
   })
@@ -107,6 +139,7 @@ const UpdateEnvironmentPortsBody = z
   .object({
     teamSlugOrId: z.string(),
     ports: z.array(z.number()),
+    hiddenPorts: z.array(z.number()).optional(),
     morphInstanceId: z.string().optional(),
   })
   .openapi("UpdateEnvironmentPortsBody");
@@ -114,6 +147,7 @@ const UpdateEnvironmentPortsBody = z
 const UpdateEnvironmentPortsResponse = z
   .object({
     exposedPorts: z.array(z.number()),
+    hiddenPorts: z.array(z.number()).optional(),
     services: z.array(ExposedService).optional(),
   })
   .openapi("UpdateEnvironmentPortsResponse");
@@ -216,6 +250,10 @@ environmentsRouter.openapi(
         body.exposedPorts && body.exposedPorts.length > 0
           ? sanitizePortsOrThrow(body.exposedPorts)
           : [];
+      const sanitizedHiddenPorts =
+        body.hiddenPorts && body.hiddenPorts.length > 0
+          ? sanitizeHiddenPortsOrThrow(body.hiddenPorts, sanitizedPorts)
+          : [];
 
       // Create Morph snapshot from instance
       const client = new MorphCloudClient({ apiKey: env.MORPH_API_KEY });
@@ -265,6 +303,8 @@ environmentsRouter.openapi(
           maintenanceScript: body.maintenanceScript,
           devScript: body.devScript,
           exposedPorts: sanitizedPorts.length > 0 ? sanitizedPorts : undefined,
+          hiddenPorts:
+            sanitizedHiddenPorts.length > 0 ? sanitizedHiddenPorts : undefined,
         }
       );
 
@@ -331,6 +371,7 @@ environmentsRouter.openapi(
         maintenanceScript: env.maintenanceScript,
         devScript: env.devScript,
         exposedPorts: env.exposedPorts,
+        hiddenPorts: env.hiddenPorts ?? undefined,
         createdAt: env.createdAt,
         updatedAt: env.updatedAt,
       }));
@@ -402,6 +443,7 @@ environmentsRouter.openapi(
         maintenanceScript: environment.maintenanceScript,
         devScript: environment.devScript,
         exposedPorts: environment.exposedPorts,
+        hiddenPorts: environment.hiddenPorts ?? undefined,
         createdAt: environment.createdAt,
         updatedAt: environment.updatedAt,
       };
@@ -561,6 +603,7 @@ environmentsRouter.openapi(
         maintenanceScript: updated.maintenanceScript ?? undefined,
         devScript: updated.devScript ?? undefined,
         exposedPorts: updated.exposedPorts ?? undefined,
+        hiddenPorts: updated.hiddenPorts ?? undefined,
         createdAt: updated.createdAt,
         updatedAt: updated.updatedAt,
       });
@@ -620,6 +663,9 @@ environmentsRouter.openapi(
 
     try {
       const sanitizedPorts = sanitizePortsOrThrow(body.ports);
+      const sanitizedHiddenPorts = body.hiddenPorts
+        ? sanitizeHiddenPortsOrThrow(body.hiddenPorts, sanitizedPorts)
+        : [];
       const convexClient = getConvex({ accessToken });
       const team = await verifyTeamAccess({
         req: c.req.raw,
@@ -709,11 +755,17 @@ environmentsRouter.openapi(
           teamSlugOrId: body.teamSlugOrId,
           id: environmentId,
           ports: sanitizedPorts,
+          hiddenPorts:
+            sanitizedHiddenPorts.length > 0 ? sanitizedHiddenPorts : undefined,
         }
       );
 
       return c.json({
-        exposedPorts: updatedPorts,
+        exposedPorts: updatedPorts.exposedPorts,
+        hiddenPorts:
+          updatedPorts.hiddenPorts && updatedPorts.hiddenPorts.length > 0
+            ? updatedPorts.hiddenPorts
+            : undefined,
         ...(services ? { services } : {}),
       });
     } catch (error) {
