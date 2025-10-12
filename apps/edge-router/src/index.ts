@@ -31,16 +31,16 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Check if request is to localhost or a loopback IP with a port
-  if (isLoopbackHostname(url.hostname) && url.port) {
-    // Get the morph ID from the current page's subdomain
-    const currentHost = self.location.hostname;
-    const morphIdMatch = currentHost.match(/port-\\d+-(.*)\\.cmux\\.sh/);
+    // Check if request is to localhost or a loopback IP with a port
+    if (isLoopbackHostname(url.hostname) && url.port) {
+      // Get the morph ID from the current page's subdomain
+      const currentHost = self.location.hostname;
+      const morphIdMatch = currentHost.match(/cmux-(.*)-base-\\d+\\.cmux\\.sh/);
 
-    if (morphIdMatch) {
-      const morphId = morphIdMatch[1];
-      // Redirect to port-PORT-[morphid].cmux.sh
-      const redirectUrl = \`https://port-\${url.port}-\${morphId}.cmux.sh\${url.pathname}\${url.search}\`;
+      if (morphIdMatch) {
+        const morphId = morphIdMatch[1];
+        // Redirect to cmux-MORPHID-base-PORT.cmux.sh
+        const redirectUrl = \`https://cmux-\${morphId}-base-\${url.port}.cmux.sh\${url.pathname}\${url.search}\`;
 
       // Create new headers, but let the browser handle Host header
       const headers = new Headers(event.request.headers);
@@ -269,12 +269,12 @@ function replaceLocalhostUrl(url) {
     const urlObj = new URL(url, __realLocation.href);
     if (isLoopbackHostname(urlObj.hostname) && urlObj.port) {
       const currentHost = __realLocation.hostname;
-      const morphIdMatch = currentHost.match(/port-\\d+-(.*)\\.cmux\\.sh/);
+      const morphIdMatch = currentHost.match(/cmux-(.*)-base-\\d+\\.cmux\\.sh/);
 
       if (morphIdMatch) {
         const morphId = morphIdMatch[1];
         urlObj.protocol = 'https:';
-        urlObj.hostname = \`port-\${urlObj.port}-\${morphId}.cmux.sh\`;
+        urlObj.hostname = \`cmux-\${morphId}-base-\${urlObj.port}.cmux.sh\`;
         urlObj.port = '';
         return urlObj.toString();
       }
@@ -716,7 +716,7 @@ export default {
             if (!redirectPort || !/^\d+$/.test(redirectPort)) {
               return null;
             }
-            return `port-${redirectPort}-${morphId}.cmux.sh`;
+            return `cmux-${morphId}-base-${redirectPort}.cmux.sh`;
           });
 
           const contentType = response.headers.get("content-type") || "";

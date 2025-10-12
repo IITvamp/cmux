@@ -29,9 +29,23 @@ function rewriteMorphUrl(url: string): string {
     return url;
   }
 
-  // Transform morph URLs to cmux.sh format
-  // https://port-8101-morphvm-jrtutqa3.http.cloud.morph.so/handler/sign-in -> https://port-8101-jrtutqa3.cmux.sh/handler/sign-in
+  // Transform morph URLs to cmux.sh format with cmux- prefix and base workspace
+  // https://port-8101-morphvm-jrtutqa3.http.cloud.morph.so/handler/sign-in -> https://cmux-jrtutqa3-base-8101.cmux.sh/handler/sign-in
   if (url.includes("http.cloud.morph.so")) {
+    try {
+      const urlObj = new URL(url);
+      const subdomain = urlObj.hostname.split('.')[0]; // e.g., port-8101-morphvm-jrtutqa3
+      const parts = subdomain.split('-');
+      if (parts.length >= 4 && parts[0] === 'port' && parts[2] === 'morphvm') {
+        const port = parts[1];
+        const morphId = parts.slice(3).join('-');
+        const newSubdomain = `cmux-${morphId}-base-${port}`;
+        urlObj.hostname = `${newSubdomain}.cmux.sh`;
+        return urlObj.toString();
+      }
+    } catch {
+      // fallback to old logic if parsing fails
+    }
     const result = url
       .replace("morphvm-", "")
       .replace("http.cloud.morph.so", "cmux.sh");
