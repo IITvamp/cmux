@@ -38,76 +38,140 @@ type AdditionsAndDeletionsProps = {
 
 type WorkflowRunsProps = {
   teamSlugOrId: string;
-  repoFullName: string;
-  prNumber: number;
+  repoFullName?: string;
+  prNumber?: number;
   headSha?: string;
 };
 
-type CombinedRun = ReturnType<typeof useCombinedWorkflowData>['allRuns'][number];
-
 function useCombinedWorkflowData({ teamSlugOrId, repoFullName, prNumber, headSha }: WorkflowRunsProps) {
-  const workflowRuns = useConvexQuery(api.github_workflows.getWorkflowRunsForPr, {
-    teamSlugOrId,
+  const shouldFetch = Boolean(repoFullName) && typeof prNumber === "number" && prNumber > 0;
+
+  const workflowRuns = useConvexQuery(
+    api.github_workflows.getWorkflowRunsForPr,
+    shouldFetch
+      ? {
+        teamSlugOrId,
+        repoFullName,
+        prNumber,
+        headSha,
+        limit: 50,
+      }
+      : "skip",
+  );
+
+  const checkRuns = useConvexQuery(
+    api.github_check_runs.getCheckRunsForPr,
+    shouldFetch
+      ? {
+        teamSlugOrId,
+        repoFullName,
+        prNumber,
+        headSha,
+        limit: 50,
+      }
+      : "skip",
+  );
+
+  const deployments = useConvexQuery(
+    api.github_deployments.getDeploymentsForPr,
+    shouldFetch
+      ? {
+        teamSlugOrId,
+        repoFullName,
+        prNumber,
+        headSha,
+        limit: 50,
+      }
+      : "skip",
+  );
+
+  const commitStatuses = useConvexQuery(
+    api.github_commit_statuses.getCommitStatusesForPr,
+    shouldFetch
+      ? {
+        teamSlugOrId,
+        repoFullName,
+        prNumber,
+        headSha,
+        limit: 50,
+      }
+      : "skip",
+  );
+
+  const isLoading = shouldFetch
+    ? workflowRuns === undefined ||
+      checkRuns === undefined ||
+      deployments === undefined ||
+      commitStatuses === undefined
+    : false;
+
+  const allRuns = useMemo(() => {
+    if (!shouldFetch) {
+      return [];
+    }
+
+    return [
+      ...(workflowRuns || []).map((run) => ({
+        ...run,
+        type: "workflow" as const,
+        name: run.workflowName,
+        timestamp: run.runStartedAt,
+        url: run.htmlUrl,
+      })),
+      ...(checkRuns || []).map((run) => {
+        const url = run.htmlUrl || `https://github.com/${repoFullName}/pull/${prNumber}/checks?check_run_id=${run.checkRunId}`;
+        return { ...run, type: "check" as const, timestamp: run.startedAt, url };
+      }),
+      ...(deployments || [])
+        .filter((dep) => dep.environment !== "Preview")
+        .map((dep) => ({
+          ...dep,
+          type: "deployment" as const,
+          name: dep.description || dep.environment || "Deployment",
+          timestamp: dep.createdAt,
+          status:
+            dep.state === "pending" ||
+            dep.state === "queued" ||
+            dep.state === "in_progress"
+              ? "in_progress"
+              : "completed",
+          conclusion:
+            dep.state === "success"
+              ? "success"
+              : dep.state === "failure" || dep.state === "error"
+                ? "failure"
+                : undefined,
+          url: dep.targetUrl,
+        })),
+      ...(commitStatuses || []).map((status) => ({
+        ...status,
+        type: "status" as const,
+        name: status.context,
+        timestamp: status.updatedAt,
+        status: status.state === "pending" ? "in_progress" : "completed",
+        conclusion:
+          status.state === "success"
+            ? "success"
+            : status.state === "failure" || status.state === "error"
+              ? "failure"
+              : undefined,
+        url: status.targetUrl,
+      })),
+    ];
+  }, [
+    shouldFetch,
+    workflowRuns,
+    checkRuns,
+    deployments,
+    commitStatuses,
     repoFullName,
     prNumber,
-    headSha,
-    limit: 50,
-  });
-
-  const checkRuns = useConvexQuery(api.github_check_runs.getCheckRunsForPr, {
-    teamSlugOrId,
-    repoFullName,
-    prNumber,
-    headSha,
-    limit: 50,
-  });
-
-  const deployments = useConvexQuery(api.github_deployments.getDeploymentsForPr, {
-    teamSlugOrId,
-    repoFullName,
-    prNumber,
-    headSha,
-    limit: 50,
-  });
-
-  const commitStatuses = useConvexQuery(api.github_commit_statuses.getCommitStatusesForPr, {
-    teamSlugOrId,
-    repoFullName,
-    prNumber,
-    headSha,
-    limit: 50,
-  });
-
-  const isLoading = workflowRuns === undefined || checkRuns === undefined || deployments === undefined || commitStatuses === undefined;
-
-  const allRuns = useMemo(() => [
-    ...(workflowRuns || []).map(run => ({ ...run, type: 'workflow', name: run.workflowName, timestamp: run.runStartedAt, url: run.htmlUrl })),
-    ...(checkRuns || []).map(run => {
-      const url = run.htmlUrl || `https://github.com/${repoFullName}/pull/${prNumber}/checks?check_run_id=${run.checkRunId}`;
-      return { ...run, type: 'check', timestamp: run.startedAt, url };
-    }),
-    ...(deployments || []).filter(dep => dep.environment !== 'Preview').map(dep => ({
-      ...dep,
-      type: 'deployment',
-      name: dep.description || dep.environment || 'Deployment',
-      timestamp: dep.createdAt,
-      status: dep.state === 'pending' || dep.state === 'queued' || dep.state === 'in_progress' ? 'in_progress' : 'completed',
-      conclusion: dep.state === 'success' ? 'success' : dep.state === 'failure' || dep.state === 'error' ? 'failure' : undefined,
-      url: dep.targetUrl
-    })),
-    ...(commitStatuses || []).map(status => ({
-      ...status,
-      type: 'status',
-      name: status.context,
-      timestamp: status.updatedAt,
-      status: status.state === 'pending' ? 'in_progress' : 'completed',
-      conclusion: status.state === 'success' ? 'success' : status.state === 'failure' || status.state === 'error' ? 'failure' : undefined,
-      url: status.targetUrl
-    })),
-  ], [workflowRuns, checkRuns, deployments, commitStatuses, repoFullName, prNumber]);
+  ]);
 
   return { allRuns, isLoading };
 }
+
+type CombinedRun = ReturnType<typeof useCombinedWorkflowData>["allRuns"][number];
 
 function WorkflowRuns({ allRuns, isLoading }: { allRuns: CombinedRun[]; isLoading: boolean }) {
   if (isLoading || allRuns.length === 0) {
@@ -747,3 +811,11 @@ export function PullRequestDetailView({
 }
 
 export default PullRequestDetailView;
+
+export {
+  useCombinedWorkflowData,
+  WorkflowRunsSection,
+  WorkflowRuns,
+};
+
+export type { CombinedRun };

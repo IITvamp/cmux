@@ -1,5 +1,10 @@
 import { FloatingPane } from "@/components/floating-pane";
 import { PersistentWebView } from "@/components/persistent-webview";
+import {
+  useCombinedWorkflowData,
+  WorkflowRunsSection,
+  WorkflowRuns,
+} from "@/components/prs/PullRequestDetailView";
 import { getTaskRunPullRequestPersistKey } from "@/lib/persistent-webview-keys";
 import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
@@ -71,6 +76,8 @@ function RunPullRequestPage() {
   const [activeRepo, setActiveRepo] = useState<string | null>(() =>
     pullRequests[0]?.repoFullName ?? null
   );
+  const [checksExpandedOverride, setChecksExpandedOverride] =
+    useState<boolean | null>(null);
 
   useEffect(() => {
     if (pullRequests.length === 0) {
@@ -103,6 +110,59 @@ function RunPullRequestPage() {
   const headerTitle = pullRequests.length > 1 ? "Pull Requests" : "Pull Request";
   const activeUrl = activePullRequest?.url ?? fallbackPullRequestUrl;
 
+  const activeRepoFullName = activePullRequest?.repoFullName;
+  const activePrNumber = activePullRequest?.number;
+  const activePrState = activePullRequest?.state;
+  const shouldShowChecks = Boolean(
+    activeRepoFullName &&
+      typeof activePrNumber === "number" &&
+      activePrNumber > 0 &&
+      activePrState === "open"
+  );
+
+  useEffect(() => {
+    setChecksExpandedOverride(null);
+  }, [activeRepoFullName ?? "", activePrNumber ?? 0]);
+
+  const activePrDetail = useQuery(
+    api.github_prs.getPullRequest,
+    shouldShowChecks && activeRepoFullName && typeof activePrNumber === "number"
+      ? {
+        teamSlugOrId,
+        repoFullName: activeRepoFullName,
+        number: activePrNumber,
+      }
+      : "skip"
+  );
+
+  const workflowData = useCombinedWorkflowData({
+    teamSlugOrId,
+    repoFullName: shouldShowChecks ? activeRepoFullName : undefined,
+    prNumber: shouldShowChecks ? activePrNumber : undefined,
+    headSha: activePrDetail?.headSha,
+  });
+
+  const workflowRunsToShow = shouldShowChecks ? workflowData.allRuns : [];
+  const hasAnyFailure = useMemo(
+    () =>
+      shouldShowChecks &&
+      workflowRunsToShow.some(
+        (run) =>
+          run.conclusion === "failure" ||
+          run.conclusion === "timed_out" ||
+          run.conclusion === "action_required"
+      ),
+    [shouldShowChecks, workflowRunsToShow]
+  );
+
+  const checksExpanded =
+    checksExpandedOverride !== null ? checksExpandedOverride : hasAnyFailure;
+  const handleToggleChecks = () => {
+    setChecksExpandedOverride(!checksExpanded);
+  };
+  const shouldRenderWorkflowSection =
+    shouldShowChecks && (workflowData.isLoading || workflowRunsToShow.length > 0);
+
   return (
     <FloatingPane>
       <div className="flex h-full min-h-0 flex-col relative isolate">
@@ -117,6 +177,12 @@ function RunPullRequestPage() {
                 <span className="text-xs px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400">
                   {selectedRun.pullRequestState}
                 </span>
+              )}
+              {shouldShowChecks && (
+                <WorkflowRuns
+                  allRuns={workflowRunsToShow}
+                  isLoading={workflowData.isLoading}
+                />
               )}
             </div>
             {activeUrl && (
@@ -182,20 +248,32 @@ function RunPullRequestPage() {
                     );
                   })}
                 </div>
-                <div className="flex-1">
-                  {activePullRequest?.url ? (
-                    <PersistentWebView
-                      persistKey={persistKey}
-                      src={activePullRequest.url}
-                      className="w-full h-full border-0"
-                      borderRadius={paneBorderRadius}
-                      forceWebContentsViewIfElectron
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center px-6 text-sm text-neutral-500 dark:text-neutral-400">
-                      No pull request URL available for this repository yet.
+                <div className="flex-1 flex flex-col min-h-0">
+                  {shouldRenderWorkflowSection && (
+                    <div className="border-b border-neutral-200 dark:border-neutral-800 shrink-0">
+                      <WorkflowRunsSection
+                        allRuns={workflowRunsToShow}
+                        isLoading={workflowData.isLoading}
+                        isExpanded={checksExpanded}
+                        onToggle={handleToggleChecks}
+                      />
                     </div>
                   )}
+                  <div className="flex-1 min-h-0">
+                    {activePullRequest?.url ? (
+                      <PersistentWebView
+                        persistKey={persistKey}
+                        src={activePullRequest.url}
+                        className="w-full h-full border-0"
+                        borderRadius={paneBorderRadius}
+                        forceWebContentsViewIfElectron
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center px-6 text-sm text-neutral-500 dark:text-neutral-400">
+                        No pull request URL available for this repository yet.
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             ) : isPending ? (
