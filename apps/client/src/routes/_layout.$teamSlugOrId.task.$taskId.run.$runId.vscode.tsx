@@ -4,7 +4,7 @@ import { convexQuery } from "@convex-dev/react-query";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import clsx from "clsx";
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import z from "zod";
 import { PersistentWebView } from "@/components/persistent-webview";
 import { getTaskRunPersistKey } from "@/lib/persistent-webview-keys";
@@ -63,18 +63,28 @@ function VSCodeComponent() {
   const persistKey = getTaskRunPersistKey(taskRunId);
   const hasWorkspace = workspaceUrl !== null;
 
+  const [isWorkspaceLoaded, setIsWorkspaceLoaded] = useState(false);
+
+  useEffect(() => {
+    setIsWorkspaceLoaded(false);
+  }, [persistKey, workspaceUrl]);
+
+  const isLoading = !hasWorkspace || !isWorkspaceLoaded;
+
   const onLoad = useCallback(() => {
+    setIsWorkspaceLoaded(true);
     console.log(`Workspace view loaded for task run ${taskRunId}`);
-  }, [taskRunId]);
+  }, [setIsWorkspaceLoaded, taskRunId]);
 
   const onError = useCallback(
     (error: Error) => {
+      setIsWorkspaceLoaded(false);
       console.error(
         `Failed to load workspace view for task run ${taskRunId}:`,
         error
       );
     },
-    [taskRunId]
+    [setIsWorkspaceLoaded, taskRunId]
   );
 
   return (
@@ -101,8 +111,8 @@ function VSCodeComponent() {
             className={clsx(
               "absolute inset-0 flex items-center justify-center transition pointer-events-none",
               {
-                "opacity-100": !hasWorkspace,
-                "opacity-0": hasWorkspace,
+                "opacity-100": isLoading,
+                "opacity-0": !isLoading,
               }
             )}
           >
@@ -122,7 +132,7 @@ function VSCodeComponent() {
                 />
               </div>
               <span className="text-sm text-neutral-500">
-                Starting VS Code...
+                {hasWorkspace ? "Loading VS Code..." : "Starting VS Code..."}
               </span>
             </div>
           </div>
