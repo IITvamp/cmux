@@ -1,0 +1,24 @@
+{
+  "name": "@cmux/edge-router-gcp",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "http-proxy": "^1.18.1"
+  },
+  "devDependencies": {
+    "@types/http-proxy": "^1.17.16",
+    "@types/node": "^24.3.1",
+    "@types/supertest": "^2.0.16",
+    "supertest": "^6.3.4",
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.3",
+    "vitest": "3.2.4"
+  }
+}
