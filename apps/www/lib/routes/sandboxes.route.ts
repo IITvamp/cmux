@@ -693,9 +693,15 @@ sandboxesRouter.openapi(
 
       await reloadInstance();
 
+      // Convert port- URLs to cmux- URLs with "base" workspace
+      const morphId = instance.id;
       const networking = workingInstance.networking.httpServices
         .filter((s) => allowedPorts.has(s.port))
-        .map((s) => ({ status: "running" as const, port: s.port, url: s.url }));
+        .map((s) => ({
+          status: "running" as const,
+          port: s.port,
+          url: `https://cmux-${morphId}-base-${s.port}.cmux.sh`,
+        }));
 
       // Persist to Convex
       await convex.mutation(api.taskRuns.updateNetworking, {
