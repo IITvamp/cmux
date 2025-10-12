@@ -541,11 +541,14 @@ function TaskRunTreeInner({
     [hasActiveVSCode, run]
   );
 
-  // Collect running preview ports
+  const isDevScriptFinished =
+    run.status === "completed" || run.status === "failed";
+
+  // Collect running preview ports only after the dev script finishes
   const previewServices = useMemo(() => {
-    if (!run.networking) return [];
+    if (!isDevScriptFinished || !run.networking) return [];
     return run.networking.filter((service) => service.status === "running");
-  }, [run.networking]);
+  }, [isDevScriptFinished, run.networking]);
 
   const {
     actions: openWithActions,
@@ -557,7 +560,7 @@ function TaskRunTreeInner({
     vscodeUrl,
     worktreePath: run.worktreePath,
     branch: run.newBranch,
-    networking: run.networking,
+    networking: isDevScriptFinished ? run.networking : undefined,
   });
 
   const shouldRenderDiffLink = true;
@@ -565,7 +568,8 @@ function TaskRunTreeInner({
     (run.pullRequestUrl && run.pullRequestUrl !== "pending") ||
     run.pullRequests?.some((pr) => pr.url)
   );
-  const shouldRenderPreviewLink = previewServices.length > 0;
+  const shouldRenderPreviewLink =
+    isDevScriptFinished && previewServices.length > 0;
   const hasOpenWithActions = openWithActions.length > 0;
   const hasPortActions = portActions.length > 0;
   const canCopyBranch = Boolean(copyRunBranch);
@@ -838,63 +842,69 @@ function TaskRunDetails({
         />
       ) : null}
 
-      {previewServices.map((service) => (
-        <div key={service.port} className="relative group mt-px">
-          <TaskRunDetailLink
-            to="/$teamSlugOrId/task/$taskId/run/$runId/preview/$port"
-            params={{
-              teamSlugOrId,
-              taskId,
-              runId: run._id,
-              port: `${service.port}`,
-            }}
-            icon={<ExternalLink className="w-3 h-3 mr-2 text-neutral-400" />}
-            label={`Preview (port ${service.port})`}
-            indentLevel={indentLevel}
-            className="pr-10"
-            onClick={(event) => {
-              if (event.metaKey || event.ctrlKey) {
-                event.preventDefault();
-                window.open(service.url, "_blank", "noopener,noreferrer");
-              }
-            }}
-          />
+      {shouldRenderPreviewLink
+        ? previewServices.map((service) => (
+            <div key={service.port} className="relative group mt-px">
+              <TaskRunDetailLink
+                to="/$teamSlugOrId/task/$taskId/run/$runId/preview/$port"
+                params={{
+                  teamSlugOrId,
+                  taskId,
+                  runId: run._id,
+                  port: `${service.port}`,
+                }}
+                icon={<ExternalLink className="w-3 h-3 mr-2 text-neutral-400" />}
+                label={`Preview (port ${service.port})`}
+                indentLevel={indentLevel}
+                className="pr-10"
+                onClick={(event) => {
+                  if (event.metaKey || event.ctrlKey) {
+                    event.preventDefault();
+                    window.open(service.url, "_blank", "noopener,noreferrer");
+                  }
+                }}
+              />
 
-          <Dropdown.Root>
-            <Dropdown.Trigger
-              onClick={(event) => event.stopPropagation()}
-              className={clsx(
-                "absolute right-2 top-1/2 -translate-y-1/2",
-                "p-1 rounded flex items-center gap-1",
-                "bg-neutral-100/80 dark:bg-neutral-700/80",
-                "hover:bg-neutral-200/80 dark:hover:bg-neutral-600/80",
-                "text-neutral-600 dark:text-neutral-400"
-              )}
-            >
-              <EllipsisVertical className="w-2.5 h-2.5" />
-            </Dropdown.Trigger>
-            <Dropdown.Portal>
-              <Dropdown.Positioner
-                sideOffset={8}
-                side={isElectron ? "left" : "bottom"}
-              >
-                <Dropdown.Popup>
-                  <Dropdown.Arrow />
-                  <Dropdown.Item
-                    onClick={() => {
-                      window.open(service.url, "_blank", "noopener,noreferrer");
-                    }}
-                    className="flex items-center gap-2"
+              <Dropdown.Root>
+                <Dropdown.Trigger
+                  onClick={(event) => event.stopPropagation()}
+                  className={clsx(
+                    "absolute right-2 top-1/2 -translate-y-1/2",
+                    "p-1 rounded flex items-center gap-1",
+                    "bg-neutral-100/80 dark:bg-neutral-700/80",
+                    "hover:bg-neutral-200/80 dark:hover:bg-neutral-600/80",
+                    "text-neutral-600 dark:text-neutral-400"
+                  )}
+                >
+                  <EllipsisVertical className="w-2.5 h-2.5" />
+                </Dropdown.Trigger>
+                <Dropdown.Portal>
+                  <Dropdown.Positioner
+                    sideOffset={8}
+                    side={isElectron ? "left" : "bottom"}
                   >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    Open in new tab
-                  </Dropdown.Item>
-                </Dropdown.Popup>
-              </Dropdown.Positioner>
-            </Dropdown.Portal>
-          </Dropdown.Root>
-        </div>
-      ))}
+                    <Dropdown.Popup>
+                      <Dropdown.Arrow />
+                      <Dropdown.Item
+                        onClick={() => {
+                          window.open(
+                            service.url,
+                            "_blank",
+                            "noopener,noreferrer"
+                          );
+                        }}
+                        className="flex items-center gap-2"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        Open in new tab
+                      </Dropdown.Item>
+                    </Dropdown.Popup>
+                  </Dropdown.Positioner>
+                </Dropdown.Portal>
+              </Dropdown.Root>
+            </div>
+          ))
+        : null}
 
       {hasChildren ? (
         <div className="flex flex-col">
