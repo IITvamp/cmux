@@ -186,3 +186,100 @@ export const getCheckRunsForPr = authQuery({
     return runs;
   },
 });
+
+// Query to get both check runs and workflow runs for a specific PR
+export const getChecksAndActionsForPr = authQuery({
+  args: {
+    teamSlugOrId: v.string(),
+    repoFullName: v.string(),
+    prNumber: v.number(),
+    headSha: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const { teamSlugOrId, repoFullName, prNumber, headSha, limit = 20 } = args;
+    const teamId = await getTeamId(ctx, teamSlugOrId);
+
+    // Fetch check runs
+    const checkRuns = await ctx.db
+      .query("githubCheckRuns")
+      .withIndex("by_team_repo", (q) =>
+        q.eq("teamId", teamId).eq("repoFullName", repoFullName),
+      )
+      .collect();
+
+    // Filter check runs by headSha if provided, otherwise by triggeringPrNumber
+    const filteredCheckRuns = checkRuns.filter((run) => {
+      if (headSha) {
+        return run.headSha === headSha;
+      }
+      return run.triggeringPrNumber === prNumber;
+    });
+
+    // Deduplicate check runs by name, keeping the most recently updated one
+    const dedupCheckRuns = new Map<string, typeof filteredCheckRuns[number]>();
+    for (const run of filteredCheckRuns) {
+      const key = `${run.appSlug || run.appName || 'unknown'}-${run.name}`;
+      const existing = dedupCheckRuns.get(key);
+      if (!existing || (run.updatedAt ?? 0) > (existing.updatedAt ?? 0)) {
+        dedupCheckRuns.set(key, run);
+      }
+    }
+
+    // Fetch workflow runs
+    let workflowRuns;
+    if (headSha) {
+      const shaRuns = await ctx.db
+        .query("githubWorkflowRuns")
+        .withIndex("by_repo_sha", (q) =>
+          q.eq("repoFullName", repoFullName).eq("headSha", headSha)
+        )
+        .order("desc")
+        .take(100); // Fetch extra to account for potential duplicates
+
+      // Filter by teamId in memory
+      const filtered = shaRuns.filter(r => r.teamId === teamId);
+
+      // Deduplicate by workflow name, keeping the most recently updated one
+      const dedupMap = new Map<string, typeof filtered[number]>();
+      for (const run of filtered) {
+        const key = run.workflowName;
+        const existing = dedupMap.get(key);
+        if (!existing || (run.updatedAt ?? 0) > (existing.updatedAt ?? 0)) {
+          dedupMap.set(key, run);
+        }
+      }
+      workflowRuns = Array.from(dedupMap.values()).slice(0, limit);
+    } else {
+      // Fallback: fetch all for repo and filter
+      const allRuns = await ctx.db
+        .query("githubWorkflowRuns")
+        .withIndex("by_team_repo", (q) =>
+          q.eq("teamId", teamId).eq("repoFullName", repoFullName)
+        )
+        .order("desc")
+        .take(200); // Fetch extra to account for potential duplicates
+
+      const filtered = allRuns.filter(r => r.triggeringPrNumber === prNumber);
+
+      // Deduplicate by workflow name, keeping the most recently updated one
+      const dedupMap = new Map<string, typeof filtered[number]>();
+      for (const run of filtered) {
+        const key = run.workflowName;
+        const existing = dedupMap.get(key);
+        if (!existing || (run.updatedAt ?? 0) > (existing.updatedAt ?? 0)) {
+          dedupMap.set(key, run);
+        }
+      }
+      workflowRuns = Array.from(dedupMap.values()).slice(0, limit);
+    }
+
+    // Combine and sort by started time (most recent first)
+    const allRuns = [
+      ...Array.from(dedupCheckRuns.values()).map(run => ({ ...run, type: 'check' as const })),
+      ...workflowRuns.map(run => ({ ...run, type: 'workflow' as const })),
+    ].sort((a, b) => (b.startedAt ?? b.runStartedAt ?? 0) - (a.startedAt ?? a.runStartedAt ?? 0));
+
+    return allRuns.slice(0, limit);
+  },
+});
