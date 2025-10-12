@@ -1,5 +1,9 @@
 import { FloatingPane } from "@/components/floating-pane";
 import { PersistentWebView } from "@/components/persistent-webview";
+import {
+  WorkflowRunsSection,
+  useCombinedWorkflowData,
+} from "@/components/prs/pull-request-checks";
 import { getTaskRunPullRequestPersistKey } from "@/lib/persistent-webview-keys";
 import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
@@ -14,6 +18,16 @@ const paramsSchema = z.object({
   taskId: typedZid("tasks"),
   runId: typedZid("taskRuns"),
 });
+
+function parsePullRequestNumber(url?: string | null): number | undefined {
+  if (!url) return undefined;
+  const match = url.match(/\/pull\/(\d+)/);
+  if (!match) {
+    return undefined;
+  }
+  const value = Number(match[1]);
+  return Number.isNaN(value) ? undefined : value;
+}
 
 export const Route = createFileRoute(
   "/_layout/$teamSlugOrId/task/$taskId/run/$runId/pr"
@@ -88,6 +102,25 @@ function RunPullRequestPage() {
     if (!activeRepo) return null;
     return pullRequests.find((pr) => pr.repoFullName === activeRepo) ?? null;
   }, [pullRequests, activeRepo]);
+
+  const activePrNumber = useMemo(() => {
+    if (!activePullRequest) {
+      return undefined;
+    }
+    if (activePullRequest.number !== undefined) {
+      return activePullRequest.number;
+    }
+    return parsePullRequestNumber(activePullRequest.url);
+  }, [activePullRequest]);
+
+  const shouldShowChecks = useMemo(() => {
+    if (!activePullRequest || activePrNumber === undefined) {
+      return false;
+    }
+    return (
+      activePullRequest.state === "open" || activePullRequest.state === "draft"
+    );
+  }, [activePullRequest, activePrNumber]);
 
   const aggregatedUrl = selectedRun?.pullRequestUrl;
   const isPending = aggregatedUrl === "pending";
@@ -182,17 +215,27 @@ function RunPullRequestPage() {
                     );
                   })}
                 </div>
-                <div className="flex-1">
+                <div className="flex-1 flex flex-col">
+                  {shouldShowChecks && activePullRequest && activePrNumber !== undefined ? (
+                    <div className="border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950">
+                      <TaskRunPullRequestChecks
+                        key={`${activePullRequest.repoFullName}-${activePrNumber}`}
+                        teamSlugOrId={teamSlugOrId}
+                        repoFullName={activePullRequest.repoFullName}
+                        prNumber={activePrNumber}
+                      />
+                    </div>
+                  ) : null}
                   {activePullRequest?.url ? (
                     <PersistentWebView
                       persistKey={persistKey}
                       src={activePullRequest.url}
-                      className="w-full h-full border-0"
+                      className="w-full flex-1 border-0"
                       borderRadius={paneBorderRadius}
                       forceWebContentsViewIfElectron
                     />
                   ) : (
-                    <div className="flex h-full items-center justify-center px-6 text-sm text-neutral-500 dark:text-neutral-400">
+                    <div className="flex flex-1 items-center justify-center px-6 text-sm text-neutral-500 dark:text-neutral-400">
                       No pull request URL available for this repository yet.
                     </div>
                   )}
@@ -236,5 +279,61 @@ function RunPullRequestPage() {
         </div>
       </div>
     </FloatingPane>
+  );
+}
+
+function TaskRunPullRequestChecks({
+  teamSlugOrId,
+  repoFullName,
+  prNumber,
+}: {
+  teamSlugOrId: string;
+  repoFullName: string;
+  prNumber: number;
+}) {
+  const currentPR = useQuery(api.github_prs.getPullRequest, {
+    teamSlugOrId,
+    repoFullName,
+    number: prNumber,
+  });
+
+  const workflowData = useCombinedWorkflowData({
+    teamSlugOrId,
+    repoFullName,
+    prNumber,
+    headSha: currentPR?.headSha,
+  });
+
+  const hasAnyFailure = useMemo(
+    () =>
+      workflowData.allRuns.some(
+        (run) =>
+          run.conclusion === "failure" ||
+          run.conclusion === "timed_out" ||
+          run.conclusion === "action_required",
+      ),
+    [workflowData.allRuns],
+  );
+
+  const [checksExpandedOverride, setChecksExpandedOverride] =
+    useState<boolean | null>(null);
+  const checksExpanded =
+    checksExpandedOverride !== null ? checksExpandedOverride : hasAnyFailure;
+
+  const handleToggleChecks = () => {
+    setChecksExpandedOverride(!checksExpanded);
+  };
+
+  if (!workflowData.isLoading && workflowData.allRuns.length === 0) {
+    return null;
+  }
+
+  return (
+    <WorkflowRunsSection
+      allRuns={workflowData.allRuns}
+      isLoading={workflowData.isLoading}
+      isExpanded={checksExpanded}
+      onToggle={handleToggleChecks}
+    />
   );
 }
