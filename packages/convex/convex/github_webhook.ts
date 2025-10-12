@@ -494,6 +494,19 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             teamId,
             payload: prPayload,
           });
+
+          // Post eyes emoji comment when a new PR is opened
+          if (prPayload.action === "opened") {
+            const prNumber = Number(prPayload.pull_request?.number ?? 0);
+            if (prNumber) {
+              await _ctx.runAction(internal.github_pr_comments.postPrComment, {
+                installationId: installation,
+                repoFullName,
+                prNumber,
+                body: "👀",
+              });
+            }
+          }
         } catch (err) {
           console.error("github_webhook pull_request handler failed", {
             err,
