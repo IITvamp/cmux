@@ -1,5 +1,6 @@
 import { FloatingPane } from "@/components/floating-pane";
 import { PersistentWebView } from "@/components/persistent-webview";
+import { GitHubChecks } from "@/components/github-checks";
 import { getTaskRunPullRequestPersistKey } from "@/lib/persistent-webview-keys";
 import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
@@ -154,6 +155,16 @@ function RunPullRequestPage() {
                 <span className="font-medium">{task.text}</span>
               </div>
             </div>
+          )}
+
+          {/* GitHub Checks - only show if there's an active PR */}
+          {activePullRequest?.number && activePullRequest.number > 0 && (
+            <GitHubChecks
+              teamSlugOrId={teamSlugOrId}
+              repoFullName={activePullRequest.repoFullName}
+              prNumber={activePullRequest.number}
+              headSha={undefined}
+            />
           )}
 
           {/* Main content */}
