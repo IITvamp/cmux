@@ -1,12 +1,13 @@
 import { FloatingPane } from "@/components/floating-pane";
 import { PersistentWebView } from "@/components/persistent-webview";
 import { getTaskRunPullRequestPersistKey } from "@/lib/persistent-webview-keys";
+import { PRChecksSection } from "@/components/prs/PRChecksSection";
 import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import clsx from "clsx";
 import z from "zod";
 
@@ -182,6 +183,15 @@ function RunPullRequestPage() {
                     );
                   })}
                 </div>
+                {activePullRequest?.number && (
+                  <Suspense fallback={null}>
+                    <PRChecksSection
+                      teamSlugOrId={teamSlugOrId}
+                      repoFullName={activePullRequest.repoFullName}
+                      prNumber={activePullRequest.number}
+                    />
+                  </Suspense>
+                )}
                 <div className="flex-1">
                   {activePullRequest?.url ? (
                     <PersistentWebView
