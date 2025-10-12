@@ -570,10 +570,21 @@ function SocketActions({
         });
 
   const openUrls = (prs: Array<{ url?: string | null }>) => {
-    prs.forEach((pr) => {
-      if (pr.url) {
-        window.open(pr.url, "_blank", "noopener,noreferrer");
-      }
+    const urls = prs
+      .map((pr) => pr.url?.trim())
+      .filter((url): url is string => Boolean(url));
+
+    if (urls.length === 0) {
+      return;
+    }
+
+    if (urls.length === 1) {
+      window.location.href = urls[0];
+      return;
+    }
+
+    urls.forEach((url) => {
+      window.open(url, "_blank", "noopener,noreferrer");
     });
   };
 
@@ -852,7 +863,7 @@ function SocketActions({
                   disabled={!hasUrl}
                   onClick={() => {
                     if (pr?.url) {
-                      window.open(pr.url, "_blank", "noopener,noreferrer");
+                      window.location.href = pr.url;
                     }
                   }}
                 >
