@@ -3,6 +3,7 @@ import type { Doc } from "@cmux/convex/dataModel";
 import { editorIcons, type EditorType } from "@/components/ui/dropdown-types";
 import { useCallback, useEffect, useMemo } from "react";
 import { toast } from "sonner";
+import { toPreviewProxyUrl } from "@/lib/toPreviewProxyUrl";
 
 type NetworkingInfo = Doc<"taskRuns">["networking"];
 
@@ -45,6 +46,14 @@ export function useOpenWithActions({
       socket.off("open-in-editor-error", handleOpenInEditorError);
     };
   }, [socket]);
+
+  const normalizedNetworking = useMemo(() => {
+    if (!networking) return undefined;
+    return networking.map((service) => ({
+      ...service,
+      url: toPreviewProxyUrl(service.url),
+    }));
+  }, [networking]);
 
   const handleOpenInEditor = useCallback(
     (editor: EditorType): Promise<void> => {
@@ -171,14 +180,14 @@ export function useOpenWithActions({
   }, [availableEditors, vscodeUrl, worktreePath]);
 
   const portActions = useMemo<PortAction[]>(() => {
-    if (!networking) return [];
-    return networking
+    if (!normalizedNetworking) return [];
+    return normalizedNetworking
       .filter((service) => service.status === "running")
       .map((service) => ({
         port: service.port,
         url: service.url,
       }));
-  }, [networking]);
+  }, [normalizedNetworking]);
 
   const executeOpenAction = useCallback(
     (action: OpenWithAction) => {

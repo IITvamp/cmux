@@ -9,6 +9,7 @@ import { useArchiveTask } from "@/hooks/useArchiveTask";
 import { useOpenWithActions } from "@/hooks/useOpenWithActions";
 import { isElectron } from "@/lib/electron";
 import { isFakeConvexId } from "@/lib/fakeConvexId";
+import { toPreviewProxyUrl } from "@/lib/toPreviewProxyUrl";
 import type { AnnotatedTaskRun, TaskRunWithChildren } from "@/types/task";
 import { ContextMenu } from "@base-ui-components/react/context-menu";
 import { api } from "@cmux/convex/api";
@@ -541,11 +542,19 @@ function TaskRunTreeInner({
     [hasActiveVSCode, run]
   );
 
+  const normalizedNetworking = useMemo(() => {
+    if (!run.networking) return undefined;
+    return run.networking.map((service) => ({
+      ...service,
+      url: toPreviewProxyUrl(service.url),
+    })) as NonNullable<TaskRunWithChildren["networking"]>;
+  }, [run.networking]);
+
   // Collect running preview ports
   const previewServices = useMemo(() => {
-    if (!run.networking) return [];
-    return run.networking.filter((service) => service.status === "running");
-  }, [run.networking]);
+    if (!normalizedNetworking) return [];
+    return normalizedNetworking.filter((service) => service.status === "running");
+  }, [normalizedNetworking]);
 
   const {
     actions: openWithActions,
@@ -557,7 +566,7 @@ function TaskRunTreeInner({
     vscodeUrl,
     worktreePath: run.worktreePath,
     branch: run.newBranch,
-    networking: run.networking,
+    networking: normalizedNetworking,
   });
 
   const shouldRenderDiffLink = true;

@@ -1,5 +1,6 @@
 import { ElectronPreviewBrowser } from "@/components/electron-preview-browser";
 import { getTaskRunPreviewPersistKey } from "@/lib/persistent-webview-keys";
+import { toPreviewProxyUrl } from "@/lib/toPreviewProxyUrl";
 import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { createFileRoute } from "@tanstack/react-router";
@@ -49,7 +50,7 @@ function PreviewPage() {
     const service = selectedRun.networking.find(
       (s) => s.port === portNum && s.status === "running",
     );
-    return service?.url;
+    return service ? toPreviewProxyUrl(service.url) : null;
   }, [selectedRun, port]);
 
   const persistKey = useMemo(() => {
