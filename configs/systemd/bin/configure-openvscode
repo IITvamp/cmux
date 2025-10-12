@@ -3,6 +3,38 @@ set -euo pipefail
 
 mkdir -p /var/log/cmux
 
+nvm_version="${NVM_VERSION:-0.39.7}"
+home="${HOME:-/root}"
+nvm_dir="${home}/.nvm"
+
+ensure_nvm_installed() {
+  if [ -s "${nvm_dir}/nvm.sh" ]; then
+    return 0
+  fi
+
+  mkdir -p "${nvm_dir}"
+  if ! curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/v${nvm_version}/install.sh" \
+    | PROFILE=/dev/null NVM_DIR="${nvm_dir}" bash; then
+    echo "Failed to install nvm ${nvm_version}" >&2
+    return 1
+  fi
+}
+
+ensure_shell_snippet() {
+  local shell_rc="$1"
+  local snippet="if [ -s \"${HOME}/.nvm/nvm.sh\" ]; then\n  . \"${HOME}/.nvm/nvm.sh\"\nfi"
+
+  mkdir -p "$(dirname "${shell_rc}")"
+  touch "${shell_rc}"
+
+  if ! grep -Fq '.nvm/nvm.sh' "${shell_rc}"; then
+    printf '\n%s\n' "${snippet}" >> "${shell_rc}"
+  fi
+}
+
+ensure_nvm_installed
+ensure_shell_snippet "${home}/.zshrc"
+
 color=""
 case "${VSCODE_THEME:-}" in
   dark)
@@ -40,7 +72,6 @@ SETTINGS=$(jq -n \
     "git.branchCompareWith": "main"
   } + (if $theme != "" then {"workbench.colorTheme": $theme} else {} end)')
 
-home="${HOME:-/root}"
 user_base="${home}/.openvscode-server"
 user_dir="${user_base}/data/User"
 default_profile_dir="${user_base}/data/User/profiles/default-profile"

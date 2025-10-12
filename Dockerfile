@@ -197,6 +197,16 @@ PROFILE
 bash -lc 'source /etc/profile.d/nvm.sh && nvm --version'
 EOF
 
+RUN <<'EOF'
+set -eux
+append='[ -s "/etc/profile.d/nvm.sh" ] && . "/etc/profile.d/nvm.sh"'
+for file in /etc/zsh/zprofile /etc/zsh/zshrc; do
+  if [ -f "$file" ] && ! grep -Fq '/etc/profile.d/nvm.sh' "$file"; then
+    printf '\n%s\n' "$append" >> "$file"
+  fi
+done
+EOF
+
 # Install Bun
 RUN curl -fsSL https://bun.sh/install | bash && \
   mv /root/.bun/bin/bun /usr/local/bin/ && \
@@ -540,6 +550,16 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"
 PROFILE
 bash -lc 'source /etc/profile.d/nvm.sh && nvm --version'
+EOF
+
+RUN <<'EOF'
+set -eux
+append='[ -s "/etc/profile.d/nvm.sh" ] && . "/etc/profile.d/nvm.sh"'
+for file in /etc/zsh/zprofile /etc/zsh/zshrc; do
+  if [ -f "$file" ] && ! grep -Fq '/etc/profile.d/nvm.sh' "$file"; then
+    printf '\n%s\n' "$append" >> "$file"
+  fi
+done
 EOF
 
 # Install Bun natively (since runtime is x86_64, we can't copy from ARM64 builder)
