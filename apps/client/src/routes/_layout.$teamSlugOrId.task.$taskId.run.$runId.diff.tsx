@@ -291,7 +291,7 @@ const RestartTaskForm = memo(function RestartTaskForm({
             branch={task?.baseBranch ?? undefined}
             environmentId={task?.environmentId ?? undefined}
             persistenceKey={persistenceKey}
-            maxHeight="42px"
+             maxHeight="300px"
             minHeight="30px"
             onEditorReady={(api) => {
               editorApiRef.current = api;
