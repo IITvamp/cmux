@@ -132,6 +132,25 @@ echo "=== Dev Script Started at \$(date) ==="
 ${devScript}
 `;
 
+    // Build the wait-for-maintenance logic
+    const waitForMaintenance =
+      maintenanceScript && maintenanceScript.trim().length > 0
+        ? `echo "[DEV] Waiting for maintenance window to complete..."
+# Wait for the maintenance window to disappear (it will close when the script finishes or fails)
+for i in {1..600}; do
+  if ! tmux list-windows -t cmux 2>/dev/null | grep -q "${ids.maintenance.windowName}"; then
+    echo "[DEV] Maintenance window completed"
+    break
+  fi
+  sleep 1
+done
+# Double-check that maintenance is really done
+if tmux list-windows -t cmux 2>/dev/null | grep -q "${ids.maintenance.windowName}"; then
+  echo "[DEV] WARNING: Maintenance window still running after timeout, proceeding anyway"
+fi
+`
+        : "";
+
     const devCommand = `set -eu
 mkdir -p ${CMUX_RUNTIME_DIR}
 cat > ${ids.dev.scriptPath} <<'SCRIPT_EOF'
@@ -139,6 +158,7 @@ ${devScriptContent}
 SCRIPT_EOF
 chmod +x ${ids.dev.scriptPath}
 ${waitForTmuxSession}
+${waitForMaintenance}
 tmux new-window -t cmux: -n ${ids.dev.windowName} -d
 tmux send-keys -t cmux:${ids.dev.windowName} "zsh ${ids.dev.scriptPath}" C-m
 sleep 2
