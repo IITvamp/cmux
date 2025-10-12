@@ -572,7 +572,7 @@ function SocketActions({
   const openUrls = (prs: Array<{ url?: string | null }>) => {
     prs.forEach((pr) => {
       if (pr.url) {
-        window.open(pr.url, "_blank", "noopener,noreferrer");
+        window.open(pr.url, "_self");
       }
     });
   };
@@ -852,7 +852,7 @@ function SocketActions({
                   disabled={!hasUrl}
                   onClick={() => {
                     if (pr?.url) {
-                      window.open(pr.url, "_blank", "noopener,noreferrer");
+                      window.open(pr.url, "_self");
                     }
                   }}
                 >
