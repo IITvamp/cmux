@@ -13,7 +13,6 @@ export const NAV_ITEMS = [
   { id: "about", label: "About" },
   { id: "workflow", label: "Workflow" },
   { id: "verification", label: "Verification" },
-  { id: "requirements", label: "Requirements" },
 ];
 
 type SiteHeaderProps = {
@@ -94,6 +93,14 @@ export function SiteHeader({
             target="_blank"
           >
             GitHub
+          </a>
+          <a
+            className="text-neutral-300 transition hover:text-white"
+            href="https://cal.com/team/manaflow/meeting"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            Contact
           </a>
         </nav>
         <div className="flex items-center gap-3">
