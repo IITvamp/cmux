@@ -26,6 +26,7 @@ use serde_json::{Value, json};
 type HttpClient = Client<hyper_rustls::HttpsConnector<HttpConnector>, Body>;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+const GIT_COMMIT: &str = option_env!("GIT_COMMIT").unwrap_or("unknown");
 
 #[derive(Clone, Copy)]
 struct CorsPolicy {
@@ -181,6 +182,7 @@ async fn handle_request(state: Arc<AppState>, req: Request<Body>) -> Response<Bo
                     StatusCode::OK,
                     json!({
                         "version": VERSION,
+                        "git_commit": GIT_COMMIT,
                     }),
                 );
             }

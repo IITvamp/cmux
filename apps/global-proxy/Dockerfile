@@ -9,6 +9,8 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 FROM lukemathwalker/cargo-chef:latest-rust-1 AS builder
 
+ARG GIT_COMMIT=unknown
+
 WORKDIR /app
 
 COPY --from=chef /app/recipe.json recipe.json
@@ -17,7 +19,7 @@ RUN cargo chef cook --release --recipe-path recipe.json --target x86_64-unknown-
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 
-RUN cargo build --release --locked --target x86_64-unknown-linux-gnu
+RUN GIT_COMMIT=$GIT_COMMIT cargo build --release --locked --target x86_64-unknown-linux-gnu
 
 FROM gcr.io/distroless/cc-debian12
 

@@ -3,6 +3,8 @@ steps:
     args:
       - build
       - '--no-cache'
+      - '--build-arg'
+      - 'GIT_COMMIT=$COMMIT_SHA'
       - '-t'
       - '$_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA'
       - apps/global-proxy
