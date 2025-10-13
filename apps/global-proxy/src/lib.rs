@@ -1119,13 +1119,23 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (isLoopbackHostname(url.hostname) && url.port) {
     const currentHost = self.location.hostname;
-    const morphIdMatch = currentHost.match(/port-\d+-(.*)\.cmux\.sh/);
-    if (morphIdMatch) {
-      const morphId = morphIdMatch[1];
-      const redirectUrl = `https://port-${url.port}-${morphId}.cmux.sh${url.pathname}${url.search}`;
-      event.respondWith(fetch(redirectUrl, { redirect: 'follow' }));
+    const firstDot = currentHost.indexOf('.');
+    if (firstDot === -1) {
       return;
     }
+    const firstLabel = currentHost.slice(0, firstDot);
+    const morphIdMatch = firstLabel.match(/^port-\d+-(.*)$/);
+    if (!morphIdMatch) {
+      return;
+    }
+    const domain = currentHost.slice(firstDot + 1);
+    if (!domain) {
+      return;
+    }
+    const morphId = morphIdMatch[1];
+    const redirectUrl = `https://port-${url.port}-${morphId}.${domain}${url.pathname}${url.search}`;
+    event.respondWith(fetch(redirectUrl, { redirect: 'follow' }));
+    return;
   }
 });
 "#;
