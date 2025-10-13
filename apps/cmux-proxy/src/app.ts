@@ -198,11 +198,13 @@ function sanitizeHTMLResponseHeaders(source: Headers): Headers {
   return headers;
 }
 
-// Strip CSP headers that might block proxied content
+// Strip CSP and frame-blocking headers that might block proxied content or iframe embedding
 function stripCSPHeaders(source: Headers): Headers {
   const headers = new Headers(source);
   headers.delete("content-security-policy");
   headers.delete("content-security-policy-report-only");
+  headers.delete("x-frame-options"); // Prevents iframe embedding restrictions
+  headers.delete("frame-options"); // Legacy variant
   return headers;
 }
 
