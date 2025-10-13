@@ -44,3 +44,9 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+---
+
+*Agents in parallel*
+*Docker containers unite*
+*Code flows like water*

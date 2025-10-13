@@ -254,3 +254,9 @@ For issues or questions:
 - Check logs: `bun run dev` for local, GCP logs for production
 - Test health: `curl http://localhost:3000/health`
 - Review [DEPLOYMENT.md](./DEPLOYMENT.md) for deployment issues
+
+---
+
+*Requests flow through ports*
+*Headers guide the streams*
+*Proxies weave the web*

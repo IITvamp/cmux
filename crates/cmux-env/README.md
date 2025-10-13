@@ -106,3 +106,9 @@ The release workflow automatically:
 ## License
 
 This project is provided as-is for experimentation.
+
+---
+
+*Variables persist*
+*Daemon tracks each value change*
+*Shells sync in time*

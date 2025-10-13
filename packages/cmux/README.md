@@ -51,3 +51,9 @@ cmux is part of the cmux project. See the main repository for development instru
 ## License
 
 MIT
+
+---
+
+*One command brings all*
+*Convex and web combined*
+*Multiplexing dreams*
