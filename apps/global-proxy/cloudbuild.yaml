@@ -4,7 +4,7 @@ options:
 steps:
   - name: gcr.io/kaniko-project/executor:latest
     args:
-      - --context=dir:///workspace
+      - --context=dir:///workspace/apps/global-proxy
       - --dockerfile=Dockerfile
       - --destination=${_IMAGE}
       - --cache=true
