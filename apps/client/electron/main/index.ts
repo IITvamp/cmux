@@ -920,16 +920,21 @@ app.whenReady().then(async () => {
               return;
             }
             try {
-              mainLog("Manual update check initiated");
-              const result = await autoUpdater.checkForUpdates();
-              if (!result?.updateInfo) {
+              mainLog("Manual update check initiated from menu");
+              const result = await autoUpdater.checkForUpdatesAndNotify();
+              logUpdateCheckResult("Menu-initiated checkForUpdatesAndNotify", result);
+
+              // Only show "up to date" message if no update is available
+              // If an update IS available, checkForUpdatesAndNotify will handle
+              // the download and notification automatically
+              if (!result || !isUpdateNewerThanCurrent(result.updateInfo)) {
                 await dialog.showMessageBox({
                   type: "info",
-                  message: "You’re up to date.",
+                  message: "You're up to date.",
                 });
               }
             } catch (e) {
-              mainWarn("Manual checkForUpdates failed", e);
+              mainWarn("Manual checkForUpdatesAndNotify failed", e);
               await dialog.showMessageBox({
                 type: "error",
                 message: "Failed to check for updates.",
