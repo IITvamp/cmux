@@ -1,0 +1,90 @@
+import CmuxLogo from "@/components/logo/cmux-logo";
+import { MacDownloadLink } from "@/components/mac-download-link";
+import type { MacDownloadUrls } from "@/lib/releases";
+import { ArrowRight } from "lucide-react";
+import Link from "next/link";
+import type { ReactNode } from "react";
+
+export const NAV_ITEMS = [
+  { id: "about", label: "About" },
+  { id: "workflow", label: "Workflow" },
+  { id: "roadmap", label: "Roadmap" },
+];
+
+type SiteHeaderProps = {
+  linkPrefix?: string;
+  showDownload?: boolean;
+  fallbackUrl?: string;
+  latestVersion?: string | null;
+  macDownloadUrls?: MacDownloadUrls;
+  extraEndContent?: ReactNode;
+};
+
+const DEFAULT_DOWNLOAD_URLS: MacDownloadUrls = {
+  arm64: null,
+  x64: null,
+};
+
+export function SiteHeader({
+  linkPrefix = "",
+  showDownload = true,
+  fallbackUrl = "https://github.com/manaflow-ai/cmux/releases",
+  latestVersion,
+  macDownloadUrls,
+  extraEndContent,
+}: SiteHeaderProps) {
+  const effectiveUrls = macDownloadUrls ?? DEFAULT_DOWNLOAD_URLS;
+
+  return (
+    <header className="sticky top-0 z-40 border-b border-white/5 bg-black/50 backdrop-blur">
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
+        <Link aria-label="cmux" href="/">
+          <div className="flex items-center gap-3">
+            <CmuxLogo height={36} label="cmux" showWordmark />
+          </div>
+        </Link>
+        <nav className="hidden items-center gap-8 text-sm font-medium md:flex">
+          {NAV_ITEMS.map((item) => (
+            <Link
+              key={item.id}
+              className="text-neutral-300 transition hover:text-white"
+              href={`${linkPrefix}#nav-${item.id}`}
+            >
+              {item.label}
+            </Link>
+          ))}
+          <Link className="text-neutral-300 transition hover:text-white" href="/tutorial">
+            Tutorial
+          </Link>
+          <a
+            className="text-neutral-300 transition hover:text-white"
+            href="https://github.com/manaflow-ai/cmux"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            GitHub
+          </a>
+        </nav>
+        <div className="flex items-center gap-3">
+          {extraEndContent}
+          {showDownload ? (
+            <MacDownloadLink
+              autoDetect
+              fallbackUrl={fallbackUrl}
+              className="hidden md:inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-black shadow-sm transition hover:bg-neutral-100"
+              title={
+                latestVersion
+                  ? `Download cmux ${latestVersion} for macOS`
+                  : "Download cmux for macOS"
+              }
+              urls={effectiveUrls}
+            >
+              <span>Download</span>
+              <ArrowRight className="h-4 w-4" aria-hidden />
+            </MacDownloadLink>
+          ) : null}
+        </div>
+      </div>
+    </header>
+  );
+}

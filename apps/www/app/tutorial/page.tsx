@@ -1,3 +1,5 @@
+import { SiteHeader } from "@/components/site-header";
+import { fetchLatestRelease } from "@/lib/fetch-latest-release";
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
@@ -27,6 +29,23 @@ type TutorialSection = {
   resources?: string[];
 };
 
+// ⣟⣿⣿⣿⡽⡽⡽⣻⣹⡽⣿⣿⣿⣻⣻⣻⣻⡽⣻⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⢢⠣⠒⠀⠀⠀⠀⠀⠀⠎⢎⢎⢎⢎⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣟⡽⣿⣿⣻⣻⣻⢿⣿⣿
+// ⣯⣯⣯⣯⢯⣫⢫⣻⡿⣻⣿⣿⣿⣿⣿⣻⡽⡽⣭⠂⠀⡰⡱⠡⠢⢂⠆⠀⢠⠰⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⢯⢫⣫⡿⣻⣿⣿⣿⣻⡹
+// ⡿⡿⣻⣻⣻⢭⣚⢧⢫⣻⣿⣿⡿⡽⡽⡽⡽⣹⣝⢇⠄⠀⠀⠄⠄⠄⡐⠀⠄⡐⠐⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡝⣝⡽⣹⢽⢯⡻⣻⣟⢯⢫⣚⣟⣟⣟⣟⣟⣟⡝
+// ⣯⣻⡽⣯⣻⡜⡵⡽⣎⢭⣻⡝⡽⣽⡽⣝⣝⣝⡝⣗⢭⢎⠀⠀⠂⠂⠀⠀⠀⡐⠐⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣹⣝⣝⡝⣝⡽⡽⡹⣚⠵⡭⢯⢯⢯⣻⡽⡽⣣
+// ⣟⣟⡽⣯⢯⢎⢎⢯⣏⡗⡝⣝⡽⣻⢯⣫⢫⢫⣫⣻⢯⡳⡱⡱⡱⠀⠀⠀⠀⠠⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠐⡝⡝⡝⣝⡝⡝⡭⣫⢫⢭⣚⣝⣝⣝⡽⣹⣹⢧
+// ⢏⠯⢫⢫⢫⢪⢎⢯⢏⠳⡹⡹⣻⡿⡯⣫⢫⡹⡹⡽⡽⡹⡸⡜⡄⠀⠀⢀⢂⠄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡭⡭⣫⡹⡹⡭⣫⢫⢫⣚⡜⡝⡝⣝⣝⢽⡹⡭
+
+
+
+
+
+
+// ⢠⣾⠋⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⡿⠀⢸⡇⠀⠀⠀⠀⠸⣿⣴⠾⠋⠀⠀⠀⠀⢠⡿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢻⡦
+// ⣼⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣼⣧⠀⣸⣿⣀⣀⣤⣀⣘⣿⣷⣄⠀⠀⠀⢀⣰⢿⣧⠄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⣷
+// ⢻⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⢸⡇⠀⠀⣿⡆⠀⠀⠀⠀⠀⠀⠀⢸⣇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢹⡇⠀⠘⣷⣠⡾⠋⠀⣽⡟⣷⡀⠘⣷⣤
+// ⠸⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢻⡿⣧⠀⣰⡿⠃⠀⠀⠀⠀⠀⠀⠀⢸⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⡇⠀⠀⠙⠟⣥⡶⠟⣻⣿⠟⠧⣴⣿⣧
+
 const tutorialSections: TutorialSection[] = [
   {
     id: "orientation",
@@ -45,8 +64,8 @@ const tutorialSections: TutorialSection[] = [
           "Command palette (⌘K) jumps across runs, opens VS Code capsules, or starts new tasks instantly.",
         ],
         placeholders: [
-          "Screenshot placeholder: cmux workspace layout",
-          "Video placeholder: 90-second UI flythrough",
+          "Screenshot: cmux workspace layout",
+          "Video: 90-second UI flythrough",
         ],
       },
       {
@@ -60,14 +79,14 @@ const tutorialSections: TutorialSection[] = [
           "Observers can follow along silently — ideal for stakeholders or pairing engineers.",
         ],
         placeholders: [
-          "Diagram placeholder: Role permissions matrix",
-          "Text placeholder: Suggested review cadence",
+          "Diagram: Role permissions matrix",
+          "Notes: Suggested review cadence",
         ],
       },
     ],
     resources: [
-      "Placeholder: Link to onboarding deck",
-      "Placeholder: Link to workspace keyboard shortcuts",
+      "Add link to onboarding deck",
+      "Add link to workspace keyboard shortcuts",
     ],
   },
   {
@@ -87,8 +106,8 @@ const tutorialSections: TutorialSection[] = [
           "Set default reviewers so every run has human oversight before merge.",
         ],
         placeholders: [
-          "Screenshot placeholder: Repository import modal",
-          "Text placeholder: Example branch naming conventions",
+          "Screenshot: Repository import modal",
+          "Notes: Example branch naming conventions",
         ],
       },
       {
@@ -102,14 +121,14 @@ const tutorialSections: TutorialSection[] = [
           "Attach secrets or environment templates specific to the repository.",
         ],
         placeholders: [
-          "Screenshot placeholder: Dependency hook editor",
-          "Diagram placeholder: Cached container layers",
+          "Screenshot: Dependency hook editor",
+          "Diagram: Cached container layers",
         ],
       },
     ],
     resources: [
-      "Placeholder: Checklist PDF for repo readiness",
-      "Placeholder: Script snippet for pre-build hooks",
+      "Add checklist PDF for repo readiness",
+      "Add script snippet for pre-build hooks",
     ],
   },
   {
@@ -129,8 +148,8 @@ const tutorialSections: TutorialSection[] = [
           "Compare sandbox vs high-autonomy personas before assigning to production-critical tasks.",
         ],
         placeholders: [
-          "Screenshot placeholder: Agent catalog grid",
-          "Text placeholder: Capability comparison table",
+          "Screenshot: Agent catalog grid",
+          "Notes: Capability comparison table",
         ],
       },
       {
@@ -144,14 +163,14 @@ const tutorialSections: TutorialSection[] = [
           "Guardrails restrict commands, directories, or API usage for sensitive repos.",
         ],
         placeholders: [
-          "Screenshot placeholder: Agent profile editor",
-          "Video placeholder: Prompt layering demo",
+          "Screenshot: Agent profile editor",
+          "Video: Prompt layering demo",
         ],
       },
     ],
     resources: [
-      "Placeholder: CSV export of agent performance benchmarks",
-      "Placeholder: Link to agent marketplace submission form",
+      "Add cSV export of agent performance benchmarks",
+      "Add link to agent marketplace submission form",
     ],
   },
   {
@@ -171,8 +190,8 @@ const tutorialSections: TutorialSection[] = [
           "Offline mode caches model responses for replay once reconnected.",
         ],
         placeholders: [
-          "Screenshot placeholder: Local mode configuration",
-          "Diagram placeholder: Local network architecture",
+          "Screenshot: Local mode configuration",
+          "Diagram: Local network architecture",
         ],
       },
       {
@@ -186,8 +205,8 @@ const tutorialSections: TutorialSection[] = [
           "One-click escalation into human-assisted pair programming mode.",
         ],
         placeholders: [
-          "Screenshot placeholder: Cloud region selector",
-          "Video placeholder: Autoscaling dashboard tour",
+          "Screenshot: Cloud region selector",
+          "Video: Autoscaling dashboard tour",
         ],
       },
       {
@@ -201,14 +220,14 @@ const tutorialSections: TutorialSection[] = [
           "Observability adapters stream traces into Datadog, New Relic, or OpenTelemetry.",
         ],
         placeholders: [
-          "Diagram placeholder: BYO networking flow",
-          "Text placeholder: Terraform module link",
+          "Diagram: BYO networking flow",
+          "Notes: Terraform module link",
         ],
       },
     ],
     resources: [
-      "Placeholder: Security whitepaper download",
-      "Placeholder: Link to infrastructure terraform modules",
+      "Add security whitepaper download",
+      "Add link to infrastructure terraform modules",
     ],
   },
   {
@@ -228,8 +247,8 @@ const tutorialSections: TutorialSection[] = [
           "Inject environment variables via sealed secrets or secret managers.",
         ],
         placeholders: [
-          "Screenshot placeholder: Environment template editor",
-          "Text placeholder: Example provisioning script",
+          "Screenshot: Environment template editor",
+          "Notes: Example provisioning script",
         ],
       },
       {
@@ -243,14 +262,14 @@ const tutorialSections: TutorialSection[] = [
           "Resource caps prevent runaway CPU or memory usage.",
         ],
         placeholders: [
-          "Screenshot placeholder: Task-level environment override",
-          "Video placeholder: Live swap between templates",
+          "Screenshot: Task-level environment override",
+          "Video: Live swap between templates",
         ],
       },
     ],
     resources: [
-      "Placeholder: YAML schema reference",
-      "Placeholder: Link to example Dockerfiles",
+      "Add yAML schema reference",
+      "Add link to example Dockerfiles",
     ],
   },
   {
@@ -270,8 +289,8 @@ const tutorialSections: TutorialSection[] = [
           "Service accounts can hold lower-privilege keys for staging environments.",
         ],
         placeholders: [
-          "Screenshot placeholder: API key vault",
-          "Text placeholder: Secret rotation checklist",
+          "Screenshot: API key vault",
+          "Notes: Secret rotation checklist",
         ],
       },
       {
@@ -285,14 +304,14 @@ const tutorialSections: TutorialSection[] = [
           "Webhook endpoints let you extend with internal automations.",
         ],
         placeholders: [
-          "Screenshot placeholder: Integration gallery",
-          "Video placeholder: Slack notification demo",
+          "Screenshot: Integration gallery",
+          "Video: Slack notification demo",
         ],
       },
     ],
     resources: [
-      "Placeholder: Link to security & compliance FAQ",
-      "Placeholder: Integration webhook reference",
+      "Add link to security & compliance FAQ",
+      "Add integration webhook reference",
     ],
   },
   {
@@ -312,8 +331,8 @@ const tutorialSections: TutorialSection[] = [
           "Assign reviewers and observers before launch so accountability is clear.",
         ],
         placeholders: [
-          "Screenshot placeholder: Task brief editor",
-          "Text placeholder: Example acceptance criteria",
+          "Screenshot: Task brief editor",
+          "Notes: Example acceptance criteria",
         ],
       },
       {
@@ -327,8 +346,8 @@ const tutorialSections: TutorialSection[] = [
           "Configure guard timers and escalation paths if progress stalls.",
         ],
         placeholders: [
-          "Video placeholder: Launch wizard walkthrough",
-          "Text placeholder: Guard timer best practices",
+          "Video: Launch wizard walkthrough",
+          "Notes: Guard timer best practices",
         ],
       },
       {
@@ -342,14 +361,14 @@ const tutorialSections: TutorialSection[] = [
           "Pause or swap agents without losing the task context.",
         ],
         placeholders: [
-          "Screenshot placeholder: Live task monitoring",
-          "Video placeholder: Prompt nudge in action",
+          "Screenshot: Live task monitoring",
+          "Video: Prompt nudge in action",
         ],
       },
     ],
     resources: [
-      "Placeholder: Task launch checklist PDF",
-      "Placeholder: Link to autonomy tuning guide",
+      "Add task launch checklist PDF",
+      "Add link to autonomy tuning guide",
     ],
   },
   {
@@ -369,8 +388,8 @@ const tutorialSections: TutorialSection[] = [
           "Audit trail captures who prompted or intervened and when.",
         ],
         placeholders: [
-          "Screenshot placeholder: Command timeline",
-          "Text placeholder: Suggested tagging taxonomy",
+          "Screenshot: Command timeline",
+          "Notes: Suggested tagging taxonomy",
         ],
       },
       {
@@ -384,8 +403,8 @@ const tutorialSections: TutorialSection[] = [
           "Link directly to VS Code capsule to continue manual edits.",
         ],
         placeholders: [
-          "Screenshot placeholder: Agent diff viewer",
-          "Video placeholder: Semantic diff walkthrough",
+          "Screenshot: Agent diff viewer",
+          "Video: Semantic diff walkthrough",
         ],
       },
       {
@@ -399,14 +418,14 @@ const tutorialSections: TutorialSection[] = [
           "Export insights to dashboards or documentation automatically.",
         ],
         placeholders: [
-          "Screenshot placeholder: Insights cards",
-          "Text placeholder: Metrics schema reference",
+          "Screenshot: Insights cards",
+          "Notes: Metrics schema reference",
         ],
       },
     ],
     resources: [
-      "Placeholder: Video deep dive on verification UI",
-      "Placeholder: Link to telemetry integration examples",
+      "Add video deep dive on verification UI",
+      "Add link to telemetry integration examples",
     ],
   },
   {
@@ -426,8 +445,8 @@ const tutorialSections: TutorialSection[] = [
           "Invite peers for spot checks with shareable review links.",
         ],
         placeholders: [
-          "Screenshot placeholder: Verification checklist",
-          "Video placeholder: Requesting rework flow",
+          "Screenshot: Verification checklist",
+          "Video: Requesting rework flow",
         ],
       },
       {
@@ -441,8 +460,8 @@ const tutorialSections: TutorialSection[] = [
           "Archive run artifacts to satisfy audit and compliance requirements.",
         ],
         placeholders: [
-          "Screenshot placeholder: Handoff modal",
-          "Text placeholder: Release notes template",
+          "Screenshot: Handoff modal",
+          "Notes: Release notes template",
         ],
       },
       {
@@ -456,14 +475,14 @@ const tutorialSections: TutorialSection[] = [
           "Share recaps in Slack, Notion, or email with one click.",
         ],
         placeholders: [
-          "Screenshot placeholder: Retrospective summary",
-          "Video placeholder: Publishing recap",
+          "Screenshot: Retrospective summary",
+          "Video: Publishing recap",
         ],
       },
     ],
     resources: [
-      "Placeholder: Retrospective template",
-      "Placeholder: Link to compliance configuration",
+      "Add retrospective template",
+      "Add link to compliance configuration",
     ],
   },
   {
@@ -483,8 +502,8 @@ const tutorialSections: TutorialSection[] = [
           "Status webhooks inform your incident channels automatically.",
         ],
         placeholders: [
-          "Screenshot placeholder: Diagnostics panel",
-          "Text placeholder: Incident response playbook",
+          "Screenshot: Diagnostics panel",
+          "Notes: Incident response playbook",
         ],
       },
       {
@@ -498,14 +517,14 @@ const tutorialSections: TutorialSection[] = [
           "Snapshots can be shared safely with redacted secrets.",
         ],
         placeholders: [
-          "Screenshot placeholder: Support drawer",
-          "Video placeholder: Filing a support ticket",
+          "Screenshot: Support drawer",
+          "Video: Filing a support ticket",
         ],
       },
     ],
     resources: [
-      "Placeholder: Status page link",
-      "Placeholder: Support escalation matrix",
+      "Add status page link",
+      "Add support escalation matrix",
     ],
   },
 ];
@@ -516,6 +535,7 @@ export const metadata: Metadata = {
     "Detailed tutorial for cmux covering repository setup, agent selection, execution modes, environment templates, API keys, task launch, agent consoles, and verification best practices.",
 };
 
+
 function Placeholder({ label }: { label: string }) {
   return (
     <div className="rounded-lg border border-dashed border-white/15 bg-white/5 px-4 py-3 text-xs text-neutral-300">
@@ -524,7 +544,9 @@ function Placeholder({ label }: { label: string }) {
   );
 }
 
-export default function TutorialPage() {
+export default async function TutorialPage() {
+  const { fallbackUrl, latestVersion, macDownloadUrls } = await fetchLatestRelease();
+
   return (
     <div className="relative min-h-dvh overflow-hidden bg-[#030712] text-foreground">
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
@@ -533,7 +555,14 @@ export default function TutorialPage() {
         <div className="absolute inset-x-[10%] bottom-[-25%] h-[36rem] rounded-full bg-gradient-to-tl from-sky-500/20 to-transparent blur-[200px]" />
       </div>
 
-      <header className="border-b border-white/10 bg-black/50 backdrop-blur">
+      <SiteHeader
+        fallbackUrl={fallbackUrl}
+        latestVersion={latestVersion}
+        macDownloadUrls={macDownloadUrls}
+        linkPrefix="/"
+      />
+
+      <section className="border-b border-white/10 bg-black/40">
         <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-12 sm:px-6">
           <div className="inline-flex items-center gap-2 self-start rounded-full border border-white/10 bg-white/5 px-4 py-1 text-xs uppercase tracking-[0.3em] text-neutral-300">
             cmux tutorial
@@ -543,15 +572,15 @@ export default function TutorialPage() {
               Master the cmux workflow from intake to verification
             </h1>
             <p className="max-w-3xl text-sm text-neutral-300 sm:text-base">
-              Use this playbook to set up repositories, choose agents, configure execution modes, and guide teams through verification-ready deployments. Each section includes placeholders for the assets you can drop in as you document your own processes.
+              Use this playbook to set up repositories, choose agents, configure execution modes, and guide teams through verification-ready deployments. Each section highlights where to add your own screenshots, walkthroughs, and resources as you operationalize cmux.
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
             <Link
               className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-white/10"
-              href="/"
+              href="/#nav-workflow"
             >
-              Back to landing
+              View landing overview
               <ArrowRight className="h-4 w-4" aria-hidden />
             </Link>
             <a
@@ -565,10 +594,10 @@ export default function TutorialPage() {
             </a>
           </div>
         </div>
-      </header>
+      </section>
 
       <div className="mx-auto flex max-w-6xl gap-10 px-4 pb-24 pt-12 sm:px-6">
-        <aside className="sticky top-28 hidden h-fit w-64 flex-none space-y-6 rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-neutral-300 lg:block">
+        <aside className="sticky top-32 hidden h-fit w-64 flex-none space-y-6 rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-neutral-300 lg:block lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto">
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.25em] text-white/80">
             <Compass className="h-3.5 w-3.5" aria-hidden />
             Contents
