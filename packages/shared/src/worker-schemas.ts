@@ -259,6 +259,14 @@ export interface ServerToWorkerEvents {
   "worker:check-docker": (
     callback: (response: DockerReadinessResponse) => void
   ) => void;
+
+  // Auto-preview control events
+  "worker:enable-auto-preview": (
+    callback: (response: { success: boolean; message: string }) => void
+  ) => void;
+  "worker:disable-auto-preview": (
+    callback: (response: { success: boolean; message: string }) => void
+  ) => void;
 }
 
 export interface WorkerFileChange {

@@ -40,6 +40,8 @@ import { detectTerminalIdle } from "./detectTerminalIdle";
 import { runWorkerExec } from "./execRunner";
 import { FileWatcher, computeGitDiff, getFileWithDiff } from "./fileWatcher";
 import { log } from "./logger";
+import { PortMonitor } from "./portMonitor";
+import { AutoPreviewManager } from "./chromePreview";
 
 const execAsync = promisify(exec);
 
@@ -152,6 +154,17 @@ let mainServerSocket: Socket<
 
 // Track active file watchers by taskRunId
 const activeFileWatchers: Map<string, FileWatcher> = new Map();
+
+// Auto-preview manager and port monitor
+const autoPreviewManager = new AutoPreviewManager({
+  cdpHost: process.env.CDP_HOST || "127.0.0.1",
+  cdpPort: parseInt(process.env.CDP_PORT || "39381", 10),
+  localHost: "localhost",
+  requireLikelyDevServer: true, // Only auto-open likely dev servers
+  requireProcessNameMatch: false, // Also allow common dev server ports
+});
+
+let portMonitor: PortMonitor | null = null;
 
 // Queue for pending events when mainServerSocket is not connected
 interface PendingEvent<
@@ -836,6 +849,90 @@ managementIO.on("connection", (socket) => {
     }
   });
 
+  // Handle auto-preview enable request
+  socket.on("worker:enable-auto-preview", async (callback) => {
+    log("INFO", `Worker ${WORKER_ID} enabling auto-preview`);
+
+    try {
+      const success = await autoPreviewManager.enable();
+
+      if (success && !portMonitor) {
+        // Start port monitoring
+        portMonitor = new PortMonitor(
+          async (port, heuristics) => {
+            log("INFO", `[PortMonitor] New port detected: ${port.port}`, {
+              processName: port.processName,
+              framework: heuristics.framework,
+            });
+
+            // Pass to auto-preview manager
+            await autoPreviewManager.handleNewPort(port, heuristics);
+          },
+          {
+            scanIntervalMs: 5000, // Scan every 5 seconds
+            minPort: 3000,
+            maxPort: 9999,
+            filterByHeuristics: true,
+          }
+        );
+
+        portMonitor.start();
+        log("INFO", "Port monitor started for auto-preview");
+      }
+
+      if (callback) {
+        callback({
+          success,
+          message: success
+            ? "Auto-preview enabled"
+            : "Failed to enable auto-preview (Chrome CDP not available)",
+        });
+      }
+    } catch (error) {
+      log("ERROR", "Error enabling auto-preview", error);
+      if (callback) {
+        callback({
+          success: false,
+          message: `Error enabling auto-preview: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`,
+        });
+      }
+    }
+  });
+
+  // Handle auto-preview disable request
+  socket.on("worker:disable-auto-preview", (callback) => {
+    log("INFO", `Worker ${WORKER_ID} disabling auto-preview`);
+
+    try {
+      autoPreviewManager.disable();
+
+      if (portMonitor) {
+        portMonitor.stop();
+        portMonitor = null;
+        log("INFO", "Port monitor stopped");
+      }
+
+      if (callback) {
+        callback({
+          success: true,
+          message: "Auto-preview disabled",
+        });
+      }
+    } catch (error) {
+      log("ERROR", "Error disabling auto-preview", error);
+      if (callback) {
+        callback({
+          success: false,
+          message: `Error disabling auto-preview: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`,
+        });
+      }
+    }
+  });
+
   socket.on("disconnect", (reason) => {
     log("WARNING", `Main server disconnected from worker ${WORKER_ID}`, {
       reason,
@@ -1417,6 +1514,15 @@ setInterval(() => {
 // Graceful shutdown
 function gracefulShutdown() {
   console.log(`Worker ${WORKER_ID} shutting down...`);
+
+  // Stop port monitor
+  if (portMonitor) {
+    portMonitor.stop();
+    log("INFO", "Stopped port monitor during shutdown");
+  }
+
+  // Disable auto-preview
+  autoPreviewManager.disable();
 
   // Stop all file watchers
   for (const [taskRunId, watcher] of activeFileWatchers) {
