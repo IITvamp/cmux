@@ -4,7 +4,7 @@ import CmuxLogo from "@/components/logo/cmux-logo";
 import { MacDownloadLink } from "@/components/mac-download-link";
 import type { MacDownloadUrls } from "@/lib/releases";
 import clsx from "clsx";
-import { ArrowRight } from "lucide-react";
+import { Download } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
@@ -58,7 +58,7 @@ export function SiteHeader({
       className={clsx(
         "sticky top-0 z-40 backdrop-blur transition-colors",
         isScrolled
-          ? "border-b border-white/5 bg-black/70"
+          ? "border-b border-white/10 bg-transparent"
           : "border-b border-transparent bg-transparent"
       )}
     >
@@ -109,8 +109,8 @@ export function SiteHeader({
               }
               urls={effectiveUrls}
             >
+              <Download className="h-4 w-4" aria-hidden />
               <span>Download</span>
-              <ArrowRight className="h-4 w-4" aria-hidden />
             </MacDownloadLink>
           ) : null}
         </div>

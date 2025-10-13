@@ -594,8 +594,8 @@ export default async function TutorialPage() {
         </div>
       </div>
 
-      <div className="mx-auto flex max-w-6xl gap-10 px-4 pb-24 pt-8 sm:px-6">
-        <aside className="sticky top-32 hidden h-fit w-64 flex-none space-y-6 rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-neutral-300 lg:block lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto">
+      <div className="mx-auto flex max-w-6xl items-start gap-10 px-4 pb-24 pt-8 sm:px-6">
+        <aside className="sticky top-32 hidden w-64 flex-none space-y-6 rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-neutral-300 lg:block">
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.25em] text-white/80">
             <Compass className="h-3.5 w-3.5" aria-hidden />
             Contents
@@ -622,7 +622,7 @@ export default async function TutorialPage() {
 
         <main className="flex-1 space-y-24">
           {tutorialSections.map((section) => (
-            <section key={section.id} id={section.id} className="scroll-mt-28">
+            <section key={section.id} id={section.id} className="scroll-mt-40">
               <div className="space-y-6 rounded-3xl border border-white/10 bg-white/5 p-8 shadow-[0_30px_120px_-40px_rgba(56,189,248,0.4)]">
                 <div className="flex items-center gap-3">
                   <Layers3 className="h-5 w-5 text-sky-300" aria-hidden />

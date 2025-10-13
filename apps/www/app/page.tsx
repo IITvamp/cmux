@@ -16,21 +16,20 @@ import Link from "next/link";
 import cmuxDemo0 from "@/docs/assets/cmux-demo-00.png";
 import cmuxDemo1 from "@/docs/assets/cmux-demo-10.png";
 import cmuxDemo2 from "@/docs/assets/cmux-demo-20.png";
-import cmuxDemo3 from "@/docs/assets/cmux-demo-30.png";
 import { fetchLatestRelease } from "@/lib/fetch-latest-release";
 
 const heroHighlights = [
   {
     title: "Run multiple agent CLIs side-by-side",
-    description: "Claude Code, Codex, Gemini CLI, Amp, Opencode, and more inside one workspace.",
+    description: "Claude Code, Codex, Gemini CLI, Amp, Opencode, and more on the same task.",
   },
   {
-    title: "Dedicated VS Code per agent",
-    description: "Each task launches an isolated VS Code window with the git diff view ready to inspect.",
+    title: "Dedicated VS Code instance per agent",
+    description: "Each task launches an isolated VS Code, terminal, and git diff view ready to inspect.",
   },
   {
-    title: "Verification-first review flow",
-    description: "Stay productive by checking diffs, logs, and task history without losing context.",
+    title: "Preview environments for quick verification",
+    description: "Browser previews are exposed so you can verify that the code works on dev server.",
   },
 ];
 
@@ -186,11 +185,11 @@ export default async function LandingPage() {
       />
 
       <main className="relative z-10 flex-1">
-        <section className="mx-auto max-w-6xl px-4 pb-16 pt-20 sm:px-6 sm:pb-24 sm:pt-28">
+        <section className="mx-auto max-w-6xl px-4 pb-16 pt-16 sm:px-6 sm:pb-24 sm:pt-12">
           <div className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
             <div className="space-y-8">
               <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs uppercase tracking-[0.3em] text-neutral-300">
-                Parallel agent operating system
+                Run parallel coding agents
               </div>
               <div className="space-y-6">
                 <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
@@ -198,10 +197,10 @@ export default async function LandingPage() {
                 </h1>
                 <div className="space-y-4 text-base text-neutral-300 sm:text-lg">
                   <p>
-                    cmux is a universal AI coding agent manager that supports Claude Code, Codex, Gemini CLI, Amp, Opencode, and other coding CLIs. We give 10x engineers an interface to manage AI coding tasks in parallel, context switch fast, and verify AI-generated code to stay actually productive with AI.
+                    cmux is a universal AI coding agent manager that supports Claude Code, Codex, Gemini CLI, Amp, Opencode, and other coding CLIs.
                   </p>
                   <p>
-                    Every run spins up an isolated VS Code workspace—whether you choose our managed cloud runners or a local Docker container—with the git diff view and terminal ready so parallel agent work stays verifiable, fast, and ready to ship.
+                    Every run spins up an isolated VS Code workspace either in the cloud or in a local Docker container with the git diff view, terminal, and dev server preview ready so parallel agent work stays verifiable, fast, and ready to ship.
                   </p>
                   <p className="text-sm text-neutral-400 sm:text-base">
                     Learn more about the
@@ -244,14 +243,23 @@ export default async function LandingPage() {
                   }
                   urls={macDownloadUrls}
                 >
+                  <span className="flex items-center gap-2">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                    className="h-4 w-4"
+                  >
+                    <path d="M12.665 15.358c-.905.844-1.893.711-2.843.311-1.006-.409-1.93-.427-2.991 0-1.33.551-2.03.391-2.825-.31C-.498 10.886.166 4.078 5.28 3.83c1.246.062 2.114.657 2.843.71 1.09-.213 2.133-.826 3.296-.746 1.393.107 2.446.64 3.138 1.6-2.88 1.662-2.197 5.315.443 6.337-.526 1.333-1.21 2.657-2.345 3.635zM8.03 3.778C7.892 1.794 9.563.16 11.483 0c.268 2.293-2.16 4-3.452 3.777" />
+                  </svg>
                   <span>Download for macOS</span>
-                  <ArrowRight className="h-4 w-4" aria-hidden />
+                </span>
                 </MacDownloadLink>
                 <Link
                   className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-white/10"
                   href="/tutorial"
                 >
-                  Read the full tutorial
+                  Read the tutorial
                   <ArrowRight className="h-4 w-4" aria-hidden />
                 </Link>
               </div>
@@ -285,7 +293,7 @@ export default async function LandingPage() {
               </div>
             </div>
           </div>
-          <div className="mt-16 relative overflow-hidden rounded-3xl border border-white/10">
+          <div className="mt-12 relative overflow-hidden rounded-2xl">
             <Image
               src={cmuxDemo0}
               alt="cmux dashboard showing parallel AI agents"
@@ -293,7 +301,7 @@ export default async function LandingPage() {
               height={2112}
               sizes="(min-width: 1024px) 1024px, 100vw"
               quality={100}
-              className="w-full h-auto"
+              className="h-full w-full object-cover"
               priority
             />
           </div>
@@ -306,7 +314,7 @@ export default async function LandingPage() {
                 Rethinking the developer interface
               </h2>
               <p className="mx-auto max-w-3xl text-sm text-neutral-400 sm:text-base">
-                We&apos;ve spent years making AI agents better at coding, but almost no time making it easier to verify their work. cmux focuses on the verification surface so multi-agent teams can stay fast and accurate.
+                Everyone is focusing on making AI agents better at coding but not on making it easier to verify their work. cmux focuses on the verification surface so developers who use multiple agents can ship fast and accurate code.
               </p>
             </div>
             <div className="space-y-8 text-sm text-neutral-300 sm:text-base">
@@ -315,7 +323,7 @@ export default async function LandingPage() {
                   <span className="text-white font-semibold">The interface is the bottleneck.</span>{" "}
                   Developers still spend most of their time reviewing and verifying code instead of prompting. cmux removes the window-juggling and diff spelunking that slows teams down.
                 </p>
-                <blockquote className="border-l-2 border-white/10 pl-4 text-neutral-200">
+                <blockquote className="border-l-2 border-white/10 pl-4 text-neutral-400">
                   <p>
                     Running multiple agents at once sounds powerful until it turns into chaos: three or four terminals, each on a different task, and you&apos;re asking, &ldquo;Which one is on auth? Did the database refactor finish?&rdquo;
                   </p>
@@ -326,7 +334,7 @@ export default async function LandingPage() {
                   <span className="text-white font-semibold">Isolation enables scale.</span>{" "}
                   Each agent runs in its own container with its own VS Code instance. Every diff is clean, every terminal output is separate, and every verification stays independent.
                 </p>
-                <blockquote className="border-l-2 border-white/10 pl-4 text-neutral-200">
+                <blockquote className="border-l-2 border-white/10 pl-4 text-neutral-400">
                   <p>
                     The issue isn&apos;t that agents aren&apos;t good—they&apos;re getting scary good. It&apos;s that our tools were built for a single developer, not for reviewing five parallel streams of AI-generated changes.
                   </p>
@@ -337,14 +345,14 @@ export default async function LandingPage() {
                   <span className="text-white font-semibold">Verification is non-negotiable.</span>{" "}
                   Code diffs are just the start. We need to see running apps, test results, and metrics for every agent without losing context. cmux keeps that verification front and center.
                 </p>
-                <blockquote className="border-l-2 border-white/10 pl-4 text-neutral-200">
+                <blockquote className="border-l-2 border-white/10 pl-4 text-neutral-400">
                   <p>
                     cmux gives each agent its own world: separate container in the cloud or Docker, separate VS Code, separate git state. You can see exactly what changed immediately—without losing context.
                   </p>
                 </blockquote>
               </div>
             </div>
-            <div className="mt-12 relative overflow-hidden rounded-2xl border border-white/10">
+            <div className="mt-12 relative overflow-hidden rounded-2xl">
               <Image
                 src={cmuxDemo1}
                 alt="cmux dashboard showing task management for AI agents"
@@ -352,7 +360,7 @@ export default async function LandingPage() {
                 height={2112}
                 sizes="(min-width: 1024px) 1024px, 100vw"
                 quality={100}
-                className="w-full h-auto"
+                className="h-full w-full object-cover"
                 priority
               />
             </div>
@@ -387,7 +395,7 @@ export default async function LandingPage() {
                 </div>
               ))}
             </div>
-            <div className="mt-10 relative overflow-hidden rounded-2xl border border-white/10">
+            <div className="mt-10 relative overflow-hidden rounded-2xl">
               <Image
                 src={cmuxDemo2}
                 alt="cmux vscode instances showing diffs"
@@ -395,7 +403,7 @@ export default async function LandingPage() {
                 height={2112}
                 sizes="(min-width: 1024px) 1024px, 100vw"
                 quality={100}
-                className="w-full h-auto"
+                className="h-full w-full object-cover"
                 loading="lazy"
               />
             </div>
@@ -470,7 +478,7 @@ export default async function LandingPage() {
                   <div className={index % 2 === 1 ? "lg:order-1" : ""}>
                     <Image
                       alt={highlight.title}
-                      className="h-full w-full rounded-2xl border border-white/10 object-cover"
+                      className="h-full w-full rounded-2xl object-cover"
                       height={2112}
                       priority={index === 0}
                       quality={100}
@@ -504,7 +512,7 @@ export default async function LandingPage() {
                 </div>
               ))}
             </div>
-            <div className="rounded-2xl border border-white/10 bg-neutral-950/80 p-6 text-sm text-neutral-300">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-neutral-300">
               <h3 className="text-base font-semibold text-white">The endgame: Autonomous verification</h3>
               <p className="mt-3">
                 Eventually, verification itself will be automated. A manager agent will review the work of worker agents, using the same interfaces you use today. It will approve simple changes, escalate complex ones, and learn from your verification patterns.
@@ -512,18 +520,6 @@ export default async function LandingPage() {
               <p className="mt-3">
                 The goal isn&apos;t to replace developers—it&apos;s to amplify them 100x by removing the verification bottleneck entirely.
               </p>
-            </div>
-            <div className="relative overflow-hidden rounded-2xl border border-white/10">
-              <Image
-                src={cmuxDemo3}
-                alt="cmux verification views"
-                width={3248}
-                height={2112}
-                sizes="(min-width: 1024px) 1024px, 100vw"
-                quality={100}
-                className="w-full h-auto"
-                loading="lazy"
-              />
             </div>
           </div>
         </section>
@@ -534,11 +530,11 @@ export default async function LandingPage() {
             cmux runs locally on your machine. You&apos;ll need:
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
-            <div className="w-full rounded-xl border border-white/10 bg-neutral-950/80 px-6 py-4 text-sm text-white sm:w-auto text-center">
-              Docker installed <span className="text-neutral-400">(for local mode)</span> or access to cmux cloud runners
+            <div className="w-full rounded-xl border border-white/10 bg-white/5 px-6 py-4 text-sm text-white sm:w-auto text-center">
+              Docker installed or use cmux cloud
             </div>
-            <div className="w-full rounded-xl border border-white/10 bg-neutral-950/80 px-6 py-4 text-sm text-white sm:w-auto text-center">
-              macOS or Linux for local containers; any OS works with cloud
+            <div className="w-full rounded-xl border border-white/10 bg-white/5 px-6 py-4 text-sm text-white sm:w-auto text-center">
+              macOS 13+, Linux (preview), Windows (waitlist)
             </div>
           </div>
         </section>
@@ -558,14 +554,14 @@ export default async function LandingPage() {
                 rel="noopener noreferrer"
                 target="_blank"
               >
-                Book a meeting
+                Book meeting
                 <ArrowRight className="h-4 w-4" aria-hidden />
               </a>
               <Link
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-white/10"
                 href="/tutorial"
               >
-                Browse full tutorial
+                Browse tutorial
                 <ArrowRight className="h-4 w-4" aria-hidden />
               </Link>
             </div>
