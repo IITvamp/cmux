@@ -3,7 +3,10 @@ import { ScriptTextareaField } from "@/components/ScriptTextareaField";
 import { SCRIPT_COPY } from "@/components/scriptCopy";
 import { ResizableColumns } from "@/components/ResizableColumns";
 import { parseEnvBlock } from "@/lib/parseEnvBlock";
-import { TASK_RUN_IFRAME_ALLOW } from "@/lib/preloadTaskRunIframes";
+import {
+  TASK_RUN_IFRAME_ALLOW,
+  TASK_RUN_IFRAME_SANDBOX,
+} from "@/lib/preloadTaskRunIframes";
 import { formatEnvVarsContent } from "@cmux/shared/utils/format-env-vars-content";
 import { validateExposedPorts } from "@cmux/shared/utils/validate-exposed-ports";
 import {
@@ -721,7 +724,7 @@ export function EnvironmentConfiguration({
             src={localVscodeUrl}
             className="w-full h-full border-0"
             title="VSCode Environment"
-            sandbox="allow-downloads allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation allow-top-navigation-by-user-activation"
+            sandbox={TASK_RUN_IFRAME_SANDBOX}
             allow={TASK_RUN_IFRAME_ALLOW}
             onLoad={() => setIframeLoaded(true)}
           />

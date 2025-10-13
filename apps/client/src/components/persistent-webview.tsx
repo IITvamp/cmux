@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 import { ElectronWebContentsView } from "@/components/electron-web-contents-view";
 import { isElectron } from "@/lib/electron";
+import { PERMISSIVE_IFRAME_ALLOW } from "@/lib/iframePermissions";
 
 import { PersistentIframe } from "./persistent-iframe";
 
@@ -39,7 +40,7 @@ export function PersistentWebView({
   className,
   style,
   preload,
-  allow,
+  allow = PERMISSIVE_IFRAME_ALLOW,
   sandbox,
   iframeClassName,
   iframeStyle,

@@ -12,6 +12,7 @@ import { toProxyWorkspaceUrl } from "@/lib/toProxyWorkspaceUrl";
 import {
   preloadTaskRunIframes,
   TASK_RUN_IFRAME_ALLOW,
+  TASK_RUN_IFRAME_SANDBOX,
 } from "../lib/preloadTaskRunIframes";
 
 const paramsSchema = z.object({
@@ -90,7 +91,7 @@ function VSCodeComponent() {
               src={workspaceUrl}
               className="grow flex relative"
               iframeClassName="select-none"
-              sandbox="allow-downloads allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation allow-top-navigation-by-user-activation"
+              sandbox={TASK_RUN_IFRAME_SANDBOX}
               allow={TASK_RUN_IFRAME_ALLOW}
               retainOnUnmount
               suspended={!hasWorkspace}
