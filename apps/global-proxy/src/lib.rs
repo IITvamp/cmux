@@ -26,7 +26,10 @@ use serde_json::{Value, json};
 type HttpClient = Client<hyper_rustls::HttpsConnector<HttpConnector>, Body>;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-const GIT_COMMIT: &str = option_env!("GIT_COMMIT").unwrap_or("unknown");
+const GIT_COMMIT: &str = match option_env!("GIT_COMMIT") {
+    Some(commit) => commit,
+    None => "unknown",
+};
 
 #[derive(Clone, Copy)]
 struct CorsPolicy {
