@@ -1,6 +1,6 @@
 use std::{
     net::{Ipv4Addr, SocketAddr},
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
@@ -12,7 +12,9 @@ use hyper::{
 };
 use reqwest::Method;
 use tokio::{sync::oneshot, task::JoinHandle};
-use tokio_tungstenite::tungstenite::{Message, client::IntoClientRequest};
+use tokio_tungstenite::tungstenite::{
+    Message, client::IntoClientRequest, handshake::server::Request as WsHandshakeRequest,
+};
 
 struct TestProxy {
     addr: SocketAddr,
@@ -237,6 +239,93 @@ impl TestWsBackend {
         }
     }
 
+    async fn spawn_capture_workspace_header()
+    -> (Self, tokio::sync::oneshot::Receiver<Option<String>>) {
+        let listener = tokio::net::TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
+            .await
+            .expect("ws bind");
+        let addr = listener.local_addr().expect("ws addr");
+        let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
+        let (header_tx, header_rx) = oneshot::channel();
+        let header_sender = Arc::new(Mutex::new(Some(header_tx)));
+
+        let task = tokio::spawn({
+            let header_sender = header_sender.clone();
+            async move {
+                loop {
+                    tokio::select! {
+                        _ = &mut shutdown_rx => break,
+                        accept = listener.accept() => {
+                            match accept {
+                                Ok((stream, _)) => {
+                                    let header_sender = header_sender.clone();
+                                    tokio::spawn(async move {
+                                        match tokio_tungstenite::accept_hdr_async(stream, move |req: &WsHandshakeRequest, response| {
+                                            if let Some(sender) = header_sender.lock().expect("lock header sender").take() {
+                                                let value = req
+                                                    .headers()
+                                                    .get("X-Cmux-Workspace-Internal")
+                                                    .and_then(|v| v.to_str().ok())
+                                                    .map(|v| v.to_string());
+                                                let _ = sender.send(value);
+                                            }
+                                            Ok(response)
+                                        }).await {
+                                            Ok(mut ws) => {
+                                                while let Some(msg) = ws.next().await {
+                                                    match msg {
+                                                        Ok(Message::Text(text)) => {
+                                                            if ws.send(Message::Text(text)).await.is_err() {
+                                                                break;
+                                                            }
+                                                        }
+                                                        Ok(Message::Binary(bin)) => {
+                                                            if ws.send(Message::Binary(bin)).await.is_err() {
+                                                                break;
+                                                            }
+                                                        }
+                                                        Ok(Message::Ping(data)) => {
+                                                            let _ = ws.send(Message::Pong(data)).await;
+                                                        }
+                                                        Ok(Message::Pong(_)) => {}
+                                                        Ok(Message::Frame(frame)) => {
+                                                            if ws.send(Message::Frame(frame)).await.is_err() {
+                                                                break;
+                                                            }
+                                                        }
+                                                        Ok(Message::Close(frame)) => {
+                                                            let _ = ws.close(frame).await;
+                                                            break;
+                                                        }
+                                                        Err(_) => break,
+                                                    }
+                                                }
+                                            }
+                                            Err(err) => eprintln!("ws accept error: {err}"),
+                                        }
+                                    });
+                                }
+                                Err(err) => {
+                                    eprintln!("ws accept error: {err}");
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        (
+            Self {
+                addr,
+                shutdown: Some(shutdown_tx),
+                task,
+            },
+            header_rx,
+        )
+    }
+
     fn port(&self) -> u16 {
         self.addr.port()
     }
@@ -261,6 +350,41 @@ async fn health_check() {
     assert_eq!(json["status"], "healthy");
 
     proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn version_endpoint_reports_package_version() {
+    let proxy = TestProxy::spawn().await;
+
+    let response = proxy
+        .request(Method::GET, "localhost", "/version", &[])
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let json: serde_json::Value = response.json().await.expect("json");
+    assert_eq!(json["version"], env!("CARGO_PKG_VERSION"));
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn version_path_with_cmux_subdomain_is_forwarded() {
+    let backend = TestHttpBackend::serve(Arc::new(|_req| {
+        Response::builder()
+            .status(StatusCode::IM_A_TEAPOT)
+            .body(Body::from("proxy"))
+            .unwrap()
+    }))
+    .await;
+
+    let proxy = TestProxy::spawn().await;
+    let host = format!("cmux-demo-{}.cmux.sh", backend.port());
+
+    let response = proxy.request(Method::GET, &host, "/version", &[]).await;
+    assert_eq!(response.status(), StatusCode::IM_A_TEAPOT);
+    assert_eq!(response.text().await.expect("body"), "proxy");
+
+    proxy.shutdown().await;
+    backend.shutdown().await;
 }
 
 #[tokio::test]
@@ -626,6 +750,34 @@ async fn port_39378_applies_cors_and_csp() {
             .and_then(|v| v.to_str().ok()),
         Some("http://localhost:5173")
     );
+
+    proxy.shutdown().await;
+    backend.shutdown().await;
+}
+
+#[tokio::test]
+async fn websocket_proxy_for_cmux_route_forwards_workspace_header() {
+    let (backend, header_rx) = TestWsBackend::spawn_capture_workspace_header().await;
+    let proxy = TestProxy::spawn().await;
+
+    let host = format!("cmux-demo-feature-{}.cmux.sh", backend.port());
+
+    let url = format!("ws://{}{}", proxy.addr, "/ws");
+    let mut request = url.into_client_request().expect("request");
+    request
+        .headers_mut()
+        .insert("Host", host.parse().expect("host header"));
+    let (mut ws, _) = tokio_tungstenite::connect_async(request)
+        .await
+        .expect("connect through proxy");
+
+    let captured_workspace = header_rx.await.expect("header captured");
+    assert_eq!(captured_workspace.as_deref(), Some("feature"));
+
+    ws.send(Message::Text("scope".into())).await.expect("send");
+    let reply = ws.next().await.expect("reply").expect("message");
+    assert_eq!(reply.into_text().unwrap(), "scope");
+    ws.close(None).await.unwrap();
 
     proxy.shutdown().await;
     backend.shutdown().await;

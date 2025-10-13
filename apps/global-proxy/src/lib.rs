@@ -25,6 +25,8 @@ use serde_json::{Value, json};
 
 type HttpClient = Client<hyper_rustls::HttpsConnector<HttpConnector>, Body>;
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #[derive(Clone, Copy)]
 struct CorsPolicy {
     allowed_origins: &'static [&'static str],
@@ -168,6 +170,22 @@ async fn handle_request(state: Arc<AppState>, req: Request<Body>) -> Response<Bo
             );
         }
     };
+
+    if req.uri().path() == "/version" {
+        match parse_cmux_host(&host) {
+            Some((Some(_), _)) => {
+                // Requests to subdomains must be proxied; fall through.
+            }
+            _ => {
+                return json_response(
+                    StatusCode::OK,
+                    json!({
+                        "version": VERSION,
+                    }),
+                );
+            }
+        }
+    }
 
     if let Some((subdomain, _domain)) = parse_cmux_host(&host) {
         if subdomain.is_none() {
@@ -471,8 +489,12 @@ fn collect_forward_headers(
             headers.insert("X-Cmux-Port-Internal", value);
         }
     }
-    if let Some(workspace) = &behavior.workspace_header {
+    if let Some(workspace) = behavior.workspace_header.as_ref() {
         if let Ok(value) = HeaderValue::from_str(workspace) {
+            headers.insert("X-Cmux-Workspace-Internal", value);
+        }
+    } else if let Some(workspace) = derive_workspace_scope_from_headers(original) {
+        if let Ok(value) = HeaderValue::from_str(&workspace) {
             headers.insert("X-Cmux-Workspace-Internal", value);
         }
     }
@@ -482,6 +504,44 @@ fn collect_forward_headers(
         headers.insert(header::USER_AGENT, value.clone());
     }
     headers
+}
+
+fn derive_workspace_scope_from_headers(headers: &HeaderMap) -> Option<String> {
+    let host = headers
+        .get("x-forwarded-host")
+        .and_then(|value| value.to_str().ok())
+        .or_else(|| {
+            headers
+                .get(header::HOST)
+                .and_then(|value| value.to_str().ok())
+        })
+        .map(normalize_host)?;
+
+    let (subdomain_opt, _) = parse_cmux_host(&host)?;
+    let subdomain = subdomain_opt?;
+    scope_from_cmux_subdomain(&subdomain)
+}
+
+fn scope_from_cmux_subdomain(subdomain: &str) -> Option<String> {
+    let rest = subdomain.strip_prefix("cmux-")?;
+    let segments: Vec<&str> = rest.split('-').collect();
+    if segments.len() < 2 {
+        return None;
+    }
+
+    let port_segment = segments.last()?;
+    if port_segment.parse::<u16>().ok().is_none() {
+        return None;
+    }
+
+    let scope_segments = &segments[1..segments.len() - 1];
+    if scope_segments.is_empty()
+        || (scope_segments.len() == 1 && scope_segments[0].eq_ignore_ascii_case("base"))
+    {
+        None
+    } else {
+        Some(scope_segments.join("-"))
+    }
 }
 
 async fn pump_websocket(
