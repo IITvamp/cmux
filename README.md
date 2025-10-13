@@ -44,3 +44,9 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+---
+
+*Agents run in stride,*
+*Docker containers they guide,*
+*Code multiplied.*
