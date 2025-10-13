@@ -43,3 +43,6 @@ crates/**/target/
 
 # Python
 __pycache__
+
+
+cmux-proxy.tar.gz
