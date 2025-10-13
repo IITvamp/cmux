@@ -1,4 +1,4 @@
-FROM lukemathwalker/cargo-chef:latest-rust-nightly AS chef
+FROM lukemathwalker/cargo-chef:latest-rust-1 AS chef
 
 WORKDIR /app
 
@@ -7,7 +7,7 @@ COPY src ./src
 
 RUN cargo chef prepare --recipe-path recipe.json
 
-FROM lukemathwalker/cargo-chef:latest-rust-nightly AS builder
+FROM lukemathwalker/cargo-chef:latest-rust-1 AS builder
 
 WORKDIR /app
 
