@@ -1,14 +1,23 @@
-FROM rustlang/rust:nightly-slim AS builder
+FROM lukemathwalker/cargo-chef:latest-rust-nightly AS chef
 
 WORKDIR /app
 
-# Leverage incremental Docker caching by copying manifests first.
-COPY Cargo.toml ./
+COPY Cargo.toml Cargo.lock ./
 COPY src ./src
-# Build the binary in release mode.
-RUN apt-get update && apt-get install -y --no-install-recommends pkg-config build-essential \
-  && rm -rf /var/lib/apt/lists/* \
-  && cargo build --release
+
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM lukemathwalker/cargo-chef:latest-rust-nightly AS builder
+
+WORKDIR /app
+
+COPY --from=chef /app/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
+
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+
+RUN cargo build --release --locked
 
 FROM gcr.io/distroless/cc-debian12
 

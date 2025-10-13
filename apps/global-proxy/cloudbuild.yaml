@@ -1,0 +1,14 @@
+options:
+  substitutionOption: ALLOW_LOOSE
+
+steps:
+  - name: gcr.io/kaniko-project/executor:latest
+    args:
+      - --context=dir:///workspace
+      - --dockerfile=Dockerfile
+      - --destination=${_IMAGE}
+      - --cache=true
+      - --cache-ttl=168h
+
+images:
+  - ${_IMAGE}
