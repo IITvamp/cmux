@@ -1,3 +1,4 @@
+import { PERMISSIVE_IFRAME_ALLOW, PERMISSIVE_IFRAME_SANDBOX } from "./iframePermissions";
 import { persistentIframeManager } from "./persistentIframeManager";
 import { getTaskRunPersistKey } from "./persistent-webview-keys";
 
@@ -6,11 +7,9 @@ import { getTaskRunPersistKey } from "./persistent-webview-keys";
  * @param taskRunIds - Array of task run IDs to preload
  * @returns Promise that resolves when all iframes are loaded
  */
-export const TASK_RUN_IFRAME_ALLOW =
-  "clipboard-read; clipboard-write; usb; serial; hid; cross-origin-isolated; autoplay; camera; microphone; geolocation; payment; fullscreen";
+export const TASK_RUN_IFRAME_ALLOW = PERMISSIVE_IFRAME_ALLOW;
 
-export const TASK_RUN_IFRAME_SANDBOX =
-  "allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-top-navigation";
+export const TASK_RUN_IFRAME_SANDBOX = PERMISSIVE_IFRAME_SANDBOX;
 
 export async function preloadTaskRunIframes(
   data: { url: string; taskRunId: string }[]

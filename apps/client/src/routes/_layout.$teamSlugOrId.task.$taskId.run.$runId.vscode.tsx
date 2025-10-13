@@ -10,9 +10,9 @@ import { PersistentWebView } from "@/components/persistent-webview";
 import { getTaskRunPersistKey } from "@/lib/persistent-webview-keys";
 import { toProxyWorkspaceUrl } from "@/lib/toProxyWorkspaceUrl";
 import {
+  preloadTaskRunIframes,
   TASK_RUN_IFRAME_ALLOW,
   TASK_RUN_IFRAME_SANDBOX,
-  preloadTaskRunIframes,
 } from "../lib/preloadTaskRunIframes";
 
 const paramsSchema = z.object({
@@ -91,8 +91,8 @@ function VSCodeComponent() {
               src={workspaceUrl}
               className="grow flex relative"
               iframeClassName="select-none"
-              allow={TASK_RUN_IFRAME_ALLOW}
               sandbox={TASK_RUN_IFRAME_SANDBOX}
+              allow={TASK_RUN_IFRAME_ALLOW}
               retainOnUnmount
               suspended={!hasWorkspace}
               onLoad={onLoad}
