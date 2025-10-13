@@ -562,41 +562,39 @@ export default async function TutorialPage() {
         linkPrefix="/"
       />
 
-      <section className="border-b border-white/10 bg-black/40">
-        <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-12 sm:px-6">
-          <div className="inline-flex items-center gap-2 self-start rounded-full border border-white/10 bg-white/5 px-4 py-1 text-xs uppercase tracking-[0.3em] text-neutral-300">
-            cmux tutorial
-          </div>
-          <div className="space-y-4">
-            <h1 className="text-4xl font-semibold text-white sm:text-5xl">
-              Master the cmux workflow from intake to verification
-            </h1>
-            <p className="max-w-3xl text-sm text-neutral-300 sm:text-base">
-              Use this playbook to set up repositories, choose agents, configure execution modes, and guide teams through verification-ready deployments. Each section highlights where to add your own screenshots, walkthroughs, and resources as you operationalize cmux.
-            </p>
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Link
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-white/10"
-              href="/#nav-workflow"
-            >
-              View landing overview
-              <ArrowRight className="h-4 w-4" aria-hidden />
-            </Link>
-            <a
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-white/10"
-              href="https://cal.com/team/manaflow/meeting"
-              rel="noopener noreferrer"
-              target="_blank"
-            >
-              Schedule onboarding
-              <PlayCircle className="h-4 w-4" aria-hidden />
-            </a>
-          </div>
+      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 pt-12 sm:px-6">
+        <div className="inline-flex items-center gap-2 self-start rounded-full border border-white/10 bg-white/5 px-4 py-1 text-xs uppercase tracking-[0.3em] text-neutral-300">
+          cmux tutorial
         </div>
-      </section>
+        <div className="space-y-4">
+          <h1 className="text-4xl font-semibold text-white sm:text-5xl">
+            Master the cmux workflow from intake to verification
+          </h1>
+          <p className="max-w-3xl text-sm text-neutral-300 sm:text-base">
+            Use this playbook to set up repositories, choose agents, configure execution modes, and guide teams through verification-ready deployments. Each section highlights where to add your own screenshots, walkthroughs, and resources as you operationalize cmux.
+          </p>
+        </div>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Link
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-white/10"
+            href="/#nav-workflow"
+          >
+            View landing overview
+            <ArrowRight className="h-4 w-4" aria-hidden />
+          </Link>
+          <a
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-white/10"
+            href="https://cal.com/team/manaflow/meeting"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            Schedule onboarding
+            <PlayCircle className="h-4 w-4" aria-hidden />
+          </a>
+        </div>
+      </div>
 
-      <div className="mx-auto flex max-w-6xl gap-10 px-4 pb-24 pt-12 sm:px-6">
+      <div className="mx-auto flex max-w-6xl gap-10 px-4 pb-24 pt-8 sm:px-6">
         <aside className="sticky top-32 hidden h-fit w-64 flex-none space-y-6 rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-neutral-300 lg:block lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto">
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.25em] text-white/80">
             <Compass className="h-3.5 w-3.5" aria-hidden />

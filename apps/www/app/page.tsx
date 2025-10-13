@@ -1,4 +1,3 @@
-import { BrowserFrame } from "@/components/ui/browser-frame";
 import { MacDownloadLink } from "@/components/mac-download-link";
 import { SiteHeader } from "@/components/site-header";
 import {
@@ -283,9 +282,6 @@ export default async function LandingPage() {
                     </div>
                   ))}
                 </div>
-                <div className="mt-8 rounded-xl border border-dashed border-white/20 bg-neutral-950/60 p-4 text-xs text-neutral-400">
-                  Video walkthrough coming soon: &ldquo;Three-minute flythrough of orchestrating four agents on a release.&rdquo;
-                </div>
               </div>
             </div>
           </div>
@@ -415,14 +411,6 @@ export default async function LandingPage() {
               <p className="mt-4 text-sm text-neutral-400 sm:text-base">
                 Each phase inside cmux surfaces the right context, guardrails, and automation to keep humans confident while agents execute in parallel.
               </p>
-              <div className="mt-8 space-y-6">
-                <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-xs text-neutral-400">
-                  Workflow overview video coming soon: &ldquo;Full cmux workflow in 7 minutes.&rdquo;
-                </div>
-                <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-xs text-neutral-400">
-                  Onboarding playbook PDF in production—join the Discord to get notified when it drops.
-                </div>
-              </div>
             </div>
             <div className="grid flex-1 gap-6 sm:grid-cols-2">
               {workflowSteps.map((step, index) => (
@@ -479,13 +467,10 @@ export default async function LandingPage() {
                       Need setup tips? Jump to the tutorial&apos;s verification chapter for the walkthrough.
                     </div>
                   </div>
-                  <BrowserFrame
-                    className={index % 2 === 1 ? "lg:order-1" : ""}
-                    url="https://app.cmux.dev/task/verification"
-                  >
+                  <div className={index % 2 === 1 ? "lg:order-1" : ""}>
                     <Image
                       alt={highlight.title}
-                      className="w-full rounded-b-xl border-t border-neutral-200/60 dark:border-neutral-800"
+                      className="h-full w-full rounded-2xl border border-white/10 object-cover"
                       height={2112}
                       priority={index === 0}
                       quality={100}
@@ -493,7 +478,7 @@ export default async function LandingPage() {
                       src={highlight.asset}
                       width={3248}
                     />
-                  </BrowserFrame>
+                  </div>
                 </div>
               ))}
             </div>
@@ -555,9 +540,6 @@ export default async function LandingPage() {
             <div className="w-full rounded-xl border border-white/10 bg-neutral-950/80 px-6 py-4 text-sm text-white sm:w-auto text-center">
               macOS or Linux for local containers; any OS works with cloud
             </div>
-          </div>
-          <div className="mt-6 rounded-xl border border-dashed border-white/10 bg-white/5 p-4 text-xs text-neutral-400">
-            System diagram for networking and permissions is in progress—reach out if you need early access.
           </div>
         </section>
 

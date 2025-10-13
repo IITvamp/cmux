@@ -1,9 +1,13 @@
+"use client";
+
 import CmuxLogo from "@/components/logo/cmux-logo";
 import { MacDownloadLink } from "@/components/mac-download-link";
 import type { MacDownloadUrls } from "@/lib/releases";
+import clsx from "clsx";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
 
 export const NAV_ITEMS = [
   { id: "about", label: "About" },
@@ -34,10 +38,36 @@ export function SiteHeader({
   extraEndContent,
 }: SiteHeaderProps) {
   const effectiveUrls = macDownloadUrls ?? DEFAULT_DOWNLOAD_URLS;
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 12);
+    };
+
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-white/5 bg-black/50 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
+    <header
+      className={clsx(
+        "sticky top-0 z-40 backdrop-blur transition-colors",
+        isScrolled
+          ? "border-b border-white/5 bg-black/70"
+          : "border-b border-transparent bg-transparent"
+      )}
+    >
+      <div
+        className={clsx(
+          "mx-auto flex max-w-6xl items-center justify-between px-4 sm:px-6",
+          isScrolled ? "py-3" : "py-4"
+        )}
+      >
         <Link aria-label="cmux" href="/">
           <div className="flex items-center gap-3">
             <CmuxLogo height={36} label="cmux" showWordmark />
