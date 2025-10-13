@@ -8,24 +8,23 @@ export function toProxyWorkspaceUrl(workspaceUrl: string): string {
     const hostname = url.hostname;
 
     // Match format: port-{port}-morphvm-{morphId}.http.cloud.morph.so
-    const match = hostname.match(/^port-(\d+)-morphvm-([^.]+)\.http\.cloud\.morph\.so$/);
+    const match = hostname.match(
+      /^port-(\d+)-morphvm-([^.]+)\.http\.cloud\.morph\.so$/
+    );
 
-    if (match) {
-      const [, port, morphId] = match;
-      const scope = "base"; // Default scope
-
-      // Reconstruct as cmux-{morphId}-{scope}-{port}.cmux.app
-      const newHostname = `cmux-${morphId}-${scope}-${port}.cmux.app`;
-
-      // Rebuild the URL with the new hostname
-      url.hostname = newHostname;
-      return url.toString();
+    if (!match) {
+      throw new Error(`Invalid workspace URL: ${workspaceUrl}`);
     }
 
-    // Fallback: simple string replacement if pattern doesn't match
-    return workspaceUrl
-      .replace(/morphvm-/g, "")
-      .replace(/\.http\.cloud\.morph\.so/g, ".cmux.app");
+    const [, port, morphId] = match;
+    const scope = "base"; // Default scope
+
+    // Reconstruct as cmux-{morphId}-{scope}-{port}.cmux.app
+    const newHostname = `cmux-${morphId}-${scope}-${port}.cmux.app`;
+
+    // Rebuild the URL with the new hostname
+    url.hostname = newHostname;
+    return url.toString();
   }
 
   return workspaceUrl;

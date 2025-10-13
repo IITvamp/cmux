@@ -1,4 +1,5 @@
 import { GitHubIcon } from "@/components/icons/github";
+import { PersistentWebView } from "@/components/persistent-webview";
 import { ScriptTextareaField } from "@/components/ScriptTextareaField";
 import { SCRIPT_COPY } from "@/components/scriptCopy";
 import { ResizableColumns } from "@/components/ResizableColumns";
@@ -20,7 +21,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { Id } from "@cmux/convex/dataModel";
 import clsx from "clsx";
 import { ArrowLeft, Loader2, Minus, Plus, Settings, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TextareaAutosize from "react-textarea-autosize";
 
 export type EnvVar = { name: string; value: string; isSecret: boolean };
@@ -83,6 +84,7 @@ export function EnvironmentConfiguration({
     instanceId?: string;
   };
   const [iframeLoaded, setIframeLoaded] = useState(false);
+  const [iframeError, setIframeError] = useState<string | null>(null);
   const [envName, setEnvName] = useState(() => initialEnvName);
   const [envVars, setEnvVars] = useState<EnvVar[]>(() =>
     ensureInitialEnvVars(initialEnvVars)
@@ -104,6 +106,11 @@ export function EnvironmentConfiguration({
   const [localVscodeUrl, setLocalVscodeUrl] = useState<string | undefined>(
     () => vscodeUrl
   );
+  const iframePersistKey = useMemo(() => {
+    if (localInstanceId) return `env-config:${localInstanceId}`;
+    if (localVscodeUrl) return `env-config:${localVscodeUrl}`;
+    return "env-config";
+  }, [localInstanceId, localVscodeUrl]);
 
   useEffect(() => {
     setLocalInstanceId(instanceId);
@@ -144,7 +151,22 @@ export function EnvironmentConfiguration({
   // Reset iframe loading state when URL changes
   useEffect(() => {
     setIframeLoaded(false);
+    setIframeError(null);
   }, [localVscodeUrl]);
+
+  const handleIframeLoad = useCallback(() => {
+    setIframeError(null);
+    setIframeLoaded(true);
+  }, []);
+
+  const handleIframeError = useCallback((error: Error) => {
+    console.error("Failed to load VS Code workspace iframe", error);
+    setIframeError(
+      "We couldn’t load VS Code. Try reloading or restarting the environment."
+    );
+  }, []);
+
+  const showIframeOverlay = !iframeLoaded || iframeError !== null;
 
   // no-op placeholder removed; using onSnapshot instead
 
@@ -704,29 +726,41 @@ export function EnvironmentConfiguration({
       ) : localVscodeUrl ? (
         <div className="relative h-full">
           <div
-            aria-hidden={iframeLoaded}
+            aria-hidden={!showIframeOverlay}
             className={clsx(
               "absolute inset-0 z-[var(--z-low)] flex items-center justify-center backdrop-blur-sm transition-opacity duration-300",
               "bg-white/60 dark:bg-neutral-950/60",
-              iframeLoaded
-                ? "opacity-0 pointer-events-none"
-                : "opacity-100 pointer-events-auto"
+              showIframeOverlay
+                ? "opacity-100 pointer-events-auto"
+                : "opacity-0 pointer-events-none"
             )}
           >
-            <div className="text-center">
-              <Loader2 className="w-6 h-6 mx-auto mb-3 animate-spin text-neutral-500 dark:text-neutral-400" />
-              <p className="text-sm text-neutral-700 dark:text-neutral-300">
-                Loading VS Code...
-              </p>
-            </div>
+            {iframeError ? (
+              <div className="text-center max-w-sm px-6">
+                <X className="w-8 h-8 mx-auto mb-3 text-red-500" />
+                <p className="text-sm text-neutral-700 dark:text-neutral-300">
+                  {iframeError}
+                </p>
+              </div>
+            ) : (
+              <div className="text-center">
+                <Loader2 className="w-6 h-6 mx-auto mb-3 animate-spin text-neutral-500 dark:text-neutral-400" />
+                <p className="text-sm text-neutral-700 dark:text-neutral-300">
+                  Loading VS Code...
+                </p>
+              </div>
+            )}
           </div>
-          <iframe
+          <PersistentWebView
+            persistKey={iframePersistKey}
             src={localVscodeUrl}
-            className="w-full h-full border-0"
-            title="VSCode Environment"
-            sandbox={TASK_RUN_IFRAME_SANDBOX}
+            className="absolute inset-0"
+            iframeClassName="w-full h-full border-0"
             allow={TASK_RUN_IFRAME_ALLOW}
-            onLoad={() => setIframeLoaded(true)}
+            sandbox={TASK_RUN_IFRAME_SANDBOX}
+            retainOnUnmount
+            onLoad={handleIframeLoad}
+            onError={handleIframeError}
           />
         </div>
       ) : (
