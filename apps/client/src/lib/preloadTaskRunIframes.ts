@@ -6,8 +6,44 @@ import { getTaskRunPersistKey } from "./persistent-webview-keys";
  * @param taskRunIds - Array of task run IDs to preload
  * @returns Promise that resolves when all iframes are loaded
  */
-export const TASK_RUN_IFRAME_ALLOW =
-  "clipboard-read; clipboard-write; usb; serial; hid; cross-origin-isolated; autoplay; camera; microphone; geolocation; payment; fullscreen";
+const TASK_RUN_IFRAME_PERMISSION_TOKENS = [
+  "accelerometer",
+  "ambient-light-sensor",
+  "autoplay",
+  "battery",
+  "camera",
+  "clipboard-read",
+  "clipboard-write",
+  "cross-origin-isolated",
+  "display-capture",
+  "document-domain",
+  "encrypted-media",
+  "fullscreen",
+  "gamepad",
+  "geolocation",
+  "gyroscope",
+  "hid",
+  "identity-credentials-get",
+  "idle-detection",
+  "magnetometer",
+  "microphone",
+  "midi",
+  "payment",
+  "picture-in-picture",
+  "publickey-credentials-create",
+  "publickey-credentials-get",
+  "screen-wake-lock",
+  "serial",
+  "speaker-selection",
+  "storage-access",
+  "sync-xhr",
+  "usb",
+  "web-share",
+  "window-management",
+  "xr-spatial-tracking",
+] as const;
+
+export const TASK_RUN_IFRAME_ALLOW = TASK_RUN_IFRAME_PERMISSION_TOKENS.join("; ");
 
 export const TASK_RUN_IFRAME_SANDBOX =
   "allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-top-navigation";
