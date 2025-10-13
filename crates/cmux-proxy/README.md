@@ -103,3 +103,7 @@ Note: creating Linux network namespaces requires root/capabilities; this shim fo
 ## License
 
 MIT
+
+Code blossoms at dusk
+Agents weave threads of insight
+Merged minds guide the dawn

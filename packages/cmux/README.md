@@ -51,3 +51,7 @@ cmux is part of the cmux project. See the main repository for development instru
 ## License
 
 MIT
+
+Code blossoms at dusk
+Agents weave threads of insight
+Merged minds guide the dawn
