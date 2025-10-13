@@ -157,7 +157,7 @@ const cmuxAPI = {
     install: () =>
       ipcRenderer.invoke("cmux:auto-update:install") as Promise<{
         ok: boolean;
-        reason?: string;
+        reason?: "not-packaged" | "no-update";
       }>,
   },
   webContentsView: {

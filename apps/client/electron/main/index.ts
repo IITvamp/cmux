@@ -66,6 +66,7 @@ type AutoUpdateToastPayload = {
 };
 
 let queuedAutoUpdateToast: AutoUpdateToastPayload | null = null;
+let downloadedUpdateVersion: string | null = null;
 
 // Persistent log files
 let logsDir: string | null = null;
@@ -381,12 +382,23 @@ function registerAutoUpdateIpcHandlers(): void {
       return { ok: false, reason: "not-packaged" as const };
     }
 
+    if (!downloadedUpdateVersion) {
+      mainLog(
+        "Auto-update install requested but no downloaded update is available"
+      );
+      return { ok: false, reason: "no-update" as const };
+    }
+
+    const targetVersion = downloadedUpdateVersion;
     try {
       queuedAutoUpdateToast = null;
+      downloadedUpdateVersion = null;
+      mainLog("Applying downloaded update", { version: targetVersion });
       autoUpdater.quitAndInstall();
       return { ok: true } as const;
     } catch (error) {
       mainWarn("Failed to trigger quitAndInstall", error);
+      downloadedUpdateVersion = targetVersion;
       const err = error instanceof Error ? error : new Error(String(error));
       throw err;
     }
@@ -491,6 +503,17 @@ function setupAutoUpdates(): void {
         ? info.version
         : null;
 
+    const updateIsNewer = isUpdateNewerThanCurrent(info);
+
+    if (!updateIsNewer) {
+      mainLog("Downloaded update is not newer than current version; ignoring", {
+        version,
+        currentVersion: app.getVersion(),
+      });
+      return;
+    }
+
+    downloadedUpdateVersion = version;
     mainLog("Update downloaded; notifying renderer", { version });
     queueAutoUpdateToast({ version });
   });
@@ -922,10 +945,19 @@ app.whenReady().then(async () => {
             try {
               mainLog("Manual update check initiated");
               const result = await autoUpdater.checkForUpdates();
-              if (!result?.updateInfo) {
+              logUpdateCheckResult("Manual menu checkForUpdates", result);
+              const updateInfo = result?.updateInfo;
+              const updateAvailable = isUpdateNewerThanCurrent(updateInfo);
+              if (!updateAvailable) {
                 await dialog.showMessageBox({
                   type: "info",
                   message: "You’re up to date.",
+                });
+              } else {
+                await dialog.showMessageBox({
+                  type: "info",
+                  message:
+                    "Downloading the latest update in the background. We'll let you know when it's ready to install.",
                 });
               }
             } catch (e) {

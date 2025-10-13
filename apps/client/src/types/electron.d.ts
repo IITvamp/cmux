@@ -115,7 +115,11 @@ interface CmuxAPI {
         updateAvailable?: boolean;
         version?: string | null;
       }>;
-    install: () => Promise<{ ok: boolean; reason?: string }>;
+    install: () =>
+      Promise<{
+        ok: boolean;
+        reason?: "not-packaged" | "no-update";
+      }>;
   };
 }
 

@@ -76,6 +76,8 @@ function useAutoUpdateNotifications() {
                       const reason =
                         result.reason === "not-packaged"
                           ? "Updates can only be applied from the packaged app."
+                          : result.reason === "no-update"
+                            ? "No update is ready to install yet. Try checking again shortly."
                           : "Failed to restart. Try again from the menu.";
                       toast.error(reason);
                     }

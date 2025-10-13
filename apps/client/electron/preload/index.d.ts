@@ -38,10 +38,14 @@ declare global {
             ok: boolean;
             reason?: string;
             updateAvailable?: boolean;
-            version?: string | null;
-          }>;
-        install: () => Promise<{ ok: boolean; reason?: string }>;
-      };
+        version?: string | null;
+      }>;
+      install: () =>
+        Promise<{
+          ok: boolean;
+          reason?: "not-packaged" | "no-update";
+        }>;
     };
-  }
+  };
+}
 }
