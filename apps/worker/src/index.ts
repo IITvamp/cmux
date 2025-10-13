@@ -40,6 +40,8 @@ import { detectTerminalIdle } from "./detectTerminalIdle";
 import { runWorkerExec } from "./execRunner";
 import { FileWatcher, computeGitDiff, getFileWithDiff } from "./fileWatcher";
 import { log } from "./logger";
+import { DevServerDetector } from "./devServerDetector";
+import { ChromePreviewController } from "./chromePreview";
 
 const execAsync = promisify(exec);
 
@@ -50,6 +52,55 @@ const WORKER_ID = process.env.WORKER_ID || `worker-${Date.now()}`;
 const WORKER_PORT = parseInt(process.env.WORKER_PORT || "39377", 10);
 const CONTAINER_IMAGE = process.env.CONTAINER_IMAGE || "cmux-worker";
 const CONTAINER_VERSION = process.env.CONTAINER_VERSION || "0.0.1";
+
+const disableAutoPreviews =
+  ["1", "true", "yes"].includes(
+    (process.env.CMUX_DISABLE_AUTO_PREVIEWS || "").toLowerCase()
+  ) ||
+  process.env.NODE_ENV === "test" ||
+  process.env.VITEST === "true";
+
+let devServerDetectorInstance: DevServerDetector | null = null;
+
+if (disableAutoPreviews) {
+  log(
+    "INFO",
+    "[DevServerPreview] Auto preview detection disabled via environment",
+    undefined,
+    WORKER_ID
+  );
+} else {
+  const chromePreviewController = new ChromePreviewController({
+    workerId: WORKER_ID,
+  });
+
+  devServerDetectorInstance = new DevServerDetector({
+    workerId: WORKER_ID,
+    onCandidate: async (candidate) => {
+      const opened = await chromePreviewController.openDevServer(candidate);
+      if (!opened) {
+        log(
+          "DEBUG",
+          "[DevServerPreview] Candidate did not produce an opened tab",
+          {
+            port: candidate.port,
+            pid: candidate.pid,
+            processName: candidate.processName,
+          },
+          WORKER_ID
+        );
+      }
+    },
+  });
+
+  devServerDetectorInstance.start();
+  log(
+    "INFO",
+    "[DevServerPreview] Started dev server detector",
+    undefined,
+    WORKER_ID
+  );
+}
 
 // Create Express app
 const app = express();
@@ -1417,6 +1468,22 @@ setInterval(() => {
 // Graceful shutdown
 function gracefulShutdown() {
   console.log(`Worker ${WORKER_ID} shutting down...`);
+
+  if (devServerDetectorInstance) {
+    devServerDetectorInstance
+      .stop()
+      .catch((error) =>
+        log(
+          "ERROR",
+          "[DevServerPreview] Failed to stop detector",
+          error instanceof Error ? { message: error.message } : error,
+          WORKER_ID
+        )
+      )
+      .finally(() => {
+        devServerDetectorInstance = null;
+      });
+  }
 
   // Stop all file watchers
   for (const [taskRunId, watcher] of activeFileWatchers) {
