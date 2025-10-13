@@ -15,6 +15,7 @@ import { Skeleton } from "@heroui/react";
 import * as Popover from "@radix-ui/react-popover";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { clsx } from "clsx";
+import Fuse from "fuse.js";
 import {
   AlertTriangle,
   Check,
@@ -399,13 +400,27 @@ const SearchableSelect = forwardRef<
     valueToOption,
   ]);
 
+  const fuse = useMemo(() => {
+    return new Fuse(normOptions, {
+      keys: [
+        { name: "label", weight: 2 },
+        { name: "value", weight: 1 },
+        { name: "displayLabel", weight: 1.5 },
+      ],
+      threshold: 0.4,
+      distance: 100,
+      minMatchCharLength: 1,
+      includeScore: true,
+      ignoreLocation: true,
+    });
+  }, [normOptions]);
+
   const filteredOptions = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = search.trim();
     if (!q) return normOptions;
-    return normOptions.filter((o) =>
-      `${o.label} ${o.value}`.toLowerCase().includes(q)
-    );
-  }, [normOptions, search]);
+    const results = fuse.search(q);
+    return results.map((result) => result.item);
+  }, [fuse, normOptions, search]);
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const rowVirtualizer = useVirtualizer({

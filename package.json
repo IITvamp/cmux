@@ -54,5 +54,8 @@
     "apps/*",
     "packages/*",
     "scripts"
-  ]
+  ],
+  "dependencies": {
+    "fuse.js": "^7.1.0"
+  }
 }
