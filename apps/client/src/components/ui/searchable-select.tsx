@@ -15,6 +15,7 @@ import { Skeleton } from "@heroui/react";
 import * as Popover from "@radix-ui/react-popover";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { clsx } from "clsx";
+import fuzzysort from "fuzzysort";
 import {
   AlertTriangle,
   Check,
@@ -400,11 +401,52 @@ const SearchableSelect = forwardRef<
   ]);
 
   const filteredOptions = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = search.trim();
     if (!q) return normOptions;
-    return normOptions.filter((o) =>
-      `${o.label} ${o.value}`.toLowerCase().includes(q)
-    );
+
+    // Prepare options for fuzzy search - create searchable targets
+    const targets = normOptions.map((o) => ({
+      option: o,
+      // Create combined searchable string for better matching
+      searchStr: `${o.label} ${o.value}`,
+      label: o.label,
+      value: o.value,
+    }));
+
+    // Perform fuzzy search on multiple fields with different weights
+    const labelResults = fuzzysort.go(q, targets, {
+      key: 'label',
+      threshold: -10000, // Lower threshold = more lenient matching
+      limit: 100,
+    });
+
+    const valueResults = fuzzysort.go(q, targets, {
+      key: 'value',
+      threshold: -10000,
+      limit: 100,
+    });
+
+    // Combine and deduplicate results, preferring label matches
+    const resultMap = new Map<SelectOptionObject, number>();
+
+    // Add label matches with higher priority (multiply score by 1.5)
+    labelResults.forEach((result) => {
+      const score = result.score * 1.5;
+      resultMap.set(result.obj.option, score);
+    });
+
+    // Add value matches with lower priority
+    valueResults.forEach((result) => {
+      const existing = resultMap.get(result.obj.option);
+      if (!existing || existing < result.score) {
+        resultMap.set(result.obj.option, Math.max(existing || -Infinity, result.score));
+      }
+    });
+
+    // Sort by score (higher is better) and return options
+    return Array.from(resultMap.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([option]) => option);
   }, [normOptions, search]);
 
   const listRef = useRef<HTMLDivElement | null>(null);
