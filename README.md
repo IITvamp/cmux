@@ -44,3 +44,9 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+---
+
+*Parallel agents spawn,*
+*Code flows through Docker containers—*
+*Many minds, one goal.*

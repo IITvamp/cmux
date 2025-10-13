@@ -22,3 +22,9 @@ uv run docker-buildkit_setup.py
 - uv will automatically pick up the dependencies for you
 - alternatively, use uv venv to set up a proper venv for morphcloud
 - BuildKit enables parallel, multi-stage builds for improved performance
+
+---
+
+*BuildKit layers rise,*
+*Docker stages build in tandem—*
+*Cloud VMs await.*
