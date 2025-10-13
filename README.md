@@ -44,3 +44,9 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+---
+
+*Agents run in streams,
+Docker containers unfold tasks,
+Code blooms in chorus.*

@@ -106,3 +106,9 @@ The release workflow automatically:
 ## License
 
 This project is provided as-is for experimentation.
+
+---
+
+*Variables persist,
+Daemon syncs the shell's domain,
+Workspace knows its scope.*

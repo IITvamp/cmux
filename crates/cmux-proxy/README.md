@@ -103,3 +103,9 @@ Note: creating Linux network namespaces requires root/capabilities; this shim fo
 ## License
 
 MIT
+
+---
+
+*Headers choose the port,
+Loopback IPs multiply,
+Workspaces divide.*

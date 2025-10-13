@@ -51,3 +51,9 @@ cmux is part of the cmux project. See the main repository for development instru
 ## License
 
 MIT
+
+---
+
+*One command unfolds,
+Backend serves the frontend's call,
+Browser finds its home.*
