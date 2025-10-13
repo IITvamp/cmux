@@ -375,6 +375,40 @@ export const DefaultRepoSchema = z.object({
   localPath: z.string(),
 });
 
+// Dev server preview schemas
+export const DevServerDetectionSchema = z.object({
+  port: z.number(),
+  url: z.string(),
+  confidence: z.number(),
+  processInfo: z.object({
+    port: z.number(),
+    processName: z.string().optional(),
+    pid: z.number().optional(),
+    command: z.string().optional(),
+  }).optional(),
+});
+
+export const NavigationResultSchema = z.object({
+  url: z.string(),
+  success: z.boolean(),
+  error: z.string().optional(),
+  tabId: z.string().optional(),
+});
+
+export const DevServerPreviewStatusSchema = z.object({
+  enabled: z.boolean(),
+  chromeConnected: z.boolean(),
+  monitoring: z.boolean(),
+  config: z.object({
+    cdpPort: z.number(),
+    cdpHost: z.string(),
+    enabled: z.boolean(),
+    minConfidence: z.number(),
+    autoNavigate: z.boolean(),
+    excludedPorts: z.array(z.number()),
+  }),
+});
+
 // Type exports
 export type CreateTerminal = z.infer<typeof CreateTerminalSchema>;
 export type TerminalInput = z.infer<typeof TerminalInputSchema>;
@@ -420,6 +454,9 @@ export type GitHubSyncPrState = z.infer<typeof GitHubSyncPrStateSchema>;
 export type GitHubMergeBranch = z.infer<typeof GitHubMergeBranchSchema>;
 export type ArchiveTask = z.infer<typeof ArchiveTaskSchema>;
 export type SpawnFromComment = z.infer<typeof SpawnFromCommentSchema>;
+export type DevServerDetection = z.infer<typeof DevServerDetectionSchema>;
+export type NavigationResult = z.infer<typeof NavigationResultSchema>;
+export type DevServerPreviewStatus = z.infer<typeof DevServerPreviewStatusSchema>;
 export type ProviderStatus = z.infer<typeof ProviderStatusSchema>;
 export type DockerStatus = z.infer<typeof DockerStatusSchema>;
 export type GitStatus = z.infer<typeof GitStatusSchema>;
@@ -519,6 +556,14 @@ export interface ClientToServerEvents {
       error?: string;
     }) => void
   ) => void;
+  // Dev server preview events
+  "dev-server-preview-status": (
+    callback: (response: { success: boolean; status?: z.infer<typeof DevServerPreviewStatusSchema>; error?: string }) => void
+  ) => void;
+  "dev-server-preview-navigate": (
+    data: { url: string },
+    callback: (response: { success: boolean; result?: z.infer<typeof NavigationResultSchema>; error?: string }) => void
+  ) => void;
 }
 
 export interface ServerToClientEvents {
@@ -532,6 +577,14 @@ export interface ServerToClientEvents {
   "available-editors": (data: AvailableEditors) => void;
   "task-started": (data: TaskStarted) => void;
   "task-failed": (data: TaskError) => void;
+  // Dev server preview events
+  "dev-server-preview:dev-server-detected": (data: z.infer<typeof DevServerDetectionSchema>) => void;
+  "dev-server-preview:navigation-attempted": (data: z.infer<typeof NavigationResultSchema>) => void;
+  "dev-server-preview:chrome-connected": () => void;
+  "dev-server-preview:chrome-disconnected": () => void;
+  "dev-server-preview:started": () => void;
+  "dev-server-preview:stopped": () => void;
+  "dev-server-preview:error": (error: any) => void;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type

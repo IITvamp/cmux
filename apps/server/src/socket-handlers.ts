@@ -14,6 +14,7 @@ import {
   type AvailableEditors,
   type FileInfo,
 } from "@cmux/shared";
+import type { DevServerPreview } from "@cmux/shared/node/dev-server-preview";
 import {
   type PullRequestActionResult,
   type StoredPullRequestInfo,
@@ -74,6 +75,7 @@ export function setupSocketHandlers(
   rt: RealtimeServer,
   gitDiffManager: GitDiffManager,
   defaultRepo?: GitRepoInfo | null,
+  devServerPreview?: DevServerPreview,
 ) {
   let hasRefreshedGithub = false;
   let dockerEventsStarted = false;
@@ -1487,5 +1489,71 @@ ${title}`;
         });
       }
     });
+
+    // Dev server preview handlers
+    if (devServerPreview) {
+      devServerPreview.on('dev-server-detected', (detection) => {
+        (socket as any).emit('dev-server-preview:dev-server-detected', detection);
+      });
+
+      devServerPreview.on('navigation-attempted', (result) => {
+        (socket as any).emit('dev-server-preview:navigation-attempted', result);
+      });
+
+      devServerPreview.on('chrome-connected', () => {
+        (socket as any).emit('dev-server-preview:chrome-connected');
+      });
+
+      devServerPreview.on('chrome-disconnected', () => {
+        (socket as any).emit('dev-server-preview:chrome-disconnected');
+      });
+
+      devServerPreview.on('started', () => {
+        (socket as any).emit('dev-server-preview:started');
+      });
+
+      devServerPreview.on('stopped', () => {
+        (socket as any).emit('dev-server-preview:stopped');
+      });
+
+      devServerPreview.on('error', (error) => {
+        (socket as any).emit('dev-server-preview:error', error);
+      });
+
+      // Get dev server preview status
+      socket.on("dev-server-preview-status", (callback) => {
+        try {
+          const status = devServerPreview.getStatus();
+          callback({ success: true, status });
+        } catch (error) {
+          callback({
+            success: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
+        }
+      });
+
+      // Manually navigate to a URL
+      socket.on("dev-server-preview-navigate", async (data, callback) => {
+        try {
+          const { url } = data;
+          if (typeof url !== "string" || !url.startsWith("http")) {
+            callback({
+              success: false,
+              error: "Invalid URL provided",
+            });
+            return;
+          }
+
+          const result = await devServerPreview.navigateToUrl(url);
+          callback({ success: true, result });
+        } catch (error) {
+          callback({
+            success: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
+        }
+      });
+    }
   });
 }

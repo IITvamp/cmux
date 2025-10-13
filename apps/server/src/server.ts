@@ -3,6 +3,7 @@ import { exec } from "node:child_process";
 import { createServer } from "node:http";
 import { promisify } from "node:util";
 import { GitDiffManager } from "./gitDiff";
+import { DevServerPreview } from "@cmux/shared/node/dev-server-preview";
 
 import { createProxyApp, setupWebSocketProxy } from "./proxyApp";
 import { setupSocketHandlers } from "./socket-handlers";
@@ -77,6 +78,9 @@ export async function startServer({
   // Git diff manager instance
   const gitDiffManager = new GitDiffManager();
 
+  // Dev server preview service
+  const devServerPreview = new DevServerPreview();
+
   // Create Express proxy app
   const proxyApp = createProxyApp({ publicPath });
 
@@ -89,11 +93,19 @@ export async function startServer({
   const rt = createSocketIOTransport(httpServer);
 
   // Set up all socket handlers
-  setupSocketHandlers(rt, gitDiffManager, defaultRepo);
+  setupSocketHandlers(rt, gitDiffManager, defaultRepo, devServerPreview);
 
   const server = httpServer.listen(port, async () => {
     serverLogger.info(`Terminal server listening on port ${port}`);
     serverLogger.info(`Visit http://localhost:${port} to see the app`);
+
+    // Start dev server preview service
+    try {
+      await devServerPreview.start();
+      serverLogger.info("Dev server preview service started");
+    } catch (error) {
+      serverLogger.warn("Failed to start dev server preview service:", error);
+    }
 
     // Store default repo info if provided
     if (defaultRepo?.remoteName) {
