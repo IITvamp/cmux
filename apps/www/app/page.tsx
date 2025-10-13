@@ -185,6 +185,17 @@ export default async function LandingPage() {
                     |
                   </li>
                   <li>
+                    <Link
+                      className="font-semibold text-white hover:text-blue-400 transition"
+                      href="/tutorial"
+                    >
+                      Docs
+                    </Link>
+                  </li>
+                  <li className="text-neutral-700 px-1" role="presentation">
+                    |
+                  </li>
+                  <li>
                     <a
                       className="font-semibold text-white hover:text-blue-400 transition"
                       href="#requirements"
