@@ -12,12 +12,12 @@ FROM lukemathwalker/cargo-chef:latest-rust-1 AS builder
 WORKDIR /app
 
 COPY --from=chef /app/recipe.json recipe.json
-RUN cargo chef cook --release --recipe-path recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json --target x86_64-unknown-linux-gnu
 
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 
-RUN cargo build --release --locked
+RUN cargo build --release --locked --target x86_64-unknown-linux-gnu
 
 FROM gcr.io/distroless/cc-debian12
 
@@ -28,7 +28,7 @@ ENV PORT=8080 \
 
 WORKDIR /app
 
-COPY --from=builder /app/target/release/global-proxy /usr/local/bin/global-proxy
+COPY --from=builder /app/target/x86_64-unknown-linux-gnu/release/global-proxy /usr/local/bin/global-proxy
 
 EXPOSE 8080
 
