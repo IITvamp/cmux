@@ -9,7 +9,11 @@ import z from "zod";
 import { PersistentWebView } from "@/components/persistent-webview";
 import { getTaskRunPersistKey } from "@/lib/persistent-webview-keys";
 import { toProxyWorkspaceUrl } from "@/lib/toProxyWorkspaceUrl";
-import { preloadTaskRunIframes } from "../lib/preloadTaskRunIframes";
+import {
+  preloadTaskRunIframes,
+  TASK_RUN_IFRAME_ALLOW,
+  TASK_RUN_IFRAME_SANDBOX,
+} from "../lib/preloadTaskRunIframes";
 
 const paramsSchema = z.object({
   taskId: typedZid("tasks"),
@@ -87,8 +91,8 @@ function VSCodeComponent() {
               src={workspaceUrl}
               className="grow flex relative"
               iframeClassName="select-none"
-              sandbox="allow-downloads allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation allow-top-navigation-by-user-activation"
-              allow="accelerometer; camera; encrypted-media; fullscreen; geolocation; gyroscope; magnetometer; microphone; midi; payment; usb; xr-spatial-tracking"
+              sandbox={TASK_RUN_IFRAME_SANDBOX}
+              allow={TASK_RUN_IFRAME_ALLOW}
               retainOnUnmount
               suspended={!hasWorkspace}
               onLoad={onLoad}
