@@ -922,10 +922,19 @@ app.whenReady().then(async () => {
             try {
               mainLog("Manual update check initiated");
               const result = await autoUpdater.checkForUpdates();
-              if (!result?.updateInfo) {
+              const updateInfo = result?.updateInfo;
+
+              if (!updateInfo || !isUpdateNewerThanCurrent(updateInfo)) {
                 await dialog.showMessageBox({
                   type: "info",
-                  message: "You’re up to date.",
+                  message: "You're up to date.",
+                });
+              } else {
+                // Update is available and will download in background
+                // Note: The update-downloaded event listener will queue the toast
+                // when download completes, so we don't need to do anything here
+                mainLog("Update available, download in progress", {
+                  version: updateInfo.version,
                 });
               }
             } catch (e) {

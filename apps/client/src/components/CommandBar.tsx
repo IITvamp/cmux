@@ -436,12 +436,11 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
                   toast.error("Failed to check for updates.");
                 }
               } else if (result.updateAvailable) {
-                const versionLabel = result.version
-                  ? ` (${result.version})`
-                  : "";
-                toast.success(
-                  `Update available${versionLabel}. Downloading in the background.`,
-                );
+                // Don't show a toast here - the update-downloaded event will
+                // trigger the proper toast with the restart button
+                console.log("Update check: update available, downloading", {
+                  version: result.version,
+                });
               } else {
                 toast.info("You're up to date.");
               }
