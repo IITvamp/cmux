@@ -34,8 +34,9 @@ Bun.serve<WebSocketData>({
       console.log(`[WebSocket] Upgrade request detected for ${hostname}${url.pathname}`);
 
       // Parse hostname to extract morphId and port
-      // Format: cmux-{morphId}-{scope}-{port}.cmux.app
-      const match = hostname.match(/^cmux-([^-]+)-[^-]+-(\d+)\.cmux\.(app|sh)$/);
+      // Format: cmux-{morphId}-{scope}-{port}.{cmux.app|cmux.sh|autobuild.app}
+      // The port is always the last segment before the domain
+      const match = hostname.match(/^cmux-([^-]+)-.*-(\d+)\.(?:cmux\.(?:app|sh)|autobuild\.app)$/);
 
       if (!match) {
         console.error(`[WebSocket] Invalid hostname format: ${hostname}`);
