@@ -103,3 +103,9 @@ Note: creating Linux network namespaces requires root/capabilities; this shim fo
 ## License
 
 MIT
+
+---
+
+*Headers guide the way*
+*To ports and workspaces deep*
+*Rust proxy stands guard*

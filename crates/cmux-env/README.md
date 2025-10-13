@@ -106,3 +106,9 @@ The release workflow automatically:
 ## License
 
 This project is provided as-is for experimentation.
+
+---
+
+*Variables flow*
+*Between shells and directories*
+*Environment shared*

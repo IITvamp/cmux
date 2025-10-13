@@ -19,3 +19,9 @@ bun start
 ```
 
 This project was created using `bun init` in bun v1.2.20. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+
+---
+
+*React and Tailwind*
+*Templates ready to preview*
+*Bun runs fast and true*
