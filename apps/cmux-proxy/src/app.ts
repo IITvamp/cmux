@@ -38,12 +38,13 @@ self.addEventListener('fetch', (event) => {
   if (isLoopbackHostname(url.hostname) && url.port) {
     // Get the morph ID from the current page's subdomain
     const currentHost = self.location.hostname;
-    const morphIdMatch = currentHost.match(/port-\\\\d+-(.*)\\\\.cmux\\\\.sh/);
+    const morphIdMatch = currentHost.match(/port-\\\\d+-(.*)\\\\.(?:cmux\\\\.sh|cmux\\\\.app|autobuild\\\\.app)/);
 
     if (morphIdMatch) {
       const morphId = morphIdMatch[1];
-      // Redirect to port-PORT-[morphid].cmux.sh
-      const redirectUrl = \`https://port-\${url.port}-\${morphId}.cmux.sh\${url.pathname}\${url.search}\`;
+      // Redirect to port-PORT-[morphid] on the same domain
+      const domain = currentHost.match(/\\\\.(cmux\\\\.sh|cmux\\\\.app|autobuild\\\\.app)$/)?.[1] || 'cmux.sh';
+      const redirectUrl = \`https://port-\${url.port}-\${morphId}.\${domain}\${url.pathname}\${url.search}\`;
 
       // Create new headers, but let the browser handle Host header
       const headers = new Headers(event.request.headers);
@@ -284,12 +285,13 @@ function replaceLocalhostUrl(url) {
     const urlObj = new URL(url, __realLocation.href);
     if (isLoopbackHostname(urlObj.hostname) && urlObj.port) {
       const currentHost = __realLocation.hostname;
-      const morphIdMatch = currentHost.match(/port-\\\\d+-(.*)\\\\.cmux\\\\.sh/);
+      const morphIdMatch = currentHost.match(/port-\\\\d+-(.*)\\\\.(?:cmux\\\\.sh|cmux\\\\.app|autobuild\\\\.app)/);
 
       if (morphIdMatch) {
         const morphId = morphIdMatch[1];
+        const domain = currentHost.match(/\\\\.(cmux\\\\.sh|cmux\\\\.app|autobuild\\\\.app)$/)?.[1] || 'cmux.sh';
         urlObj.protocol = 'https:';
-        urlObj.hostname = \`port-\${urlObj.port}-\${morphId}.cmux.sh\`;
+        urlObj.hostname = \`port-\${urlObj.port}-\${morphId}.\${domain}\`;
         urlObj.port = '';
         return urlObj.toString();
       }
@@ -715,6 +717,17 @@ function parseCmuxDomain(
     return {
       subdomain: normalized.slice(0, -".cmux.app".length),
       domain: "cmux.app",
+    };
+  }
+
+  // Check for autobuild.app
+  if (normalized === "autobuild.app") {
+    return { subdomain: "", domain: "autobuild.app" };
+  }
+  if (normalized.endsWith(".autobuild.app")) {
+    return {
+      subdomain: normalized.slice(0, -".autobuild.app".length),
+      domain: "autobuild.app",
     };
   }
 
