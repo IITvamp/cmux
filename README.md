@@ -44,3 +44,9 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+---
+
+*Agents work as one
+Code flows through parallel streams
+Tasks complete in sync*
