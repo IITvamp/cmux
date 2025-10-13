@@ -12,7 +12,8 @@ import { useEffect, useState } from "react";
 export const NAV_ITEMS = [
   { id: "about", label: "About" },
   { id: "workflow", label: "Workflow" },
-  { id: "roadmap", label: "Roadmap" },
+  { id: "verification", label: "Verification" },
+  { id: "requirements", label: "Requirements" },
 ];
 
 type SiteHeaderProps = {
@@ -83,9 +84,9 @@ export function SiteHeader({
               {item.label}
             </Link>
           ))}
-          <Link className="text-neutral-300 transition hover:text-white" href="/tutorial">
+          {/* <Link className="text-neutral-300 transition hover:text-white" href="/tutorial">
             Tutorial
-          </Link>
+          </Link> */}
           <a
             className="text-neutral-300 transition hover:text-white"
             href="https://github.com/manaflow-ai/cmux"

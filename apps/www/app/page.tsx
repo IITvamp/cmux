@@ -5,7 +5,6 @@ import {
   Cloud,
   GitPullRequest,
   Layers,
-  Star,
   Settings,
   Terminal,
   Users,
@@ -13,9 +12,10 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import cmuxDemo0 from "@/docs/assets/cmux-demo-00.png";
-import cmuxDemo1 from "@/docs/assets/cmux-demo-10.png";
-import cmuxDemo2 from "@/docs/assets/cmux-demo-20.png";
+import cmuxDemo0 from "@/docs/assets/cmux0.png";
+import cmuxDemo1 from "@/docs/assets/cmux1.png";
+import cmuxDemo2 from "@/docs/assets/cmux2.png";
+import cmuxDemo3 from "@/docs/assets/cmux3.png";
 import { fetchLatestRelease } from "@/lib/fetch-latest-release";
 
 const heroHighlights = [
@@ -29,45 +29,45 @@ const heroHighlights = [
   },
   {
     title: "Preview environments for quick verification",
-    description: "Browser previews are exposed so you can verify that the code works on dev server.",
+    description: "Tasks launches browser previews so you can verify that the code works on dev server.",
   },
 ];
 
 const productPillars = [
   {
-    title: "Separate VS Code IDE instances",
+    title: "Isolated VS Code IDE instances",
     description:
-      "Each agent runs in its own VS Code instance so you can hop between workspaces locally or remotely.",
+      "Each agent runs in its own VS Code instance so you can context switch between different tasks with the click of a button.",
     icon: Layers,
   },
   {
     title: "Multiple agent support",
     description:
-      "Claude Code, Codex, Gemini CLI, Amp, Opencode, and other coding agent CLIs work from the same dashboard.",
+      "Run multiple Claude Code, Codex, Gemini CLI, Amp, Opencode, and other coding agent CLIs in parallel on the same or separate tasks.",
     icon: Users,
   },
   {
-    title: "Git extension UI",
+    title: "Fast git code diff viewer",
     description:
-      "On mount, VS Code opens straight to the git diff extension so you can review changes without context switching.",
-    icon: Star,
-  },
-  {
-    title: "Sandbox environment preview",
-    description:
-      "Spin up isolated sandboxes to preview your changes safely, using fast cloud sandboxes or Docker locally.",
-    icon: Cloud,
-  },
-  {
-    title: "Code review page",
-    description:
-      "Track draft pull requests and committed work from a central review surface dedicated to parallel agents.",
+      "Every agent includes a git code diff viewer so you can review their code changes, tests & checks, and close or merge on the same page.",
     icon: GitPullRequest,
   },
   {
-    title: "Task management",
+    title: "Dev server preview environments",
     description:
-      "Follow parallel executions, view task history, and keep containers alive when you need extra runtime.",
+      "Each agent spins up isolated cloud sandbox environments to preview your dev servers on its on browser so you can verify tasks directly.",
+    icon: Zap,
+  },
+  {
+    title: "Supports cloud sandboxes or local Docker",
+    description:
+      "cmux includes configurations for cloud sandbox mode with repos, cloud sandbox mode with environments, and local mode with Docker containers.",
+    icon: Cloud,
+  },
+  {
+    title: "Integrates with your local auth setup",
+    description:
+      "cmux integrates with your local auth setup and you can bring your OpenAI and Claude subscriptions or API keys to run the coding agents on tasks.",
     icon: Zap,
   },
 ];
@@ -75,91 +75,74 @@ const productPillars = [
 const workflowSteps = [
   {
     id: "step-workspaces",
-    title: "1. Spin up isolated workspaces",
+    title: "1. Configure run context",
     copy:
-      "Launch cmux and open an agent-specific container plus VS Code session so every run stays clean.",
+      "Set up the repo or environment for your task, configure scripts, and pick the agents you want to run.",
     checklist: [
-      "Ensure Docker Desktop (for local mode) is running or select a cloud runner before startup.",
-      "Capture the workspace launch flow so teammates know what to expect.",
-      "Keep VS Code windows labeled by agent to avoid confusion.",
+      "Configure dev and maintenance scripts on the Environments page or link the repo you need.",
+      "Select the branches that apply to the task before launching agents.",
+      "Choose which agents should execute in parallel for the run.",
     ],
   },
   {
     id: "step-agents",
-    title: "2. Run agents in parallel",
+    title: "2. Watch agents execute",
     copy:
-      "Point Claude Code, Codex, Gemini CLI, Amp, and other CLIs at the same task to compare approaches in real time.",
+      "Follow each agent's VS Code instance as they work; completion shows a green check and the crown evaluator picks the best run.",
     checklist: [
-      "Document which prompts and guardrails you pair with each agent persona.",
-      "Note any prompt handoffs or collaboration patterns worth repeating.",
-      "Record a short clip when two agents tackle the same story for showcase reels.",
+      "Monitor the dedicated VS Code sessions to see agents progress in real time.",
+      "Wait for every task card to reach the green check before moving ahead.",
+      "Review the crown evaluator's selection once all agents finish.",
     ],
   },
   {
     id: "step-review",
-    title: "3. Review diffs, logs, and tests",
+    title: "3. Verify diffs and previews",
     copy:
-      "Use the diff-first VS Code view, command timeline, and cmux dashboard to verify everything without tab chaos.",
+      "Open the diff viewer, confirm tests, and use the auto-started preview environments to validate changes.",
     checklist: [
-      "Walk reviewers through the git diff side panel with a quick screen grab.",
-      "Annotate terminal output or test logs that need human attention.",
-      "Outline the verification checklist you expect every agent run to follow.",
+      "Inspect code updates in the git diff viewer for each agent.",
+      "Review test and command output captured during the run.",
+      "Launch the preview environment dev servers to confirm everything works.",
     ],
   },
   {
     id: "step-ship",
-    title: "4. Ship confidently",
+    title: "4. Ship directly from cmux",
     copy:
-      "Use the code review page to package diffs, document findings, and follow through on next steps with full context.",
+      "Create your pull request inside cmux and finish the merge once verification is done.",
     checklist: [
-      "Highlight the code review hub that aggregates multi-agent work.",
-      "Share a handoff summary clip when you pass work to a reviewer or PM.",
-      "Keep a post-run notes template so lessons roll forward into the next sprint.",
+      "Open a pull request from the cmux review surface when you're ready.",
+      "Attach verification notes and confirm required checks before finishing.",
+      "Merge the pull request in cmux to wrap the run.",
     ],
   },
 ];
 
 const verificationHighlights = [
   {
-    title: "Diff-first VS Code workspaces",
-    description:
-      "Every agent attaches to a dedicated VS Code session, pre-loaded with the relevant repo, diff view, and terminal.",
-    asset: cmuxDemo0,
+    title: "Diff viewer for each agent's changes",
+    paragraphs: [
+      "Review every commit-ready change in a focused diff viewer that scopes to the agents working the task.",
+      "Filter by agent, jump between files, and confirm checks without leaving the review surface.",
+    ],
+    asset: cmuxDemo3,
   },
   {
-    title: "Parallel agent dashboards",
-    description:
-      "Watch multiple terminals, prompts, and outputs update together so you always know which agent is on which task.",
+    title: "Isolated VS Code workspaces per agent",
+    paragraphs: [
+      "Each agent operates in a clean VS Code window with terminals, command history, and context tailored to its run.",
+      "Toggle between windows instantly to compare approaches and keep an eye on automated progress.",
+    ],
     asset: cmuxDemo1,
   },
   {
-    title: "Task history and review surfaces",
-    description:
-      "Track task history, drafts, and verification notes from a single place designed for multi-agent workflows.",
+    title: "Preview dev server environments directly",
+    paragraphs: [
+      "cmux spins up the right dev servers based on your environment configuration as soon as work starts.",
+      "Open the live preview to validate UI, APIs, and workflows manually before you publish the pull request.",
+    ],
     asset: cmuxDemo2,
-  },
-];
-
-const roadmapHighlights = [
-  {
-    title: "Verification at scale",
-    description:
-      "Every code change will have a visual preview—API diffs, before/after screenshots, and database migrations rendered clearly.",
-  },
-  {
-    title: "Intelligent task routing",
-    description:
-      "Automatically route tasks to the best agent personas based on performance history and domain expertise.",
-  },
-  {
-    title: "Verification workflows",
-    description:
-      "Define verification criteria upfront so agents cannot mark tasks complete until every requirement passes.",
-  },
-  {
-    title: "Cross-agent coordination",
-    description:
-      "Give agents a shared context layer so one agent's output can feed the next while avoiding file conflicts.",
   },
 ];
 
@@ -178,7 +161,7 @@ export default async function LandingPage() {
         <div className="absolute inset-x-[10%] bottom-[-20%] h-[32rem] rounded-full bg-gradient-to-tr from-indigo-500/20 via-blue-700/10 to-transparent blur-[200px]" />
       </div>
 
-            <SiteHeader
+      <SiteHeader
         fallbackUrl={fallbackUrl}
         latestVersion={latestVersion}
         macDownloadUrls={macDownloadUrls}
@@ -244,23 +227,30 @@ export default async function LandingPage() {
                   urls={macDownloadUrls}
                 >
                   <span className="flex items-center gap-2">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 16 16"
-                    fill="currentColor"
-                    className="h-4 w-4"
-                  >
-                    <path d="M12.665 15.358c-.905.844-1.893.711-2.843.311-1.006-.409-1.93-.427-2.991 0-1.33.551-2.03.391-2.825-.31C-.498 10.886.166 4.078 5.28 3.83c1.246.062 2.114.657 2.843.71 1.09-.213 2.133-.826 3.296-.746 1.393.107 2.446.64 3.138 1.6-2.88 1.662-2.197 5.315.443 6.337-.526 1.333-1.21 2.657-2.345 3.635zM8.03 3.778C7.892 1.794 9.563.16 11.483 0c.268 2.293-2.16 4-3.452 3.777" />
-                  </svg>
-                  <span>Download for macOS</span>
-                </span>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 16 16"
+                      fill="currentColor"
+                      className="h-4 w-4"
+                    >
+                      <path d="M12.665 15.358c-.905.844-1.893.711-2.843.311-1.006-.409-1.93-.427-2.991 0-1.33.551-2.03.391-2.825-.31C-.498 10.886.166 4.078 5.28 3.83c1.246.062 2.114.657 2.843.71 1.09-.213 2.133-.826 3.296-.746 1.393.107 2.446.64 3.138 1.6-2.88 1.662-2.197 5.315.443 6.337-.526 1.333-1.21 2.657-2.345 3.635zM8.03 3.778C7.892 1.794 9.563.16 11.483 0c.268 2.293-2.16 4-3.452 3.777" />
+                    </svg>
+                    <span>Download for macOS</span>
+                  </span>
                 </MacDownloadLink>
                 <Link
                   className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-white/10"
-                  href="/tutorial"
+                  href="https://github.com"
                 >
-                  Read the tutorial
-                  <ArrowRight className="h-4 w-4" aria-hidden />
+                  See GitHub repo
+                  <svg
+                    className="h-4 w-4"
+                    aria-hidden
+                    fill="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                  </svg>
                 </Link>
               </div>
               {latestVersion ? (
@@ -374,7 +364,7 @@ export default async function LandingPage() {
                 How cmux works today
               </h2>
               <p className="mx-auto max-w-3xl text-sm text-neutral-400 sm:text-base">
-                The cmux dashboard keeps every agent and workspace organized so you can launch, monitor, and review without alt-tabbing between terminals.
+                The cmux dashboard keeps every agent and workspace organized so you can launch, monitor, and review without alt-tabbing between terminals, keeping track of VS Code windows, and restarting dev servers.
               </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -414,10 +404,10 @@ export default async function LandingPage() {
           <div className="flex flex-col gap-16 lg:flex-row">
             <div className="lg:w-1/3">
               <h2 className="text-2xl font-semibold text-white sm:text-3xl">
-                A guided workflow from intake to verification
+                A guided workflow from start to finish
               </h2>
               <p className="mt-4 text-sm text-neutral-400 sm:text-base">
-                Each phase inside cmux surfaces the right context, guardrails, and automation to keep humans confident while agents execute in parallel.
+                Each phase inside cmux is integral to keep the process fast and confidence high while coding agents execute tasks in parallel.
               </p>
             </div>
             <div className="grid flex-1 gap-6 sm:grid-cols-2">
@@ -468,11 +458,12 @@ export default async function LandingPage() {
                   key={highlight.title}
                   className="grid gap-8 lg:grid-cols-2 lg:items-center"
                 >
-                  <div className={`space-y-3 ${index % 2 === 1 ? "lg:order-2" : ""}`}>
+                  <div className={`space-y-4 ${index % 2 === 1 ? "lg:order-2" : ""}`}>
                     <h3 className="text-xl font-semibold text-white">{highlight.title}</h3>
-                    <p className="text-sm text-neutral-300">{highlight.description}</p>
-                    <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-xs text-neutral-400">
-                      Need setup tips? Jump to the tutorial&apos;s verification chapter for the walkthrough.
+                    <div className="space-y-3 text-sm text-neutral-300">
+                      {highlight.paragraphs.map((paragraph, paragraphIndex) => (
+                        <p key={`${highlight.title}-${paragraphIndex}`}>{paragraph}</p>
+                      ))}
                     </div>
                   </div>
                   <div className={index % 2 === 1 ? "lg:order-1" : ""}>
@@ -489,37 +480,6 @@ export default async function LandingPage() {
                   </div>
                 </div>
               ))}
-            </div>
-          </div>
-        </section>
-
-        <section id="nav-roadmap" className="mx-auto max-w-6xl px-4 pb-20 sm:px-6 scroll-mt-32">
-          <div className="space-y-10">
-            <div className="space-y-3 text-center">
-              <h2 className="text-2xl font-semibold text-white sm:text-3xl">The roadmap</h2>
-              <p className="mx-auto max-w-3xl text-sm text-neutral-400 sm:text-base">
-                We&apos;re building the missing layer between AI agents and developers. Not another agent, not another IDE—but the verification interface that makes managing 10, 20, or 100 parallel agents as easy as managing one.
-              </p>
-            </div>
-            <div className="grid gap-6 sm:grid-cols-2">
-              {roadmapHighlights.map((item) => (
-                <div
-                  key={item.title}
-                  className="rounded-2xl border border-white/10 bg-white/5 p-6 text-left"
-                >
-                  <h3 className="text-base font-semibold text-white">{item.title}</h3>
-                  <p className="mt-3 text-sm text-neutral-300">{item.description}</p>
-                </div>
-              ))}
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-neutral-300">
-              <h3 className="text-base font-semibold text-white">The endgame: Autonomous verification</h3>
-              <p className="mt-3">
-                Eventually, verification itself will be automated. A manager agent will review the work of worker agents, using the same interfaces you use today. It will approve simple changes, escalate complex ones, and learn from your verification patterns.
-              </p>
-              <p className="mt-3">
-                The goal isn&apos;t to replace developers—it&apos;s to amplify them 100x by removing the verification bottleneck entirely.
-              </p>
             </div>
           </div>
         </section>
@@ -557,13 +517,13 @@ export default async function LandingPage() {
                 Book meeting
                 <ArrowRight className="h-4 w-4" aria-hidden />
               </a>
-              <Link
+              {/* <Link
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:border-white/30 hover:bg-white/10"
                 href="/tutorial"
               >
                 Browse tutorial
                 <ArrowRight className="h-4 w-4" aria-hidden />
-              </Link>
+              </Link> */}
             </div>
           </div>
         </section>
@@ -576,9 +536,9 @@ export default async function LandingPage() {
             <span className="font-mono">cmux by manaflow</span>
           </div>
           <div className="flex items-center gap-6">
-            <a className="transition hover:text-white" href="/tutorial">
+            {/* <a className="transition hover:text-white" href="/tutorial">
               Tutorial
-            </a>
+            </a> */}
             <a
               className="transition hover:text-white"
               href="https://github.com/manaflow-ai/cmux"
