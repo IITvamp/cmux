@@ -185,6 +185,17 @@ export default async function LandingPage() {
                     |
                   </li>
                   <li>
+                    <Link
+                      className="font-semibold text-white hover:text-blue-400 transition"
+                      href="/tutorial"
+                    >
+                      Tutorial
+                    </Link>
+                  </li>
+                  <li className="text-neutral-700 px-1" role="presentation">
+                    |
+                  </li>
+                  <li>
                     <a
                       className="font-semibold text-white hover:text-blue-400 transition"
                       href="#requirements"
@@ -267,6 +278,13 @@ export default async function LandingPage() {
                 >
                   how it works
                 </a>
+                , explore the{" "}
+                <Link
+                  href="/tutorial"
+                  className="text-sky-400 hover:text-sky-300 underline decoration-dotted underline-offset-4"
+                >
+                  cmux tutorial
+                </Link>
                 , or see the{" "}
                 <a
                   href="#roadmap"
