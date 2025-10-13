@@ -106,3 +106,7 @@ The release workflow automatically:
 ## License
 
 This project is provided as-is for experimentation.
+
+Agents weave through code
+Parallel minds share one sky
+Cmux channels light

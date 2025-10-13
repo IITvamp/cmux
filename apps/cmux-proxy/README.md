@@ -254,3 +254,7 @@ For issues or questions:
 - Check logs: `bun run dev` for local, GCP logs for production
 - Test health: `curl http://localhost:3000/health`
 - Review [DEPLOYMENT.md](./DEPLOYMENT.md) for deployment issues
+
+Agents weave through code
+Parallel minds share one sky
+Cmux channels light

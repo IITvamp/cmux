@@ -51,3 +51,7 @@ cmux is part of the cmux project. See the main repository for development instru
 ## License
 
 MIT
+
+Agents weave through code
+Parallel minds share one sky
+Cmux channels light

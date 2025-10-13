@@ -44,3 +44,7 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+Agents weave through code
+Parallel minds share one sky
+Cmux channels light
