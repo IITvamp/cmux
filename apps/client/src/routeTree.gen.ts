@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as MonacoSingleBufferRouteImport } from './routes/monaco-single-buffer'
+import { Route as LandingRouteImport } from './routes/landing'
 import { Route as ElectronWebContentsRouteImport } from './routes/electron-web-contents'
 import { Route as ElectronErrorRouteImport } from './routes/electron-error'
 import { Route as DebugWebcontentsRouteImport } from './routes/debug-webcontents'
@@ -53,6 +54,11 @@ const SignInRoute = SignInRouteImport.update({
 const MonacoSingleBufferRoute = MonacoSingleBufferRouteImport.update({
   id: '/monaco-single-buffer',
   path: '/monaco-single-buffer',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LandingRoute = LandingRouteImport.update({
+  id: '/landing',
+  path: '/landing',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ElectronWebContentsRoute = ElectronWebContentsRouteImport.update({
@@ -245,6 +251,7 @@ export interface FileRoutesByFullPath {
   '/debug-webcontents': typeof DebugWebcontentsRoute
   '/electron-error': typeof ElectronErrorRoute
   '/electron-web-contents': typeof ElectronWebContentsRoute
+  '/landing': typeof LandingRoute
   '/monaco-single-buffer': typeof MonacoSingleBufferRoute
   '/sign-in': typeof SignInRoute
   '/$teamSlugOrId': typeof LayoutTeamSlugOrIdRouteWithChildren
@@ -281,6 +288,7 @@ export interface FileRoutesByTo {
   '/debug-webcontents': typeof DebugWebcontentsRoute
   '/electron-error': typeof ElectronErrorRoute
   '/electron-web-contents': typeof ElectronWebContentsRoute
+  '/landing': typeof LandingRoute
   '/monaco-single-buffer': typeof MonacoSingleBufferRoute
   '/sign-in': typeof SignInRoute
   '/$teamSlugOrId': typeof LayoutTeamSlugOrIdRouteWithChildren
@@ -317,6 +325,7 @@ export interface FileRoutesById {
   '/debug-webcontents': typeof DebugWebcontentsRoute
   '/electron-error': typeof ElectronErrorRoute
   '/electron-web-contents': typeof ElectronWebContentsRoute
+  '/landing': typeof LandingRoute
   '/monaco-single-buffer': typeof MonacoSingleBufferRoute
   '/sign-in': typeof SignInRoute
   '/_layout/$teamSlugOrId': typeof LayoutTeamSlugOrIdRouteWithChildren
@@ -355,6 +364,7 @@ export interface FileRouteTypes {
     | '/debug-webcontents'
     | '/electron-error'
     | '/electron-web-contents'
+    | '/landing'
     | '/monaco-single-buffer'
     | '/sign-in'
     | '/$teamSlugOrId'
@@ -391,6 +401,7 @@ export interface FileRouteTypes {
     | '/debug-webcontents'
     | '/electron-error'
     | '/electron-web-contents'
+    | '/landing'
     | '/monaco-single-buffer'
     | '/sign-in'
     | '/$teamSlugOrId'
@@ -426,6 +437,7 @@ export interface FileRouteTypes {
     | '/debug-webcontents'
     | '/electron-error'
     | '/electron-web-contents'
+    | '/landing'
     | '/monaco-single-buffer'
     | '/sign-in'
     | '/_layout/$teamSlugOrId'
@@ -464,6 +476,7 @@ export interface RootRouteChildren {
   DebugWebcontentsRoute: typeof DebugWebcontentsRoute
   ElectronErrorRoute: typeof ElectronErrorRoute
   ElectronWebContentsRoute: typeof ElectronWebContentsRoute
+  LandingRoute: typeof LandingRoute
   MonacoSingleBufferRoute: typeof MonacoSingleBufferRoute
   SignInRoute: typeof SignInRoute
   HandlerSplatRoute: typeof HandlerSplatRoute
@@ -483,6 +496,13 @@ declare module '@tanstack/react-router' {
       path: '/monaco-single-buffer'
       fullPath: '/monaco-single-buffer'
       preLoaderRoute: typeof MonacoSingleBufferRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/landing': {
+      id: '/landing'
+      path: '/landing'
+      fullPath: '/landing'
+      preLoaderRoute: typeof LandingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/electron-web-contents': {
@@ -845,6 +865,7 @@ const rootRouteChildren: RootRouteChildren = {
   DebugWebcontentsRoute: DebugWebcontentsRoute,
   ElectronErrorRoute: ElectronErrorRoute,
   ElectronWebContentsRoute: ElectronWebContentsRoute,
+  LandingRoute: LandingRoute,
   MonacoSingleBufferRoute: MonacoSingleBufferRoute,
   SignInRoute: SignInRoute,
   HandlerSplatRoute: HandlerSplatRoute,
