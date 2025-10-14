@@ -33,6 +33,7 @@ import {
   GitPullRequestClosed,
   GitPullRequestDraft,
   Globe,
+  Monitor,
   Loader2,
   XCircle,
 } from "lucide-react";
@@ -690,41 +691,43 @@ function TaskRunTreeInner({
   );
 }
 
-interface TaskRunDetailLinkProps {
-  to: LinkProps["to"];
-  params: LinkProps["params"];
+type TaskRunDetailLinkBaseProps = {
   icon: ReactNode;
   label: string;
   indentLevel: number;
   className?: string;
   onClick?: (event: MouseEvent<HTMLAnchorElement>) => void;
   trailing?: ReactNode;
-}
+};
 
-function TaskRunDetailLink({
-  to,
-  params,
-  icon,
-  label,
-  indentLevel,
-  className,
-  onClick,
-  trailing,
-}: TaskRunDetailLinkProps) {
-  return (
-    <Link
-      to={to}
-      params={params}
-      activeOptions={{ exact: true }}
-      className={clsx(
-        "flex items-center justify-between gap-2 px-2 py-1 text-xs rounded-md hover:bg-neutral-200/45 dark:hover:bg-neutral-800/45 cursor-default mt-px",
-        "[&.active]:bg-neutral-200/75 dark:[&.active]:bg-neutral-800/65",
-        "[&.active]:hover:bg-neutral-200/75 dark:[&.active]:hover:bg-neutral-800/65",
-        className
-      )}
-      style={{ paddingLeft: `${24 + indentLevel * 8}px` }}
-      onClick={onClick}
-    >
+type TaskRunDetailInternalLinkProps = TaskRunDetailLinkBaseProps & {
+  to: LinkProps["to"];
+  params: LinkProps["params"];
+  href?: never;
+};
+
+type TaskRunDetailExternalLinkProps = TaskRunDetailLinkBaseProps & {
+  href: string;
+  to?: never;
+  params?: never;
+};
+
+type TaskRunDetailLinkProps =
+  | TaskRunDetailInternalLinkProps
+  | TaskRunDetailExternalLinkProps;
+
+function TaskRunDetailLink(props: TaskRunDetailLinkProps) {
+  const { icon, label, indentLevel, className, onClick, trailing } = props;
+  const baseClassName = clsx(
+    "flex items-center justify-between gap-2 px-2 py-1 text-xs rounded-md hover:bg-neutral-200/45 dark:hover:bg-neutral-800/45 cursor-default mt-px",
+    "[&.active]:bg-neutral-200/75 dark:[&.active]:bg-neutral-800/65",
+    "[&.active]:hover:bg-neutral-200/75 dark:[&.active]:hover:bg-neutral-800/65",
+    className
+  );
+  const style = { paddingLeft: `${24 + indentLevel * 8}px` } as const;
+
+  const content = (
+    <>
       <span className="flex min-w-0 items-center">
         {icon}
         <span className="text-neutral-600 dark:text-neutral-400">{label}</span>
@@ -732,6 +735,34 @@ function TaskRunDetailLink({
       {trailing ? (
         <span className="ml-2 flex shrink-0 items-center">{trailing}</span>
       ) : null}
+    </>
+  );
+
+  if ("href" in props && props.href) {
+    return (
+      <a
+        href={props.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={baseClassName}
+        style={style}
+        onClick={onClick}
+      >
+        {content}
+      </a>
+    );
+  }
+
+  return (
+    <Link
+      to={props.to}
+      params={props.params}
+      activeOptions={{ exact: true }}
+      className={baseClassName}
+      style={style}
+      onClick={onClick}
+    >
+      {content}
     </Link>
   );
 }
@@ -764,6 +795,48 @@ function TaskRunDetails({
   previewServices,
   environmentError,
 }: TaskRunDetailsProps) {
+  const browserUrl = useMemo(() => {
+    if (run.vscode?.provider !== "morph") {
+      return null;
+    }
+
+    const vncService = previewServices.find(
+      (service) => service.port === 39380
+    );
+    const serviceUrl = vncService?.url;
+
+    if (!serviceUrl) {
+      return null;
+    }
+
+    try {
+      const url = new URL(serviceUrl);
+      const segments = url.pathname
+        .split("/")
+        .filter((segment) => segment.length > 0);
+      const lastSegment = segments[segments.length - 1];
+      if (lastSegment !== "vnc.html") {
+        segments.push("vnc.html");
+        url.pathname = `/${segments.join("/")}`;
+      }
+
+      const params = new URLSearchParams(url.search);
+      params.set("autoconnect", "1");
+      params.set("resize", "scale");
+      url.search = params.toString();
+
+      return url.toString();
+    } catch {
+      const normalizedBase = serviceUrl.endsWith("vnc.html")
+        ? serviceUrl
+        : serviceUrl.endsWith("/")
+          ? `${serviceUrl}vnc.html`
+          : `${serviceUrl}/vnc.html`;
+      const connector = normalizedBase.includes("?") ? "&" : "?";
+      return `${normalizedBase}${connector}autoconnect=1&resize=scale`;
+    }
+  }, [previewServices, run.vscode?.provider]);
+
   if (!isExpanded) {
     return null;
   }
@@ -827,6 +900,15 @@ function TaskRunDetails({
         label="Git diff"
         indentLevel={indentLevel}
       />
+
+      {browserUrl ? (
+        <TaskRunDetailLink
+          href={browserUrl}
+          icon={<Monitor className="w-3 h-3 mr-2 text-neutral-400" />}
+          label="Browser"
+          indentLevel={indentLevel}
+        />
+      ) : null}
 
       {shouldRenderPullRequestLink ? (
         <TaskRunDetailLink
