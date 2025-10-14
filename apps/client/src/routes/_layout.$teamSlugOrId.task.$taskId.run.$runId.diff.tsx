@@ -2,6 +2,7 @@ import { FloatingPane } from "@/components/floating-pane";
 import { type GitDiffViewerProps } from "@/components/git-diff-viewer";
 import { RunDiffSection } from "@/components/RunDiffSection";
 import { TaskDetailHeader } from "@/components/task-detail-header";
+import { BrowserSection } from "@/components/BrowserSection";
 import { useTheme } from "@/components/theme/use-theme";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +13,7 @@ import {
 import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { normalizeGitRef } from "@/lib/refWithOrigin";
+import { extractMorphIdFromUrl } from "@/lib/toProxyWorkspaceUrl";
 import { cn } from "@/lib/utils";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
 import { api } from "@cmux/convex/api";
@@ -564,6 +566,29 @@ function RunDiffPage() {
     }
     return false;
   }, [restartProvider, restartRunEnvironmentId, taskEnvironmentId]);
+
+  const isMorphInstance = selectedRun?.vscode?.provider === "morph";
+  const morphId = useMemo(() => {
+    if (!isMorphInstance || !selectedRun?.networking) {
+      return null;
+    }
+    // Find any networking URL to extract morph ID
+    for (const network of selectedRun.networking) {
+      if (network.url) {
+        const id = extractMorphIdFromUrl(network.url);
+        if (id) {
+          return id;
+        }
+      }
+    }
+    return null;
+  }, [isMorphInstance, selectedRun?.networking]);
+  const vncUrl = useMemo(() => {
+    if (!morphId) {
+      return null;
+    }
+    return `https://port-39380-morphvm-${morphId}.http.cloud.morph.so/vnc.html`;
+  }, [morphId]);
   const environmentRepos = useMemo(() => {
     const repos = selectedRun?.environment?.selectedRepos ?? [];
     const trimmed = repos
@@ -695,6 +720,9 @@ function RunDiffPage() {
                 </div>
               )}
             </Suspense>
+            {isMorphInstance && vncUrl && (
+              <BrowserSection vncUrl={vncUrl} />
+            )}
             <RestartTaskForm
               key={restartTaskPersistenceKey}
               task={task}

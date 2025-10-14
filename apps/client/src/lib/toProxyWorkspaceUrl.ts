@@ -1,3 +1,22 @@
+export function extractMorphIdFromUrl(url: string): string | null {
+  try {
+    const parsedUrl = new URL(url);
+    const hostname = parsedUrl.hostname;
+
+    // Match format: port-{port}-morphvm-{morphId}.http.cloud.morph.so
+    const match = hostname.match(
+      /^port-(\d+)-morphvm-([^.]+)\.http\.cloud\.morph\.so$/
+    );
+
+    if (match) {
+      return match[2]; // morphId
+    }
+  } catch {
+    // Invalid URL
+  }
+  return null;
+}
+
 export function toProxyWorkspaceUrl(workspaceUrl: string): string {
   if (workspaceUrl.includes("morph.so")) {
     // convert https://port-39378-morphvm-zqcjcumw.http.cloud.morph.so/?folder=/root/workspace
