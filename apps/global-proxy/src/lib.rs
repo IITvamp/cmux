@@ -3,7 +3,7 @@ use std::{net::SocketAddr, sync::Arc};
 use bytes::Bytes;
 use futures_util::{SinkExt, StreamExt};
 use http::{
-    HeaderMap, Method, Request, Response, StatusCode, Uri,
+    HeaderMap, Method, Request, Response, StatusCode, Uri, Version,
     header::{self, HeaderValue},
     uri::Scheme,
 };
@@ -388,12 +388,110 @@ async fn forward_request(
         req.headers_mut().remove("X-Cmux-Workspace-Internal");
     }
 
+    let original_method = req.method().clone();
+    let head_fallback_context = if original_method == Method::HEAD {
+        Some(HeadFallbackContext {
+            headers: req.headers().clone(),
+            uri: req.uri().clone(),
+            version: req.version(),
+        })
+    } else {
+        None
+    };
+
     let response = match state.client.request(req).await {
         Ok(resp) => resp,
         Err(_) => return text_response(StatusCode::BAD_GATEWAY, "Upstream fetch failed"),
     };
 
+    if original_method == Method::HEAD
+        && matches!(
+            response.status(),
+            StatusCode::METHOD_NOT_ALLOWED | StatusCode::NOT_IMPLEMENTED
+        )
+    {
+        if let Some(context) = head_fallback_context {
+            if let Some(fallback) =
+                handle_head_method_not_allowed(state, context, behavior.clone()).await
+            {
+                return fallback;
+            }
+        }
+    }
+
     transform_response(response, behavior).await
+}
+
+/// Captures enough of the original HEAD request to retry with GET when the
+/// upstream does not implement HEAD (e.g. OpenVSCode static assets).
+struct HeadFallbackContext {
+    headers: HeaderMap,
+    uri: Uri,
+    version: Version,
+}
+
+async fn handle_head_method_not_allowed(
+    state: Arc<AppState>,
+    context: HeadFallbackContext,
+    behavior: ProxyBehavior,
+) -> Option<Response<Body>> {
+    let mut get_request = Request::builder()
+        .method(Method::GET)
+        .uri(context.uri)
+        .version(context.version)
+        .body(Body::empty())
+        .ok()?;
+
+    *get_request.headers_mut() = context.headers;
+    get_request.headers_mut().remove(header::CONTENT_LENGTH);
+
+    match state.client.request(get_request).await {
+        Ok(resp) => match transform_head_response_from_get(resp, behavior).await {
+            Ok(head_response) => Some(head_response),
+            Err(_) => None,
+        },
+        Err(_) => None,
+    }
+}
+
+async fn transform_head_response_from_get(
+    response: Response<Body>,
+    behavior: ProxyBehavior,
+) -> Result<Response<Body>, hyper::Error> {
+    let status = response.status();
+    let version = response.version();
+    let headers = response.headers().clone();
+
+    // Drain the body to keep the connection healthy, but we discard the bytes.
+    body::to_bytes(response.into_body()).await?;
+
+    Ok(build_head_response(status, version, &headers, &behavior))
+}
+
+fn build_head_response(
+    status: StatusCode,
+    version: Version,
+    headers: &HeaderMap,
+    behavior: &ProxyBehavior,
+) -> Response<Body> {
+    let mut builder = Response::builder().status(status).version(version);
+    let mut new_headers = sanitize_headers(headers, false);
+    strip_csp_headers(&mut new_headers);
+    if behavior.strip_cors_headers {
+        strip_cors_headers(&mut new_headers);
+    } else if behavior.add_cors {
+        add_cors_headers(&mut new_headers);
+    }
+    if let Some(frame_ancestors) = behavior.frame_ancestors {
+        if let Ok(value) = HeaderValue::from_str(frame_ancestors) {
+            new_headers.insert("content-security-policy", value);
+        }
+    }
+    let headers_mut = builder.headers_mut().unwrap();
+    for (name, value) in new_headers.iter() {
+        headers_mut.insert(name, value.clone());
+    }
+    builder.body(Body::empty()).unwrap()
 }
 
 async fn handle_websocket(
@@ -596,7 +694,8 @@ async fn transform_response(response: Response<Body>, behavior: ProxyBehavior) -
             Ok(bytes) => match rewrite_html(bytes, behavior.skip_service_worker) {
                 Ok(body) => {
                     let mut builder = Response::builder().status(status).version(version);
-                    let mut new_headers = sanitize_headers(&headers);
+                    let mut new_headers =
+                        sanitize_headers(&headers, /* strip_payload_headers */ true);
                     strip_csp_headers(&mut new_headers);
                     if behavior.strip_cors_headers {
                         strip_cors_headers(&mut new_headers);
@@ -624,7 +723,7 @@ async fn transform_response(response: Response<Body>, behavior: ProxyBehavior) -
         }
     } else {
         let mut builder = Response::builder().status(status).version(version);
-        let mut new_headers = sanitize_headers(&headers);
+        let mut new_headers = sanitize_headers(&headers, /* strip_payload_headers */ false);
         strip_csp_headers(&mut new_headers);
         if behavior.strip_cors_headers {
             strip_cors_headers(&mut new_headers);
@@ -644,8 +743,8 @@ async fn transform_response(response: Response<Body>, behavior: ProxyBehavior) -
     }
 }
 
-fn sanitize_headers(headers: &HeaderMap) -> HeaderMap {
-    let ignored = [
+fn sanitize_headers(headers: &HeaderMap, strip_payload_headers: bool) -> HeaderMap {
+    let ignored_payload_headers = [
         "content-length",
         "content-encoding",
         "transfer-encoding",
@@ -656,7 +755,7 @@ fn sanitize_headers(headers: &HeaderMap) -> HeaderMap {
 
     let mut out = HeaderMap::new();
     for (name, value) in headers.iter() {
-        if ignored.contains(&name.as_str()) {
+        if strip_payload_headers && ignored_payload_headers.contains(&name.as_str()) {
             continue;
         }
         out.insert(name.clone(), value.clone());
