@@ -541,6 +541,37 @@ function TaskRunTreeInner({
     [hasActiveVSCode, run]
   );
 
+  // Generate morph instance URLs for always-visible links
+  const morphInstanceId = useMemo(() => {
+    // Try to extract from existing workspace URL first
+    if (run.vscode?.workspaceUrl) {
+      try {
+        const url = new URL(run.vscode.workspaceUrl);
+        const hostname = url.hostname;
+        const match = hostname.match(
+          /^port-(\d+)-morphvm-([^.]+)\.http\.cloud\.morph\.so$/
+        );
+        if (match) {
+          return match[2]; // morphId
+        }
+      } catch {
+        // Ignore parsing errors
+      }
+    }
+    // Fallback: could use environment morphSnapshotId, but for now return null
+    return null;
+  }, [run.vscode?.workspaceUrl]);
+
+  const vscodeProxyUrl = useMemo(() => {
+    if (!morphInstanceId) return null;
+    return `https://cmux-${morphInstanceId}-base-39378.cmux.app/?folder=/root/workspace`;
+  }, [morphInstanceId]);
+
+  const browserProxyUrl = useMemo(() => {
+    if (!morphInstanceId) return null;
+    return `https://cmux-${morphInstanceId}-base-39380.cmux.app/`;
+  }, [morphInstanceId]);
+
   // Collect running preview ports
   const previewServices = useMemo(() => {
     if (!run.networking) return [];
@@ -566,6 +597,8 @@ function TaskRunTreeInner({
     run.pullRequests?.some((pr) => pr.url)
   );
   const shouldRenderPreviewLink = previewServices.length > 0;
+  const shouldRenderVSCodeLink = Boolean(vscodeProxyUrl);
+  const shouldRenderBrowserLink = Boolean(browserProxyUrl);
   const hasOpenWithActions = openWithActions.length > 0;
   const hasPortActions = portActions.length > 0;
   const canCopyBranch = Boolean(copyRunBranch);
@@ -577,7 +610,9 @@ function TaskRunTreeInner({
     hasActiveVSCode ||
     shouldRenderDiffLink ||
     shouldRenderPullRequestLink ||
-    shouldRenderPreviewLink;
+    shouldRenderPreviewLink ||
+    shouldRenderVSCodeLink ||
+    shouldRenderBrowserLink;
 
   return (
     <Fragment>
@@ -683,6 +718,8 @@ function TaskRunTreeInner({
         hasActiveVSCode={hasActiveVSCode}
         hasChildren={hasChildren}
         shouldRenderPullRequestLink={shouldRenderPullRequestLink}
+        shouldRenderVSCodeLink={shouldRenderVSCodeLink}
+        shouldRenderBrowserLink={shouldRenderBrowserLink}
         previewServices={previewServices}
         environmentError={run.environmentError}
       />
@@ -745,6 +782,8 @@ interface TaskRunDetailsProps {
   hasActiveVSCode: boolean;
   hasChildren: boolean;
   shouldRenderPullRequestLink: boolean;
+  shouldRenderVSCodeLink: boolean;
+  shouldRenderBrowserLink: boolean;
   previewServices: PreviewService[];
   environmentError?: {
     maintenanceError?: string;
@@ -761,6 +800,8 @@ function TaskRunDetails({
   hasActiveVSCode,
   hasChildren,
   shouldRenderPullRequestLink,
+  shouldRenderVSCodeLink,
+  shouldRenderBrowserLink,
   previewServices,
   environmentError,
 }: TaskRunDetailsProps) {
@@ -802,7 +843,7 @@ function TaskRunDetails({
 
   return (
     <Fragment>
-      {hasActiveVSCode && (
+      {shouldRenderVSCodeLink && (
         <TaskRunDetailLink
           to="/$teamSlugOrId/task/$taskId/run/$runId"
           params={{
@@ -812,11 +853,26 @@ function TaskRunDetails({
             taskRunId: run._id,
           }}
           icon={
-            <VSCodeIcon className="w-3 h-3 mr-2 text-neutral-400 grayscale opacity-60" />
+            <VSCodeIcon className={`w-3 h-3 mr-2 text-neutral-400 ${hasActiveVSCode ? '' : 'grayscale opacity-60'}`} />
           }
           label="VS Code"
           indentLevel={indentLevel}
           trailing={environmentErrorIndicator}
+        />
+      )}
+
+      {shouldRenderBrowserLink && (
+        <TaskRunDetailLink
+          to="/$teamSlugOrId/task/$taskId/run/$runId/preview/$port"
+          params={{
+            teamSlugOrId,
+            taskId,
+            runId: run._id,
+            port: "39380",
+          }}
+          icon={<Globe className="w-3 h-3 mr-2 text-neutral-400" />}
+          label="Browser"
+          indentLevel={indentLevel}
         />
       )}
 
