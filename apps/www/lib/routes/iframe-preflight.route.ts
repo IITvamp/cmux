@@ -1,4 +1,48 @@
+import { getAccessTokenFromRequest } from "@/lib/utils/auth";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+
+const ALLOWED_HOST_SUFFIXES = [
+  ".cmux.sh",
+  ".cmux.dev",
+  ".cmux.local",
+  ".cmux.localhost",
+  ".cmux.app",
+  ".autobuild.app",
+  ".http.cloud.morph.so",
+  ".vm.freestyle.sh",
+] as const;
+
+const ALLOWED_EXACT_HOSTS = new Set<string>([
+  "cmux.sh",
+  "www.cmux.sh",
+  "cmux.dev",
+  "www.cmux.dev",
+  "cmux.local",
+  "cmux.localhost",
+  "cmux.app",
+]);
+
+const DEV_ONLY_HOSTS = new Set<string>(["localhost", "127.0.0.1", "::1"]);
+
+function isAllowedHost(hostname: string): boolean {
+  const normalized = hostname.toLowerCase();
+
+  if (ALLOWED_EXACT_HOSTS.has(normalized)) {
+    return true;
+  }
+
+  if (ALLOWED_HOST_SUFFIXES.some((suffix) => normalized.endsWith(suffix))) {
+    return true;
+  }
+
+  const isDevelopment = process.env.NODE_ENV !== "production";
+
+  if (isDevelopment && DEV_ONLY_HOSTS.has(normalized)) {
+    return true;
+  }
+
+  return false;
+}
 
 const QuerySchema = z
   .object({
@@ -60,9 +104,28 @@ iframePreflightRouter.openapi(
       400: {
         description: "The provided URL was not an HTTP(S) URL.",
       },
+      403: {
+        description: "The target host is not permitted for probing.",
+      },
+      401: {
+        description: "Request is missing valid authentication.",
+      },
     },
   }),
   async (c) => {
+    const accessToken = await getAccessTokenFromRequest(c.req.raw);
+    if (!accessToken) {
+      return c.json(
+        {
+          ok: false,
+          status: null,
+          method: null,
+          error: "Unauthorized",
+        },
+        401,
+      );
+    }
+
     const { url } = c.req.valid("query");
     const target = new URL(url);
 
@@ -75,6 +138,30 @@ iframePreflightRouter.openapi(
           error: "Only HTTP(S) URLs are supported.",
         },
         400,
+      );
+    }
+
+    if (target.username || target.password) {
+      return c.json(
+        {
+          ok: false,
+          status: null,
+          method: null,
+          error: "Authentication credentials in URL are not supported.",
+        },
+        400,
+      );
+    }
+
+    if (!isAllowedHost(target.hostname)) {
+      return c.json(
+        {
+          ok: false,
+          status: null,
+          method: null,
+          error: `Requests to ${target.hostname} are not permitted.`,
+        },
+        403,
       );
     }
 

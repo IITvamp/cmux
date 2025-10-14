@@ -1467,6 +1467,14 @@ export type GetApiIframePreflightErrors = {
      * The provided URL was not an HTTP(S) URL.
      */
     400: unknown;
+    /**
+     * Request is missing valid authentication.
+     */
+    401: unknown;
+    /**
+     * The target host is not permitted for probing.
+     */
+    403: unknown;
 };
 
 export type GetApiIframePreflightResponses = {
