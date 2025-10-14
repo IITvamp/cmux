@@ -2,6 +2,7 @@ import type { MorphInstance } from "./git";
 import { singleQuote } from "./shell";
 
 const WORKSPACE_ROOT = "/root/workspace";
+const DEFAULT_GIT_BRANCH = "main";
 const CMUX_RUNTIME_DIR = "/var/tmp/cmux-scripts";
 const MAINTENANCE_WINDOW_NAME = "maintenance";
 const MAINTENANCE_SCRIPT_FILENAME = "maintenance.sh";
@@ -37,6 +38,93 @@ type ScriptResult = {
   devError: string | null;
 };
 
+const buildGitPullCommand = (): string => {
+  const gitPullScript = `set -u
+WORKSPACE_ROOT=${singleQuote(WORKSPACE_ROOT)}
+TARGET_BRANCH=${singleQuote(DEFAULT_GIT_BRANCH)}
+
+if [ ! -d "$WORKSPACE_ROOT" ]; then
+  echo "Workspace root does not exist: $WORKSPACE_ROOT" >&2
+  exit 1
+fi
+
+failures=0
+repo_count=0
+
+get_repo_paths() {
+  {
+    if [ -d "$WORKSPACE_ROOT/.git" ]; then
+      printf '%s\\n' "$WORKSPACE_ROOT"
+    fi
+    find "$WORKSPACE_ROOT" -mindepth 1 -maxdepth 3 -type d -name ".git" -print 2>/dev/null | sed 's|/\\.git$||'
+  } | awk 'NF && !seen[$0]++'
+}
+
+while IFS= read -r repo_path; do
+  if [ -z "$repo_path" ]; then
+    continue
+  fi
+
+  repo_count=$((repo_count + 1))
+
+  if [[ "$repo_path" == "$WORKSPACE_ROOT" ]]; then
+    rel="."
+  else
+    rel="\${repo_path#$WORKSPACE_ROOT/}"
+  fi
+
+  echo "Updating repository: $rel"
+
+  if ! git -C "$repo_path" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "Skipping $rel (not a git repository)" >&2
+    continue
+  fi
+
+  if ! git -C "$repo_path" rev-parse --verify "origin/$TARGET_BRANCH" >/dev/null 2>&1; then
+    echo "Skipping $rel (origin/$TARGET_BRANCH not found)"
+    continue
+  fi
+
+  current_branch="$(git -C "$repo_path" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
+
+  if [[ "$current_branch" != "$TARGET_BRANCH" ]]; then
+    if git -C "$repo_path" show-ref --verify --quiet "refs/heads/$TARGET_BRANCH"; then
+      echo "Switching $rel to branch $TARGET_BRANCH"
+      if ! git -C "$repo_path" checkout "$TARGET_BRANCH"; then
+        echo "Failed to checkout $TARGET_BRANCH in $rel" >&2
+        failures=1
+        continue
+      fi
+    else
+      echo "Creating branch $TARGET_BRANCH in $rel"
+      if ! git -C "$repo_path" checkout -b "$TARGET_BRANCH" "origin/$TARGET_BRANCH"; then
+        echo "Failed to create branch $TARGET_BRANCH in $rel" >&2
+        failures=1
+        continue
+      fi
+    fi
+  fi
+
+  if ! git -C "$repo_path" pull --ff-only origin "$TARGET_BRANCH"; then
+    echo "Failed to pull origin/$TARGET_BRANCH in $rel" >&2
+    failures=1
+  fi
+done < <(get_repo_paths)
+
+if [ "$repo_count" -eq 0 ]; then
+  echo "No git repositories found under $WORKSPACE_ROOT"
+  exit 0
+fi
+
+if [[ "$failures" -ne 0 ]]; then
+  echo "One or more repositories failed to update" >&2
+  exit 1
+fi
+`;
+
+  return `bash <<'CMUX_GIT_PULL'\n${gitPullScript}\nCMUX_GIT_PULL`;
+};
+
 export async function runMaintenanceAndDevScripts({
   instance,
   maintenanceScript,
@@ -50,10 +138,12 @@ export async function runMaintenanceAndDevScripts({
 }): Promise<ScriptResult> {
   const ids = identifiers ?? allocateScriptIdentifiers();
 
-  if (
-    (!maintenanceScript || maintenanceScript.trim().length === 0) &&
-    (!devScript || devScript.trim().length === 0)
-  ) {
+  const hasMaintenanceScript = Boolean(
+    maintenanceScript && maintenanceScript.trim().length > 0,
+  );
+  const hasDevScript = Boolean(devScript && devScript.trim().length > 0);
+
+  if (!hasMaintenanceScript && !hasDevScript) {
     return {
       maintenanceError: "Both maintenance and dev scripts are empty",
       devError: null,
@@ -74,7 +164,64 @@ fi`;
   let maintenanceError: string | null = null;
   let devError: string | null = null;
 
-  if (maintenanceScript && maintenanceScript.trim().length > 0) {
+  const gitPullCommand = buildGitPullCommand();
+  try {
+    const gitResult = await instance.exec(
+      `zsh -lc ${singleQuote(gitPullCommand)}`,
+    );
+
+    if (gitResult.exit_code !== 0) {
+      const stderr = gitResult.stderr?.trim() || "";
+      const stdout = gitResult.stdout?.trim() || "";
+      const messageParts = [
+        `Failed to update repositories before running scripts (exit ${gitResult.exit_code})`,
+        stderr ? `stderr: ${stderr}` : null,
+        stdout ? `stdout: ${stdout}` : null,
+      ].filter((part): part is string => part !== null);
+      const message = messageParts.join(" | ");
+
+      if (hasMaintenanceScript) {
+        maintenanceError = message;
+      }
+      if (hasDevScript) {
+        devError = message;
+      }
+
+      return {
+        maintenanceError,
+        devError,
+      };
+    }
+
+    const stdout = gitResult.stdout?.trim();
+    if (stdout) {
+      const truncated =
+        stdout.length > 2000 ? `${stdout.slice(0, 2000)}...` : stdout;
+      console.log(`[GIT PULL]\n${truncated}`);
+    }
+    const stderr = gitResult.stderr?.trim();
+    if (stderr) {
+      const truncated =
+        stderr.length > 2000 ? `${stderr.slice(0, 2000)}...` : stderr;
+      console.log(`[GIT PULL ERR]\n${truncated}`);
+    }
+  } catch (error) {
+    const message = `Failed to execute git pull command: ${
+      error instanceof Error ? error.message : String(error)
+    }`;
+    if (hasMaintenanceScript) {
+      maintenanceError = message;
+    }
+    if (hasDevScript) {
+      devError = message;
+    }
+    return {
+      maintenanceError,
+      devError,
+    };
+  }
+
+  if (hasMaintenanceScript && maintenanceScript) {
     const maintenanceRunId = `maintenance_${Date.now().toString(36)}_${Math.random()
       .toString(36)
       .slice(2, 10)}`;
@@ -151,7 +298,7 @@ exit $MAINTENANCE_EXIT_CODE
     }
   }
 
-  if (devScript && devScript.trim().length > 0) {
+  if (hasDevScript && devScript) {
     const devScriptContent = `#!/bin/zsh
 set -ux
 cd ${WORKSPACE_ROOT}
