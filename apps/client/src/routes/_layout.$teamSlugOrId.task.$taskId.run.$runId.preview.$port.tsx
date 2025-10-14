@@ -73,16 +73,16 @@ function PreviewPage() {
               borderRadius={paneBorderRadius}
             />
 
-            <div className="pointer-events-none absolute inset-x-0 top-4 z-20 flex justify-end px-4">
+            <div className="pointer-events-none absolute bottom-6 right-6 z-30 flex justify-end">
               <Button
                 type="button"
-                size="sm"
+                size="icon"
                 variant="outline"
                 onClick={() => setShowTerminal((prev) => !prev)}
-                className="pointer-events-auto rounded-full border border-neutral-200/80 bg-white/80 text-xs font-medium text-neutral-700 shadow-[0_8px_20px_rgba(15,23,42,0.08)] backdrop-blur-sm transition hover:bg-white dark:border-neutral-700/60 dark:bg-neutral-900/80 dark:text-neutral-100 dark:hover:bg-neutral-900"
+                className="pointer-events-auto h-12 w-12 rounded-full border border-neutral-200/80 bg-white/90 text-neutral-700 shadow-[0_8px_20px_rgba(15,23,42,0.12)] backdrop-blur-sm transition hover:bg-white hover:scale-105 dark:border-neutral-700/60 dark:bg-neutral-900/90 dark:text-neutral-100 dark:hover:bg-neutral-900"
+                title={showTerminal ? "Hide terminal" : "Show terminal"}
               >
-                <TerminalSquare className="size-3.5" />
-                {showTerminal ? "Hide terminal" : "Show terminal"}
+                <TerminalSquare className="size-5" />
               </Button>
             </div>
 
