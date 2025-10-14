@@ -458,14 +458,24 @@ async fn transform_head_response_from_get(
     response: Response<Body>,
     behavior: ProxyBehavior,
 ) -> Result<Response<Body>, hyper::Error> {
-    let status = response.status();
-    let version = response.version();
-    let headers = response.headers().clone();
+    let transformed_response = transform_response(response, behavior.clone()).await;
+    let status = transformed_response.status();
+    let version = transformed_response.version();
+    let headers = transformed_response.headers().clone();
 
-    // Drain the body to keep the connection healthy, but we discard the bytes.
-    body::to_bytes(response.into_body()).await?;
+    // Drain the transformed body so we can surface an accurate Content-Length
+    // header that matches the rewritten GET response.
+    let body_bytes = body::to_bytes(transformed_response.into_body()).await?;
+    let body_len = body_bytes.len();
 
-    Ok(build_head_response(status, version, &headers, &behavior))
+    Ok(build_head_response(
+        status,
+        version,
+        &headers,
+        &behavior,
+        Some(body_len),
+        true,
+    ))
 }
 
 fn build_head_response(
@@ -473,18 +483,32 @@ fn build_head_response(
     version: Version,
     headers: &HeaderMap,
     behavior: &ProxyBehavior,
+    body_len: Option<usize>,
+    force_cors_headers: bool,
 ) -> Response<Body> {
     let mut builder = Response::builder().status(status).version(version);
+    // Start from the upstream headers, then strip only the payload metadata we
+    // are about to recompute so things like content-encoding remain intact.
     let mut new_headers = sanitize_headers(headers, false);
+    new_headers.remove(header::CONTENT_LENGTH);
+    new_headers.remove(header::TRANSFER_ENCODING);
     strip_csp_headers(&mut new_headers);
     if behavior.strip_cors_headers {
         strip_cors_headers(&mut new_headers);
     } else if behavior.add_cors {
         add_cors_headers(&mut new_headers);
     }
+    if force_cors_headers {
+        add_cors_headers(&mut new_headers);
+    }
     if let Some(frame_ancestors) = behavior.frame_ancestors {
         if let Ok(value) = HeaderValue::from_str(frame_ancestors) {
             new_headers.insert("content-security-policy", value);
+        }
+    }
+    if let Some(len) = body_len {
+        if let Ok(value) = HeaderValue::from_str(&len.to_string()) {
+            new_headers.insert(header::CONTENT_LENGTH, value);
         }
     }
     let headers_mut = builder.headers_mut().unwrap();

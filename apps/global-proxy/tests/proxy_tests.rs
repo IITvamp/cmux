@@ -7,7 +7,7 @@ use std::{
 use futures_util::{SinkExt, StreamExt};
 use global_proxy::{ProxyConfig, spawn_proxy};
 use hyper::{
-    Body, Request, Response, Server, StatusCode,
+    Body, Method as HyperMethod, Request, Response, Server, StatusCode,
     service::{make_service_fn, service_fn},
 };
 use reqwest::Method;
@@ -814,6 +814,56 @@ async fn port_39378_strips_cors_and_applies_csp() {
             name
         );
     }
+
+    proxy.shutdown().await;
+    backend.shutdown().await;
+}
+
+#[tokio::test]
+async fn head_method_not_allowed_falls_back_to_get_with_length() {
+    let seen_methods: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let handler_methods = seen_methods.clone();
+
+    let handler = Arc::new(move |req: Request<Body>| {
+        handler_methods
+            .lock()
+            .unwrap()
+            .push(req.method().to_string());
+
+        if req.method() == HyperMethod::HEAD {
+            Response::builder()
+                .status(StatusCode::METHOD_NOT_ALLOWED)
+                .body(Body::empty())
+                .unwrap()
+        } else {
+            Response::builder()
+                .status(StatusCode::OK)
+                .header("content-type", "text/plain")
+                .body(Body::from("hello"))
+                .unwrap()
+        }
+    });
+
+    let backend = TestHttpBackend::serve(handler).await;
+    let proxy = TestProxy::spawn().await;
+    let host = format!("port-{}-test.cmux.localhost", backend.port());
+
+    let response = proxy.request(Method::HEAD, &host, "/asset.js", &[]).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let headers = response.headers();
+    assert_eq!(
+        headers.get("content-length").and_then(|v| v.to_str().ok()),
+        Some("5")
+    );
+    assert_eq!(
+        headers.get("content-type").and_then(|v| v.to_str().ok()),
+        Some("text/plain")
+    );
+    assert!(headers.get("transfer-encoding").is_none());
+
+    let methods = seen_methods.lock().unwrap().clone();
+    assert_eq!(methods, vec!["HEAD", "GET"]);
 
     proxy.shutdown().await;
     backend.shutdown().await;
