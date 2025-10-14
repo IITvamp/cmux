@@ -9,6 +9,7 @@ import { useArchiveTask } from "@/hooks/useArchiveTask";
 import { useOpenWithActions } from "@/hooks/useOpenWithActions";
 import { isElectron } from "@/lib/electron";
 import { isFakeConvexId } from "@/lib/fakeConvexId";
+import { toMorphVncUrl } from "@/lib/morphWorkspace";
 import type { AnnotatedTaskRun, TaskRunWithChildren } from "@/types/task";
 import { ContextMenu } from "@base-ui-components/react/context-menu";
 import { api } from "@cmux/convex/api";
@@ -773,6 +774,11 @@ function TaskRunDetails({
     environmentError?.maintenanceError || environmentError?.devError
   );
 
+  const workspaceUrl = run.vscode?.workspaceUrl ?? null;
+  const shouldRenderBrowserLink =
+    run.vscode?.provider === "morph" &&
+    Boolean(workspaceUrl && toMorphVncUrl(workspaceUrl));
+
   const environmentErrorIndicator = hasEnvironmentError ? (
     <Tooltip delayDuration={0}>
       <TooltipTrigger asChild>
@@ -827,6 +833,16 @@ function TaskRunDetails({
         label="Git diff"
         indentLevel={indentLevel}
       />
+
+      {shouldRenderBrowserLink ? (
+        <TaskRunDetailLink
+          to="/$teamSlugOrId/task/$taskId/run/$runId/browser"
+          params={{ teamSlugOrId, taskId, runId: run._id }}
+          icon={<Globe className="w-3 h-3 mr-2 text-neutral-400" />}
+          label="Browser"
+          indentLevel={indentLevel}
+        />
+      ) : null}
 
       {shouldRenderPullRequestLink ? (
         <TaskRunDetailLink
