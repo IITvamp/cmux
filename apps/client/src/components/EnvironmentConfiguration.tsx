@@ -22,6 +22,10 @@ import type { Id } from "@cmux/convex/dataModel";
 import clsx from "clsx";
 import { ArrowLeft, Loader2, Minus, Plus, Settings, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type {
+  FocusEvent as ReactFocusEvent,
+  PointerEvent as ReactPointerEvent,
+} from "react";
 import TextareaAutosize from "react-textarea-autosize";
 
 export type EnvVar = { name: string; value: string; isSecret: boolean };
@@ -98,6 +102,128 @@ export function EnvironmentConfiguration({
   const keyInputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [pendingFocusIndex, setPendingFocusIndex] = useState<number | null>(
     null
+  );
+  // HeroUI's accordion can briefly steal focus back to the trigger; capture the intended target so the first click still focuses the field.
+  const focusRestoreTargetRef = useRef<HTMLElement | null>(null);
+  const focusRestoreTimerRef = useRef<number | null>(null);
+  const cancelPendingFocusRestore = useCallback(() => {
+    if (focusRestoreTimerRef.current !== null) {
+      window.clearTimeout(focusRestoreTimerRef.current);
+      focusRestoreTimerRef.current = null;
+    }
+  }, []);
+  const findFocusableInAccordionContent = useCallback(
+    (eventTarget: EventTarget | null): HTMLElement | null => {
+      if (!(eventTarget instanceof HTMLElement)) {
+        return null;
+      }
+      const contentAncestor = eventTarget.closest<HTMLElement>(
+        "[data-slot=\"content\"]"
+      );
+      if (!contentAncestor) {
+        return null;
+      }
+      if (
+        eventTarget instanceof HTMLInputElement ||
+        eventTarget instanceof HTMLTextAreaElement ||
+        eventTarget instanceof HTMLSelectElement
+      ) {
+        return eventTarget.disabled ? null : eventTarget;
+      }
+      if (eventTarget.isContentEditable) {
+        return eventTarget;
+      }
+      const fallback = eventTarget.closest<HTMLElement>(
+        "input:not([type='hidden']):not([disabled]), textarea:not([disabled]), select:not([disabled]), [contenteditable='true'], [contenteditable='']"
+      );
+      if (!fallback || !contentAncestor.contains(fallback)) {
+        return null;
+      }
+      if (
+        (fallback instanceof HTMLInputElement ||
+          fallback instanceof HTMLTextAreaElement ||
+          fallback instanceof HTMLSelectElement) &&
+        fallback.disabled
+      ) {
+        return null;
+      }
+      if (fallback.isContentEditable) {
+        return fallback;
+      }
+      return fallback;
+    },
+    []
+  );
+  const scheduleFocusRestore = useCallback(
+    (element: HTMLElement) => {
+      cancelPendingFocusRestore();
+      focusRestoreTimerRef.current = window.setTimeout(() => {
+        focusRestoreTimerRef.current = null;
+        if (!element.isConnected) {
+          return;
+        }
+        if (document.activeElement === element) {
+          return;
+        }
+        if (
+          (element instanceof HTMLInputElement ||
+            element instanceof HTMLTextAreaElement ||
+            element instanceof HTMLSelectElement) &&
+          element.disabled
+        ) {
+          return;
+        }
+        if (
+          element.getAttribute("aria-disabled") === "true" ||
+          element.hasAttribute("data-disabled")
+        ) {
+          return;
+        }
+        try {
+          element.focus({ preventScroll: true });
+        } catch (_error) {
+          element.focus();
+        }
+      }, 0);
+    },
+    [cancelPendingFocusRestore]
+  );
+  const handleAccordionPointerDownCapture = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const focusable = findFocusableInAccordionContent(event.target);
+      focusRestoreTargetRef.current = focusable;
+      if (!focusable) {
+        cancelPendingFocusRestore();
+      }
+    },
+    [findFocusableInAccordionContent, cancelPendingFocusRestore]
+  );
+  const handleAccordionFocusCapture = useCallback(
+    (event: ReactFocusEvent<HTMLDivElement>) => {
+      if (focusRestoreTargetRef.current === event.target) {
+        focusRestoreTargetRef.current = null;
+        cancelPendingFocusRestore();
+      }
+    },
+    [cancelPendingFocusRestore]
+  );
+  const handleAccordionPointerUpCapture = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const focusable =
+        findFocusableInAccordionContent(event.target) ||
+        focusRestoreTargetRef.current;
+      focusRestoreTargetRef.current = null;
+      if (!focusable) {
+        cancelPendingFocusRestore();
+        return;
+      }
+      scheduleFocusRestore(focusable);
+    },
+    [
+      findFocusableInAccordionContent,
+      scheduleFocusRestore,
+      cancelPendingFocusRestore,
+    ]
   );
   const lastSubmittedEnvContent = useRef<string | null>(null);
   const [localInstanceId, setLocalInstanceId] = useState<string | undefined>(
@@ -456,6 +582,9 @@ export function EnvironmentConfiguration({
             content: "pt-0",
             title: "text-sm font-medium",
           }}
+          onPointerDownCapture={handleAccordionPointerDownCapture}
+          onFocusCapture={handleAccordionFocusCapture}
+          onPointerUpCapture={handleAccordionPointerUpCapture}
         >
           <AccordionItem
             key="env-vars"
