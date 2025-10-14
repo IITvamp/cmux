@@ -1,16 +1,20 @@
 [Unit]
-Description=Cmux websockify proxy
+Description=Cmux VNC WebSocket proxy
 After=cmux-x11vnc.service
 Requires=cmux-x11vnc.service
 
 [Service]
 Type=simple
 ExecStartPre=/bin/mkdir -p /var/log/cmux
-ExecStart=/usr/bin/websockify --web=/usr/share/novnc 0.0.0.0:39380 127.0.0.1:5901
+ExecStart=/usr/local/lib/cmux/cmux-vnc-proxy
+Environment="VNC_PROXY_PORT=39380"
+Environment="VNC_HOST=127.0.0.1"
+Environment="VNC_PORT=5901"
+Environment="WEB_ROOT=/usr/share/novnc"
 Restart=always
 RestartSec=3
-StandardOutput=append:/var/log/cmux/websockify.log
-StandardError=append:/var/log/cmux/websockify.log
+StandardOutput=append:/var/log/cmux/vnc-proxy.log
+StandardError=append:/var/log/cmux/vnc-proxy.log
 
 [Install]
 WantedBy=cmux.target
