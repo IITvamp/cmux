@@ -116,8 +116,12 @@ export function PersistentIframe({
     [clearLoadTimeout, onError],
   );
 
-  const preflightState = useIframePreflight({ url: src, enabled: preflight });
-  const { phase: preflightPhase, error: preflightError, phasePayload: preflightPhasePayload, isMorphTarget: preflightIsMorph } = preflightState;
+  const {
+    phase: preflightPhase,
+    error: preflightError,
+    phasePayload: preflightPhasePayload,
+    isMorphTarget: preflightIsMorph,
+  } = useIframePreflight({ url: src, enabled: preflight });
 
   useEffect(() => {
     if (!preflight) {

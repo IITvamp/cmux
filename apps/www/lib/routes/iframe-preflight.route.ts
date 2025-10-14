@@ -1,6 +1,11 @@
 import { getAccessTokenFromRequest } from "@/lib/utils/auth";
 import { env } from "@/lib/utils/www-env";
-import { extractMorphInstanceInfo, type MorphInstanceInfo } from "@cmux/shared";
+import {
+  extractMorphInstanceInfo,
+  type IframePreflightResult,
+  type MorphInstanceInfo,
+  type SendPhaseFn,
+} from "@cmux/shared";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { streamSSE } from "hono/streaming";
 import { MorphCloudClient } from "morphcloud";
@@ -59,18 +64,6 @@ const QuerySchema = z
       }),
   })
   .openapi("IframePreflightQuery");
-
-type IframePreflightResponse = {
-  ok: boolean;
-  status: number | null;
-  method: "HEAD" | "GET" | null;
-  error?: string;
-};
-
-type SendPhaseFn = (
-  phase: string,
-  extra?: Record<string, unknown>,
-) => Promise<void>;
 
 const MAX_RESUME_ATTEMPTS = 3;
 const RESUME_RETRY_DELAY_MS = 1_000;
@@ -160,7 +153,7 @@ async function attemptResumeIfNeeded(
   return "failed";
 }
 
-async function performPreflight(target: URL): Promise<IframePreflightResponse> {
+async function performPreflight(target: URL): Promise<IframePreflightResult> {
   const probe = async (method: "HEAD" | "GET") => {
     const response = await fetch(target, {
       method,
@@ -321,7 +314,7 @@ iframePreflightRouter.openapi(
         });
       };
 
-      const sendResult = async (result: IframePreflightResponse) => {
+      const sendResult = async (result: IframePreflightResult) => {
         await stream.writeSSE({
           event: "result",
           data: JSON.stringify(result),

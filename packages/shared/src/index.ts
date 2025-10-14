@@ -15,3 +15,4 @@ export * from "./utils/validate-exposed-ports";
 export * from "./vscode-schemas";
 export * from "./worker-schemas";
 export * from "./pull-request-state";
+export * from "./iframe-preflight";

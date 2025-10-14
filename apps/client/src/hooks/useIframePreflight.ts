@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { extractMorphInstanceInfo } from "@cmux/shared";
+import {
+  extractMorphInstanceInfo,
+  isIframePreflightPhasePayload,
+  isIframePreflightResult,
+  type IframePreflightPhasePayload,
+  type IframePreflightResult,
+  type IframePreflightServerPhase,
+} from "@cmux/shared";
 import { WWW_ORIGIN } from "@/lib/wwwOrigin";
 
 export type IframePreflightPhase =
@@ -12,12 +19,7 @@ export type IframePreflightPhase =
   | "preflight_failed"
   | "error";
 
-export interface IframePreflightResult {
-  ok: boolean;
-  status: number | null;
-  method: "HEAD" | "GET" | null;
-  error?: string;
-}
+export type { IframePreflightResult } from "@cmux/shared";
 
 export interface UseIframePreflightOptions {
   url: string | null | undefined;
@@ -26,7 +28,7 @@ export interface UseIframePreflightOptions {
 
 export interface UseIframePreflightState {
   phase: IframePreflightPhase;
-  phasePayload: Record<string, unknown> | null;
+  phasePayload: IframePreflightPhasePayload | null;
   result: IframePreflightResult | null;
   error: string | null;
   isMorphTarget: boolean;
@@ -35,11 +37,6 @@ export interface UseIframePreflightState {
 type ParsedEvent = {
   event: string;
   data: string;
-};
-
-type PhasePayload = {
-  phase: string;
-  [key: string]: unknown;
 };
 
 const EVENT_SEPARATOR = "\n\n";
@@ -75,7 +72,9 @@ function parseEventBlock(block: string): ParsedEvent | null {
   };
 }
 
-function applyPhaseMapping(phase: string): IframePreflightPhase | null {
+function applyPhaseMapping(
+  phase: IframePreflightServerPhase,
+): IframePreflightPhase | null {
   switch (phase) {
     case "resuming":
     case "resume_retry":
@@ -102,9 +101,8 @@ export function useIframePreflight({
   enabled = true,
 }: UseIframePreflightOptions): UseIframePreflightState {
   const [phase, setPhase] = useState<IframePreflightPhase>("idle");
-  const [phasePayload, setPhasePayload] = useState<Record<string, unknown> | null>(
-    null,
-  );
+  const [phasePayload, setPhasePayload] =
+    useState<IframePreflightPhasePayload | null>(null);
   const [result, setResult] = useState<IframePreflightResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -156,12 +154,12 @@ export function useIframePreflight({
 
     let cancelled = false;
 
-    const handlePhaseEvent = (payload: PhasePayload) => {
+    const handlePhaseEvent = (payload: IframePreflightPhasePayload) => {
       if (cancelled) {
         return;
       }
       setPhasePayload(payload);
-      const mapped = applyPhaseMapping(String(payload.phase));
+      const mapped = applyPhaseMapping(payload.phase);
       if (mapped) {
         updatePhase(mapped);
       }
@@ -211,8 +209,12 @@ export function useIframePreflight({
 
           let message = `Preflight request failed (status ${response.status})`;
           try {
-            const data = (await response.json()) as Partial<IframePreflightResult>;
-            if (typeof data.error === "string" && data.error) {
+            const data = await response.json();
+            if (
+              isIframePreflightResult(data) &&
+              typeof data.error === "string" &&
+              data.error
+            ) {
               message = data.error;
             }
           } catch {
@@ -257,6 +259,31 @@ export function useIframePreflight({
           }
         };
 
+        const processEvent = (event: ParsedEvent) => {
+          if (event.event === "phase") {
+            try {
+              const parsed = JSON.parse(event.data);
+              if (isIframePreflightPhasePayload(parsed)) {
+                handlePhaseEvent(parsed);
+              }
+            } catch {
+              // ignore malformed JSON
+            }
+            return;
+          }
+
+          if (event.event === "result") {
+            try {
+              const parsed = JSON.parse(event.data);
+              if (isIframePreflightResult(parsed)) {
+                handleResultEvent(parsed);
+              }
+            } catch {
+              // ignore malformed JSON
+            }
+          }
+        };
+
         while (true) {
           const { done, value } = await reader.read();
           if (controller.signal.aborted) {
@@ -270,21 +297,7 @@ export function useIframePreflight({
             if (buffer.trim()) {
               const event = parseEventBlock(buffer);
               if (event) {
-                if (event.event === "phase") {
-                  try {
-                    const payload = JSON.parse(event.data) as PhasePayload;
-                    handlePhaseEvent(payload);
-                  } catch {
-                    // ignore malformed JSON
-                  }
-                } else if (event.event === "result") {
-                  try {
-                    const payload = JSON.parse(event.data) as IframePreflightResult;
-                    handleResultEvent(payload);
-                  } catch {
-                    // ignore malformed JSON
-                  }
-                }
+                processEvent(event);
               }
             }
             break;
@@ -305,25 +318,7 @@ export function useIframePreflight({
             if (!event) {
               continue;
             }
-
-            if (event.event === "phase") {
-              try {
-                const payload = JSON.parse(event.data) as PhasePayload;
-                handlePhaseEvent(payload);
-              } catch {
-                // ignore malformed JSON
-              }
-              continue;
-            }
-
-            if (event.event === "result") {
-              try {
-                const payload = JSON.parse(event.data) as IframePreflightResult;
-                handleResultEvent(payload);
-              } catch {
-                // ignore malformed JSON
-              }
-            }
+            processEvent(event);
           }
         }
       } catch (err) {
