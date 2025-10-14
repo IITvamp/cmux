@@ -4,9 +4,8 @@ import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { useEffect, useMemo, useRef } from "react";
+import { useMemo } from "react";
 import z from "zod";
-import { preloadTaskRunIframes } from "@/lib/preloadTaskRunIframes";
 
 const paramsSchema = z.object({
   taskId: typedZid("tasks"),
@@ -58,20 +57,6 @@ function PreviewPage() {
   const persistKey = useMemo(() => {
     return getTaskRunPreviewPersistKey(runId, port);
   }, [runId, port]);
-
-  // Preload the preview iframe when it becomes ready for the first time
-  const hasPreloadedRef = useRef(false);
-  useEffect(() => {
-    if (isPreviewReady && previewUrl && !hasPreloadedRef.current) {
-      hasPreloadedRef.current = true;
-      void preloadTaskRunIframes([
-        {
-          url: previewUrl,
-          taskRunId: runId,
-        },
-      ]);
-    }
-  }, [isPreviewReady, previewUrl, runId]);
 
   const paneBorderRadius = 6;
 
