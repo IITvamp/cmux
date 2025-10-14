@@ -596,7 +596,10 @@ async fn transform_response(response: Response<Body>, behavior: ProxyBehavior) -
             Ok(bytes) => match rewrite_html(bytes, behavior.skip_service_worker) {
                 Ok(body) => {
                     let mut builder = Response::builder().status(status).version(version);
-                    let mut new_headers = sanitize_headers(&headers);
+                    let mut new_headers = sanitize_headers(
+                        &headers,
+                        /* strip_payload_headers */ true,
+                    );
                     strip_csp_headers(&mut new_headers);
                     if behavior.strip_cors_headers {
                         strip_cors_headers(&mut new_headers);
@@ -624,7 +627,10 @@ async fn transform_response(response: Response<Body>, behavior: ProxyBehavior) -
         }
     } else {
         let mut builder = Response::builder().status(status).version(version);
-        let mut new_headers = sanitize_headers(&headers);
+        let mut new_headers = sanitize_headers(
+            &headers,
+            /* strip_payload_headers */ false,
+        );
         strip_csp_headers(&mut new_headers);
         if behavior.strip_cors_headers {
             strip_cors_headers(&mut new_headers);
@@ -644,8 +650,8 @@ async fn transform_response(response: Response<Body>, behavior: ProxyBehavior) -
     }
 }
 
-fn sanitize_headers(headers: &HeaderMap) -> HeaderMap {
-    let ignored = [
+fn sanitize_headers(headers: &HeaderMap, strip_payload_headers: bool) -> HeaderMap {
+    let ignored_payload_headers = [
         "content-length",
         "content-encoding",
         "transfer-encoding",
@@ -656,7 +662,7 @@ fn sanitize_headers(headers: &HeaderMap) -> HeaderMap {
 
     let mut out = HeaderMap::new();
     for (name, value) in headers.iter() {
-        if ignored.contains(&name.as_str()) {
+        if strip_payload_headers && ignored_payload_headers.contains(&name.as_str()) {
             continue;
         }
         out.insert(name.clone(), value.clone());
