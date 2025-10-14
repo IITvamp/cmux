@@ -1,4 +1,4 @@
-import { buildMorphHostname, parseMorphWorkspaceHostname } from "./morphWorkspace";
+import { buildMorphProxyHostname, parseMorphWorkspaceHostname } from "./morphWorkspace";
 
 export function toProxyWorkspaceUrl(workspaceUrl: string): string {
   if (workspaceUrl.includes("morph.so")) {
@@ -9,7 +9,7 @@ export function toProxyWorkspaceUrl(workspaceUrl: string): string {
       throw new Error(`Invalid workspace URL: ${workspaceUrl}`);
     }
 
-    url.hostname = buildMorphHostname({
+    url.hostname = buildMorphProxyHostname({
       morphId: info.morphId,
       port: info.port,
     });

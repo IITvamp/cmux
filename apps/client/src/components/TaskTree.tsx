@@ -10,6 +10,7 @@ import { useOpenWithActions } from "@/hooks/useOpenWithActions";
 import { isElectron } from "@/lib/electron";
 import { isFakeConvexId } from "@/lib/fakeConvexId";
 import { toMorphVncUrl } from "@/lib/morphWorkspace";
+import { preloadTaskRunBrowserIframe } from "@/lib/preloadTaskRunIframes";
 import type { AnnotatedTaskRun, TaskRunWithChildren } from "@/types/task";
 import { ContextMenu } from "@base-ui-components/react/context-menu";
 import { api } from "@cmux/convex/api";
@@ -43,9 +44,11 @@ import {
   memo,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
+  type FocusEvent,
   type MouseEvent,
   type ReactNode,
 } from "react";
@@ -700,6 +703,8 @@ interface TaskRunDetailLinkProps {
   className?: string;
   onClick?: (event: MouseEvent<HTMLAnchorElement>) => void;
   trailing?: ReactNode;
+  onMouseEnter?: (event: MouseEvent<HTMLAnchorElement>) => void;
+  onFocus?: (event: FocusEvent<HTMLAnchorElement>) => void;
 }
 
 function TaskRunDetailLink({
@@ -711,6 +716,8 @@ function TaskRunDetailLink({
   className,
   onClick,
   trailing,
+  onMouseEnter,
+  onFocus,
 }: TaskRunDetailLinkProps) {
   return (
     <Link
@@ -725,6 +732,8 @@ function TaskRunDetailLink({
       )}
       style={{ paddingLeft: `${24 + indentLevel * 8}px` }}
       onClick={onClick}
+      onMouseEnter={onMouseEnter}
+      onFocus={onFocus}
     >
       <span className="flex min-w-0 items-center">
         {icon}
@@ -765,6 +774,25 @@ function TaskRunDetails({
   previewServices,
   environmentError,
 }: TaskRunDetailsProps) {
+  const workspaceUrl = run.vscode?.workspaceUrl ?? null;
+  const browserUrl =
+    run.vscode?.provider === "morph" && workspaceUrl
+      ? toMorphVncUrl(workspaceUrl)
+      : null;
+  const shouldRenderBrowserLink = Boolean(browserUrl);
+  const browserPreloadedRef = useRef(false);
+  useEffect(() => {
+    browserPreloadedRef.current = false;
+  }, [browserUrl, run._id]);
+  const handleBrowserPreload = useCallback(() => {
+    if (!browserUrl || browserPreloadedRef.current) {
+      return;
+    }
+
+    browserPreloadedRef.current = true;
+    void preloadTaskRunBrowserIframe(run._id, browserUrl);
+  }, [browserUrl, run._id]);
+
   if (!isExpanded) {
     return null;
   }
@@ -773,11 +801,6 @@ function TaskRunDetails({
   const hasEnvironmentError = Boolean(
     environmentError?.maintenanceError || environmentError?.devError
   );
-
-  const workspaceUrl = run.vscode?.workspaceUrl ?? null;
-  const shouldRenderBrowserLink =
-    run.vscode?.provider === "morph" &&
-    Boolean(workspaceUrl && toMorphVncUrl(workspaceUrl));
 
   const environmentErrorIndicator = hasEnvironmentError ? (
     <Tooltip delayDuration={0}>
@@ -841,6 +864,12 @@ function TaskRunDetails({
           icon={<Globe className="w-3 h-3 mr-2 text-neutral-400" />}
           label="Browser"
           indentLevel={indentLevel}
+          onMouseEnter={(_event) => {
+            handleBrowserPreload();
+          }}
+          onFocus={(_event) => {
+            handleBrowserPreload();
+          }}
         />
       ) : null}
 

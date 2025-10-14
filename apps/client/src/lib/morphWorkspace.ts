@@ -20,7 +20,7 @@ export function parseMorphWorkspaceHostname(
   };
 }
 
-export function buildMorphHostname({
+export function buildMorphProxyHostname({
   morphId,
   port,
   scope = "base",
@@ -32,6 +32,16 @@ export function buildMorphHostname({
   return `cmux-${morphId}-${scope}-${String(port)}.cmux.app`;
 }
 
+export function buildMorphCloudHostname({
+  morphId,
+  port,
+}: {
+  morphId: string;
+  port: string | number;
+}): string {
+  return `port-${String(port)}-morphvm-${morphId}.http.cloud.morph.so`;
+}
+
 export function toMorphPortUrl(
   workspaceUrl: string,
   targetPort: string | number,
@@ -40,6 +50,7 @@ export function toMorphPortUrl(
     protocol?: "http" | "https";
     pathname?: string;
     searchParams?: Record<string, string>;
+    host?: "proxy" | "cloud";
   }
 ): string | null {
   if (!workspaceUrl) {
@@ -60,11 +71,11 @@ export function toMorphPortUrl(
 
   const protocol = options?.protocol ?? "https";
   const scope = options?.scope ?? "base";
-  const target = new URL(`${protocol}://${buildMorphHostname({
-    morphId: info.morphId,
-    port: targetPort,
-    scope,
-  })}`);
+  const hostname =
+    (options?.host ?? "proxy") === "cloud"
+      ? buildMorphCloudHostname({ morphId: info.morphId, port: targetPort })
+      : buildMorphProxyHostname({ morphId: info.morphId, port: targetPort, scope });
+  const target = new URL(`${protocol}://${hostname}`);
 
   if (options?.pathname) {
     target.pathname = options.pathname;
@@ -87,6 +98,7 @@ export function toMorphVncUrl(workspaceUrl: string): string | null {
       resize: "scale",
       scale: "local",
     },
+    host: "cloud",
   });
 }
 
