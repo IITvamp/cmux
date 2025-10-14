@@ -4,7 +4,7 @@ use bytes::Bytes;
 use futures_util::{SinkExt, StreamExt};
 use http::{
     HeaderMap, Method, Request, Response, StatusCode, Uri,
-    header::{self, HeaderValue, ORIGIN, VARY},
+    header::{self, HeaderValue},
     uri::Scheme,
 };
 use hyper::{
@@ -29,27 +29,6 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 const GIT_COMMIT: &str = match option_env!("GIT_COMMIT") {
     Some(commit) => commit,
     None => "unknown",
-};
-
-#[derive(Clone, Copy)]
-struct CorsPolicy {
-    allowed_origins: &'static [&'static str],
-    allow_credentials: bool,
-}
-
-const CORS_ALLOWED_ORIGINS_PORT_39378: &[&str] = &[
-    "https://cmux.sh",
-    "https://www.cmux.sh",
-    "https://cmux.dev",
-    "https://www.cmux.dev",
-    "https://cmux.local",
-    "http://cmux.local",
-    "http://localhost:5173",
-];
-
-const CORS_POLICY_PORT_39378: CorsPolicy = CorsPolicy {
-    allowed_origins: CORS_ALLOWED_ORIGINS_PORT_39378,
-    allow_credentials: true,
 };
 
 const CSP_FRAME_ANCESTORS_PORT_39378: &str = "frame-ancestors 'self' https://cmux.local http://cmux.local https://www.cmux.sh https://cmux.sh https://www.cmux.dev https://cmux.dev http://localhost:5173;";
@@ -208,15 +187,10 @@ async fn handle_request(state: Arc<AppState>, req: Request<Body>) -> Response<Bo
                 }
 
                 if route.port == 39_378 && *req.method() == Method::OPTIONS {
-                    let origin = req
-                        .headers()
-                        .get(ORIGIN)
-                        .and_then(|value| value.to_str().ok());
-                    return cors_response(
-                        StatusCode::NO_CONTENT,
-                        origin,
-                        Some(CORS_POLICY_PORT_39378),
-                    );
+                    return Response::builder()
+                        .status(StatusCode::NO_CONTENT)
+                        .body(Body::empty())
+                        .unwrap();
                 }
 
                 let target = if let Some(suffix) = state.morph_domain_suffix.clone() {
@@ -230,14 +204,10 @@ async fn handle_request(state: Arc<AppState>, req: Request<Body>) -> Response<Bo
                     Target::BackendPort(route.port)
                 };
 
-                let (cors_policy, add_cors, frame_ancestors) = if route.skip_service_worker {
-                    (
-                        Some(CORS_POLICY_PORT_39378),
-                        false,
-                        Some(CSP_FRAME_ANCESTORS_PORT_39378),
-                    )
+                let (strip_cors_headers, frame_ancestors) = if route.skip_service_worker {
+                    (true, Some(CSP_FRAME_ANCESTORS_PORT_39378))
                 } else {
-                    (None, false, None)
+                    (false, None)
                 };
 
                 return forward_request(
@@ -246,11 +216,10 @@ async fn handle_request(state: Arc<AppState>, req: Request<Body>) -> Response<Bo
                     target,
                     ProxyBehavior {
                         skip_service_worker: route.skip_service_worker,
-                        add_cors,
+                        add_cors: false,
+                        strip_cors_headers,
                         workspace_header: None,
                         port_header: None,
-                        cors_policy,
-                        request_origin: None,
                         frame_ancestors,
                     },
                 )
@@ -262,11 +231,7 @@ async fn handle_request(state: Arc<AppState>, req: Request<Body>) -> Response<Bo
                 }
 
                 if *req.method() == Method::OPTIONS {
-                    let origin = req
-                        .headers()
-                        .get(ORIGIN)
-                        .and_then(|value| value.to_str().ok());
-                    return cors_response(StatusCode::NO_CONTENT, origin, None);
+                    return cors_response(StatusCode::NO_CONTENT);
                 }
 
                 let target = if let Some(suffix) = state.morph_domain_suffix.clone() {
@@ -287,10 +252,9 @@ async fn handle_request(state: Arc<AppState>, req: Request<Body>) -> Response<Bo
                     ProxyBehavior {
                         skip_service_worker: true,
                         add_cors: true,
+                        strip_cors_headers: false,
                         workspace_header: route.workspace_header,
                         port_header: Some(route.port.to_string()),
-                        cors_policy: None,
-                        request_origin: None,
                         frame_ancestors: None,
                     },
                 )
@@ -319,10 +283,9 @@ async fn handle_request(state: Arc<AppState>, req: Request<Body>) -> Response<Bo
                     ProxyBehavior {
                         skip_service_worker: false,
                         add_cors: false,
+                        strip_cors_headers: false,
                         workspace_header: Some(route.workspace),
                         port_header: Some(route.port.to_string()),
-                        cors_policy: None,
-                        request_origin: None,
                         frame_ancestors: None,
                     },
                 )
@@ -349,10 +312,9 @@ enum Target {
 struct ProxyBehavior {
     skip_service_worker: bool,
     add_cors: bool,
+    strip_cors_headers: bool,
     workspace_header: Option<String>,
     port_header: Option<String>,
-    cors_policy: Option<CorsPolicy>,
-    request_origin: Option<String>,
     frame_ancestors: Option<&'static str>,
 }
 
@@ -360,14 +322,8 @@ async fn forward_request(
     state: Arc<AppState>,
     mut req: Request<Body>,
     target: Target,
-    mut behavior: ProxyBehavior,
+    behavior: ProxyBehavior,
 ) -> Response<Body> {
-    behavior.request_origin = req
-        .headers()
-        .get(ORIGIN)
-        .and_then(|value| value.to_str().ok())
-        .map(|value| value.to_string());
-
     if is_upgrade_request(&req) {
         return handle_websocket(state, req, target, behavior).await;
     }
@@ -634,12 +590,8 @@ async fn transform_response(response: Response<Body>, behavior: ProxyBehavior) -
                     let mut builder = Response::builder().status(status).version(version);
                     let mut new_headers = sanitize_headers(&headers);
                     strip_csp_headers(&mut new_headers);
-                    if let Some(policy) = behavior.cors_policy {
-                        apply_cors_policy(
-                            &mut new_headers,
-                            behavior.request_origin.as_deref(),
-                            policy,
-                        );
+                    if behavior.strip_cors_headers {
+                        strip_cors_headers(&mut new_headers);
                     } else if behavior.add_cors {
                         add_cors_headers(&mut new_headers);
                     }
@@ -666,8 +618,8 @@ async fn transform_response(response: Response<Body>, behavior: ProxyBehavior) -
         let mut builder = Response::builder().status(status).version(version);
         let mut new_headers = sanitize_headers(&headers);
         strip_csp_headers(&mut new_headers);
-        if let Some(policy) = behavior.cors_policy {
-            apply_cors_policy(&mut new_headers, behavior.request_origin.as_deref(), policy);
+        if behavior.strip_cors_headers {
+            strip_cors_headers(&mut new_headers);
         } else if behavior.add_cors {
             add_cors_headers(&mut new_headers);
         }
@@ -732,65 +684,20 @@ fn add_cors_headers(headers: &mut HeaderMap) {
     headers.insert("access-control-max-age", HeaderValue::from_static("86400"));
 }
 
-fn apply_cors_policy(headers: &mut HeaderMap, origin: Option<&str>, policy: CorsPolicy) {
-    let selected_origin = origin
-        .and_then(|incoming| {
-            let lower = incoming.to_ascii_lowercase();
-            policy
-                .allowed_origins
-                .iter()
-                .find(|allowed| allowed.eq_ignore_ascii_case(&lower))
-                .copied()
-        })
-        .unwrap_or_else(|| policy.allowed_origins[0]);
-
-    headers.insert(
+fn strip_cors_headers(headers: &mut HeaderMap) {
+    const CORS_HEADER_NAMES: &[&str] = &[
         "access-control-allow-origin",
-        HeaderValue::from_str(selected_origin)
-            .unwrap_or_else(|_| HeaderValue::from_static("https://cmux.sh")),
-    );
-    headers.insert(
         "access-control-allow-methods",
-        HeaderValue::from_static("GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD"),
-    );
-    headers.insert(
         "access-control-allow-headers",
-        HeaderValue::from_static("*"),
-    );
-    headers.insert(
         "access-control-expose-headers",
-        HeaderValue::from_static("*"),
-    );
-    if policy.allow_credentials {
-        headers.insert(
-            "access-control-allow-credentials",
-            HeaderValue::from_static("true"),
-        );
-    } else {
-        headers.remove("access-control-allow-credentials");
-    }
-    headers.insert("access-control-max-age", HeaderValue::from_static("86400"));
-    ensure_vary_origin(headers);
-}
+        "access-control-allow-credentials",
+        "access-control-max-age",
+        "access-control-allow-private-network",
+    ];
 
-fn ensure_vary_origin(headers: &mut HeaderMap) {
-    if let Some(existing) = headers.get(VARY) {
-        if let Ok(value) = existing.to_str() {
-            if value
-                .split(',')
-                .any(|part| part.trim().eq_ignore_ascii_case("origin"))
-            {
-                return;
-            }
-            let new_value = format!("{}, Origin", value);
-            if let Ok(header_value) = HeaderValue::from_str(&new_value) {
-                headers.insert(VARY, header_value);
-                return;
-            }
-        }
+    for name in CORS_HEADER_NAMES {
+        headers.remove(*name);
     }
-
-    headers.insert(VARY, HeaderValue::from_static("Origin"));
 }
 
 fn rewrite_html(
@@ -989,17 +896,9 @@ fn is_loop_header(req: &Request<Body>) -> bool {
         .unwrap_or(false)
 }
 
-fn cors_response(
-    status: StatusCode,
-    origin: Option<&str>,
-    policy: Option<CorsPolicy>,
-) -> Response<Body> {
+fn cors_response(status: StatusCode) -> Response<Body> {
     let mut headers = HeaderMap::new();
-    if let Some(policy) = policy {
-        apply_cors_policy(&mut headers, origin, policy);
-    } else {
-        add_cors_headers(&mut headers);
-    }
+    add_cors_headers(&mut headers);
     let mut builder = Response::builder().status(status);
     let headers_mut = builder.headers_mut().unwrap();
     for (name, value) in headers.iter() {
