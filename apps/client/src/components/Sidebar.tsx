@@ -188,15 +188,12 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
 
   const resetWidth = useCallback(() => setWidth(DEFAULT_WIDTH), []);
 
-  if (isHidden) {
-    return null;
-  }
-
   return (
     <div
       ref={containerRef}
       className="relative bg-neutral-50 dark:bg-black flex flex-col shrink-0 h-dvh grow"
       style={{
+        display: isHidden ? "none" : "flex",
         width: `${width}px`,
         minWidth: `${width}px`,
         maxWidth: `${width}px`,
