@@ -11,7 +11,7 @@ import { api } from "@cmux/convex/api";
 import { convexQuery } from "@convex-dev/react-query";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { Suspense, useEffect, useMemo } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId")({
   component: LayoutComponentWrapper,
@@ -70,13 +70,68 @@ function LayoutComponent() {
 
   const displayTasks = tasks === undefined ? undefined : recentTasks;
 
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("sidebarCollapsed") === "true";
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(
+      "sidebarCollapsed",
+      isSidebarCollapsed ? "true" : "false",
+    );
+  }, [isSidebarCollapsed]);
+
+  const handleSidebarCollapsedChange = useCallback((collapsed: boolean) => {
+    setIsSidebarCollapsed(collapsed);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const isEditableElement = (target: EventTarget | null): boolean => {
+      const el = target instanceof HTMLElement ? target : null;
+      if (!el) return false;
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+        if (el.readOnly || el.disabled) return false;
+        return true;
+      }
+      if (el.getAttribute("contenteditable") === "true") return true;
+      return el.isContentEditable;
+    };
+
+    const handleKeydown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (event.repeat) return;
+      const key = event.key;
+      const isToggleKey = key === "\\" || key === "|";
+      if (!isToggleKey) return;
+      if (!event.metaKey && !event.ctrlKey) return;
+      if (event.altKey) return;
+      if (isEditableElement(event.target)) return;
+      event.preventDefault();
+      setIsSidebarCollapsed((value) => !value);
+    };
+
+    window.addEventListener("keydown", handleKeydown);
+    return () => {
+      window.removeEventListener("keydown", handleKeydown);
+    };
+  }, []);
+
   return (
     <>
       <CommandBar teamSlugOrId={teamSlugOrId} />
 
       <ExpandTasksProvider>
         <div className="flex flex-row grow min-h-0 bg-white dark:bg-black">
-          <Sidebar tasks={displayTasks} teamSlugOrId={teamSlugOrId} />
+          <Sidebar
+            tasks={displayTasks}
+            teamSlugOrId={teamSlugOrId}
+            collapsed={isSidebarCollapsed}
+            onCollapsedChange={handleSidebarCollapsedChange}
+          />
 
           {/* <div className="flex flex-col grow overflow-hidden bg-white dark:bg-neutral-950"> */}
           <Suspense fallback={<div>Loading...</div>}>

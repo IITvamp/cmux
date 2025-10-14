@@ -5,6 +5,7 @@ import { isElectron } from "@/lib/electron";
 import { type Doc } from "@cmux/convex/dataModel";
 import type { LinkProps } from "@tanstack/react-router";
 import { Link } from "@tanstack/react-router";
+import clsx from "clsx";
 import { Home, Plus, Server, Settings } from "lucide-react";
 import {
   useCallback,
@@ -22,6 +23,8 @@ import { SidebarSectionLink } from "./sidebar/SidebarSectionLink";
 interface SidebarProps {
   tasks: Doc<"tasks">[] | undefined;
   teamSlugOrId: string;
+  collapsed: boolean;
+  onCollapsedChange?: (collapsed: boolean) => void;
 }
 
 interface SidebarNavItem {
@@ -59,7 +62,12 @@ const navItems: SidebarNavItem[] = [
   },
 ];
 
-export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
+export function Sidebar({
+  tasks,
+  teamSlugOrId,
+  collapsed,
+  onCollapsedChange,
+}: SidebarProps) {
   const DEFAULT_WIDTH = 256;
   const MIN_WIDTH = 240;
   const MAX_WIDTH = 600;
@@ -68,7 +76,8 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
   const containerLeftRef = useRef<number>(0);
   const rafIdRef = useRef<number | null>(null);
   const [width, setWidth] = useState<number>(() => {
-    const stored = localStorage.getItem("sidebarWidth");
+    if (typeof window === "undefined") return DEFAULT_WIDTH;
+    const stored = window.localStorage.getItem("sidebarWidth");
     const parsed = stored ? Number.parseInt(stored, 10) : DEFAULT_WIDTH;
     if (Number.isNaN(parsed)) return DEFAULT_WIDTH;
     return Math.min(Math.max(parsed, MIN_WIDTH), MAX_WIDTH);
@@ -78,7 +87,8 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
   const { expandTaskIds } = useExpandTasks();
 
   useEffect(() => {
-    localStorage.setItem("sidebarWidth", String(width));
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("sidebarWidth", String(width));
   }, [width]);
 
   const onMouseMove = useCallback((e: MouseEvent) => {
@@ -148,10 +158,13 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
           el.style.pointerEvents = "none";
         }
       }
+      if (collapsed) {
+        onCollapsedChange?.(false);
+      }
       window.addEventListener("mousemove", onMouseMove);
       window.addEventListener("mouseup", stopResizing);
     },
-    [onMouseMove, stopResizing]
+    [collapsed, onCollapsedChange, onMouseMove, stopResizing]
   );
 
   useEffect(() => {
@@ -161,62 +174,79 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
     };
   }, [onMouseMove, stopResizing]);
 
-  const resetWidth = useCallback(() => setWidth(DEFAULT_WIDTH), []);
+  const resetWidth = useCallback(() => {
+    onCollapsedChange?.(false);
+    setWidth(DEFAULT_WIDTH);
+  }, [onCollapsedChange]);
+
+  const effectiveWidth = collapsed ? 0 : width;
 
   return (
     <div
       ref={containerRef}
-      className="relative bg-neutral-50 dark:bg-black flex flex-col shrink-0 h-dvh grow"
+      data-collapsed={collapsed ? "true" : "false"}
+      className={clsx(
+        "relative flex flex-col shrink-0 h-dvh grow transition-[min-width] duration-150 ease-out",
+        collapsed ? "bg-transparent" : "bg-neutral-50 dark:bg-black"
+      )}
       style={{
-        width: `${width}px`,
-        minWidth: `${width}px`,
-        maxWidth: `${width}px`,
+        width: `${effectiveWidth}px`,
+        minWidth: `${effectiveWidth}px`,
+        maxWidth: `${effectiveWidth}px`,
+        transition: "width 160ms ease-out",
         userSelect: isResizing ? ("none" as const) : undefined,
       }}
     >
       <div
-        className={`h-[38px] flex items-center pr-1.5 shrink-0 ${isElectron ? "" : "pl-3"}`}
-        style={{ WebkitAppRegion: "drag" } as CSSProperties}
+        className={clsx(
+          "flex flex-col h-full transition-opacity duration-150",
+          collapsed ? "pointer-events-none opacity-0" : "opacity-100"
+        )}
+        aria-hidden={collapsed}
       >
-        {isElectron && <div className="w-[80px]"></div>}
-        <Link
-          to="/$teamSlugOrId/dashboard"
-          params={{ teamSlugOrId }}
-          activeOptions={{ exact: true }}
-          className="flex items-center gap-2 select-none cursor-pointer"
-          style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+        <div
+          className={`h-[38px] flex items-center pr-1.5 shrink-0 ${isElectron ? "" : "pl-3"}`}
+          style={{ WebkitAppRegion: "drag" } as CSSProperties}
         >
-          {/* <Terminals */}
-          <CmuxLogo height={32} />
-        </Link>
-        <div className="grow"></div>
-        <Link
-          to="/$teamSlugOrId/dashboard"
-          params={{ teamSlugOrId }}
-          activeOptions={{ exact: true }}
-          className="w-[25px] h-[25px] border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-900 rounded-lg flex items-center justify-center transition-colors cursor-default"
-          title="New task"
-          style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
-        >
-          <Plus
-            className="w-4 h-4 text-neutral-700 dark:text-neutral-300"
-            aria-hidden="true"
-          />
-        </Link>
-      </div>
-      <nav className="grow flex flex-col overflow-hidden">
-        <div className="flex-1 overflow-y-auto pb-8">
-          <ul className="flex flex-col gap-px">
-            {navItems.map((item) => (
-              <li key={item.label}>
-                <SidebarNavLink
-                  to={item.to}
-                  params={{ teamSlugOrId }}
-                  search={item.search}
-                  icon={item.icon}
-                  exact={item.exact}
-                  label={item.label}
-                />
+          {isElectron && <div className="w-[80px]"></div>}
+          <Link
+            to="/$teamSlugOrId/dashboard"
+            params={{ teamSlugOrId }}
+            activeOptions={{ exact: true }}
+            className="flex items-center gap-2 select-none cursor-pointer"
+            style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+          >
+            {/* <Terminals */}
+            <CmuxLogo height={32} />
+          </Link>
+          <div className="grow"></div>
+          <Link
+            to="/$teamSlugOrId/dashboard"
+            params={{ teamSlugOrId }}
+            activeOptions={{ exact: true }}
+            className="w-[25px] h-[25px] border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-900 rounded-lg flex items-center justify-center transition-colors cursor-default"
+            title="New task"
+            style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+          >
+            <Plus
+              className="w-4 h-4 text-neutral-700 dark:text-neutral-300"
+              aria-hidden="true"
+            />
+          </Link>
+        </div>
+        <nav className="grow flex flex-col overflow-hidden" aria-hidden={collapsed}>
+          <div className="flex-1 overflow-y-auto pb-8">
+            <ul className="flex flex-col gap-px">
+              {navItems.map((item) => (
+                <li key={item.label}>
+                  <SidebarNavLink
+                    to={item.to}
+                    params={{ teamSlugOrId }}
+                    search={item.search}
+                    icon={item.icon}
+                    exact={item.exact}
+                    label={item.label}
+                  />
               </li>
             ))}
           </ul>
@@ -265,7 +295,8 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
             </div>
           </div>
         </div>
-      </nav>
+        </nav>
+      </div>
 
       {/* Resize handle */}
       <div
@@ -274,19 +305,30 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
         title="Drag to resize"
         onMouseDown={startResizing}
         onDoubleClick={resetWidth}
-        className="absolute top-0 right-0 h-full cursor-col-resize"
+        className={clsx(
+          "absolute top-0 right-0 h-full cursor-col-resize group",
+          collapsed
+            ? "hover:bg-neutral-200/80 dark:hover:bg-neutral-800/70"
+            : "hover:bg-neutral-200/60 dark:hover:bg-neutral-800/60"
+        )}
         style={
           {
-            // Invisible, but with a comfortable hit area
             width: "14px",
             transform: "translateX(13px)",
-            // marginRight: "-5px",
             background: "transparent",
-            // background: "red",
             zIndex: "var(--z-sidebar-resize-handle)",
           } as CSSProperties
         }
-      />
+      >
+        <div
+          className={clsx(
+            "pointer-events-none absolute inset-y-1/2 right-1.5 h-10 w-1 rounded-full bg-neutral-400 transition-opacity duration-150 ease-out",
+            collapsed
+              ? "opacity-0 group-hover:opacity-100 dark:bg-neutral-600"
+              : "opacity-0 group-hover:opacity-70 dark:bg-neutral-500"
+          )}
+        ></div>
+      </div>
     </div>
   );
 }
