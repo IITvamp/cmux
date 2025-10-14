@@ -552,24 +552,41 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
               search: { runId: undefined },
             });
           }
-        } else if (action === "gitdiff") {
-          if (runId) {
-            navigate({
-              to: "/$teamSlugOrId/task/$taskId/run/$runId/diff",
-              params: {
-                teamSlugOrId,
-                taskId,
-                runId,
-              },
-            });
-          } else {
-            navigate({
-              to: "/$teamSlugOrId/task/$taskId",
-              params: { teamSlugOrId, taskId },
-              search: { runId: undefined },
-            });
-          }
-        }
+         } else if (action === "gitdiff") {
+           if (runId) {
+             navigate({
+               to: "/$teamSlugOrId/task/$taskId/run/$runId/diff",
+               params: {
+                 teamSlugOrId,
+                 taskId,
+                 runId,
+               },
+             });
+           } else {
+             navigate({
+               to: "/$teamSlugOrId/task/$taskId",
+               params: { teamSlugOrId, taskId },
+               search: { runId: undefined },
+             });
+           }
+         } else if (action === "browser") {
+           if (runId) {
+             navigate({
+               to: "/$teamSlugOrId/task/$taskId/run/$runId/browser",
+               params: {
+                 teamSlugOrId,
+                 taskId,
+                 runId,
+               },
+             });
+           } else {
+             navigate({
+               to: "/$teamSlugOrId/task/$taskId",
+               params: { teamSlugOrId, taskId },
+               search: { runId: undefined },
+             });
+           }
+         }
       }
       closeCommand();
     },
@@ -875,9 +892,46 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
                               </span>
                             )}
                           </Command.Item>,
-                        );
+                         );
 
-                        items.push(
+                         if (run.vscode?.provider === "morph") {
+                           items.push(
+                             <Command.Item
+                               key={`${task._id}-browser-${run._id}`}
+                               value={`${index + 1} browser:task:${task._id}`}
+                               onSelect={() =>
+                                 handleSelect(`task:${task._id}:browser`)
+                               }
+                               data-value={`task:${task._id}:browser`}
+                               className="flex items-center gap-3 px-3 py-2.5 mx-1 rounded-md cursor-pointer                     hover:bg-neutral-100 dark:hover:bg-neutral-800
+                     data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
+                     data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100
+                     group"
+                             >
+                               <span
+                                 className="flex h-5 px-2 items-center justify-center rounded text-xs font-semibold
+                     bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300
+                     group-data-[selected=true]:bg-neutral-300 dark:group-data-[selected=true]:bg-neutral-600"
+                               >
+                                 {index + 1} browser
+                               </span>
+                               <span className="flex-1 truncate text-sm">
+                                 {task.pullRequestTitle || task.text}
+                               </span>
+                               {task.isCompleted ? (
+                                 <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+                                   completed
+                                 </span>
+                               ) : (
+                                 <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+                                   in progress
+                                 </span>
+                               )}
+                             </Command.Item>,
+                           );
+                         }
+
+                         items.push(
                           <Command.Item
                             key={`${task._id}-gitdiff-${run._id}`}
                             value={`${index + 1} git diff:task:${task._id}`}
