@@ -151,6 +151,9 @@ echo -e "${BLUE}Starting Terminal App Development Environment...${NC}"
 # Change to app directory
 cd "$APP_DIR"
 
+echo "Pulling latest changes from main branch..."
+git pull origin main
+
 # Function to cleanup on exit
 cleanup() {
     echo -e "\n${BLUE}Shutting down...${NC}"

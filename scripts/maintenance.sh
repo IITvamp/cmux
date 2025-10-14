@@ -1,5 +1,8 @@
 #!/bin/bash
 
+echo "Pulling latest changes from main branch..."
+git pull origin main
+
 NO_CACHE=false
 
 # Parse command line arguments
