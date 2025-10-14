@@ -22,6 +22,8 @@ import { SidebarSectionLink } from "./sidebar/SidebarSectionLink";
 interface SidebarProps {
   tasks: Doc<"tasks">[] | undefined;
   teamSlugOrId: string;
+  hidden?: boolean;
+  onToggle?: () => void;
 }
 
 interface SidebarNavItem {
@@ -59,7 +61,7 @@ const navItems: SidebarNavItem[] = [
   },
 ];
 
-export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
+export function Sidebar({ tasks, teamSlugOrId, hidden = false, onToggle }: SidebarProps) {
   const DEFAULT_WIDTH = 256;
   const MIN_WIDTH = 240;
   const MAX_WIDTH = 600;
@@ -162,6 +164,26 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
   }, [onMouseMove, stopResizing]);
 
   const resetWidth = useCallback(() => setWidth(DEFAULT_WIDTH), []);
+
+  // Handle for when sidebar is hidden
+  if (hidden) {
+    return (
+      <div
+        className="relative flex flex-col shrink-0 h-dvh"
+        style={{
+          width: "4px",
+          minWidth: "4px",
+          maxWidth: "4px",
+        }}
+      >
+        <div
+          className="absolute top-0 left-0 h-full w-1 bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 cursor-pointer transition-colors"
+          onClick={() => onToggle?.()}
+          title="Click to show sidebar"
+        />
+      </div>
+    );
+  }
 
   return (
     <div

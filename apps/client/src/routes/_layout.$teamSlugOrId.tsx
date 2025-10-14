@@ -11,7 +11,7 @@ import { api } from "@cmux/convex/api";
 import { convexQuery } from "@convex-dev/react-query";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { Suspense, useEffect, useMemo } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId")({
   component: LayoutComponentWrapper,
@@ -58,6 +58,7 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId")({
 function LayoutComponent() {
   const { teamSlugOrId } = Route.useParams();
   const tasks = useQuery(api.tasks.get, { teamSlugOrId });
+  const [sidebarHidden, setSidebarHidden] = useState(false);
 
   // Sort tasks by creation date (newest first) and take the latest 5
   const recentTasks = useMemo(() => {
@@ -70,13 +71,31 @@ function LayoutComponent() {
 
   const displayTasks = tasks === undefined ? undefined : recentTasks;
 
+  // Keyboard shortcut for toggling sidebar
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "b") {
+        event.preventDefault();
+        setSidebarHidden((prev) => !prev);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   return (
     <>
       <CommandBar teamSlugOrId={teamSlugOrId} />
 
       <ExpandTasksProvider>
         <div className="flex flex-row grow min-h-0 bg-white dark:bg-black">
-          <Sidebar tasks={displayTasks} teamSlugOrId={teamSlugOrId} />
+          <Sidebar
+            tasks={displayTasks}
+            teamSlugOrId={teamSlugOrId}
+            hidden={sidebarHidden}
+            onToggle={() => setSidebarHidden((prev) => !prev)}
+          />
 
           {/* <div className="flex flex-col grow overflow-hidden bg-white dark:bg-neutral-950"> */}
           <Suspense fallback={<div>Loading...</div>}>
