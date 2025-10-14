@@ -84,6 +84,9 @@ fi`;
 set -eux
 cd ${WORKSPACE_ROOT}
 
+echo "=== Pulling latest changes from main branch ==="
+git checkout main && git pull origin main
+
 echo "=== Maintenance Script Started at \$(date) ==="
 ${maintenanceScript}
 echo "=== Maintenance Script Completed at \$(date) ==="
