@@ -69,11 +69,13 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
   export CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc && \
   export CXX_x86_64_unknown_linux_gnu=x86_64-linux-gnu-g++ && \
   cargo install --path crates/cmux-env --target x86_64-unknown-linux-gnu --locked --force && \
-  cargo install --path crates/cmux-proxy --target x86_64-unknown-linux-gnu --locked --force; \
+  cargo install --path crates/cmux-proxy --target x86_64-unknown-linux-gnu --locked --force && \
+  cargo install --path crates/cmux-novnc-proxy --target x86_64-unknown-linux-gnu --locked --force; \
   else \
   # Build natively for the requested platform (e.g., arm64 on Apple Silicon)
   cargo install --path crates/cmux-env --locked --force && \
-  cargo install --path crates/cmux-proxy --locked --force; \
+  cargo install --path crates/cmux-proxy --locked --force && \
+  cargo install --path crates/cmux-novnc-proxy --locked --force; \
   fi
 
 # Stage 2: Build stage (runs natively on ARM64, cross-compiles to x86_64)
@@ -356,7 +358,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   xvfb \
   x11vnc \
   fluxbox \
-  websockify \
   novnc \
   xauth \
   xdg-utils \
@@ -663,9 +664,10 @@ EOF
 COPY --from=rust-builder /usr/local/cargo/bin/envctl /usr/local/bin/envctl
 COPY --from=rust-builder /usr/local/cargo/bin/envd /usr/local/bin/envd
 COPY --from=rust-builder /usr/local/cargo/bin/cmux-proxy /usr/local/bin/cmux-proxy
+COPY --from=rust-builder /usr/local/cargo/bin/cmux-novnc-proxy /usr/local/bin/cmux-novnc-proxy
 
 # Configure envctl/envd runtime defaults
-RUN chmod +x /usr/local/bin/envctl /usr/local/bin/envd /usr/local/bin/cmux-proxy && \
+RUN chmod +x /usr/local/bin/envctl /usr/local/bin/envd /usr/local/bin/cmux-proxy /usr/local/bin/cmux-novnc-proxy && \
   envctl --version && \
   envctl install-hook bash && \
   echo '[ -f ~/.bashrc ] && . ~/.bashrc' > /root/.profile && \
@@ -693,7 +695,7 @@ COPY configs/systemd/cmux-dockerd.service /usr/lib/systemd/system/cmux-dockerd.s
 COPY configs/systemd/cmux-devtools.service /usr/lib/systemd/system/cmux-devtools.service
 COPY configs/systemd/cmux-xvfb.service /usr/lib/systemd/system/cmux-xvfb.service
 COPY configs/systemd/cmux-x11vnc.service /usr/lib/systemd/system/cmux-x11vnc.service
-COPY configs/systemd/cmux-websockify.service /usr/lib/systemd/system/cmux-websockify.service
+COPY configs/systemd/cmux-novnc-proxy.service /usr/lib/systemd/system/cmux-novnc-proxy.service
 COPY configs/systemd/cmux-cdp-proxy.service /usr/lib/systemd/system/cmux-cdp-proxy.service
 COPY configs/systemd/bin/configure-openvscode /usr/local/lib/cmux/configure-openvscode
 COPY configs/systemd/bin/cmux-start-chrome /usr/local/lib/cmux/cmux-start-chrome
@@ -711,7 +713,7 @@ RUN chmod +x /usr/local/lib/cmux/configure-openvscode /usr/local/lib/cmux/cmux-s
   ln -sf /usr/lib/systemd/system/cmux-devtools.service /etc/systemd/system/cmux.target.wants/cmux-devtools.service && \
   ln -sf /usr/lib/systemd/system/cmux-xvfb.service /etc/systemd/system/cmux.target.wants/cmux-xvfb.service && \
   ln -sf /usr/lib/systemd/system/cmux-x11vnc.service /etc/systemd/system/cmux.target.wants/cmux-x11vnc.service && \
-  ln -sf /usr/lib/systemd/system/cmux-websockify.service /etc/systemd/system/cmux.target.wants/cmux-websockify.service && \
+  ln -sf /usr/lib/systemd/system/cmux-novnc-proxy.service /etc/systemd/system/cmux.target.wants/cmux-novnc-proxy.service && \
   ln -sf /usr/lib/systemd/system/cmux-cdp-proxy.service /etc/systemd/system/cmux.target.wants/cmux-cdp-proxy.service && \
   mkdir -p /opt/app/overlay/upper /opt/app/overlay/work && \
   printf 'CMUX_ROOTFS=/\nCMUX_RUNTIME_ROOT=/\nCMUX_OVERLAY_UPPER=/opt/app/overlay/upper\nCMUX_OVERLAY_WORK=/opt/app/overlay/work\n' > /opt/app/app.env
@@ -730,7 +732,7 @@ RUN mkdir -p /root/.openvscode-server/data/User && \
 # 39377: Worker service
 # 39378: OpenVSCode server
 # 39379: cmux-proxy
-# 39380: VNC over Websockify (noVNC)
+# 39380: VNC over cmux-novnc-proxy (noVNC)
 # 39381: Chrome DevTools (CDP)
 EXPOSE 39375 39376 39377 39378 39379 39380 39381
 

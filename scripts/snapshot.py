@@ -910,7 +910,6 @@ async def task_install_base_packages(ctx: TaskContext) -> None:
             build-essential make pkg-config g++ libssl-dev \
             ruby-full perl software-properties-common \
             tigervnc-standalone-server tigervnc-common \
-            python3-websockify websockify \
             xvfb \
             x11-xserver-utils xterm novnc \
             x11vnc \
@@ -1506,7 +1505,7 @@ async def task_install_systemd_units(ctx: TaskContext) -> None:
         install -Dm0644 {repo}/configs/systemd/cmux-devtools.service /usr/lib/systemd/system/cmux-devtools.service
         install -Dm0644 {repo}/configs/systemd/cmux-xvfb.service /usr/lib/systemd/system/cmux-xvfb.service
         install -Dm0644 {repo}/configs/systemd/cmux-x11vnc.service /usr/lib/systemd/system/cmux-x11vnc.service
-        install -Dm0644 {repo}/configs/systemd/cmux-websockify.service /usr/lib/systemd/system/cmux-websockify.service
+        install -Dm0644 {repo}/configs/systemd/cmux-novnc-proxy.service /usr/lib/systemd/system/cmux-novnc-proxy.service
         install -Dm0644 {repo}/configs/systemd/cmux-cdp-proxy.service /usr/lib/systemd/system/cmux-cdp-proxy.service
         install -Dm0755 {repo}/configs/systemd/bin/configure-openvscode /usr/local/lib/cmux/configure-openvscode
         touch /usr/local/lib/cmux/dockerd.flag
@@ -1522,7 +1521,7 @@ async def task_install_systemd_units(ctx: TaskContext) -> None:
         ln -sf /usr/lib/systemd/system/cmux-devtools.service /etc/systemd/system/cmux.target.wants/cmux-devtools.service
         ln -sf /usr/lib/systemd/system/cmux-xvfb.service /etc/systemd/system/cmux.target.wants/cmux-xvfb.service
         ln -sf /usr/lib/systemd/system/cmux-x11vnc.service /etc/systemd/system/cmux.target.wants/cmux-x11vnc.service
-        ln -sf /usr/lib/systemd/system/cmux-websockify.service /etc/systemd/system/cmux.target.wants/cmux-websockify.service
+        ln -sf /usr/lib/systemd/system/cmux-novnc-proxy.service /etc/systemd/system/cmux.target.wants/cmux-novnc-proxy.service
         ln -sf /usr/lib/systemd/system/cmux-cdp-proxy.service /etc/systemd/system/cmux.target.wants/cmux-cdp-proxy.service
         systemctl daemon-reload
         systemctl enable cmux.target
@@ -1643,7 +1642,7 @@ async def task_build_env_binaries(ctx: TaskContext) -> None:
 @registry.task(
     name="build-cmux-proxy",
     deps=("upload-repo", "install-rust-toolchain"),
-    description="Build cmux-proxy binary via cargo install",
+    description="Build cmux proxy binaries via cargo install",
 )
 async def task_build_cmux_proxy(ctx: TaskContext) -> None:
     repo = shlex.quote(ctx.remote_repo_root)
@@ -1654,6 +1653,7 @@ async def task_build_cmux_proxy(ctx: TaskContext) -> None:
         export PATH="${{CARGO_HOME}}/bin:$PATH"
         cd {repo}
         cargo install --path crates/cmux-proxy --locked --force
+        cargo install --path crates/cmux-novnc-proxy --locked --force
         """
     )
     await ctx.run("build-cmux-proxy", cmd, timeout=60 * 30)
@@ -1670,6 +1670,7 @@ async def task_link_rust_binaries(ctx: TaskContext) -> None:
         install -m 0755 /usr/local/cargo/bin/envd /usr/local/bin/envd
         install -m 0755 /usr/local/cargo/bin/envctl /usr/local/bin/envctl
         install -m 0755 /usr/local/cargo/bin/cmux-proxy /usr/local/bin/cmux-proxy
+        install -m 0755 /usr/local/cargo/bin/cmux-novnc-proxy /usr/local/bin/cmux-novnc-proxy
         """
     )
     await ctx.run("link-rust-binaries", cmd)
@@ -1900,11 +1901,11 @@ async def task_check_vnc(ctx: TaskContext) -> None:
         """
         # Verify VNC binaries are installed
         vncserver -version
-        if ! command -v websockify >/dev/null 2>&1; then
-          echo "websockify not installed" >&2
+        if ! command -v cmux-novnc-proxy >/dev/null 2>&1; then
+          echo "cmux-novnc-proxy not installed" >&2
           exit 1
         fi
-        websockify --help >/dev/null
+        cmux-novnc-proxy --help >/dev/null
         
         # Verify VNC endpoint is accessible
         sleep 5
@@ -1918,12 +1919,12 @@ async def task_check_vnc(ctx: TaskContext) -> None:
         echo "ERROR: VNC endpoint not reachable after 30s" >&2
         systemctl status cmux-xvfb.service --no-pager || true
         systemctl status cmux-x11vnc.service --no-pager || true
-        systemctl status cmux-websockify.service --no-pager || true
+        systemctl status cmux-novnc-proxy.service --no-pager || true
         systemctl status cmux-devtools.service --no-pager || true
         tail -n 60 /var/log/cmux/xvfb.log || true
         tail -n 40 /var/log/cmux/chrome.log || true
         tail -n 40 /var/log/cmux/x11vnc.log || true
-        tail -n 40 /var/log/cmux/websockify.log || true
+        tail -n 40 /var/log/cmux/novnc-proxy.log || true
         exit 1
         """
     )
