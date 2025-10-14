@@ -257,6 +257,9 @@ COPY apps/worker/wait-for-docker.sh ./apps/worker/
 # Copy Chrome DevTools proxy source
 COPY scripts/cdp-proxy ./scripts/cdp-proxy/
 
+# Copy VNC proxy source
+COPY scripts/vnc-proxy ./scripts/vnc-proxy/
+
 # Copy VS Code extension source
 COPY packages/vscode-extension/src ./packages/vscode-extension/src
 COPY packages/vscode-extension/tsconfig.json ./packages/vscode-extension/
@@ -276,7 +279,7 @@ RUN cd /cmux && \
   cp ./apps/worker/wait-for-docker.sh /usr/local/bin/ && \
   chmod +x /usr/local/bin/wait-for-docker.sh
 
-# Build Chrome DevTools proxy binary
+# Build Chrome DevTools proxy binary and VNC proxy binary
 RUN --mount=type=cache,target=/root/.cache/go-build \
   --mount=type=cache,target=/go/pkg/mod \
   <<'EOF'
@@ -301,6 +304,9 @@ export CGO_ENABLED=0
 cd /cmux/scripts/cdp-proxy
 go build -trimpath -ldflags="-s -w" -o /usr/local/lib/cmux/cmux-cdp-proxy .
 test -x /usr/local/lib/cmux/cmux-cdp-proxy
+cd /cmux/scripts/vnc-proxy
+go build -trimpath -ldflags="-s -w" -o /usr/local/lib/cmux/cmux-vnc-proxy .
+test -x /usr/local/lib/cmux/cmux-vnc-proxy
 EOF
 
 # Verify bun is still working in builder
@@ -356,7 +362,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   xvfb \
   x11vnc \
   fluxbox \
-  websockify \
   novnc \
   xauth \
   xdg-utils \
@@ -698,7 +703,8 @@ COPY configs/systemd/cmux-cdp-proxy.service /usr/lib/systemd/system/cmux-cdp-pro
 COPY configs/systemd/bin/configure-openvscode /usr/local/lib/cmux/configure-openvscode
 COPY configs/systemd/bin/cmux-start-chrome /usr/local/lib/cmux/cmux-start-chrome
 COPY --from=builder /usr/local/lib/cmux/cmux-cdp-proxy /usr/local/lib/cmux/cmux-cdp-proxy
-RUN chmod +x /usr/local/lib/cmux/configure-openvscode /usr/local/lib/cmux/cmux-start-chrome /usr/local/lib/cmux/cmux-cdp-proxy && \
+COPY --from=builder /usr/local/lib/cmux/cmux-vnc-proxy /usr/local/lib/cmux/cmux-vnc-proxy
+RUN chmod +x /usr/local/lib/cmux/configure-openvscode /usr/local/lib/cmux/cmux-start-chrome /usr/local/lib/cmux/cmux-cdp-proxy /usr/local/lib/cmux/cmux-vnc-proxy && \
   touch /usr/local/lib/cmux/dockerd.flag && \
   mkdir -p /var/log/cmux && \
   mkdir -p /etc/systemd/system/multi-user.target.wants && \
