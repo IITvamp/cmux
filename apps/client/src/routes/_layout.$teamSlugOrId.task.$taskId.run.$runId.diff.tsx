@@ -20,7 +20,7 @@ import type { TaskAcknowledged, TaskStarted, TaskError } from "@cmux/shared";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
-import { Switch } from "@heroui/react";
+import { Switch, Tabs, Tab } from "@heroui/react";
 import { useQuery as useRQ } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
@@ -39,6 +39,23 @@ import { attachTaskLifecycleListeners } from "@/lib/socket/taskLifecycleListener
 import z from "zod";
 import type { EditorApi } from "@/components/dashboard/DashboardInput";
 import LexicalEditor from "@/components/lexical/LexicalEditor";
+
+function BrowserTab({ taskRunId }: { taskRunId: string }) {
+  // For morph instances, construct VNC URL using taskRunId as instance ID
+  const hostId = taskRunId.replace(/_/g, "-");
+  const vncUrl = `https://port-39380-${hostId}.http.cloud.morph.so/vnc.html?autoconnect=true&scaling=local`;
+
+  return (
+    <div className="h-full">
+      <iframe
+        src={vncUrl}
+        className="w-full h-full border-0"
+        title="VNC Browser"
+        sandbox="allow-scripts allow-same-origin"
+      />
+    </div>
+  );
+}
 
 const paramsSchema = z.object({
   taskId: typedZid("tasks"),
@@ -645,6 +662,8 @@ function RunDiffPage() {
     Boolean(primaryRepo) && Boolean(baseRef) && Boolean(headRef);
   const shouldPrefixDiffs = repoFullNames.length > 1;
 
+  const isMorphInstance = selectedRun?.vscode?.provider === "morph";
+
   return (
     <FloatingPane>
       <div className="flex h-full min-h-0 flex-col relative isolate">
@@ -669,32 +688,41 @@ function RunDiffPage() {
             </div>
           )}
           <div className="bg-white dark:bg-neutral-900 grow flex flex-col">
-            <Suspense
-              fallback={
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-neutral-500 dark:text-neutral-400 text-sm select-none">
-                    Loading diffs...
-                  </div>
-                </div>
-              }
-            >
-              {hasDiffSources ? (
-                <RunDiffSection
-                  repoFullName={primaryRepo as string}
-                  additionalRepoFullNames={additionalRepos}
-                  withRepoPrefix={shouldPrefixDiffs}
-                  ref1={baseRef}
-                  ref2={headRef}
-                  onControlsChange={setDiffControls}
-                  classNames={gitDiffViewerClassNames}
-                  metadataByRepo={metadataByRepo}
-                />
-              ) : (
-                <div className="p-6 text-sm text-neutral-600 dark:text-neutral-300">
-                  Missing repo or branches to show diff.
-                </div>
+            <Tabs aria-label="Diff and Browser tabs" className="px-3.5 pt-2">
+              <Tab key="diff" title="Git Diff">
+                <Suspense
+                  fallback={
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-neutral-500 dark:text-neutral-400 text-sm select-none">
+                        Loading diffs...
+                      </div>
+                    </div>
+                  }
+                >
+                  {hasDiffSources ? (
+                    <RunDiffSection
+                      repoFullName={primaryRepo as string}
+                      additionalRepoFullNames={additionalRepos}
+                      withRepoPrefix={shouldPrefixDiffs}
+                      ref1={baseRef}
+                      ref2={headRef}
+                      onControlsChange={setDiffControls}
+                      classNames={gitDiffViewerClassNames}
+                      metadataByRepo={metadataByRepo}
+                    />
+                  ) : (
+                    <div className="p-6 text-sm text-neutral-600 dark:text-neutral-300">
+                      Missing repo or branches to show diff.
+                    </div>
+                  )}
+                </Suspense>
+              </Tab>
+              {isMorphInstance && (
+                <Tab key="browser" title="Browser">
+                  <BrowserTab taskRunId={taskRunId} />
+                </Tab>
               )}
-            </Suspense>
+            </Tabs>
             <RestartTaskForm
               key={restartTaskPersistenceKey}
               task={task}
