@@ -33,6 +33,7 @@ import {
   GitPullRequestClosed,
   GitPullRequestDraft,
   Globe,
+  Monitor,
   Loader2,
   XCircle,
 } from "lucide-react";
@@ -561,6 +562,9 @@ function TaskRunTreeInner({
   });
 
   const shouldRenderDiffLink = true;
+  const shouldRenderBrowserLink = Boolean(
+    run.vscode?.provider === "morph" && run.vscode?.url
+  );
   const shouldRenderPullRequestLink = Boolean(
     (run.pullRequestUrl && run.pullRequestUrl !== "pending") ||
     run.pullRequests?.some((pr) => pr.url)
@@ -576,6 +580,7 @@ function TaskRunTreeInner({
     hasChildren ||
     hasActiveVSCode ||
     shouldRenderDiffLink ||
+    shouldRenderBrowserLink ||
     shouldRenderPullRequestLink ||
     shouldRenderPreviewLink;
 
@@ -800,6 +805,10 @@ function TaskRunDetails({
     </Tooltip>
   ) : null;
 
+  const shouldRenderBrowserLink = Boolean(
+    run.vscode?.provider === "morph" && run.vscode?.url
+  );
+
   return (
     <Fragment>
       {hasActiveVSCode && (
@@ -827,6 +836,16 @@ function TaskRunDetails({
         label="Git diff"
         indentLevel={indentLevel}
       />
+
+      {shouldRenderBrowserLink ? (
+        <TaskRunDetailLink
+          to="/$teamSlugOrId/task/$taskId/run/$runId/browser"
+          params={{ teamSlugOrId, taskId, runId: run._id }}
+          icon={<Monitor className="w-3 h-3 mr-2 text-neutral-400" />}
+          label="Browser"
+          indentLevel={indentLevel}
+        />
+      ) : null}
 
       {shouldRenderPullRequestLink ? (
         <TaskRunDetailLink
