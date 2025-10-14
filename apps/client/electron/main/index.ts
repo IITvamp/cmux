@@ -514,6 +514,15 @@ function setupAutoUpdates(): void {
         ? info.version
         : null;
 
+    if (!isUpdateNewerThanCurrent(info)) {
+      updateDownloadedAndReady = false;
+      mainLog("Ignoring downloaded update that is not newer than current build", {
+        version,
+        currentVersion: app.getVersion(),
+      });
+      return;
+    }
+
     mainLog("Update downloaded; notifying renderer", { version });
     updateDownloadedAndReady = true;
     queueAutoUpdateToast({ version });
