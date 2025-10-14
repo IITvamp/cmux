@@ -100,6 +100,14 @@ export function EnvironmentConfiguration({
     null
   );
   const lastSubmittedEnvContent = useRef<string | null>(null);
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(
+    new Set([
+      "env-vars",
+      "install-dependencies",
+      "maintenance-script",
+      "dev-script",
+    ])
+  );
   const [localInstanceId, setLocalInstanceId] = useState<string | undefined>(
     () => instanceId
   );
@@ -445,12 +453,10 @@ export function EnvironmentConfiguration({
         <Accordion
           selectionMode="multiple"
           className="px-0"
-          defaultExpandedKeys={[
-            "env-vars",
-            "install-dependencies",
-            "maintenance-script",
-            "dev-script",
-          ]}
+          selectedKeys={expandedKeys}
+          onSelectionChange={(keys) => {
+            setExpandedKeys(keys as Set<string>);
+          }}
           itemClasses={{
             trigger: "text-sm cursor-pointer py-3",
             content: "pt-0",
@@ -464,6 +470,23 @@ export function EnvironmentConfiguration({
           >
             <div
               className="pb-2"
+              onClickCapture={(e) => {
+                // If the accordion is collapsed and user clicks on an input, expand it first
+                if (!expandedKeys.has("env-vars")) {
+                  const target = e.target as HTMLElement;
+                  if (
+                    target.tagName === "INPUT" ||
+                    target.tagName === "TEXTAREA"
+                  ) {
+                    e.preventDefault();
+                    setExpandedKeys(new Set([...expandedKeys, "env-vars"]));
+                    // Focus the element after accordion expands
+                    setTimeout(() => {
+                      (target as HTMLInputElement | HTMLTextAreaElement).focus();
+                    }, 50);
+                  }
+                }
+              }}
               onPasteCapture={(e) => {
                 const text = e.clipboardData?.getData("text") ?? "";
                 if (text && (/\n/.test(text) || /(=|:)\s*\S/.test(text))) {
@@ -623,7 +646,25 @@ export function EnvironmentConfiguration({
             aria-label="Maintenance script"
             title="Maintenance script"
           >
-            <div className="pb-4">
+            <div
+              className="pb-4"
+              onClickCapture={(e) => {
+                // If the accordion is collapsed and user clicks on a textarea, expand it first
+                if (!expandedKeys.has("maintenance-script")) {
+                  const target = e.target as HTMLElement;
+                  if (target.tagName === "TEXTAREA") {
+                    e.preventDefault();
+                    setExpandedKeys(
+                      new Set([...expandedKeys, "maintenance-script"])
+                    );
+                    // Focus the element after accordion expands
+                    setTimeout(() => {
+                      (target as HTMLTextAreaElement).focus();
+                    }, 50);
+                  }
+                }
+              }}
+            >
               <ScriptTextareaField
                 description={SCRIPT_COPY.maintenance.description}
                 subtitle={SCRIPT_COPY.maintenance.subtitle}
@@ -641,7 +682,26 @@ export function EnvironmentConfiguration({
             aria-label="Dev script"
             title="Dev script"
           >
-            <div className="space-y-4 pb-4">
+            <div
+              className="space-y-4 pb-4"
+              onClickCapture={(e) => {
+                // If the accordion is collapsed and user clicks on an input, expand it first
+                if (!expandedKeys.has("dev-script")) {
+                  const target = e.target as HTMLElement;
+                  if (
+                    target.tagName === "INPUT" ||
+                    target.tagName === "TEXTAREA"
+                  ) {
+                    e.preventDefault();
+                    setExpandedKeys(new Set([...expandedKeys, "dev-script"]));
+                    // Focus the element after accordion expands
+                    setTimeout(() => {
+                      (target as HTMLInputElement | HTMLTextAreaElement).focus();
+                    }, 50);
+                  }
+                }
+              }}
+            >
               <ScriptTextareaField
                 description={SCRIPT_COPY.dev.description}
                 subtitle={SCRIPT_COPY.dev.subtitle}
