@@ -562,7 +562,9 @@ function TaskRunTreeInner({
   });
 
   const shouldRenderDiffLink = true;
-  const shouldRenderBrowserLink = run.vscode?.provider === "morph";
+  const isMorphProvider = run.vscode?.provider === "morph";
+  const shouldRenderVSCodeLink = isMorphProvider;
+  const shouldRenderBrowserLink = isMorphProvider;
   const shouldRenderPullRequestLink = Boolean(
     (run.pullRequestUrl && run.pullRequestUrl !== "pending") ||
     run.pullRequests?.some((pr) => pr.url)
@@ -577,6 +579,7 @@ function TaskRunTreeInner({
   const hasCollapsibleContent =
     hasChildren ||
     hasActiveVSCode ||
+    shouldRenderVSCodeLink ||
     shouldRenderDiffLink ||
     shouldRenderBrowserLink ||
     shouldRenderPullRequestLink ||
@@ -681,15 +684,16 @@ function TaskRunTreeInner({
         run={run}
         level={level}
         taskId={taskId}
-      teamSlugOrId={teamSlugOrId}
-      isExpanded={isExpanded}
-      hasActiveVSCode={hasActiveVSCode}
-      hasChildren={hasChildren}
-      shouldRenderBrowserLink={shouldRenderBrowserLink}
-      shouldRenderPullRequestLink={shouldRenderPullRequestLink}
-      previewServices={previewServices}
-      environmentError={run.environmentError}
-    />
+        teamSlugOrId={teamSlugOrId}
+        isExpanded={isExpanded}
+        hasActiveVSCode={hasActiveVSCode}
+        hasChildren={hasChildren}
+        shouldRenderVSCodeLink={shouldRenderVSCodeLink}
+        shouldRenderBrowserLink={shouldRenderBrowserLink}
+        shouldRenderPullRequestLink={shouldRenderPullRequestLink}
+        previewServices={previewServices}
+        environmentError={run.environmentError}
+      />
     </Fragment>
   );
 }
@@ -748,6 +752,7 @@ interface TaskRunDetailsProps {
   isExpanded: boolean;
   hasActiveVSCode: boolean;
   hasChildren: boolean;
+  shouldRenderVSCodeLink: boolean;
   shouldRenderBrowserLink: boolean;
   shouldRenderPullRequestLink: boolean;
   previewServices: PreviewService[];
@@ -765,6 +770,7 @@ function TaskRunDetails({
   isExpanded,
   hasActiveVSCode,
   hasChildren,
+  shouldRenderVSCodeLink,
   shouldRenderBrowserLink,
   shouldRenderPullRequestLink,
   previewServices,
@@ -808,7 +814,7 @@ function TaskRunDetails({
 
   return (
     <Fragment>
-      {hasActiveVSCode && (
+      {shouldRenderVSCodeLink && (
         <TaskRunDetailLink
           to="/$teamSlugOrId/task/$taskId/run/$runId"
           params={{
@@ -818,7 +824,7 @@ function TaskRunDetails({
             taskRunId: run._id,
           }}
           icon={
-            <VSCodeIcon className="w-3 h-3 mr-2 text-neutral-400 grayscale opacity-60" />
+            <VSCodeIcon className={`w-3 h-3 mr-2 text-neutral-400 ${hasActiveVSCode ? '' : 'grayscale opacity-60'}`} />
           }
           label="VS Code"
           indentLevel={indentLevel}

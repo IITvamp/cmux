@@ -1,5 +1,7 @@
 import { memo } from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 
 export type WorkspaceLoadingStatus = "loading" | "error";
@@ -74,14 +76,16 @@ export const WorkspaceLoadingIndicator = memo(function WorkspaceLoadingIndicator
       >
         <Icon className={cn("h-6 w-6", isError ? undefined : "animate-spin")} />
       </div>
-      <div className="space-y-1">
-        <p className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
-          {resolvedTitle}
-        </p>
-        <p className="text-xs text-neutral-500 dark:text-neutral-400">
-          {resolvedDescription}
-        </p>
-      </div>
+       <div className="space-y-1">
+         <p className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
+           {resolvedTitle}
+         </p>
+         <div className="text-xs text-neutral-500 dark:text-neutral-400 prose prose-xs prose-neutral dark:prose-invert max-w-none">
+           <ReactMarkdown remarkPlugins={[remarkGfm]}>
+             {resolvedDescription}
+           </ReactMarkdown>
+         </div>
+       </div>
     </div>
   );
 });

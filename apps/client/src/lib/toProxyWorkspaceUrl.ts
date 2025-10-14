@@ -36,7 +36,13 @@ function parseMorphUrl(input: string): MorphUrlComponents | null {
   }
 }
 
-export function toProxyWorkspaceUrl(workspaceUrl: string): string {
+export function toProxyWorkspaceUrl(
+  workspaceUrl: string,
+  options?: {
+    port?: number;
+    path?: string;
+  }
+): string {
   const components = parseMorphUrl(workspaceUrl);
 
   if (!components) {
@@ -45,7 +51,13 @@ export function toProxyWorkspaceUrl(workspaceUrl: string): string {
 
   const scope = "base"; // Default scope
   const proxiedUrl = new URL(components.url.toString());
-  proxiedUrl.hostname = `cmux-${components.morphId}-${scope}-${components.port}.cmux.app`;
+  const port = options?.port ?? components.port;
+  proxiedUrl.hostname = `cmux-${components.morphId}-${scope}-${port}.cmux.app`;
+
+  if (options?.path) {
+    proxiedUrl.pathname = options.path;
+  }
+
   return proxiedUrl.toString();
 }
 
