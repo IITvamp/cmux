@@ -331,7 +331,7 @@ export const postApiMorphSetupInstance = <ThrowOnError extends boolean = false>(
  * Validate iframe target availability via server-side preflight.
  */
 export const getApiIframePreflight = <ThrowOnError extends boolean = false>(options: Options<GetApiIframePreflightData, ThrowOnError>) => {
-    return (options.client ?? _heyApiClient).get<GetApiIframePreflightResponses, GetApiIframePreflightErrors, ThrowOnError>({
+    return (options.client ?? _heyApiClient).sse.get<GetApiIframePreflightResponses, GetApiIframePreflightErrors, ThrowOnError>({
         url: '/api/iframe/preflight',
         ...options
     });

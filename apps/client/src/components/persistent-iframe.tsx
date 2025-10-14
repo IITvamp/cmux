@@ -3,11 +3,13 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import { createPortal } from "react-dom";
 
+import { useIframePreflight } from "../hooks/useIframePreflight";
 import { usePersistentIframe } from "../hooks/usePersistentIframe";
 import { cn } from "@/lib/utils";
 
@@ -36,57 +38,6 @@ interface PersistentIframeProps {
 }
 
 type ScrollTarget = HTMLElement | Window;
-
-interface IframePreflightResult {
-  ok: boolean;
-  status: number | null;
-  method: "HEAD" | "GET" | null;
-  error?: string;
-}
-
-function parseIframePreflightResult(
-  raw: unknown,
-): IframePreflightResult | null {
-  if (typeof raw !== "object" || raw === null) {
-    return null;
-  }
-
-  const record = raw as Record<string, unknown>;
-  const { ok, status, method, error } = record;
-
-  if (typeof ok !== "boolean") {
-    return null;
-  }
-
-  let normalizedStatus: number | null;
-  if (status === null) {
-    normalizedStatus = null;
-  } else if (typeof status === "number" && Number.isInteger(status) && status >= 0) {
-    normalizedStatus = status;
-  } else {
-    return null;
-  }
-
-  let normalizedMethod: "HEAD" | "GET" | null;
-  if (method === null) {
-    normalizedMethod = null;
-  } else if (method === "HEAD" || method === "GET") {
-    normalizedMethod = method;
-  } else {
-    return null;
-  }
-
-  if (error !== undefined && typeof error !== "string") {
-    return null;
-  }
-
-  return {
-    ok,
-    status: normalizedStatus,
-    method: normalizedMethod,
-    error,
-  };
-}
 
 function getScrollableParents(element: HTMLElement): ScrollTarget[] {
   const parents: ScrollTarget[] = [];
@@ -137,7 +88,7 @@ export function PersistentIframe({
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const [, forceRender] = useState(0);
   const loadTimeoutRef = useRef<number | null>(null);
-  const preflightAbortRef = useRef<AbortController | null>(null);
+  const preflightErrorRef = useRef<string | null>(null);
 
   useEffect(() => {
     setStatus("loading");
@@ -164,6 +115,72 @@ export function PersistentIframe({
     },
     [clearLoadTimeout, onError],
   );
+
+  const preflightState = useIframePreflight({ url: src, enabled: preflight });
+  const { phase: preflightPhase, error: preflightError, phasePayload: preflightPhasePayload, isMorphTarget: preflightIsMorph } = preflightState;
+
+  useEffect(() => {
+    if (!preflight) {
+      preflightErrorRef.current = null;
+      return;
+    }
+
+    if (preflightError === null) {
+      if (preflightPhase === "loading" || preflightPhase === "resuming") {
+        preflightErrorRef.current = null;
+      }
+      return;
+    }
+
+    const isFailurePhase =
+      preflightPhase === "resume_failed" ||
+      preflightPhase === "instance_not_found" ||
+      preflightPhase === "preflight_failed" ||
+      preflightPhase === "error";
+
+    if (isFailurePhase && preflightErrorRef.current !== preflightError) {
+      preflightErrorRef.current = preflightError;
+      handleError(new Error(preflightError));
+    }
+  }, [handleError, preflight, preflightError, preflightPhase]);
+
+  const resumeMessage = useMemo(() => {
+    if (!preflight || !preflightIsMorph) {
+      return null;
+    }
+
+    if (preflightPhase === "resuming") {
+      const attempt =
+        typeof preflightPhasePayload?.attempt === "number"
+          ? preflightPhasePayload.attempt
+          : null;
+      if (attempt && attempt > 1) {
+        return `Retrying workspace resume (attempt ${attempt})…`;
+      }
+      return "Resuming Morph workspace…";
+    }
+
+    if (preflightPhase === "resume_failed") {
+      return preflightError ?? "We couldn't resume the workspace.";
+    }
+
+    if (preflightPhase === "instance_not_found") {
+      return "We couldn't find the workspace instance. Try rerunning the task.";
+    }
+
+    if (preflightPhase === "ready" && status === "loading") {
+      return "Workspace resumed. Waiting for iframe to load…";
+    }
+
+    return null;
+  }, [
+    preflight,
+    preflightError,
+    preflightIsMorph,
+    preflightPhase,
+    preflightPhasePayload,
+    status,
+  ]);
 
   useEffect(() => {
     if (forcedStatus && forcedStatus !== "loading") {
@@ -218,94 +235,6 @@ export function PersistentIframe({
   useEffect(() => {
     onStatusChange?.(effectiveStatus);
   }, [effectiveStatus, onStatusChange]);
-
-  useEffect(() => {
-    if (!preflight) {
-      return;
-    }
-    if (!src) {
-      return;
-    }
-    if (typeof window === "undefined" || typeof fetch === "undefined") {
-      return;
-    }
-
-    preflightAbortRef.current?.abort();
-    const controller = new AbortController();
-    preflightAbortRef.current = controller;
-
-    const runPreflight = async () => {
-      try {
-        const searchParams = new URLSearchParams({ url: src });
-        const response = await fetch(
-          `/api/iframe/preflight?${searchParams.toString()}`,
-          {
-            method: "GET",
-            cache: "no-store",
-            credentials: "include",
-            signal: controller.signal,
-          },
-        );
-
-        if (controller.signal.aborted) {
-          return;
-        }
-
-        if (!response.ok) {
-          handleError(
-            new Error(
-              `Preflight request failed (status ${response.status}) for iframe "${persistKey}"`,
-            ),
-          );
-          return;
-        }
-
-        const payload = parseIframePreflightResult(await response.json());
-
-        if (controller.signal.aborted) {
-          return;
-        }
-
-        if (!payload) {
-          handleError(
-            new Error(
-              `Preflight returned an unexpected response for iframe "${persistKey}"`,
-            ),
-          );
-          return;
-        }
-
-        if (!payload.ok) {
-          const statusText =
-            payload.status !== null ? `status ${payload.status}` : "an error";
-          handleError(
-            new Error(
-              payload.error ??
-                `Preflight failed (${statusText}) for iframe "${persistKey}"`,
-            ),
-          );
-        }
-      } catch (error) {
-        if (controller.signal.aborted) {
-          return;
-        }
-        handleError(
-          error instanceof Error
-            ? error
-            : new Error(`Preflight failed for iframe "${persistKey}"`),
-        );
-      }
-    };
-
-    void runPreflight();
-
-    return () => {
-      controller.abort();
-      if (preflightAbortRef.current === controller) {
-        preflightAbortRef.current = null;
-      }
-    };
-  }, [handleError, persistKey, preflight, src]);
 
   const showLoadingOverlay = effectiveStatus === "loading" && loadingFallback;
   const showErrorOverlay = effectiveStatus === "error" && errorFallback;
@@ -444,7 +373,14 @@ export function PersistentIframe({
       {overlayElement && overlayContent && shouldShowOverlay
         ? createPortal(
             <div className={overlayContent.className}>
-              <div className="pointer-events-auto">{overlayContent.node}</div>
+              <div className="pointer-events-auto flex flex-col items-center gap-3 text-center">
+                {overlayContent.node}
+                {resumeMessage ? (
+                  <p className="text-sm text-neutral-600 dark:text-neutral-300">
+                    {resumeMessage}
+                  </p>
+                ) : null}
+              </div>
             </div>,
             overlayElement,
           )

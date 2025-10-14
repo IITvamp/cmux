@@ -1,5 +1,9 @@
 import { getAccessTokenFromRequest } from "@/lib/utils/auth";
+import { env } from "@/lib/utils/www-env";
+import { extractMorphInstanceInfo, type MorphInstanceInfo } from "@cmux/shared";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import { streamSSE } from "hono/streaming";
+import { MorphCloudClient } from "morphcloud";
 
 const ALLOWED_HOST_SUFFIXES = [
   ".cmux.sh",
@@ -56,29 +60,163 @@ const QuerySchema = z
   })
   .openapi("IframePreflightQuery");
 
-const ResponseSchema = z
-  .object({
-    ok: z.boolean().openapi({
-      description:
-        "Whether the target responded successfully to the probe request.",
-    }),
-    status: z
-      .number()
-      .int()
-      .nullable()
-      .openapi({ description: "HTTP status code returned by the target." }),
-    method: z
-      .enum(["HEAD", "GET"])
-      .nullable()
-      .openapi({
-        description: "HTTP method used for the successful probe.",
-      }),
-    error: z
-      .string()
-      .optional()
-      .openapi({ description: "Error message if the probe failed." }),
-  })
-  .openapi("IframePreflightResponse");
+type IframePreflightResponse = {
+  ok: boolean;
+  status: number | null;
+  method: "HEAD" | "GET" | null;
+  error?: string;
+};
+
+type SendPhaseFn = (
+  phase: string,
+  extra?: Record<string, unknown>,
+) => Promise<void>;
+
+const MAX_RESUME_ATTEMPTS = 3;
+const RESUME_RETRY_DELAY_MS = 1_000;
+
+const wait = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+function isNotFoundError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return error.message.includes("HTTP 404");
+}
+
+async function attemptResumeIfNeeded(
+  instanceInfo: MorphInstanceInfo,
+  sendPhase: SendPhaseFn,
+): Promise<"already_ready" | "resumed" | "failed" | "not_found"> {
+  const client = new MorphCloudClient({ apiKey: env.MORPH_API_KEY });
+
+  let instance;
+  try {
+    instance = await client.instances.get({
+      instanceId: instanceInfo.instanceId,
+    });
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      await sendPhase("instance_not_found", {
+        instanceId: instanceInfo.instanceId,
+      });
+      return "not_found";
+    }
+
+    await sendPhase("resume_failed", {
+      instanceId: instanceInfo.instanceId,
+      error: error instanceof Error ? error.message : "Unknown error",
+      stage: "lookup",
+    });
+    return "failed";
+  }
+
+  if (instance.status === "ready") {
+    await sendPhase("already_ready", {
+      instanceId: instanceInfo.instanceId,
+    });
+    return "already_ready";
+  }
+
+  await sendPhase("resuming", {
+    instanceId: instanceInfo.instanceId,
+    status: instance.status,
+  });
+
+  for (let attempt = 1; attempt <= MAX_RESUME_ATTEMPTS; attempt += 1) {
+    try {
+      await instance.resume();
+      await sendPhase("resumed", {
+        instanceId: instanceInfo.instanceId,
+        attempt,
+      });
+      return "resumed";
+    } catch (error) {
+      if (attempt >= MAX_RESUME_ATTEMPTS) {
+        await sendPhase("resume_failed", {
+          instanceId: instanceInfo.instanceId,
+          attempt,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+        return "failed";
+      }
+
+      await sendPhase("resume_retry", {
+        instanceId: instanceInfo.instanceId,
+        attempt,
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+
+      await wait(RESUME_RETRY_DELAY_MS * attempt);
+    }
+  }
+
+  await sendPhase("resume_failed", {
+    instanceId: instanceInfo.instanceId,
+  });
+  return "failed";
+}
+
+async function performPreflight(target: URL): Promise<IframePreflightResponse> {
+  const probe = async (method: "HEAD" | "GET") => {
+    const response = await fetch(target, {
+      method,
+      redirect: "manual",
+    });
+    await response.body?.cancel().catch(() => undefined);
+    return response;
+  };
+
+  try {
+    const headResponse = await probe("HEAD");
+
+    if (headResponse.ok) {
+      return {
+        ok: true,
+        status: headResponse.status,
+        method: "HEAD",
+      };
+    }
+
+    if (headResponse.status === 405) {
+      const getResponse = await probe("GET");
+      if (getResponse.ok) {
+        return {
+          ok: true,
+          status: getResponse.status,
+          method: "GET",
+        };
+      }
+
+      return {
+        ok: false,
+        status: getResponse.status,
+        method: "GET",
+        error: `Request failed with status ${getResponse.status}.`,
+      };
+    }
+
+    return {
+      ok: false,
+      status: headResponse.status,
+      method: "HEAD",
+      error: `Request failed with status ${headResponse.status}.`,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: null,
+      method: null,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unknown error during preflight.",
+    };
+  }
+}
 
 export const iframePreflightRouter = new OpenAPIHono();
 
@@ -94,10 +232,15 @@ iframePreflightRouter.openapi(
     responses: {
       200: {
         description:
-          "Result of the preflight check for the requested iframe URL.",
+          "Streaming server-sent events describing resume attempts and preflight result.",
         content: {
-          "application/json": {
-            schema: ResponseSchema,
+          "text/event-stream": {
+            schema: z
+              .string()
+              .openapi({
+                description:
+                  "Text/event-stream payload where each event contains JSON encoded status updates and the final result.",
+              }),
           },
         },
       },
@@ -165,60 +308,82 @@ iframePreflightRouter.openapi(
       );
     }
 
-    const probe = async (method: "HEAD" | "GET") => {
-      const response = await fetch(target, {
-        method,
-        redirect: "manual",
-      });
-      await response.body?.cancel().catch(() => undefined);
-      return response;
-    };
+    const morphInfo = extractMorphInstanceInfo(target);
 
-    try {
-      const headResponse = await probe("HEAD");
-
-      if (headResponse.ok) {
-        return c.json({
-          ok: true,
-          status: headResponse.status,
-          method: "HEAD",
+    return streamSSE(c, async (stream) => {
+      const sendPhase: SendPhaseFn = async (phase, extra) => {
+        await stream.writeSSE({
+          event: "phase",
+          data: JSON.stringify({
+            phase,
+            ...(extra ?? {}),
+          }),
         });
-      }
+      };
 
-      if (headResponse.status === 405) {
-        const getResponse = await probe("GET");
-        if (getResponse.ok) {
-          return c.json({
-            ok: true,
-            status: getResponse.status,
-            method: "GET",
+      const sendResult = async (result: IframePreflightResponse) => {
+        await stream.writeSSE({
+          event: "result",
+          data: JSON.stringify(result),
+        });
+      };
+
+      try {
+        if (morphInfo) {
+          const resumeOutcome = await attemptResumeIfNeeded(morphInfo, sendPhase);
+
+          if (resumeOutcome === "not_found") {
+            await sendResult({
+              ok: false,
+              status: null,
+              method: null,
+              error: `Morph instance ${morphInfo.instanceId} was not found.`,
+            });
+            return;
+          }
+
+          if (resumeOutcome === "failed") {
+            await sendResult({
+              ok: false,
+              status: null,
+              method: null,
+              error: `Failed to resume Morph instance ${morphInfo.instanceId}.`,
+            });
+            return;
+          }
+        }
+
+        const preflightResult = await performPreflight(target);
+
+        if (preflightResult.ok) {
+          await sendPhase("ready", {
+            status: preflightResult.status,
+            method: preflightResult.method,
+          });
+        } else {
+          await sendPhase("preflight_failed", {
+            status: preflightResult.status,
+            error: preflightResult.error,
           });
         }
 
-        return c.json({
-          ok: false,
-          status: getResponse.status,
-          method: "GET",
-          error: `Request failed with status ${getResponse.status}.`,
-        });
-      }
-
-      return c.json({
-        ok: false,
-        status: headResponse.status,
-        method: "HEAD",
-        error: `Request failed with status ${headResponse.status}.`,
-      });
-    } catch (error) {
-      return c.json({
-        ok: false,
-        status: null,
-        method: null,
-        error:
+        await sendResult(preflightResult);
+      } catch (error) {
+        const message =
           error instanceof Error
             ? error.message
-            : "Unknown error during preflight.",
-      });
-    }
+            : "Unknown error during iframe preflight.";
+
+        await sendPhase("error", { error: message });
+        await sendResult({
+          ok: false,
+          status: null,
+          method: null,
+          error: message,
+        });
+      } finally {
+        stream.close();
+      }
+    });
   },
 );
