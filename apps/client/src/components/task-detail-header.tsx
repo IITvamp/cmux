@@ -1,3 +1,4 @@
+import { BrowserButton } from "@/components/BrowserButton";
 import { OpenEditorSplitButton } from "@/components/OpenEditorSplitButton";
 import { Dropdown } from "@/components/ui/dropdown";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
@@ -332,6 +333,11 @@ export function TaskDetailHeader({
           </Suspense>
 
           <OpenEditorSplitButton worktreePath={worktreePath} />
+
+          <BrowserButton
+            vncPort={selectedRun?.vscode?.ports?.vnc}
+            provider={selectedRun?.vscode?.provider}
+          />
 
           <button className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-white select-none hidden">
             <ExternalLink className="w-3.5 h-3.5" />
