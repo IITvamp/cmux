@@ -4,7 +4,7 @@ import { convexQuery } from "@convex-dev/react-query";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import clsx from "clsx";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import z from "zod";
 import { PersistentWebView } from "@/components/persistent-webview";
 import { getTaskRunPersistKey } from "@/lib/persistent-webview-keys";
@@ -61,6 +61,8 @@ function VSCodeComponent() {
     })
   );
 
+  const [isIframeLoading, setIsIframeLoading] = useState(true);
+
   const workspaceUrl = taskRun?.data?.vscode?.workspaceUrl
     ? toProxyWorkspaceUrl(taskRun.data.vscode.workspaceUrl)
     : null;
@@ -81,6 +83,10 @@ function VSCodeComponent() {
     [taskRunId]
   );
 
+  const onLoadingChange = useCallback((isLoading: boolean) => {
+    setIsIframeLoading(isLoading);
+  }, []);
+
   return (
     <div className="pl-1 flex flex-col grow bg-neutral-50 dark:bg-black">
       <div className="flex flex-col grow min-h-0 border-l border-neutral-200 dark:border-neutral-800">
@@ -97,37 +103,43 @@ function VSCodeComponent() {
               suspended={!hasWorkspace}
               onLoad={onLoad}
               onError={onError}
+              onLoadingChange={onLoadingChange}
             />
           ) : (
             <div className="grow" />
           )}
           <div
             className={clsx(
-              "absolute inset-0 flex items-center justify-center transition pointer-events-none",
+              "absolute inset-0 flex items-center justify-center transition-opacity duration-300 pointer-events-none bg-neutral-50 dark:bg-black",
               {
-                "opacity-100": !hasWorkspace,
-                "opacity-0": hasWorkspace,
+                "opacity-100": !hasWorkspace || isIframeLoading,
+                "opacity-0": hasWorkspace && !isIframeLoading,
               }
             )}
           >
-            <div className="flex flex-col items-center gap-3">
-              <div className="flex gap-1">
+            <div className="flex flex-col items-center gap-4">
+              <div className="flex gap-1.5">
                 <div
-                  className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
-                  style={{ animationDelay: "0ms" }}
+                  className="w-2.5 h-2.5 bg-blue-500 rounded-full animate-bounce"
+                  style={{ animationDelay: "0ms", animationDuration: "1s" }}
                 />
                 <div
-                  className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
-                  style={{ animationDelay: "150ms" }}
+                  className="w-2.5 h-2.5 bg-blue-500 rounded-full animate-bounce"
+                  style={{ animationDelay: "150ms", animationDuration: "1s" }}
                 />
                 <div
-                  className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
-                  style={{ animationDelay: "300ms" }}
+                  className="w-2.5 h-2.5 bg-blue-500 rounded-full animate-bounce"
+                  style={{ animationDelay: "300ms", animationDuration: "1s" }}
                 />
               </div>
-              <span className="text-sm text-neutral-500">
-                Starting VS Code...
-              </span>
+              <div className="flex flex-col items-center gap-1.5">
+                <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                  Starting VS Code instance...
+                </span>
+                <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                  This may take a few moments
+                </span>
+              </div>
             </div>
           </div>
         </div>

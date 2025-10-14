@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { useEffect } from "react";
 
 import { usePersistentIframe } from "../hooks/usePersistentIframe";
 import { cn } from "@/lib/utils";
@@ -15,6 +16,7 @@ interface PersistentIframeProps {
   iframeStyle?: CSSProperties;
   onLoad?: () => void;
   onError?: (error: Error) => void;
+  onLoadingChange?: (isLoading: boolean) => void;
 }
 
 export function PersistentIframe({
@@ -29,8 +31,9 @@ export function PersistentIframe({
   iframeStyle,
   onLoad,
   onError,
+  onLoadingChange,
 }: PersistentIframeProps) {
-  const { containerRef } = usePersistentIframe({
+  const { containerRef, isLoading } = usePersistentIframe({
     key: persistKey,
     url: src,
     preload,
@@ -41,6 +44,11 @@ export function PersistentIframe({
     onLoad,
     onError,
   });
+
+  // Notify parent of loading state changes
+  useEffect(() => {
+    onLoadingChange?.(isLoading);
+  }, [isLoading, onLoadingChange]);
 
   return <div ref={containerRef} className={cn(className)} style={style} />;
 }

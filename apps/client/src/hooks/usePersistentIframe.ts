@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { persistentIframeManager } from "../lib/persistentIframeManager";
 
 interface UsePersistentIframeOptions {
@@ -61,14 +61,22 @@ export function usePersistentIframe({
 }: UsePersistentIframeOptions) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Preload effect
   useEffect(() => {
     if (preload) {
+      setIsLoading(true);
       persistentIframeManager
         .preloadIframe(key, url, { allow, sandbox })
-        .then(() => onLoad?.())
-        .catch((error) => onError?.(error));
+        .then(() => {
+          setIsLoading(false);
+          onLoad?.();
+        })
+        .catch((error) => {
+          setIsLoading(false);
+          onError?.(error);
+        });
     }
   }, [key, url, preload, allow, sandbox, onLoad, onError]);
 
@@ -82,15 +90,18 @@ export function usePersistentIframe({
 
       // Set up load handlers if not already loaded
       if (!iframe.contentWindow || iframe.src !== url) {
+        setIsLoading(true);
         const handleLoad = () => {
           iframe.removeEventListener("load", handleLoad);
           iframe.removeEventListener("error", handleError);
+          setIsLoading(false);
           onLoad?.();
         };
 
         const handleError = () => {
           iframe.removeEventListener("load", handleLoad);
           iframe.removeEventListener("error", handleError);
+          setIsLoading(false);
           onError?.(new Error(`Failed to load iframe: ${url}`));
         };
 
@@ -98,6 +109,7 @@ export function usePersistentIframe({
         iframe.addEventListener("error", handleError);
       } else if (!preload) {
         // Already loaded and not from preload
+        setIsLoading(false);
         onLoad?.();
       }
 
@@ -148,5 +160,6 @@ export function usePersistentIframe({
     preload: handlePreload,
     remove: handleRemove,
     isLoaded: handleIsLoaded,
+    isLoading,
   };
 }

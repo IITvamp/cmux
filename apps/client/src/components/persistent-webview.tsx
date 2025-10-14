@@ -24,6 +24,7 @@ interface PersistentWebViewProps {
   forceWebContentsViewIfElectron?: boolean;
   onLoad?: () => void;
   onError?: (error: Error) => void;
+  onLoadingChange?: (isLoading: boolean) => void;
   onElectronViewReady?: (info: {
     id: number;
     webContentsId: number;
@@ -52,6 +53,7 @@ export function PersistentWebView({
   forceWebContentsViewIfElectron,
   onLoad,
   onError,
+  onLoadingChange,
   onElectronViewReady,
   onElectronViewDestroyed,
 }: PersistentWebViewProps) {
@@ -91,6 +93,7 @@ export function PersistentWebView({
       iframeStyle={iframeStyle}
       onLoad={onLoad}
       onError={onError}
+      onLoadingChange={onLoadingChange}
     />
   );
 }
