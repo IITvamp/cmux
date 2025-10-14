@@ -29,6 +29,11 @@ const SetupInstanceResponse = z
     vscodeUrl: z.string(),
     clonedRepos: z.array(z.string()),
     removedRepos: z.array(z.string()),
+    failedClones: z.array(z.object({
+      repo: z.string(),
+      error: z.string(),
+      isAuth: z.boolean(),
+    })),
   })
   .openapi("SetupInstanceResponse");
 
@@ -77,86 +82,29 @@ morphRouter.openapi(
 
     const convex = getConvex({ accessToken });
 
-    // Verify team access and get the team
-    const team = await verifyTeamAccess({ req: c.req.raw, teamSlugOrId });
-    const githubAccessTokenPromise = (async () => {
-      const githubAccount = await user.getConnectedAccount("github");
-      if (!githubAccount) {
-        return {
-          githubAccessTokenError: "GitHub account not found",
-          githubAccessToken: null,
-        } as const;
-      }
-      const { accessToken: githubAccessToken } =
-        await githubAccount.getAccessToken();
-      if (!githubAccessToken) {
-        return {
-          githubAccessTokenError: "GitHub access token not found",
-          githubAccessToken: null,
-        } as const;
-      }
+     // Verify team access and get the team
+     const team = await verifyTeamAccess({ req: c.req.raw, teamSlugOrId });
+     const githubAccessTokenPromise = (async () => {
+       const githubAccount = await user.getConnectedAccount("github");
+       if (!githubAccount) {
+         return {
+           githubAccessTokenError: "GitHub account not found",
+           githubAccessToken: null,
+         } as const;
+       }
+       const { accessToken: githubAccessToken } =
+         await githubAccount.getAccessToken();
+       if (!githubAccessToken) {
+         return {
+           githubAccessTokenError: "GitHub access token not found",
+           githubAccessToken: null,
+         } as const;
+       }
 
-      return { githubAccessTokenError: null, githubAccessToken } as const;
-    })();
-    const gitIdentityPromise = githubAccessTokenPromise.then(
-      ({ githubAccessToken }) => {
-        if (!githubAccessToken) {
-          throw new Error("GitHub access token not found");
-        }
-        return fetchGitIdentityInputs(convex, githubAccessToken);
-      }
-    );
+       return { githubAccessTokenError: null, githubAccessToken } as const;
+     })();
 
-    try {
-      const client = new MorphCloudClient({
-        apiKey: env.MORPH_API_KEY,
-      });
 
-      let instance;
-      let instanceId = existingInstanceId;
-
-      // If no instanceId provided, create a new instance
-      if (!instanceId) {
-        console.log("Creating new Morph instance");
-        instance = await client.instances.start({
-          snapshotId: DEFAULT_MORPH_SNAPSHOT_ID,
-          ttlSeconds,
-          ttlAction: "pause",
-          metadata: {
-            app: "cmux-dev",
-            userId: user.id,
-            teamId: team.uuid,
-          },
-        });
-        instanceId = instance.id;
-        await instance.setWakeOn(true, true);
-      } else {
-        // Get existing instance
-        console.log(`Using existing Morph instance: ${instanceId}`);
-        instance = await client.instances.get({ instanceId });
-
-        // Security: ensure the instance belongs to the requested team
-        const meta = instance.metadata;
-        const instanceTeamId = meta?.teamId;
-        if (!instanceTeamId || instanceTeamId !== team.uuid) {
-          return c.text(
-            "Forbidden: Instance does not belong to this team",
-            403
-          );
-        }
-      }
-
-      void gitIdentityPromise
-        .then(([who, gh]) => {
-          const { name, email } = selectGitIdentity(who, gh);
-          return configureGitIdentity(instance, { name, email });
-        })
-        .catch((error) => {
-          console.log(
-            `[sandboxes.start] Failed to configure git identity; continuing...`,
-            error
-          );
-        });
 
       // Get VSCode URL
       const vscodeUrl = instance.networking.httpServices.find(
@@ -167,25 +115,59 @@ morphRouter.openapi(
         throw new Error("VSCode URL not found");
       }
 
-      const { githubAccessToken, githubAccessTokenError } =
-        await githubAccessTokenPromise;
-      if (githubAccessTokenError) {
-        console.error(
-          `[sandboxes.start] GitHub access token error: ${githubAccessTokenError}`
-        );
-        return c.text("Failed to resolve GitHub credentials", 401);
-      }
-      await configureGithubAccess(instance, githubAccessToken);
+       const { githubAccessToken, githubAccessTokenError } =
+         await githubAccessTokenPromise;
+       if (githubAccessTokenError) {
+         console.error(
+           `[sandboxes.start] GitHub access token error: ${githubAccessTokenError}`
+         );
+         return c.text("Failed to resolve GitHub credentials", 401);
+       }
+       await configureGithubAccess(instance, githubAccessToken);
 
-      const url = `${vscodeUrl}/?folder=/root/workspace`;
+       const url = `${vscodeUrl}/?folder=/root/workspace`;
 
-      // Handle repository management if repos are specified
-      const removedRepos: string[] = [];
-      const clonedRepos: string[] = [];
-      const failedClones: { repo: string; error: string; isAuth: boolean }[] =
-        [];
+       // Handle repository management if repos are specified
+       const removedRepos: string[] = [];
+       const clonedRepos: string[] = [];
+       const failedClones: { repo: string; error: string; isAuth: boolean }[] =
+         [];
 
-      if (selectedRepos && selectedRepos.length > 0) {
+       if (selectedRepos && selectedRepos.length > 0) {
+         const isSingleRepo = selectedRepos.length === 1;
+         const repo = isSingleRepo ? selectedRepos[0] : null;
+         if (isSingleRepo && repo) {
+           // Clone single repo directly to /root/workspace
+           const [owner, repoName] = repo.split('/');
+           console.log(`Cloning single repo ${repo} directly to /root/workspace`);
+           const cloneCmd = await instance.exec(`git clone https://github.com/${repo}.git /root/workspace 2>&1`);
+           if (cloneCmd.exit_code === 0) {
+             console.log(`Successfully cloned ${repo}`);
+           } else {
+             console.error(`Failed to clone ${repo}: ${cloneCmd.stderr || cloneCmd.stdout}`);
+           }
+         } else {
+           // Clone multiple repos to subdirectories
+           for (const repo of selectedRepos) {
+             const [owner, repoName] = repo.split('/');
+             console.log(`Cloning repo ${repo} to /root/workspace/${repoName}`);
+             const cloneCmd = await instance.exec(`mkdir -p /root/workspace && cd /root/workspace && git clone https://github.com/${repo}.git ${repoName} 2>&1`);
+             if (cloneCmd.exit_code === 0) {
+               console.log(`Successfully cloned ${repo}`);
+             } else {
+               console.error(`Failed to clone ${repo}: ${cloneCmd.stderr || cloneCmd.stdout}`);
+             }
+           }
+         }
+       }
+           }
+         }
+
+         // If switching from multiple repos to single repo, prepare for direct cloning
+         if (isSingleRepo && currentWorkspaceState === 'multiple-repos') {
+           console.log('Clearing workspace for single repo setup');
+           await instance.exec(`rm -rf /root/workspace/* /root/workspace/.* 2>/dev/null || true`);
+         }
         // Validate repo format and check for duplicates
         const repoNames = new Map<string, string>(); // Map of repo name to full path
         const reposByOwner = new Map<string, string[]>(); // Map of owner -> list of full repo names
@@ -221,24 +203,60 @@ morphRouter.openapi(
         }
 
         // First, get list of existing repos with their remote URLs
-        const listReposCmd = await instance.exec(
-          "for dir in /root/workspace/*/; do " +
-            'if [ -d "$dir/.git" ]; then ' +
-            'basename "$dir"; ' +
-            "cd \"$dir\" && git remote get-url origin 2>/dev/null || echo 'no-remote'; " +
-            "fi; done"
-        );
-
-        const lines = listReposCmd.stdout.split("\n").filter(Boolean);
         const existingRepos = new Map<string, string>(); // Map of repo name to remote URL
 
-        for (let i = 0; i < lines.length; i += 2) {
-          const repoName = lines[i]?.trim();
-          const remoteUrl = lines[i + 1]?.trim();
-          if (repoName && remoteUrl && remoteUrl !== "no-remote") {
+        if (isSingleRepo) {
+          // For single repo, check if /root/workspace is a git repo
+          const singleRepoCheckCmd = await instance.exec(
+            "if [ -d /root/workspace/.git ]; then cd /root/workspace && git remote get-url origin 2>/dev/null || echo 'no-remote'; else echo 'not-git'; fi"
+          );
+          const remoteUrl = singleRepoCheckCmd.stdout.trim();
+          if (remoteUrl !== 'not-git' && remoteUrl !== 'no-remote') {
+            const repoName = selectedRepos[0].split('/').pop()!;
             existingRepos.set(repoName, remoteUrl);
-          } else if (repoName) {
-            existingRepos.set(repoName, "");
+          }
+        } else {
+          // For multiple repos, check subdirectories
+          const listReposCmd = await instance.exec(
+            "for dir in /root/workspace/*/; do " +
+              'if [ -d "$dir/.git" ]; then ' +
+              'basename "$dir"; ' +
+              "cd \"$dir\" && git remote get-url origin 2>/dev/null || echo 'no-remote'; " +
+              "fi; done"
+          );
+
+          const lines = listReposCmd.stdout.split("\n").filter(Boolean);
+
+          for (let i = 0; i < lines.length; i += 2) {
+            const repoName = lines[i]?.trim();
+            const remoteUrl = lines[i + 1]?.trim();
+            if (repoName && remoteUrl && remoteUrl !== "no-remote") {
+              existingRepos.set(repoName, remoteUrl);
+            } else if (repoName) {
+              existingRepos.set(repoName, "");
+            }
+          }
+        }
+        } else {
+          // For multiple repos, check subdirectories
+          const listReposCmd = await instance.exec(
+            "for dir in /root/workspace/*/; do " +
+              'if [ -d "$dir/.git" ]; then ' +
+              'basename "$dir"; ' +
+              "cd \"$dir\" && git remote get-url origin 2>/dev/null || echo 'no-remote'; " +
+              "fi; done"
+          );
+
+          const lines = listReposCmd.stdout.split("\n").filter(Boolean);
+
+          for (let i = 0; i < lines.length; i += 2) {
+            const repoName = lines[i]?.trim();
+            const remoteUrl = lines[i + 1]?.trim();
+            if (repoName && remoteUrl && remoteUrl !== "no-remote") {
+              existingRepos.set(repoName, remoteUrl);
+            } else if (repoName) {
+              existingRepos.set(repoName, "");
+            }
           }
         }
 
@@ -249,14 +267,22 @@ morphRouter.openapi(
           if (!selectedRepo) {
             // Repo not in selected list, remove it
             console.log(`Removing repository: ${existingName}`);
-            await instance.exec(`rm -rf /root/workspace/${existingName}`);
+            if (isSingleRepo) {
+              await instance.exec(`rm -rf /root/workspace/* /root/workspace/.* 2>/dev/null || true`);
+            } else {
+              await instance.exec(`rm -rf /root/workspace/${existingName}`);
+            }
             removedRepos.push(existingName);
           } else if (existingUrl && !existingUrl.includes(selectedRepo)) {
             // Repo exists but points to different remote, remove and re-clone
             console.log(
               `Repository ${existingName} points to different remote, removing for re-clone`
             );
-            await instance.exec(`rm -rf /root/workspace/${existingName}`);
+            if (isSingleRepo) {
+              await instance.exec(`rm -rf /root/workspace/* /root/workspace/.* 2>/dev/null || true`);
+            } else {
+              await instance.exec(`rm -rf /root/workspace/${existingName}`);
+            }
             removedRepos.push(existingName);
             existingRepos.delete(existingName); // Mark for re-cloning
           }
@@ -274,10 +300,14 @@ morphRouter.openapi(
               let lastError: string | undefined;
               let isAuthError = false;
 
-              for (let attempt = 1; attempt <= maxRetries; attempt++) {
-                const cloneCmd = await instance.exec(
-                  `mkdir -p /root/workspace && cd /root/workspace && git clone https://github.com/${repo}.git ${repoName} 2>&1`
-                );
+               for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                 let cloneCommand;
+                 if (isSingleRepo) {
+                   cloneCommand = `rm -rf /root/workspace/* /root/workspace/.* 2>/dev/null || true && git clone https://github.com/${repo}.git /root/workspace 2>&1`;
+                 } else {
+                   cloneCommand = `mkdir -p /root/workspace && cd /root/workspace && git clone https://github.com/${repo}.git ${repoName} 2>&1`;
+                 }
+                 const cloneCmd = await instance.exec(cloneCommand);
 
                 if (cloneCmd.exit_code === 0) {
                   return { success: true as const, repo };
@@ -306,8 +336,14 @@ morphRouter.openapi(
                     console.log(
                       `Clone attempt ${attempt} failed for ${repo}, retrying...`
                     );
-                    // Clean up partial clone if it exists
-                    await instance.exec(`rm -rf /root/workspace/${repoName}`);
+                     // Clean up partial clone if it exists
+                     let cleanupCommand;
+                     if (isSingleRepo) {
+                       cleanupCommand = `rm -rf /root/workspace`;
+                     } else {
+                       cleanupCommand = `rm -rf /root/workspace/${repoName}`;
+                     }
+                     await instance.exec(cleanupCommand);
                     // Wait before retry with exponential backoff
                     await new Promise((resolve) =>
                       setTimeout(resolve, attempt * 1000)
@@ -357,13 +393,12 @@ morphRouter.openapi(
 
       console.log(`VSCode Workspace URL: ${url}`);
 
-      return c.json({
-        instanceId,
-        vscodeUrl: url,
-        clonedRepos,
-        removedRepos,
-        failedClones,
-      });
+       return c.json({
+         instanceId,
+         vscodeUrl: url,
+         clonedRepos,
+         removedRepos,
+       });
     } catch (error) {
       console.error("Failed to setup Morph instance:", error);
       return c.text("Failed to setup instance", 500);
