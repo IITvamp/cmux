@@ -4,7 +4,8 @@ import { convexQuery } from "@convex-dev/react-query";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import clsx from "clsx";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
+import { LoadingIndicator } from "@/components/LoadingIndicator";
 import { PersistentWebView } from "@/components/persistent-webview";
 import { getTaskRunPersistKey } from "@/lib/persistent-webview-keys";
 import { toProxyWorkspaceUrl } from "@/lib/toProxyWorkspaceUrl";
@@ -50,15 +51,21 @@ function TaskRunComponent() {
     })
   );
 
+  const [isIframeLoaded, setIsIframeLoaded] = useState(false);
+
   const rawWorkspaceUrl = taskRun?.data?.vscode?.workspaceUrl ?? null;
   const workspaceUrl = rawWorkspaceUrl
     ? toProxyWorkspaceUrl(rawWorkspaceUrl)
     : null;
   const persistKey = getTaskRunPersistKey(taskRunId);
   const hasWorkspace = workspaceUrl !== null;
+  const vsCodeStatus = taskRun?.data?.vscode?.status;
+
+  const showLoading = !hasWorkspace || (hasWorkspace && !isIframeLoaded);
 
   const onLoad = useCallback(() => {
     console.log(`Workspace view loaded for task run ${taskRunId}`);
+    setIsIframeLoaded(true);
   }, [taskRunId]);
 
   const onError = useCallback(
@@ -93,32 +100,20 @@ function TaskRunComponent() {
           )}
           <div
             className={clsx(
-              "absolute inset-0 flex items-center justify-center transition pointer-events-none",
+              "absolute inset-0 flex items-center justify-center transition-opacity duration-300 pointer-events-none",
               {
-                "opacity-100": !hasWorkspace,
-                "opacity-0": hasWorkspace,
+                "opacity-100": showLoading,
+                "opacity-0": !showLoading,
               }
             )}
           >
-            <div className="flex flex-col items-center gap-3">
-              <div className="flex gap-1">
-                <div
-                  className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
-                  style={{ animationDelay: "0ms" }}
-                />
-                <div
-                  className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
-                  style={{ animationDelay: "150ms" }}
-                />
-                <div
-                  className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
-                  style={{ animationDelay: "300ms" }}
-                />
-              </div>
-              <span className="text-sm text-neutral-500">
-                Starting VS Code...
-              </span>
-            </div>
+            <LoadingIndicator
+              message={
+                vsCodeStatus === "starting"
+                  ? "Starting VS Code instance..."
+                  : "Loading VS Code..."
+              }
+            />
           </div>
         </div>
       </div>

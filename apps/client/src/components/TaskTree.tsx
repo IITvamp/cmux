@@ -9,6 +9,7 @@ import { useArchiveTask } from "@/hooks/useArchiveTask";
 import { useOpenWithActions } from "@/hooks/useOpenWithActions";
 import { isElectron } from "@/lib/electron";
 import { isFakeConvexId } from "@/lib/fakeConvexId";
+import { extractMorphInstanceId } from "@/lib/morphInstanceUtils";
 import type { AnnotatedTaskRun, TaskRunWithChildren } from "@/types/task";
 import { ContextMenu } from "@base-ui-components/react/context-menu";
 import { api } from "@cmux/convex/api";
@@ -541,6 +542,12 @@ function TaskRunTreeInner({
     [hasActiveVSCode, run]
   );
 
+  // Extract morph instance ID from workspace URL
+  const morphInstanceId = useMemo(
+    () => extractMorphInstanceId(run.vscode?.workspaceUrl),
+    [run.vscode?.workspaceUrl]
+  );
+
   // Collect running preview ports
   const previewServices = useMemo(() => {
     if (!run.networking) return [];
@@ -560,12 +567,16 @@ function TaskRunTreeInner({
     networking: run.networking,
   });
 
+  // Always show VS Code link if we have a morph instance ID
+  const shouldRenderVSCodeLink = Boolean(morphInstanceId);
   const shouldRenderDiffLink = true;
   const shouldRenderPullRequestLink = Boolean(
     (run.pullRequestUrl && run.pullRequestUrl !== "pending") ||
     run.pullRequests?.some((pr) => pr.url)
   );
   const shouldRenderPreviewLink = previewServices.length > 0;
+  // Always show browser link if we have a morph instance ID (port 39380)
+  const shouldRenderBrowserLink = Boolean(morphInstanceId);
   const hasOpenWithActions = openWithActions.length > 0;
   const hasPortActions = portActions.length > 0;
   const canCopyBranch = Boolean(copyRunBranch);
@@ -574,10 +585,11 @@ function TaskRunTreeInner({
   const shouldShowOpenWithDivider = hasOpenWithActions && hasPortActions;
   const hasCollapsibleContent =
     hasChildren ||
-    hasActiveVSCode ||
+    shouldRenderVSCodeLink ||
     shouldRenderDiffLink ||
     shouldRenderPullRequestLink ||
-    shouldRenderPreviewLink;
+    shouldRenderPreviewLink ||
+    shouldRenderBrowserLink;
 
   return (
     <Fragment>
@@ -680,9 +692,11 @@ function TaskRunTreeInner({
         taskId={taskId}
         teamSlugOrId={teamSlugOrId}
         isExpanded={isExpanded}
-        hasActiveVSCode={hasActiveVSCode}
+        shouldRenderVSCodeLink={shouldRenderVSCodeLink}
+        morphInstanceId={morphInstanceId}
         hasChildren={hasChildren}
         shouldRenderPullRequestLink={shouldRenderPullRequestLink}
+        shouldRenderBrowserLink={shouldRenderBrowserLink}
         previewServices={previewServices}
         environmentError={run.environmentError}
       />
@@ -742,9 +756,11 @@ interface TaskRunDetailsProps {
   taskId: Id<"tasks">;
   teamSlugOrId: string;
   isExpanded: boolean;
-  hasActiveVSCode: boolean;
+  shouldRenderVSCodeLink: boolean;
+  morphInstanceId: string | null;
   hasChildren: boolean;
   shouldRenderPullRequestLink: boolean;
+  shouldRenderBrowserLink: boolean;
   previewServices: PreviewService[];
   environmentError?: {
     maintenanceError?: string;
@@ -758,9 +774,11 @@ function TaskRunDetails({
   taskId,
   teamSlugOrId,
   isExpanded,
-  hasActiveVSCode,
+  shouldRenderVSCodeLink,
+  morphInstanceId,
   hasChildren,
   shouldRenderPullRequestLink,
+  shouldRenderBrowserLink,
   previewServices,
   environmentError,
 }: TaskRunDetailsProps) {
@@ -800,21 +818,23 @@ function TaskRunDetails({
     </Tooltip>
   ) : null;
 
+  const vsCodeStatus = run.vscode?.status;
+  const isVSCodeStarting = vsCodeStatus === "starting";
+
   return (
     <Fragment>
-      {hasActiveVSCode && (
+      {shouldRenderVSCodeLink && (
         <TaskRunDetailLink
-          to="/$teamSlugOrId/task/$taskId/run/$runId"
+          to="/$teamSlugOrId/task/$taskId/run/$runId/vscode"
           params={{
             teamSlugOrId,
             taskId,
             runId: run._id,
-            taskRunId: run._id,
           }}
           icon={
             <VSCodeIcon className="w-3 h-3 mr-2 text-neutral-400 grayscale opacity-60" />
           }
-          label="VS Code"
+          label={isVSCodeStarting ? "VS Code (starting...)" : "VS Code"}
           indentLevel={indentLevel}
           trailing={environmentErrorIndicator}
         />
@@ -895,6 +915,21 @@ function TaskRunDetails({
           </Dropdown.Root>
         </div>
       ))}
+
+      {shouldRenderBrowserLink && morphInstanceId && (
+        <TaskRunDetailLink
+          to="/$teamSlugOrId/task/$taskId/run/$runId/preview/$port"
+          params={{
+            teamSlugOrId,
+            taskId,
+            runId: run._id,
+            port: "39380",
+          }}
+          icon={<Globe className="w-3 h-3 mr-2 text-neutral-400" />}
+          label="Browser (port 39380)"
+          indentLevel={indentLevel}
+        />
+      )}
 
       {hasChildren ? (
         <div className="flex flex-col">
