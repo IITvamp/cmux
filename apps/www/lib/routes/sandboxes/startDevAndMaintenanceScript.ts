@@ -7,6 +7,19 @@ const MAINTENANCE_WINDOW_NAME = "maintenance";
 const MAINTENANCE_SCRIPT_FILENAME = "maintenance.sh";
 const DEV_WINDOW_NAME = "dev";
 const DEV_SCRIPT_FILENAME = "dev.sh";
+const GIT_PULL_SENTINEL_FILENAME = "git-pull-origin-main.done";
+const GIT_PULL_SENTINEL_PATH = `${CMUX_RUNTIME_DIR}/${GIT_PULL_SENTINEL_FILENAME}`;
+const gitPullSection = `if [ ! -f ${GIT_PULL_SENTINEL_PATH} ]; then
+  echo "=== Syncing repository (git pull --ff-only origin main) ==="
+  if ! git pull --ff-only origin main; then
+    echo "=== git pull --ff-only origin main failed ===" >&2
+    exit 1
+  fi
+  touch ${GIT_PULL_SENTINEL_PATH}
+else
+  echo "=== git pull already executed for this run ==="
+fi
+`;
 
 export type ScriptIdentifiers = {
   maintenance: {
@@ -60,6 +73,15 @@ export async function runMaintenanceAndDevScripts({
     };
   }
 
+  const resetGitPullResult = await instance.exec(
+    `zsh -lc ${singleQuote(`rm -f ${GIT_PULL_SENTINEL_PATH}`)}`,
+  );
+  if (resetGitPullResult.exit_code !== 0) {
+    console.warn(
+      `[SCRIPTS] Failed to reset git pull sentinel: exit code ${resetGitPullResult.exit_code}`,
+    );
+  }
+
   const waitForTmuxSession = `for i in {1..20}; do
   if tmux has-session -t cmux 2>/dev/null; then
     break
@@ -84,6 +106,7 @@ fi`;
 set -eux
 cd ${WORKSPACE_ROOT}
 
+${gitPullSection}
 echo "=== Maintenance Script Started at \$(date) ==="
 ${maintenanceScript}
 echo "=== Maintenance Script Completed at \$(date) ==="
@@ -156,6 +179,7 @@ exit $MAINTENANCE_EXIT_CODE
 set -ux
 cd ${WORKSPACE_ROOT}
 
+${gitPullSection}
 echo "=== Dev Script Started at \$(date) ==="
 ${devScript}
 `;
