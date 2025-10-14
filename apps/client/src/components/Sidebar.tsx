@@ -95,10 +95,14 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
     localStorage.setItem("sidebarCollapsed", String(isCollapsed));
   }, [isCollapsed]);
 
-  // Keyboard shortcut to toggle sidebar (Control + Shift + S)
+  // Keyboard shortcut to toggle sidebar (Ctrl+Shift+S)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.code === "KeyS") {
+      if (
+        e.ctrlKey &&
+        e.shiftKey &&
+        (e.code === "KeyS" || e.key.toLowerCase() === "s")
+      ) {
         e.preventDefault();
         setIsCollapsed((prev) => !prev);
       }
