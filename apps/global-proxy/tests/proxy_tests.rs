@@ -428,12 +428,11 @@ async fn port_options_preflight() {
         .request(Method::OPTIONS, "port-39378-test.cmux.sh", "/", &[])
         .await;
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
-    assert_eq!(
+    assert!(
         response
             .headers()
             .get("access-control-allow-origin")
-            .and_then(|v| v.to_str().ok()),
-        Some("https://cmux.sh")
+            .is_none()
     );
 
     proxy.shutdown().await;
@@ -688,12 +687,16 @@ async fn html_responses_skip_service_worker_for_cmux_route() {
 }
 
 #[tokio::test]
-async fn port_39378_applies_cors_and_csp() {
+async fn port_39378_strips_cors_and_applies_csp() {
     let handler = Arc::new(|_req| {
         Response::builder()
             .status(StatusCode::OK)
             .header("content-type", "text/html")
             .header("content-security-policy", "frame-ancestors 'none';")
+            .header("access-control-allow-origin", "https://upstream.example")
+            .header("access-control-allow-methods", "GET, OPTIONS")
+            .header("access-control-allow-headers", "X-Test")
+            .header("access-control-allow-credentials", "true")
             .body(Body::from("<html><head></head><body>ok</body></html>"))
             .unwrap()
     });
@@ -712,12 +715,12 @@ async fn port_39378_applies_cors_and_csp() {
 
     assert_eq!(response.status(), StatusCode::OK);
     let headers = response.headers();
-    assert_eq!(
-        headers
-            .get("access-control-allow-origin")
-            .and_then(|v| v.to_str().ok()),
-        Some("https://cmux.dev")
-    );
+    assert!(headers.get("access-control-allow-origin").is_none());
+    assert!(headers.get("access-control-allow-methods").is_none());
+    assert!(headers.get("access-control-allow-headers").is_none());
+    assert!(headers.get("access-control-allow-credentials").is_none());
+    assert!(headers.get("access-control-expose-headers").is_none());
+    assert!(headers.get("access-control-max-age").is_none());
     assert_eq!(
         headers
             .get("content-security-policy")
@@ -726,12 +729,6 @@ async fn port_39378_applies_cors_and_csp() {
             "frame-ancestors 'self' https://cmux.local http://cmux.local https://www.cmux.sh https://cmux.sh https://www.cmux.dev https://cmux.dev http://localhost:5173;",
         )
     );
-    let vary = headers
-        .get("vary")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    assert!(vary.split(',').any(|part| part.trim() == "origin"));
     assert!(headers.get("x-frame-options").is_none());
 
     let response_localhost = proxy
@@ -743,13 +740,20 @@ async fn port_39378_applies_cors_and_csp() {
         )
         .await;
     assert_eq!(response_localhost.status(), StatusCode::OK);
-    assert_eq!(
-        response_localhost
-            .headers()
-            .get("access-control-allow-origin")
-            .and_then(|v| v.to_str().ok()),
-        Some("http://localhost:5173")
-    );
+    for name in [
+        "access-control-allow-origin",
+        "access-control-allow-methods",
+        "access-control-allow-headers",
+        "access-control-allow-credentials",
+        "access-control-expose-headers",
+        "access-control-max-age",
+    ] {
+        assert!(
+            response_localhost.headers().get(name).is_none(),
+            "expected header {} to be stripped",
+            name
+        );
+    }
 
     proxy.shutdown().await;
     backend.shutdown().await;
