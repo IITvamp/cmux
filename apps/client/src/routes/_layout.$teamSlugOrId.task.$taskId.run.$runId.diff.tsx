@@ -39,6 +39,7 @@ import { attachTaskLifecycleListeners } from "@/lib/socket/taskLifecycleListener
 import z from "zod";
 import type { EditorApi } from "@/components/dashboard/DashboardInput";
 import LexicalEditor from "@/components/lexical/LexicalEditor";
+import { useLexicalFocusGuard } from "@/components/lexical/useLexicalFocusGuard";
 
 const paramsSchema = z.object({
   taskId: typedZid("tasks"),
@@ -90,6 +91,15 @@ const RestartTaskForm = memo(function RestartTaskForm({
   const [followUpText, setFollowUpText] = useState("");
   const [isRestartingTask, setIsRestartingTask] = useState(false);
   const [overridePrompt, setOverridePrompt] = useState(false);
+  const focusEditor = useCallback(() => {
+    editorApiRef.current?.focus?.();
+  }, []);
+
+  useLexicalFocusGuard({
+    rootSelector: ".restart-task-editor",
+    focusEditor,
+    debugName: "RestartTaskForm",
+  });
 
   const handleRestartTask = useCallback(async () => {
     if (!task) {
@@ -193,6 +203,7 @@ const RestartTaskForm = memo(function RestartTaskForm({
 
         editorApiRef.current?.clear();
         setFollowUpText("");
+        focusEditor();
       };
 
       socket.emit(
@@ -221,6 +232,7 @@ const RestartTaskForm = memo(function RestartTaskForm({
   }, [
     addTaskToExpand,
     createTask,
+    focusEditor,
     followUpText,
     overridePrompt,
     restartAgents,
@@ -296,7 +308,10 @@ const RestartTaskForm = memo(function RestartTaskForm({
             onEditorReady={(api) => {
               editorApiRef.current = api;
             }}
-            contentEditableClassName="text-[15px] text-neutral-900 dark:text-neutral-100 focus:outline-none"
+            contentEditableClassName={cn(
+              "text-[15px] text-neutral-900 dark:text-neutral-100 focus:outline-none",
+              "restart-task-editor",
+            )}
             padding={{
               paddingLeft: "0px",
               paddingRight: "0px",
@@ -312,6 +327,7 @@ const RestartTaskForm = memo(function RestartTaskForm({
                 setOverridePrompt(value);
                 if (value) {
                   if (!task?.text) {
+                    focusEditor();
                     return;
                   }
                   const promptText = task.text;
@@ -325,6 +341,7 @@ const RestartTaskForm = memo(function RestartTaskForm({
                 } else {
                   editorApiRef.current?.clear();
                 }
+                focusEditor();
               }}
               size="sm"
               aria-label="Override prompt"
