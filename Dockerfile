@@ -256,6 +256,7 @@ COPY apps/worker/wait-for-docker.sh ./apps/worker/
 
 # Copy Chrome DevTools proxy source
 COPY scripts/cdp-proxy ./scripts/cdp-proxy/
+COPY scripts/novnc-proxy ./scripts/novnc-proxy/
 
 # Copy VS Code extension source
 COPY packages/vscode-extension/src ./packages/vscode-extension/src
@@ -301,6 +302,33 @@ export CGO_ENABLED=0
 cd /cmux/scripts/cdp-proxy
 go build -trimpath -ldflags="-s -w" -o /usr/local/lib/cmux/cmux-cdp-proxy .
 test -x /usr/local/lib/cmux/cmux-cdp-proxy
+EOF
+
+# Build noVNC proxy binary
+RUN --mount=type=cache,target=/root/.cache/go-build \
+  --mount=type=cache,target=/go/pkg/mod \
+  <<'EOF'
+set -eux
+mkdir -p /usr/local/lib/cmux
+export PATH="/usr/local/go/bin:${PATH}"
+case "${TARGETPLATFORM:-}" in
+  linux/amd64 | linux/amd64/*)
+    export GOOS=linux
+    export GOARCH=amd64
+    ;;
+  linux/arm64 | linux/arm64/*)
+    export GOOS=linux
+    export GOARCH=arm64
+    ;;
+  *)
+    echo "Unsupported TARGETPLATFORM: ${TARGETPLATFORM:-}" >&2
+    exit 1
+    ;;
+esac
+export CGO_ENABLED=0
+cd /cmux/scripts/novnc-proxy
+go build -trimpath -ldflags="-s -w" -o /usr/local/lib/cmux/cmux-novnc-proxy .
+test -x /usr/local/lib/cmux/cmux-novnc-proxy
 EOF
 
 # Verify bun is still working in builder
@@ -356,7 +384,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   xvfb \
   x11vnc \
   fluxbox \
-  websockify \
   novnc \
   xauth \
   xdg-utils \
@@ -698,7 +725,8 @@ COPY configs/systemd/cmux-cdp-proxy.service /usr/lib/systemd/system/cmux-cdp-pro
 COPY configs/systemd/bin/configure-openvscode /usr/local/lib/cmux/configure-openvscode
 COPY configs/systemd/bin/cmux-start-chrome /usr/local/lib/cmux/cmux-start-chrome
 COPY --from=builder /usr/local/lib/cmux/cmux-cdp-proxy /usr/local/lib/cmux/cmux-cdp-proxy
-RUN chmod +x /usr/local/lib/cmux/configure-openvscode /usr/local/lib/cmux/cmux-start-chrome /usr/local/lib/cmux/cmux-cdp-proxy && \
+COPY --from=builder /usr/local/lib/cmux/cmux-novnc-proxy /usr/local/lib/cmux/cmux-novnc-proxy
+RUN chmod +x /usr/local/lib/cmux/configure-openvscode /usr/local/lib/cmux/cmux-start-chrome /usr/local/lib/cmux/cmux-cdp-proxy /usr/local/lib/cmux/cmux-novnc-proxy && \
   touch /usr/local/lib/cmux/dockerd.flag && \
   mkdir -p /var/log/cmux && \
   mkdir -p /etc/systemd/system/multi-user.target.wants && \

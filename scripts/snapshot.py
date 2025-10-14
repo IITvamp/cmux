@@ -65,6 +65,7 @@ VSCODE_HTTP_PORT = 39378
 VNC_HTTP_PORT = 39380
 CDP_HTTP_PORT = 39381
 CDP_PROXY_BINARY_NAME = "cmux-cdp-proxy"
+NOVNC_PROXY_BINARY_NAME = "cmux-novnc-proxy"
 
 
 @dataclass(slots=True)
@@ -910,7 +911,6 @@ async def task_install_base_packages(ctx: TaskContext) -> None:
             build-essential make pkg-config g++ libssl-dev \
             ruby-full perl software-properties-common \
             tigervnc-standalone-server tigervnc-common \
-            python3-websockify websockify \
             xvfb \
             x11-xserver-utils xterm novnc \
             x11vnc \
@@ -1479,6 +1479,28 @@ async def task_build_cdp_proxy(ctx: TaskContext) -> None:
 
 
 @registry.task(
+    name="build-novnc-proxy",
+    deps=("install-service-scripts", "install-go-toolchain"),
+    description="Build and install noVNC proxy binary",
+)
+async def task_build_novnc_proxy(ctx: TaskContext) -> None:
+    repo = shlex.quote(ctx.remote_repo_root)
+    cmd = textwrap.dedent(
+        f"""
+        set -euo pipefail
+
+        cd {repo}/scripts/novnc-proxy
+        go build -trimpath -o /usr/local/lib/cmux/{NOVNC_PROXY_BINARY_NAME} .
+        if [ ! -x /usr/local/lib/cmux/{NOVNC_PROXY_BINARY_NAME} ]; then
+          echo "Failed to build {NOVNC_PROXY_BINARY_NAME}" >&2
+          exit 1
+        fi
+        """
+    )
+    await ctx.run("build-novnc-proxy", cmd)
+
+
+@registry.task(
     name="install-systemd-units",
     deps=(
         "upload-repo",
@@ -1487,6 +1509,7 @@ async def task_build_cdp_proxy(ctx: TaskContext) -> None:
         "install-service-scripts",
         "build-worker",
         "build-cdp-proxy",
+        "build-novnc-proxy",
         "configure-zsh",
     ),
     description="Install cmux systemd units and helpers",
@@ -1900,11 +1923,11 @@ async def task_check_vnc(ctx: TaskContext) -> None:
         """
         # Verify VNC binaries are installed
         vncserver -version
-        if ! command -v websockify >/dev/null 2>&1; then
-          echo "websockify not installed" >&2
+        if [ ! -x /usr/local/lib/cmux/{NOVNC_PROXY_BINARY_NAME} ]; then
+          echo "{NOVNC_PROXY_BINARY_NAME} not installed" >&2
           exit 1
         fi
-        websockify --help >/dev/null
+        /usr/local/lib/cmux/{NOVNC_PROXY_BINARY_NAME} -h >/dev/null 2>&1 || true
         
         # Verify VNC endpoint is accessible
         sleep 5
@@ -1923,7 +1946,7 @@ async def task_check_vnc(ctx: TaskContext) -> None:
         tail -n 60 /var/log/cmux/xvfb.log || true
         tail -n 40 /var/log/cmux/chrome.log || true
         tail -n 40 /var/log/cmux/x11vnc.log || true
-        tail -n 40 /var/log/cmux/websockify.log || true
+        tail -n 40 /var/log/cmux/novnc-proxy.log || true
         exit 1
         """
     )
