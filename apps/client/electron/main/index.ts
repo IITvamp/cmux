@@ -66,7 +66,8 @@ type AutoUpdateToastPayload = {
 };
 
 let queuedAutoUpdateToast: AutoUpdateToastPayload | null = null;
-let updateDownloadedAndReady = false;
+let downloadedUpdateVersion: string | null = null;
+let pendingUpdateVersion: string | null = null;
 
 // Persistent log files
 let logsDir: string | null = null;
@@ -265,6 +266,15 @@ function emitAutoUpdateToastIfPossible(): void {
   }
 }
 
+function emitAutoUpdateToastReset(): void {
+  if (!mainWindow || mainWindow.isDestroyed() || !rendererLoaded) return;
+  try {
+    mainWindow.webContents.send("cmux:event:auto-update:reset");
+  } catch (error) {
+    mainWarn("Failed to send auto-update reset to renderer", error);
+  }
+}
+
 function queueAutoUpdateToast(payload: AutoUpdateToastPayload): void {
   queuedAutoUpdateToast = payload;
   emitAutoUpdateToastIfPossible();
@@ -276,6 +286,52 @@ function resolveSemverVersion(value: string | null | undefined): string | null {
   if (valid) return valid;
   const coerced = semver.coerce(value);
   return coerced ? coerced.version : null;
+}
+
+function normalizeVersionString(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.replace(/^v(?=\d)/i, "");
+}
+
+function versionsMatch(
+  a: string | null | undefined,
+  b: string | null | undefined
+): boolean {
+  const normalizedA = normalizeVersionString(a);
+  const normalizedB = normalizeVersionString(b);
+  if (!normalizedA || !normalizedB) return false;
+  return normalizedA === normalizedB;
+}
+
+function extractUpdateVersion(
+  info: UpdateInfo | null | undefined
+): string | null {
+  if (!info) return null;
+  const { version } = info;
+  return typeof version === "string" ? version : null;
+}
+
+function markPendingUpdate(version: string | null): boolean {
+  if (!version) {
+    pendingUpdateVersion = null;
+    return false;
+  }
+
+  const alreadyDownloaded = versionsMatch(downloadedUpdateVersion, version);
+  pendingUpdateVersion = version;
+  if (!alreadyDownloaded) {
+    downloadedUpdateVersion = null;
+    queuedAutoUpdateToast = null;
+    emitAutoUpdateToastReset();
+  }
+  return alreadyDownloaded;
+}
+
+function markUpdateDownloaded(version: string | null): void {
+  downloadedUpdateVersion = version;
+  pendingUpdateVersion = version ?? pendingUpdateVersion;
 }
 
 function isUpdateNewerThanCurrent(
@@ -313,6 +369,10 @@ function logUpdateCheckResult(
       typeof info?.stagingPercentage === "number"
         ? info.stagingPercentage
         : null,
+    alreadyDownloaded: versionsMatch(
+      downloadedUpdateVersion,
+      extractUpdateVersion(info)
+    ),
   };
 
   mainLog(`${context} completed`, summary);
@@ -357,16 +417,19 @@ function registerAutoUpdateIpcHandlers(): void {
       logUpdateCheckResult("Renderer checkForUpdates", result);
 
       const updateInfo = result?.updateInfo;
-      const version =
-        updateInfo && typeof updateInfo.version === "string"
-          ? updateInfo.version
-          : null;
+      const version = extractUpdateVersion(updateInfo);
+      const updateAvailable = isUpdateNewerThanCurrent(updateInfo);
+
+      const alreadyDownloaded = updateAvailable ? markPendingUpdate(version) : false;
+      if (!updateAvailable) {
+        pendingUpdateVersion = null;
+      }
 
       return {
         ok: true as const,
-        updateAvailable: isUpdateNewerThanCurrent(updateInfo),
+        updateAvailable,
         version,
-        alreadyDownloaded: updateDownloadedAndReady,
+        alreadyDownloaded,
       };
     } catch (error) {
       mainWarn("Renderer-initiated checkForUpdates failed", error);
@@ -473,10 +536,18 @@ function setupAutoUpdates(): void {
   }
 
   autoUpdater.on("checking-for-update", () => mainLog("Checking for update…"));
-  autoUpdater.on("update-available", (info) =>
-    mainLog("Update available", info?.version)
-  );
-  autoUpdater.on("update-not-available", () => mainLog("No updates available"));
+  autoUpdater.on("update-available", (info) => {
+    const version = extractUpdateVersion(info);
+    const alreadyDownloaded = markPendingUpdate(version);
+    mainLog("Update available", {
+      version,
+      alreadyDownloaded,
+    });
+  });
+  autoUpdater.on("update-not-available", () => {
+    pendingUpdateVersion = null;
+    mainLog("No updates available");
+  });
   autoUpdater.on("error", (err) => mainWarn("Updater error", err));
   autoUpdater.on("download-progress", (p) =>
     mainLog(
@@ -485,16 +556,9 @@ function setupAutoUpdates(): void {
     )
   );
   autoUpdater.on("update-downloaded", (_event, info?: UpdateInfo) => {
-    const version =
-      info &&
-      typeof info === "object" &&
-      "version" in info &&
-      typeof info.version === "string"
-        ? info.version
-        : null;
-
+    const version = extractUpdateVersion(info) ?? pendingUpdateVersion ?? null;
     mainLog("Update downloaded; notifying renderer", { version });
-    updateDownloadedAndReady = true;
+    markUpdateDownloaded(version);
     queueAutoUpdateToast({ version });
   });
 
@@ -927,18 +991,23 @@ app.whenReady().then(async () => {
               mainLog("Manual update check initiated");
               const result = await autoUpdater.checkForUpdates();
               const updateInfo = result?.updateInfo;
-              const version =
-                updateInfo && typeof updateInfo.version === "string"
-                  ? updateInfo.version
-                  : null;
+              const version = extractUpdateVersion(updateInfo);
+              const updateAvailable = isUpdateNewerThanCurrent(updateInfo);
+              const alreadyDownloaded = updateAvailable
+                ? markPendingUpdate(version)
+                : false;
+              if (!updateAvailable) {
+                pendingUpdateVersion = null;
+              }
+
               const versionLabel = version ? ` (${version})` : "";
 
-              if (!isUpdateNewerThanCurrent(updateInfo)) {
+              if (!updateAvailable) {
                 await dialog.showMessageBox({
                   type: "info",
                   message: "You're up to date.",
                 });
-              } else if (updateDownloadedAndReady) {
+              } else if (alreadyDownloaded) {
                 await dialog.showMessageBox({
                   type: "info",
                   message: `Update ready to install${versionLabel}. The update will be applied when you restart cmux.`,
