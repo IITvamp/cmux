@@ -1,0 +1,20 @@
+[Unit]
+Description=Cmux VNC websocket proxy
+After=cmux-x11vnc.service
+Requires=cmux-x11vnc.service
+
+[Service]
+Type=simple
+Environment=CMUX_VNC_PROXY_LISTEN_ADDR=0.0.0.0:39380
+Environment=CMUX_VNC_PROXY_TARGET_HOST=127.0.0.1
+Environment=CMUX_VNC_PROXY_TARGET_PORT=5901
+Environment=CMUX_VNC_PROXY_WEBROOT=/usr/share/novnc
+ExecStartPre=/bin/mkdir -p /var/log/cmux
+ExecStart=/usr/local/lib/cmux/cmux-vnc-proxy
+Restart=always
+RestartSec=3
+StandardOutput=append:/var/log/cmux/vnc-proxy.log
+StandardError=append:/var/log/cmux/vnc-proxy.log
+
+[Install]
+WantedBy=cmux.target
