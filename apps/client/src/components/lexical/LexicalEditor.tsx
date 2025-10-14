@@ -484,6 +484,7 @@ interface LexicalEditorProps {
   persistenceKey?: string; // Key for localStorage persistence
   maxHeight?: string;
   minHeight?: string;
+  autoFocus?: boolean; // Control whether to auto-focus the editor
   onEditorReady?: (editor: {
     getContent: () => {
       text: string;
@@ -511,6 +512,7 @@ export default function LexicalEditor({
   persistenceKey,
   maxHeight,
   minHeight,
+  autoFocus = false,
   onEditorReady,
 }: LexicalEditorProps) {
   const initialConfig = useMemo(
@@ -573,7 +575,7 @@ export default function LexicalEditor({
           }}
         />
         <HistoryPlugin />
-        <AutoFocusPlugin />
+        {autoFocus && <AutoFocusPlugin />}
         <ListPlugin />
         <LinkPlugin />
         <MarkdownShortcutPlugin transformers={TRANSFORMERS} />

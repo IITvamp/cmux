@@ -327,6 +327,7 @@ export const DashboardInput = memo(
         padding={lexicalPadding}
         contentEditableClassName={lexicalClassName}
         maxHeight={maxHeight}
+        autoFocus={true}
         onEditorReady={handleEditorReady}
       />
     );
