@@ -157,6 +157,7 @@ sandboxesRouter.openapi(
         environmentDataVaultKey,
         environmentMaintenanceScript,
         environmentDevScript,
+        environmentSelectedRepos,
       } = await resolveTeamAndSnapshot({
         req: c.req.raw,
         convex,
@@ -303,6 +304,7 @@ sandboxesRouter.openapi(
         await hydrateWorkspace({
           instance,
           repo: repoConfig,
+          selectedRepos: environmentSelectedRepos,
         });
       } catch (error) {
         console.error(`[sandboxes.start] Hydration failed:`, error);

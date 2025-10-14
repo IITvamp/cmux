@@ -14,6 +14,8 @@ interface HydrateConfig {
   depth: number;
   baseBranch?: string;
   newBranch?: string;
+  selectedRepos?: string[]; // Array of repo full names (e.g., ["owner/repo1", "owner/repo2"])
+  selectedReposJson?: string; // JSON string of selectedRepos array
 }
 
 function log(message: string, level: "info" | "error" | "debug" = "info") {
@@ -74,6 +76,17 @@ function getConfig(): HydrateConfig {
   const maskedCloneUrl = process.env.CMUX_MASKED_CLONE_URL;
   const baseBranch = process.env.CMUX_BASE_BRANCH;
   const newBranch = process.env.CMUX_NEW_BRANCH;
+  const selectedReposJson = process.env.CMUX_SELECTED_REPOS;
+
+  // Parse selectedRepos from JSON if provided
+  let selectedRepos: string[] | undefined;
+  if (selectedReposJson) {
+    try {
+      selectedRepos = JSON.parse(selectedReposJson);
+    } catch (error) {
+      log(`Failed to parse CMUX_SELECTED_REPOS: ${error}`, "error");
+    }
+  }
 
   return {
     workspacePath,
@@ -85,12 +98,35 @@ function getConfig(): HydrateConfig {
     depth,
     baseBranch,
     newBranch,
+    selectedRepos,
+    selectedReposJson,
   };
 }
 
 function ensureWorkspace(workspacePath: string) {
   log(`Ensuring workspace exists at ${workspacePath}`);
   exec(`mkdir -p "${workspacePath}"`);
+}
+
+function isWorkspaceMultiRepo(workspacePath: string): boolean {
+  // Check if workspace contains subdirectories with git repos (multi-repo layout)
+  try {
+    const dirs = execSync(
+      `find "${workspacePath}" -maxdepth 1 -type d ! -path "${workspacePath}"`,
+      { encoding: "utf-8" }
+    ).trim().split('\n').filter(Boolean);
+
+    for (const dir of dirs) {
+      const gitPath = join(dir, ".git");
+      if (existsSync(gitPath)) {
+        return true;
+      }
+    }
+  } catch (error) {
+    log(`Error checking for multi-repo layout: ${error}`, "debug");
+  }
+
+  return false;
 }
 
 function checkExistingRepo(workspacePath: string, owner?: string, repo?: string): {
@@ -136,13 +172,14 @@ function clearWorkspace(workspacePath: string) {
   exec(`rm -rf "${workspacePath}"/* "${workspacePath}"/.[!.]* "${workspacePath}"/..?* 2>/dev/null || true`);
 }
 
-function cloneRepository(config: HydrateConfig) {
+function cloneRepository(config: HydrateConfig, targetPath?: string) {
   const { workspacePath, cloneUrl, maskedCloneUrl, depth } = config;
+  const clonePath = targetPath || workspacePath;
 
   log(`Cloning ${maskedCloneUrl || cloneUrl} with depth=${depth}`);
 
   const { exitCode, stderr } = exec(
-    `git clone --depth ${depth} "${cloneUrl}" "${workspacePath}"`,
+    `git clone --depth ${depth} "${cloneUrl}" "${clonePath}"`,
     { throwOnError: false }
   );
 
@@ -152,6 +189,50 @@ function cloneRepository(config: HydrateConfig) {
   }
 
   log("Repository cloned successfully");
+}
+
+function cloneMultipleRepositories(workspacePath: string, selectedRepos: string[], depth: number) {
+  log(`Cloning ${selectedRepos.length} repositories`);
+
+  for (const repoFull of selectedRepos) {
+    const [owner, repo] = repoFull.split('/');
+    if (!owner || !repo) {
+      log(`Invalid repository format: ${repoFull}`, "error");
+      continue;
+    }
+
+    const repoPath = join(workspacePath, repo);
+    const cloneUrl = `https://github.com/${owner}/${repo}.git`;
+
+    log(`Cloning ${repoFull} to ${repoPath}`);
+
+    // Check if repo already exists
+    const gitPath = join(repoPath, ".git");
+    if (existsSync(gitPath)) {
+      log(`Repository ${repoFull} already exists, fetching updates`);
+      const { exitCode } = exec(
+        `git fetch --all --prune`,
+        { cwd: repoPath, throwOnError: false }
+      );
+
+      if (exitCode === 0) {
+        log(`Fetched updates for ${repoFull}`);
+      }
+      continue;
+    }
+
+    // Clone the repository
+    const { exitCode, stderr } = exec(
+      `git clone --depth ${depth} "${cloneUrl}" "${repoPath}"`,
+      { throwOnError: false }
+    );
+
+    if (exitCode !== 0) {
+      log(`Failed to clone ${repoFull}: ${stderr}`, "error");
+    } else {
+      log(`Successfully cloned ${repoFull}`);
+    }
+  }
 }
 
 function fetchUpdates(workspacePath: string) {
@@ -220,25 +301,6 @@ function checkoutBranch(workspacePath: string, baseBranch: string, newBranch?: s
   }
 }
 
-function hydrateSubdirectories(workspacePath: string) {
-  log("Checking for subdirectory git repositories");
-
-  try {
-    const dirs = execSync(`find "${workspacePath}" -maxdepth 1 -type d ! -path "${workspacePath}"`, {
-      encoding: "utf-8"
-    }).trim().split('\n').filter(Boolean);
-
-    for (const dir of dirs) {
-      const gitPath = join(dir, ".git");
-      if (existsSync(gitPath)) {
-        log(`Pulling updates in ${dir}`);
-        exec(`git pull --ff-only`, { cwd: dir, throwOnError: false });
-      }
-    }
-  } catch (error) {
-    log(`Error checking subdirectories: ${error}`, "debug");
-  }
-}
 
 async function main() {
   try {
@@ -248,8 +310,28 @@ async function main() {
     // Ensure workspace exists
     ensureWorkspace(config.workspacePath);
 
+    // Determine if we're working with single or multiple repos
+    const isSingleRepo = config.selectedRepos && config.selectedRepos.length === 1;
+    const isMultiRepo = config.selectedRepos && config.selectedRepos.length > 1;
+    const currentlyMultiRepo = isWorkspaceMultiRepo(config.workspacePath);
+    const { hasGit: currentlySingleRepo } = checkExistingRepo(config.workspacePath);
+
+    // Handle transition from single repo to multiple repos
+    if (isMultiRepo && currentlySingleRepo) {
+      log("Transitioning from single repository to multiple repositories");
+      clearWorkspace(config.workspacePath);
+      ensureWorkspace(config.workspacePath);
+    }
+
+    // Handle transition from multiple repos to single repo
+    if (isSingleRepo && currentlyMultiRepo) {
+      log("Transitioning from multiple repositories to single repository");
+      clearWorkspace(config.workspacePath);
+      ensureWorkspace(config.workspacePath);
+    }
+
     // Handle single repo case
-    if (config.cloneUrl) {
+    if (isSingleRepo && config.cloneUrl) {
       log(`Hydrating single repository: ${config.maskedCloneUrl || config.cloneUrl}`);
 
       // Check existing repo
@@ -280,10 +362,50 @@ async function main() {
       log("Listing workspace contents:");
       const { stdout } = exec(`ls -la | head -50`, { cwd: config.workspacePath });
       console.log(stdout);
-    } else {
+    } else if (isMultiRepo) {
       // Handle multiple repos case
       log("Hydrating multiple repositories");
-      hydrateSubdirectories(config.workspacePath);
+      cloneMultipleRepositories(config.workspacePath, config.selectedRepos!, config.depth);
+
+      // List directories for verification
+      log("Listing workspace subdirectories:");
+      const { stdout } = exec(`ls -la | head -50`, { cwd: config.workspacePath });
+      console.log(stdout);
+    } else if (config.cloneUrl) {
+      // Legacy single repo case without selectedRepos
+      log(`Hydrating single repository (legacy): ${config.maskedCloneUrl || config.cloneUrl}`);
+
+      // Check existing repo
+      const { hasGit, needsClear } = checkExistingRepo(
+        config.workspacePath,
+        config.owner,
+        config.repo
+      );
+
+      if (needsClear) {
+        clearWorkspace(config.workspacePath);
+      }
+
+      if (!hasGit || needsClear) {
+        // Clone repository
+        cloneRepository(config);
+      } else {
+        // Fetch updates
+        fetchUpdates(config.workspacePath);
+      }
+
+      // Checkout branch
+      if (config.baseBranch) {
+        checkoutBranch(config.workspacePath, config.baseBranch, config.newBranch);
+      }
+
+      // List files for verification
+      log("Listing workspace contents:");
+      const { stdout } = exec(`ls -la | head -50`, { cwd: config.workspacePath });
+      console.log(stdout);
+    } else {
+      // No repo configuration provided
+      log("No repository configuration provided");
     }
 
     log("Hydration completed successfully");
