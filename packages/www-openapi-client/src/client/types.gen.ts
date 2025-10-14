@@ -337,6 +337,25 @@ export type SetupInstanceBody = {
     ttlSeconds?: number;
 };
 
+export type IframePreflightResponse = {
+    /**
+     * Whether the target responded successfully to the probe request.
+     */
+    ok: boolean;
+    /**
+     * HTTP status code returned by the target.
+     */
+    status: number | null;
+    /**
+     * HTTP method used for the successful probe.
+     */
+    method: 'HEAD' | 'GET';
+    /**
+     * Error message if the probe failed.
+     */
+    error?: string;
+};
+
 export type CreateEnvironmentResponse = {
     id: string;
     snapshotId: string;
@@ -1430,6 +1449,42 @@ export type PostApiMorphSetupInstanceResponses = {
 };
 
 export type PostApiMorphSetupInstanceResponse = PostApiMorphSetupInstanceResponses[keyof PostApiMorphSetupInstanceResponses];
+
+export type GetApiIframePreflightData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Absolute HTTP(S) URL to check before embedding in an iframe.
+         */
+        url: string;
+    };
+    url: '/api/iframe/preflight';
+};
+
+export type GetApiIframePreflightErrors = {
+    /**
+     * The provided URL was not an HTTP(S) URL.
+     */
+    400: unknown;
+    /**
+     * Request is missing valid authentication.
+     */
+    401: unknown;
+    /**
+     * The target host is not permitted for probing.
+     */
+    403: unknown;
+};
+
+export type GetApiIframePreflightResponses = {
+    /**
+     * Result of the preflight check for the requested iframe URL.
+     */
+    200: IframePreflightResponse;
+};
+
+export type GetApiIframePreflightResponse = GetApiIframePreflightResponses[keyof GetApiIframePreflightResponses];
 
 export type GetApiEnvironmentsData = {
     body?: never;

@@ -37,6 +37,57 @@ interface PersistentIframeProps {
 
 type ScrollTarget = HTMLElement | Window;
 
+interface IframePreflightResult {
+  ok: boolean;
+  status: number | null;
+  method: "HEAD" | "GET" | null;
+  error?: string;
+}
+
+function parseIframePreflightResult(
+  raw: unknown,
+): IframePreflightResult | null {
+  if (typeof raw !== "object" || raw === null) {
+    return null;
+  }
+
+  const record = raw as Record<string, unknown>;
+  const { ok, status, method, error } = record;
+
+  if (typeof ok !== "boolean") {
+    return null;
+  }
+
+  let normalizedStatus: number | null;
+  if (status === null) {
+    normalizedStatus = null;
+  } else if (typeof status === "number" && Number.isInteger(status) && status >= 0) {
+    normalizedStatus = status;
+  } else {
+    return null;
+  }
+
+  let normalizedMethod: "HEAD" | "GET" | null;
+  if (method === null) {
+    normalizedMethod = null;
+  } else if (method === "HEAD" || method === "GET") {
+    normalizedMethod = method;
+  } else {
+    return null;
+  }
+
+  if (error !== undefined && typeof error !== "string") {
+    return null;
+  }
+
+  return {
+    ok,
+    status: normalizedStatus,
+    method: normalizedMethod,
+    error,
+  };
+}
+
 function getScrollableParents(element: HTMLElement): ScrollTarget[] {
   const parents: ScrollTarget[] = [];
   let current: HTMLElement | null = element.parentElement;
@@ -185,48 +236,55 @@ export function PersistentIframe({
 
     const runPreflight = async () => {
       try {
-        const response = await fetch(src, {
-          method: "HEAD",
-          cache: "no-store",
-          signal: controller.signal,
-        });
+        const searchParams = new URLSearchParams({ url: src });
+        const response = await fetch(
+          `/api/iframe/preflight?${searchParams.toString()}`,
+          {
+            method: "GET",
+            cache: "no-store",
+            credentials: "include",
+            signal: controller.signal,
+          },
+        );
 
         if (controller.signal.aborted) {
           return;
         }
 
-        if (response.ok) {
-          return;
-        }
-
-        if (response.status === 405) {
-          const fallbackResponse = await fetch(src, {
-            method: "GET",
-            cache: "no-store",
-            redirect: "manual",
-            signal: controller.signal,
-          });
-
-          if (controller.signal.aborted) {
-            return;
-          }
-          if (fallbackResponse.ok) {
-            return;
-          }
-
+        if (!response.ok) {
           handleError(
             new Error(
-              `Preflight failed (status ${fallbackResponse.status}) for iframe "${persistKey}"`,
+              `Preflight request failed (status ${response.status}) for iframe "${persistKey}"`,
             ),
           );
           return;
         }
 
-        handleError(
-          new Error(
-            `Preflight failed (status ${response.status}) for iframe "${persistKey}"`,
-          ),
-        );
+        const payload = parseIframePreflightResult(await response.json());
+
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        if (!payload) {
+          handleError(
+            new Error(
+              `Preflight returned an unexpected response for iframe "${persistKey}"`,
+            ),
+          );
+          return;
+        }
+
+        if (!payload.ok) {
+          const statusText =
+            payload.status !== null ? `status ${payload.status}` : "an error";
+          handleError(
+            new Error(
+              payload.error ??
+                `Preflight failed (${statusText}) for iframe "${persistKey}"`,
+            ),
+          );
+        }
       } catch (error) {
         if (controller.signal.aborted) {
           return;
