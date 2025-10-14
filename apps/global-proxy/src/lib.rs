@@ -230,7 +230,15 @@ async fn handle_request(state: Arc<AppState>, req: Request<Body>) -> Response<Bo
                     return text_response(StatusCode::LOOP_DETECTED, "Loop detected in proxy");
                 }
 
+                let is_vscode_route = route.port == 39_378;
+
                 if *req.method() == Method::OPTIONS {
+                    if is_vscode_route {
+                        return Response::builder()
+                            .status(StatusCode::NO_CONTENT)
+                            .body(Body::empty())
+                            .unwrap();
+                    }
                     return cors_response(StatusCode::NO_CONTENT);
                 }
 
@@ -251,8 +259,8 @@ async fn handle_request(state: Arc<AppState>, req: Request<Body>) -> Response<Bo
                     target,
                     ProxyBehavior {
                         skip_service_worker: true,
-                        add_cors: true,
-                        strip_cors_headers: false,
+                        add_cors: !is_vscode_route,
+                        strip_cors_headers: is_vscode_route,
                         workspace_header: route.workspace_header,
                         port_header: Some(route.port.to_string()),
                         frame_ancestors: None,
