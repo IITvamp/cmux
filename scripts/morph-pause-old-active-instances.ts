@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { Instance, MorphCloudClient } from "morphcloud";
+import { Instance, InstanceStatus, MorphCloudClient } from "morphcloud";
 import { createInterface } from "node:readline/promises";
 import process, { stdin as input, stdout as output } from "node:process";
 
@@ -48,7 +48,7 @@ if (instances.length === 0) {
 const now = Date.now();
 const thresholdMs = HOURS_THRESHOLD * MILLISECONDS_PER_HOUR;
 const staleActiveInstances = instances
-  .filter((instance) => instance.status === "ready")
+  .filter((instance) => instance.status === InstanceStatus.READY)
   .filter((instance) => now - instance.created * 1000 > thresholdMs)
   .sort((a, b) => a.created - b.created);
 
