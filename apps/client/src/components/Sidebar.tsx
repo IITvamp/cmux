@@ -106,6 +106,18 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // Listen for storage events from command bar
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === "sidebarHidden" && e.newValue !== null) {
+        setIsHidden(e.newValue === "true");
+      }
+    };
+
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
+
   const onMouseMove = useCallback((e: MouseEvent) => {
     // Batch width updates to once per animation frame to reduce layout thrash
     if (rafIdRef.current != null) return;
