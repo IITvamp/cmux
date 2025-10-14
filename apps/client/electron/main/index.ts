@@ -66,6 +66,7 @@ type AutoUpdateToastPayload = {
 };
 
 let queuedAutoUpdateToast: AutoUpdateToastPayload | null = null;
+let updateDownloadedAndReady = false;
 
 // Persistent log files
 let logsDir: string | null = null;
@@ -365,6 +366,7 @@ function registerAutoUpdateIpcHandlers(): void {
         ok: true as const,
         updateAvailable: isUpdateNewerThanCurrent(updateInfo),
         version,
+        alreadyDownloaded: updateDownloadedAndReady,
       };
     } catch (error) {
       mainWarn("Renderer-initiated checkForUpdates failed", error);
@@ -492,6 +494,7 @@ function setupAutoUpdates(): void {
         : null;
 
     mainLog("Update downloaded; notifying renderer", { version });
+    updateDownloadedAndReady = true;
     queueAutoUpdateToast({ version });
   });
 
@@ -922,10 +925,27 @@ app.whenReady().then(async () => {
             try {
               mainLog("Manual update check initiated");
               const result = await autoUpdater.checkForUpdates();
-              if (!result?.updateInfo) {
+              const updateInfo = result?.updateInfo;
+              const version =
+                updateInfo && typeof updateInfo.version === "string"
+                  ? updateInfo.version
+                  : null;
+              const versionLabel = version ? ` (${version})` : "";
+
+              if (!isUpdateNewerThanCurrent(updateInfo)) {
                 await dialog.showMessageBox({
                   type: "info",
-                  message: "You’re up to date.",
+                  message: "You're up to date.",
+                });
+              } else if (updateDownloadedAndReady) {
+                await dialog.showMessageBox({
+                  type: "info",
+                  message: `Update ready to install${versionLabel}. The update will be applied when you restart cmux.`,
+                });
+              } else {
+                await dialog.showMessageBox({
+                  type: "info",
+                  message: `Update available${versionLabel}. Downloading in the background. You'll be notified when it's ready to install.`,
                 });
               }
             } catch (e) {
