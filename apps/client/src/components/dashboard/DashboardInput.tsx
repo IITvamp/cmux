@@ -146,7 +146,21 @@ export const DashboardInput = memo(
           recentPointer.target instanceof Element &&
           !recentPointer.target.closest(lexicalRootSelector)
         ) {
-          return false;
+          // Check if the pointer target is a focusable input element
+          const pointerTarget = recentPointer.target;
+          const isFocusableInput =
+            pointerTarget instanceof HTMLInputElement ||
+            pointerTarget instanceof HTMLTextAreaElement ||
+            pointerTarget instanceof HTMLSelectElement ||
+            pointerTarget.getAttribute("contenteditable") === "true" ||
+            pointerTarget.closest('[contenteditable="true"]') ||
+            pointerTarget.closest('input, textarea, select, [contenteditable="true"]');
+
+          // Only prevent refocus if the user clicked on an actual focusable input
+          if (isFocusableInput) {
+            return false;
+          }
+          // For other elements (buttons, dropdowns, etc.), allow refocus
         }
 
         const recentKeydown = lastKeydownRef.current;
