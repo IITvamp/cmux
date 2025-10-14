@@ -37,8 +37,8 @@ import {
 import { toast } from "sonner";
 import { attachTaskLifecycleListeners } from "@/lib/socket/taskLifecycleListeners";
 import z from "zod";
-import type { EditorApi } from "@/components/dashboard/DashboardInput";
-import LexicalEditor from "@/components/lexical/LexicalEditor";
+import type { EditorApi } from "@/components/RestartTaskInput";
+import { RestartTaskInput } from "@/components/RestartTaskInput";
 
 const paramsSchema = z.object({
   taskId: typedZid("tasks"),
@@ -86,7 +86,7 @@ const RestartTaskForm = memo(function RestartTaskForm({
   const { theme } = useTheme();
   const { addTaskToExpand } = useExpandTasks();
   const createTask = useMutation(api.tasks.create);
-  const editorApiRef = useRef<EditorApi | null>(null);
+  const editorApiRef = useRef<EditorApi>(null);
   const [followUpText, setFollowUpText] = useState("");
   const [isRestartingTask, setIsRestartingTask] = useState(false);
   const [overridePrompt, setOverridePrompt] = useState(false);
@@ -274,7 +274,8 @@ const RestartTaskForm = memo(function RestartTaskForm({
         className="mx-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-neutral-500/15 bg-white dark:border-neutral-500/15 dark:bg-neutral-950"
       >
         <div className="px-3.5 pt-3.5">
-          <LexicalEditor
+          <RestartTaskInput
+            ref={editorApiRef}
             key={persistenceKey}
             placeholder={
               overridePrompt
@@ -293,9 +294,6 @@ const RestartTaskForm = memo(function RestartTaskForm({
             persistenceKey={persistenceKey}
             maxHeight="300px"
             minHeight="30px"
-            onEditorReady={(api) => {
-              editorApiRef.current = api;
-            }}
             contentEditableClassName="text-[15px] text-neutral-900 dark:text-neutral-100 focus:outline-none"
             padding={{
               paddingLeft: "0px",
