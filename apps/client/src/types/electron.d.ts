@@ -114,6 +114,7 @@ interface CmuxAPI {
         reason?: string;
         updateAvailable?: boolean;
         version?: string | null;
+        alreadyDownloaded?: boolean;
       }>;
     install: () => Promise<{ ok: boolean; reason?: string }>;
   };
