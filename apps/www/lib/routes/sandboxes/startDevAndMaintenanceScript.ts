@@ -84,6 +84,19 @@ fi`;
 set -eux
 cd ${WORKSPACE_ROOT}
 
+echo "=== Pulling latest changes from git repos ==="
+set +e
+for dir in */; do
+  if [ -d "\$dir/.git" ]; then
+    echo "Pulling in \$dir"
+    cd "\$dir"
+    git pull origin main
+    cd ..
+  fi
+done
+set -e
+echo "=== Git pull completed ==="
+
 echo "=== Maintenance Script Started at \$(date) ==="
 ${maintenanceScript}
 echo "=== Maintenance Script Completed at \$(date) ==="
