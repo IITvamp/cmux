@@ -4,7 +4,7 @@ import { convexQuery } from "@convex-dev/react-query";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import clsx from "clsx";
-import { useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import z from "zod";
 import { PersistentWebView } from "@/components/persistent-webview";
 import { getTaskRunPersistKey } from "@/lib/persistent-webview-keys";
@@ -66,13 +66,24 @@ function VSCodeComponent() {
     : null;
   const persistKey = getTaskRunPersistKey(taskRunId);
   const hasWorkspace = workspaceUrl !== null;
+  type FrameStatus = "waiting" | "loading" | "ready" | "error";
+  const [frameStatus, setFrameStatus] = useState<FrameStatus>("waiting");
+  const [loadError, setLoadError] = useState<Error | null>(null);
+
+  useEffect(() => {
+    setLoadError(null);
+    setFrameStatus(workspaceUrl ? "loading" : "waiting");
+  }, [workspaceUrl]);
 
   const onLoad = useCallback(() => {
+    setFrameStatus("ready");
     console.log(`Workspace view loaded for task run ${taskRunId}`);
   }, [taskRunId]);
 
   const onError = useCallback(
     (error: Error) => {
+      setLoadError(error);
+      setFrameStatus("error");
       console.error(
         `Failed to load workspace view for task run ${taskRunId}:`,
         error
@@ -80,6 +91,19 @@ function VSCodeComponent() {
     },
     [taskRunId]
   );
+
+  const showOverlay = frameStatus !== "ready";
+  const statusMessage = useMemo(() => {
+    if (frameStatus === "error") {
+      return "We hit an issue while starting VS Code. Retrying might help.";
+    }
+
+    if (frameStatus === "loading") {
+      return "Starting your VS Code workspace...";
+    }
+
+    return "Preparing your VS Code workspace...";
+  }, [frameStatus]);
 
   return (
     <div className="pl-1 flex flex-col grow bg-neutral-50 dark:bg-black">
@@ -94,7 +118,7 @@ function VSCodeComponent() {
               sandbox={TASK_RUN_IFRAME_SANDBOX}
               allow={TASK_RUN_IFRAME_ALLOW}
               retainOnUnmount
-              suspended={!hasWorkspace}
+              suspended={!hasWorkspace || frameStatus !== "ready"}
               onLoad={onLoad}
               onError={onError}
             />
@@ -105,29 +129,24 @@ function VSCodeComponent() {
             className={clsx(
               "absolute inset-0 flex items-center justify-center transition pointer-events-none",
               {
-                "opacity-100": !hasWorkspace,
-                "opacity-0": hasWorkspace,
+                "opacity-100": showOverlay,
+                "opacity-0": !showOverlay,
               }
             )}
           >
-            <div className="flex flex-col items-center gap-3">
-              <div className="flex gap-1">
-                <div
-                  className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
-                  style={{ animationDelay: "0ms" }}
-                />
-                <div
-                  className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
-                  style={{ animationDelay: "150ms" }}
-                />
-                <div
-                  className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
-                  style={{ animationDelay: "300ms" }}
-                />
+            <div className="flex flex-col items-center gap-3 text-center px-6">
+              <div className="relative h-10 w-10">
+                <span className="absolute inset-0 rounded-full border-2 border-neutral-200 dark:border-neutral-800" />
+                <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-blue-500 border-l-blue-500 animate-spin [animation-duration:1s]" />
               </div>
-              <span className="text-sm text-neutral-500">
-                Starting VS Code...
+              <span className="text-sm text-neutral-600 dark:text-neutral-300">
+                {statusMessage}
               </span>
+              {frameStatus === "error" && loadError ? (
+                <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                  {loadError.message}
+                </span>
+              ) : null}
             </div>
           </div>
         </div>
