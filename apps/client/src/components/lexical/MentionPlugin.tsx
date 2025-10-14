@@ -26,7 +26,7 @@ interface MentionMenuProps {
   files: FileInfo[];
   selectedIndex: number;
   onSelect: (file: FileInfo) => void;
-  position: { top: number; left: number } | null;
+  position: { top: number; left: number; showAbove?: boolean } | null;
   hasRepository: boolean;
   isLoading: boolean;
 }
@@ -59,7 +59,9 @@ function MentionMenu({
       ref={menuRef}
       className="absolute z-[var(--z-modal)] max-h-48 overflow-y-auto bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-md shadow-lg max-w-[580px]"
       style={{
-        top: position.top,
+        ...(position.showAbove
+          ? { bottom: `${window.innerHeight - position.top}px` }
+          : { top: position.top }),
         left: position.left,
       }}
     >
@@ -147,6 +149,7 @@ export function MentionPlugin({
   const [menuPosition, setMenuPosition] = useState<{
     top: number;
     left: number;
+    showAbove?: boolean;
   } | null>(null);
   const [searchText, setSearchText] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -302,14 +305,29 @@ export function MentionPlugin({
         setSearchText(searchQuery);
         triggerNodeRef.current = node;
 
-        // Calculate menu position
+        // Calculate menu position with edge collision detection
         const domSelection = window.getSelection();
         if (domSelection && domSelection.rangeCount > 0) {
           const range = domSelection.getRangeAt(0);
           const rect = range.getBoundingClientRect();
+
+          // Menu dimensions (approximate max height from CSS: max-h-48 = 192px)
+          const menuMaxHeight = 192;
+          const menuGap = 4;
+
+          // Calculate available space above and below cursor
+          const spaceBelow = window.innerHeight - rect.bottom;
+          const spaceAbove = rect.top;
+
+          // Decide whether to show above or below based on available space
+          const showAbove = spaceBelow < menuMaxHeight + menuGap && spaceAbove > spaceBelow;
+
           setMenuPosition({
-            top: rect.bottom + window.scrollY + 4,
+            top: showAbove
+              ? rect.top + window.scrollY - menuGap
+              : rect.bottom + window.scrollY + menuGap,
             left: rect.left + window.scrollX,
+            showAbove,
           });
           setIsShowingMenu(true);
         }
