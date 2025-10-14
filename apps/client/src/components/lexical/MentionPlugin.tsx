@@ -15,6 +15,7 @@ import {
   KEY_ESCAPE_COMMAND,
   TextNode,
 } from "lexical";
+import type { EditorState } from "lexical";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { getIconForFile } from "vscode-icons-js";
@@ -26,7 +27,7 @@ interface MentionMenuProps {
   files: FileInfo[];
   selectedIndex: number;
   onSelect: (file: FileInfo) => void;
-  position: { top: number; left: number } | null;
+  position: { top: number; left: number; showAbove?: boolean } | null;
   hasRepository: boolean;
   isLoading: boolean;
 }
@@ -54,12 +55,19 @@ function MentionMenu({
 
   if (!position) return null;
 
+  const bottomOffset =
+    position.showAbove && typeof document !== "undefined"
+      ? Math.max(document.documentElement.scrollHeight - position.top, 0)
+      : undefined;
+
   return createPortal(
     <div
       ref={menuRef}
       className="absolute z-[var(--z-modal)] max-h-48 overflow-y-auto bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-md shadow-lg max-w-[580px]"
       style={{
-        top: position.top,
+        ...(position.showAbove && bottomOffset !== undefined
+          ? { bottom: `${bottomOffset}px` }
+          : { top: position.top }),
         left: position.left,
       }}
     >
@@ -147,6 +155,7 @@ export function MentionPlugin({
   const [menuPosition, setMenuPosition] = useState<{
     top: number;
     left: number;
+    showAbove?: boolean;
   } | null>(null);
   const [searchText, setSearchText] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -267,63 +276,100 @@ export function MentionPlugin({
     [editor, hideMenu]
   );
 
+  const updateMenuFromSelection = useCallback(
+    (editorState?: EditorState) => {
+      (editorState ?? editor.getEditorState()).read(() => {
+        const selection = $getSelection();
+        if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
+          hideMenu();
+          return;
+        }
+
+        const node = selection.anchor.getNode();
+        if (!$isTextNode(node)) {
+          hideMenu();
+          return;
+        }
+
+        const text = node.getTextContent();
+        const offset = selection.anchor.offset;
+
+        // Find the last @ before the cursor
+        let mentionStartIndex = -1;
+        for (let i = offset - 1; i >= 0; i--) {
+          if (text[i] === MENTION_TRIGGER) {
+            mentionStartIndex = i;
+            break;
+          }
+          // Stop if we hit whitespace
+          if (/\s/.test(text[i])) {
+            break;
+          }
+        }
+
+        if (mentionStartIndex !== -1) {
+          const searchQuery = text.slice(mentionStartIndex + 1, offset);
+          setSearchText(searchQuery);
+          triggerNodeRef.current = node;
+
+          if (typeof window === "undefined") {
+            return;
+          }
+
+          // Calculate menu position with edge collision detection
+          const domSelection = window.getSelection();
+          if (domSelection && domSelection.rangeCount > 0) {
+            const range = domSelection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+
+            // Menu dimensions (approximate max height from CSS: max-h-48 = 192px)
+            const menuMaxHeight = 192;
+            const menuGap = 4;
+
+            // Calculate available space above and below cursor
+            const spaceBelow = window.innerHeight - rect.bottom;
+            const spaceAbove = rect.top;
+
+            // Decide whether to show above or below based on available space
+            const showAbove = spaceBelow < menuMaxHeight + menuGap && spaceAbove > spaceBelow;
+
+            setMenuPosition({
+              top: showAbove
+                ? rect.top + window.scrollY - menuGap
+                : rect.bottom + window.scrollY + menuGap,
+              left: rect.left + window.scrollX,
+              showAbove,
+            });
+            setIsShowingMenu(true);
+          }
+        } else {
+          hideMenu();
+        }
+      });
+    },
+    [editor, hideMenu]
+  );
+
   useEffect(() => {
-    const checkForMentionTrigger = () => {
-      const selection = $getSelection();
-      if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
-        hideMenu();
-        return;
-      }
+    const unregister = editor.registerUpdateListener(({ editorState }) => {
+      updateMenuFromSelection(editorState);
+    });
 
-      const node = selection.anchor.getNode();
-      if (!$isTextNode(node)) {
-        hideMenu();
-        return;
-      }
-
-      const text = node.getTextContent();
-      const offset = selection.anchor.offset;
-
-      // Find the last @ before the cursor
-      let mentionStartIndex = -1;
-      for (let i = offset - 1; i >= 0; i--) {
-        if (text[i] === MENTION_TRIGGER) {
-          mentionStartIndex = i;
-          break;
-        }
-        // Stop if we hit whitespace
-        if (/\s/.test(text[i])) {
-          break;
-        }
-      }
-
-      if (mentionStartIndex !== -1) {
-        const searchQuery = text.slice(mentionStartIndex + 1, offset);
-        setSearchText(searchQuery);
-        triggerNodeRef.current = node;
-
-        // Calculate menu position
-        const domSelection = window.getSelection();
-        if (domSelection && domSelection.rangeCount > 0) {
-          const range = domSelection.getRangeAt(0);
-          const rect = range.getBoundingClientRect();
-          setMenuPosition({
-            top: rect.bottom + window.scrollY + 4,
-            left: rect.left + window.scrollX,
-          });
-          setIsShowingMenu(true);
-        }
-      } else {
-        hideMenu();
-      }
+    const handleResize = () => {
+      updateMenuFromSelection();
     };
 
-    return editor.registerUpdateListener(() => {
-      editor.getEditorState().read(() => {
-        checkForMentionTrigger();
-      });
-    });
-  }, [editor, hideMenu]);
+    if (typeof window !== "undefined") {
+      window.addEventListener("resize", handleResize);
+    }
+
+    return () => {
+      unregister();
+      if (typeof window !== "undefined") {
+        window.removeEventListener("resize", handleResize);
+      }
+    };
+  }, [editor, updateMenuFromSelection]);
 
   // Store current state in refs to avoid stale closures
   const isShowingMenuRef = useRef(isShowingMenu);
