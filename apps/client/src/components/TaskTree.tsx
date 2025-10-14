@@ -9,6 +9,7 @@ import { useArchiveTask } from "@/hooks/useArchiveTask";
 import { useOpenWithActions } from "@/hooks/useOpenWithActions";
 import { isElectron } from "@/lib/electron";
 import { isFakeConvexId } from "@/lib/fakeConvexId";
+import { toProxyWorkspaceUrl } from "@/lib/toProxyWorkspaceUrl";
 import type { AnnotatedTaskRun, TaskRunWithChildren } from "@/types/task";
 import { ContextMenu } from "@base-ui-components/react/context-menu";
 import { api } from "@cmux/convex/api";
@@ -53,6 +54,7 @@ import { SidebarListItem } from "./sidebar/SidebarListItem";
 import { annotateAgentOrdinals } from "./task-tree/annotateAgentOrdinals";
 
 type PreviewService = NonNullable<TaskRunWithChildren["networking"]>[number];
+type VSCodeStatus = NonNullable<AnnotatedTaskRun["vscode"]>["status"];
 
 type TaskWithGeneratedBranch = Doc<"tasks"> & {
   generatedBranchName?: string | null;
@@ -534,18 +536,48 @@ function TaskRunTreeInner({
     runLeadingIcon
   );
 
-  // Generate VSCode URL if available
-  const hasActiveVSCode = run.vscode?.status === "running";
+  const vscodeStatus = run.vscode?.status ?? null;
+  const showVSCodeLink = Boolean(run.vscode);
   const vscodeUrl = useMemo(
-    () => (hasActiveVSCode && run.vscode?.url) || null,
-    [hasActiveVSCode, run]
+    () => (run.vscode?.status === "running" && run.vscode?.url) || null,
+    [run.vscode?.status, run.vscode?.url]
   );
 
-  // Collect running preview ports
   const previewServices = useMemo(() => {
     if (!run.networking) return [];
-    return run.networking.filter((service) => service.status === "running");
+    return run.networking.filter(
+      (service) => service.status === "running" && service.port !== 39380
+    );
   }, [run.networking]);
+
+  const browserService = useMemo(() => {
+    const networkingMatch = run.networking?.find((service) => service.port === 39380);
+    if (networkingMatch) {
+      return networkingMatch;
+    }
+
+    if (!run.vscode?.workspaceUrl) {
+      return null;
+    }
+
+    const proxiedUrl = toProxyWorkspaceUrl(run.vscode.workspaceUrl, {
+      portOverride: 39380,
+      stripSearch: true,
+      path: "/",
+    });
+
+    const derivedStatus: PreviewService["status"] = run.vscode.status === "running"
+      ? "running"
+      : run.vscode?.status === "stopped"
+      ? "stopped"
+      : "starting";
+
+    return {
+      status: derivedStatus,
+      port: 39380,
+      url: proxiedUrl,
+    } satisfies PreviewService;
+  }, [run.networking, run.vscode]);
 
   const {
     actions: openWithActions,
@@ -565,7 +597,6 @@ function TaskRunTreeInner({
     (run.pullRequestUrl && run.pullRequestUrl !== "pending") ||
     run.pullRequests?.some((pr) => pr.url)
   );
-  const shouldRenderPreviewLink = previewServices.length > 0;
   const hasOpenWithActions = openWithActions.length > 0;
   const hasPortActions = portActions.length > 0;
   const canCopyBranch = Boolean(copyRunBranch);
@@ -574,10 +605,11 @@ function TaskRunTreeInner({
   const shouldShowOpenWithDivider = hasOpenWithActions && hasPortActions;
   const hasCollapsibleContent =
     hasChildren ||
-    hasActiveVSCode ||
+    showVSCodeLink ||
+    Boolean(browserService) ||
     shouldRenderDiffLink ||
     shouldRenderPullRequestLink ||
-    shouldRenderPreviewLink;
+    previewServices.length > 0;
 
   return (
     <Fragment>
@@ -680,7 +712,9 @@ function TaskRunTreeInner({
         taskId={taskId}
         teamSlugOrId={teamSlugOrId}
         isExpanded={isExpanded}
-        hasActiveVSCode={hasActiveVSCode}
+        showVSCodeLink={showVSCodeLink}
+        vscodeStatus={vscodeStatus}
+        browserService={browserService}
         hasChildren={hasChildren}
         shouldRenderPullRequestLink={shouldRenderPullRequestLink}
         previewServices={previewServices}
@@ -742,7 +776,9 @@ interface TaskRunDetailsProps {
   taskId: Id<"tasks">;
   teamSlugOrId: string;
   isExpanded: boolean;
-  hasActiveVSCode: boolean;
+  showVSCodeLink: boolean;
+  vscodeStatus: VSCodeStatus | null;
+  browserService: PreviewService | null;
   hasChildren: boolean;
   shouldRenderPullRequestLink: boolean;
   previewServices: PreviewService[];
@@ -758,7 +794,9 @@ function TaskRunDetails({
   taskId,
   teamSlugOrId,
   isExpanded,
-  hasActiveVSCode,
+  showVSCodeLink,
+  vscodeStatus,
+  browserService,
   hasChildren,
   shouldRenderPullRequestLink,
   previewServices,
@@ -800,9 +838,69 @@ function TaskRunDetails({
     </Tooltip>
   ) : null;
 
+  const renderStatusChip = (
+    status: PreviewService["status"] | VSCodeStatus | null
+  ) => {
+    if (!status || status === "running") {
+      return null;
+    }
+
+    const label = status === "starting" ? "Starting" : "Stopped";
+    const palette =
+      status === "stopped"
+        ? "bg-red-100 text-red-600 dark:bg-red-950/70 dark:text-red-300"
+        : "bg-neutral-200 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300";
+
+    return (
+      <span
+        className={clsx(
+          "rounded-full px-2 py-[2px] text-[10px] font-medium uppercase tracking-wide",
+          palette
+        )}
+      >
+        {label}
+      </span>
+    );
+  };
+
+  const composeTrailing = (
+    status: PreviewService["status"] | VSCodeStatus | null,
+    extra?: ReactNode
+  ) => {
+    const items: Array<{ key: string; node: ReactNode }> = [];
+    const chip = renderStatusChip(status);
+    if (chip) {
+      items.push({ key: "status", node: chip });
+    }
+    if (extra) {
+      items.push({ key: "extra", node: extra });
+    }
+
+    if (items.length === 0) {
+      return undefined;
+    }
+
+    if (items.length === 1) {
+      return items[0].node;
+    }
+
+    return (
+      <span className="flex items-center gap-1">
+        {items.map(({ key, node }) => (
+          <span key={key} className="flex items-center">
+            {node}
+          </span>
+        ))}
+      </span>
+    );
+  };
+
+  const vscodeTrailing = composeTrailing(vscodeStatus, environmentErrorIndicator);
+  const browserTrailing = composeTrailing(browserService?.status ?? null);
+
   return (
     <Fragment>
-      {hasActiveVSCode && (
+      {showVSCodeLink ? (
         <TaskRunDetailLink
           to="/$teamSlugOrId/task/$taskId/run/$runId"
           params={{
@@ -816,9 +914,9 @@ function TaskRunDetails({
           }
           label="VS Code"
           indentLevel={indentLevel}
-          trailing={environmentErrorIndicator}
+          trailing={vscodeTrailing}
         />
-      )}
+      ) : null}
 
       <TaskRunDetailLink
         to="/$teamSlugOrId/task/$taskId/run/$runId/diff"
@@ -836,6 +934,65 @@ function TaskRunDetails({
           label="Pull Request"
           indentLevel={indentLevel}
         />
+      ) : null}
+
+      {browserService ? (
+        <div className="relative group mt-px">
+          <TaskRunDetailLink
+            to="/$teamSlugOrId/task/$taskId/run/$runId/preview/$port"
+            params={{
+              teamSlugOrId,
+              taskId,
+              runId: run._id,
+              port: `${browserService.port}`,
+            }}
+            icon={<Globe className="w-3 h-3 mr-2 text-neutral-400" />}
+            label="Browser"
+            indentLevel={indentLevel}
+            className="pr-10"
+            trailing={browserTrailing}
+            onClick={(event) => {
+              if (event.metaKey || event.ctrlKey) {
+                event.preventDefault();
+                window.open(browserService.url, "_blank", "noopener,noreferrer");
+              }
+            }}
+          />
+
+          <Dropdown.Root>
+            <Dropdown.Trigger
+              onClick={(event) => event.stopPropagation()}
+              className={clsx(
+                "absolute right-2 top-1/2 -translate-y-1/2",
+                "p-1 rounded flex items-center gap-1",
+                "bg-neutral-100/80 dark:bg-neutral-700/80",
+                "hover:bg-neutral-200/80 dark:hover:bg-neutral-600/80",
+                "text-neutral-600 dark:text-neutral-400"
+              )}
+            >
+              <EllipsisVertical className="w-2.5 h-2.5" />
+            </Dropdown.Trigger>
+            <Dropdown.Portal>
+              <Dropdown.Positioner
+                sideOffset={8}
+                side={isElectron ? "left" : "bottom"}
+              >
+                <Dropdown.Popup>
+                  <Dropdown.Arrow />
+                  <Dropdown.Item
+                    onClick={() => {
+                      window.open(browserService.url, "_blank", "noopener,noreferrer");
+                    }}
+                    className="flex items-center gap-2"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Open in new tab
+                  </Dropdown.Item>
+                </Dropdown.Popup>
+              </Dropdown.Positioner>
+            </Dropdown.Portal>
+          </Dropdown.Root>
+        </div>
       ) : null}
 
       {previewServices.map((service) => (

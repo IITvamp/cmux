@@ -3,17 +3,12 @@ import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import clsx from "clsx";
 import { useCallback } from "react";
 import z from "zod";
-import { PersistentWebView } from "@/components/persistent-webview";
+import { TaskRunVSCodePane } from "@/components/TaskRunVSCodePane";
 import { getTaskRunPersistKey } from "@/lib/persistent-webview-keys";
 import { toProxyWorkspaceUrl } from "@/lib/toProxyWorkspaceUrl";
-import {
-  preloadTaskRunIframes,
-  TASK_RUN_IFRAME_ALLOW,
-  TASK_RUN_IFRAME_SANDBOX,
-} from "../lib/preloadTaskRunIframes";
+import { preloadTaskRunIframes } from "../lib/preloadTaskRunIframes";
 
 const paramsSchema = z.object({
   taskId: typedZid("tasks"),
@@ -65,8 +60,6 @@ function VSCodeComponent() {
     ? toProxyWorkspaceUrl(taskRun.data.vscode.workspaceUrl)
     : null;
   const persistKey = getTaskRunPersistKey(taskRunId);
-  const hasWorkspace = workspaceUrl !== null;
-
   const onLoad = useCallback(() => {
     console.log(`Workspace view loaded for task run ${taskRunId}`);
   }, [taskRunId]);
@@ -82,56 +75,11 @@ function VSCodeComponent() {
   );
 
   return (
-    <div className="pl-1 flex flex-col grow bg-neutral-50 dark:bg-black">
-      <div className="flex flex-col grow min-h-0 border-l border-neutral-200 dark:border-neutral-800">
-        <div className="flex flex-row grow min-h-0 relative">
-          {workspaceUrl ? (
-            <PersistentWebView
-              persistKey={persistKey}
-              src={workspaceUrl}
-              className="grow flex relative"
-              iframeClassName="select-none"
-              sandbox={TASK_RUN_IFRAME_SANDBOX}
-              allow={TASK_RUN_IFRAME_ALLOW}
-              retainOnUnmount
-              suspended={!hasWorkspace}
-              onLoad={onLoad}
-              onError={onError}
-            />
-          ) : (
-            <div className="grow" />
-          )}
-          <div
-            className={clsx(
-              "absolute inset-0 flex items-center justify-center transition pointer-events-none",
-              {
-                "opacity-100": !hasWorkspace,
-                "opacity-0": hasWorkspace,
-              }
-            )}
-          >
-            <div className="flex flex-col items-center gap-3">
-              <div className="flex gap-1">
-                <div
-                  className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
-                  style={{ animationDelay: "0ms" }}
-                />
-                <div
-                  className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
-                  style={{ animationDelay: "150ms" }}
-                />
-                <div
-                  className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
-                  style={{ animationDelay: "300ms" }}
-                />
-              </div>
-              <span className="text-sm text-neutral-500">
-                Starting VS Code...
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <TaskRunVSCodePane
+      workspaceUrl={workspaceUrl}
+      persistKey={persistKey}
+      onReady={onLoad}
+      onError={onError}
+    />
   );
 }

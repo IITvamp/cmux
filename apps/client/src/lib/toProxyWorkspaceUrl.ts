@@ -1,13 +1,20 @@
-export function toProxyWorkspaceUrl(workspaceUrl: string): string {
+interface ProxyWorkspaceUrlOptions {
+  portOverride?: number;
+  stripSearch?: boolean;
+  path?: string;
+}
+
+export function toProxyWorkspaceUrl(
+  workspaceUrl: string,
+  options: ProxyWorkspaceUrlOptions = {}
+): string {
+  const url = new URL(workspaceUrl);
+
   if (workspaceUrl.includes("morph.so")) {
     // convert https://port-39378-morphvm-zqcjcumw.http.cloud.morph.so/?folder=/root/workspace
     // to https://cmux-zqcjcumw-base-39378.cmux.app/?folder=/root/workspace
-
-    // Parse the URL to extract components
-    const url = new URL(workspaceUrl);
     const hostname = url.hostname;
 
-    // Match format: port-{port}-morphvm-{morphId}.http.cloud.morph.so
     const match = hostname.match(
       /^port-(\d+)-morphvm-([^.]+)\.http\.cloud\.morph\.so$/
     );
@@ -17,15 +24,22 @@ export function toProxyWorkspaceUrl(workspaceUrl: string): string {
     }
 
     const [, port, morphId] = match;
-    const scope = "base"; // Default scope
+    const scope = "base";
+    const targetPort = options.portOverride !== undefined
+      ? String(options.portOverride)
+      : port;
 
-    // Reconstruct as cmux-{morphId}-{scope}-{port}.cmux.app
-    const newHostname = `cmux-${morphId}-${scope}-${port}.cmux.app`;
-
-    // Rebuild the URL with the new hostname
-    url.hostname = newHostname;
-    return url.toString();
+    url.hostname = `cmux-${morphId}-${scope}-${targetPort}.cmux.app`;
+    url.port = "";
   }
 
-  return workspaceUrl;
+  if (options.stripSearch) {
+    url.search = "";
+  }
+
+  if (options.path !== undefined) {
+    url.pathname = options.path;
+  }
+
+  return url.toString();
 }
