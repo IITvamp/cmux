@@ -692,6 +692,13 @@ fn sanitize_headers(headers: &HeaderMap) -> HeaderMap {
         "content-md5",
         "content-digest",
         "etag",
+        // Always strip CORS headers from backend so we can rewrite them properly
+        "access-control-allow-origin",
+        "access-control-allow-methods",
+        "access-control-allow-headers",
+        "access-control-expose-headers",
+        "access-control-allow-credentials",
+        "access-control-max-age",
     ];
 
     let mut out = HeaderMap::new();

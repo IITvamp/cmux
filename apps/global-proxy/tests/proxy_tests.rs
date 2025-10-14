@@ -833,3 +833,164 @@ async fn websocket_proxy_for_cmux_route() {
     proxy.shutdown().await;
     backend.shutdown().await;
 }
+
+#[tokio::test]
+async fn cors_headers_are_rewritten_from_backend_with_wildcard_origin() {
+    // Test that when backend returns CORS headers with wildcard origin,
+    // proxy properly rewrites them for subdomain requests
+    let backend = TestHttpBackend::serve(Arc::new(|_req| {
+        Response::builder()
+            .status(StatusCode::OK)
+            .header("content-type", "application/json")
+            .header("access-control-allow-origin", "*")
+            .header("access-control-allow-methods", "GET")
+            .header("access-control-allow-credentials", "false")
+            .body(Body::from(r#"{"data": "test"}"#))
+            .unwrap()
+    }))
+    .await;
+
+    let proxy = TestProxy::spawn().await;
+    let host = format!("cmux-demo-{}.cmux.sh", backend.port());
+
+    let response = proxy
+        .request(
+            Method::GET,
+            &host,
+            "/api/data",
+            &[("Origin", "https://cmux.sh")],
+        )
+        .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let headers = response.headers();
+
+    // Proxy should rewrite CORS headers for cmux route with add_cors=true
+    assert_eq!(
+        headers
+            .get("access-control-allow-origin")
+            .and_then(|v| v.to_str().ok()),
+        Some("*"),
+        "CORS origin should be wildcard for cmux route"
+    );
+    assert_eq!(
+        headers
+            .get("access-control-allow-credentials")
+            .and_then(|v| v.to_str().ok()),
+        Some("true"),
+        "CORS credentials should be true for cmux route"
+    );
+
+    proxy.shutdown().await;
+    backend.shutdown().await;
+}
+
+#[tokio::test]
+async fn cors_headers_are_rewritten_from_backend_with_specific_origin() {
+    // Test that when backend returns CORS headers with a specific origin,
+    // proxy properly overwrites them based on route type
+    let backend = TestHttpBackend::serve(Arc::new(|_req| {
+        Response::builder()
+            .status(StatusCode::OK)
+            .header("content-type", "application/json")
+            .header("access-control-allow-origin", "https://some-other-origin.com")
+            .header("access-control-allow-methods", "GET, POST")
+            .header("access-control-allow-credentials", "false")
+            .header("access-control-max-age", "3600")
+            .body(Body::from(r#"{"data": "test"}"#))
+            .unwrap()
+    }))
+    .await;
+
+    let proxy = TestProxy::spawn().await;
+    let host = format!("cmux-demo-{}.cmux.sh", backend.port());
+
+    let response = proxy
+        .request(
+            Method::GET,
+            &host,
+            "/api/data",
+            &[("Origin", "https://cmux.sh")],
+        )
+        .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let headers = response.headers();
+
+    // Proxy should completely replace backend's CORS headers
+    assert_eq!(
+        headers
+            .get("access-control-allow-origin")
+            .and_then(|v| v.to_str().ok()),
+        Some("*"),
+        "Backend's origin should be replaced with wildcard"
+    );
+    assert_eq!(
+        headers
+            .get("access-control-allow-credentials")
+            .and_then(|v| v.to_str().ok()),
+        Some("true"),
+        "Backend's credentials setting should be replaced"
+    );
+    assert_eq!(
+        headers
+            .get("access-control-max-age")
+            .and_then(|v| v.to_str().ok()),
+        Some("86400"),
+        "Backend's max-age should be replaced"
+    );
+
+    proxy.shutdown().await;
+    backend.shutdown().await;
+}
+
+#[tokio::test]
+async fn port_route_cors_headers_properly_stripped_from_backend() {
+    // Test that regular port routes properly strip backend CORS headers
+    // when no specific CORS policy is applied
+    let handler = Arc::new(|_req| {
+        Response::builder()
+            .status(StatusCode::OK)
+            .header("content-type", "application/json")
+            .header("access-control-allow-origin", "https://evil.com")
+            .header("access-control-allow-credentials", "false")
+            .header("access-control-max-age", "3600")
+            .body(Body::from(r#"{"data": "test"}"#))
+            .unwrap()
+    });
+
+    let backend = TestHttpBackend::serve(handler).await;
+    let proxy = TestProxy::spawn().await;
+
+    // Use a non-39378 port route (which doesn't apply CORS policy)
+    let host = format!("port-{}-test.cmux.sh", backend.port());
+    let response = proxy
+        .request(
+            Method::GET,
+            &host,
+            "/api/data",
+            &[("Origin", "https://cmux.sh")],
+        )
+        .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let headers = response.headers();
+
+    // For non-39378 ports without add_cors, no CORS headers should be present
+    // (backend headers are stripped, and no new ones are added)
+    assert!(
+        headers.get("access-control-allow-origin").is_none(),
+        "Backend CORS origin should be stripped when no CORS policy applies"
+    );
+    assert!(
+        headers.get("access-control-allow-credentials").is_none(),
+        "Backend CORS credentials should be stripped"
+    );
+    assert!(
+        headers.get("access-control-max-age").is_none(),
+        "Backend CORS max-age should be stripped"
+    );
+
+    proxy.shutdown().await;
+    backend.shutdown().await;
+}
