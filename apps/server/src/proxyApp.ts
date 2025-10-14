@@ -118,8 +118,17 @@ async function checkContainerExists(containerName: string): Promise<boolean> {
   }
 }
 
+// Rewrite CORS headers for proxy responses
+export function rewriteCorsHeaders(proxyRes: any, req: express.Request) {
+  const origin = req.headers.origin;
+  if (origin && proxyRes.headers) {
+    // Rewrite Access-Control-Allow-Origin to the requesting origin
+    proxyRes.headers["access-control-allow-origin"] = origin;
+  }
+}
+
 // Get actual host port for a container port from Docker
-async function getActualPortFromDocker(
+export async function getActualPortFromDocker(
   containerName: string,
   containerPort: string
 ): Promise<string | null> {
@@ -266,6 +275,11 @@ export function createProxyApp({
           if (!res.headersSent) {
             res.status(502).send(`Proxy error: ${err.message}`);
           }
+        });
+
+        // Rewrite CORS headers for subdomain requests
+        proxy.on("proxyRes", (proxyRes, req, res) => {
+          rewriteCorsHeaders(proxyRes, req);
         });
 
         // Proxy the request
