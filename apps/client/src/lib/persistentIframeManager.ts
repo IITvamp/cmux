@@ -13,6 +13,7 @@ type IframeEntry = {
   isVisible: boolean;
   allow?: string;
   sandbox?: string;
+  cleanup?: () => void;
 };
 
 interface MountOptions {
@@ -227,6 +228,13 @@ class PersistentIframeManager {
       throw new Error(`Iframe with key "${key}" not found`);
     }
 
+    // Clean up any existing event listeners for this iframe before adding new ones
+    if (entry.cleanup) {
+      if (this.debugMode) console.log(`[Mount] Cleaning up existing listeners for ${key}`);
+      entry.cleanup();
+      entry.cleanup = undefined;
+    }
+
     // Fix #1: Hide currently active iframe before showing new one
     if (this.activeIframeKey && this.activeIframeKey !== key) {
       const activeEntry = this.iframes.get(this.activeIframeKey);
@@ -307,8 +315,8 @@ class PersistentIframeManager {
     // Also sync on window resize
     window.addEventListener("resize", scrollHandler);
 
-    // Return cleanup function
-    return () => {
+    // Create cleanup function and store it in the entry
+    const cleanup = () => {
       if (this.debugMode) console.log(`[Unmount] Starting unmount for ${key}`);
 
       targetElement.removeAttribute("data-iframe-target");
@@ -325,7 +333,18 @@ class PersistentIframeManager {
         parent.removeEventListener("scroll", scrollHandler);
       });
       window.removeEventListener("resize", scrollHandler);
+
+      // Clear the cleanup function from the entry
+      if (entry.cleanup === cleanup) {
+        entry.cleanup = undefined;
+      }
     };
+
+    // Store cleanup function in the entry so we can call it if mountIframe is called again
+    entry.cleanup = cleanup;
+
+    // Return cleanup function
+    return cleanup;
   }
 
   /**
@@ -400,6 +419,12 @@ class PersistentIframeManager {
     const entry = this.iframes.get(key);
     if (!entry) return;
 
+    // Clean up event listeners when unmounting
+    if (entry.cleanup) {
+      entry.cleanup();
+      entry.cleanup = undefined;
+    }
+
     entry.wrapper.style.visibility = "hidden";
     entry.wrapper.style.pointerEvents = "none";
     this.moveIframeOffscreen(entry);
@@ -449,6 +474,12 @@ class PersistentIframeManager {
   removeIframe(key: string): void {
     const entry = this.iframes.get(key);
     if (!entry) return;
+
+    // Clean up event listeners before removing
+    if (entry.cleanup) {
+      entry.cleanup();
+      entry.cleanup = undefined;
+    }
 
     if (entry.wrapper.parentElement) {
       entry.wrapper.parentElement.removeChild(entry.wrapper);
