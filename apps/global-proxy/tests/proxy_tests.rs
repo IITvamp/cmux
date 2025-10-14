@@ -435,6 +435,17 @@ async fn port_options_preflight() {
             .is_none()
     );
 
+    let cmux_response = proxy
+        .request(Method::OPTIONS, "cmux-test-base-39378.cmux.sh", "/", &[])
+        .await;
+    assert_eq!(cmux_response.status(), StatusCode::NO_CONTENT);
+    assert!(
+        cmux_response
+            .headers()
+            .get("access-control-allow-origin")
+            .is_none()
+    );
+
     proxy.shutdown().await;
 }
 
@@ -731,6 +742,31 @@ async fn port_39378_strips_cors_and_applies_csp() {
     );
     assert!(headers.get("x-frame-options").is_none());
 
+    let cmux_response = proxy
+        .request(
+            Method::GET,
+            "cmux-test-base-39378.cmux.sh",
+            "/",
+            &[("Origin", "https://cmux.dev")],
+        )
+        .await;
+    assert_eq!(cmux_response.status(), StatusCode::OK);
+    let cmux_headers = cmux_response.headers();
+    for name in [
+        "access-control-allow-origin",
+        "access-control-allow-methods",
+        "access-control-allow-headers",
+        "access-control-allow-credentials",
+        "access-control-expose-headers",
+        "access-control-max-age",
+    ] {
+        assert!(
+            cmux_headers.get(name).is_none(),
+            "expected header {} to be stripped",
+            name
+        );
+    }
+
     let response_localhost = proxy
         .request(
             Method::GET,
@@ -750,6 +786,30 @@ async fn port_39378_strips_cors_and_applies_csp() {
     ] {
         assert!(
             response_localhost.headers().get(name).is_none(),
+            "expected header {} to be stripped",
+            name
+        );
+    }
+
+    let cmux_local_response = proxy
+        .request(
+            Method::GET,
+            "cmux-test-base-39378.cmux.sh",
+            "/",
+            &[("Origin", "http://localhost:5173")],
+        )
+        .await;
+    assert_eq!(cmux_local_response.status(), StatusCode::OK);
+    for name in [
+        "access-control-allow-origin",
+        "access-control-allow-methods",
+        "access-control-allow-headers",
+        "access-control-allow-credentials",
+        "access-control-expose-headers",
+        "access-control-max-age",
+    ] {
+        assert!(
+            cmux_local_response.headers().get(name).is_none(),
             "expected header {} to be stripped",
             name
         );
