@@ -1,4 +1,5 @@
 use std::{
+    collections::VecDeque,
     io::{Read, Write},
     process::{Command, Stdio},
     sync::{Arc, Mutex},
@@ -13,6 +14,8 @@ use uuid::Uuid;
 use crate::pty::{Pty, PtyReader, PtyWriter};
 use portable_pty::MasterPty;
 
+const BACKLOG_LIMIT: usize = 200_000;
+
 #[derive(Clone)]
 pub struct AppState {
     pub sessions: Arc<dashmap::DashMap<Uuid, Arc<Session>>>,
@@ -26,6 +29,41 @@ impl AppState {
     }
 }
 
+#[derive(Default)]
+struct Backlog {
+    chunks: VecDeque<Vec<u8>>,
+    total_bytes: usize,
+}
+
+impl Backlog {
+    fn new() -> Self {
+        Self {
+            chunks: VecDeque::new(),
+            total_bytes: 0,
+        }
+    }
+
+    fn push(&mut self, data: &[u8]) {
+        if data.is_empty() {
+            return;
+        }
+        self.chunks.push_back(data.to_vec());
+        self.total_bytes += data.len();
+        while self.total_bytes > BACKLOG_LIMIT {
+            if let Some(removed) = self.chunks.pop_front() {
+                self.total_bytes = self.total_bytes.saturating_sub(removed.len());
+            } else {
+                self.total_bytes = 0;
+                break;
+            }
+        }
+    }
+
+    fn snapshot(&self) -> Vec<Vec<u8>> {
+        self.chunks.iter().cloned().collect()
+    }
+}
+
 pub struct Session {
     pub id: Uuid,
     writer: Arc<Mutex<PtyWriter>>, // sync write to pty
@@ -33,6 +71,7 @@ pub struct Session {
     kill: Arc<dyn Fn() + Send + Sync>,
     master: Option<Arc<Mutex<Box<dyn MasterPty + Send>>>>, // for PTY resize
     tx: broadcast::Sender<Vec<u8>>,                        // output broadcast
+    backlog: Arc<Mutex<Backlog>>,
 }
 
 #[derive(serde::Deserialize)]
@@ -74,6 +113,8 @@ impl Session {
         let writer: PtyWriter = master.take_writer()?;
         let (tx, _rx) = broadcast::channel::<Vec<u8>>(256);
         let tx_reader = tx.clone();
+        let backlog = Arc::new(Mutex::new(Backlog::new()));
+        let backlog_reader = backlog.clone();
         let reader_task = tokio::task::spawn_blocking(move || {
             let mut reader = reader;
             let mut buf = [0u8; 4096];
@@ -81,7 +122,11 @@ impl Session {
                 match reader.read(&mut buf) {
                     Ok(0) => break,
                     Ok(n) => {
-                        let _ = tx_reader.send(buf[..n].to_vec());
+                        let chunk = buf[..n].to_vec();
+                        if let Ok(mut backlog) = backlog_reader.lock() {
+                            backlog.push(&chunk);
+                        }
+                        let _ = tx_reader.send(chunk);
                     }
                     Err(_) => break,
                 }
@@ -98,6 +143,7 @@ impl Session {
             kill,
             master: Some(master),
             tx,
+            backlog,
         });
         Ok((id, session))
     }
@@ -123,6 +169,8 @@ impl Session {
 
         let (tx, _rx) = broadcast::channel::<Vec<u8>>(256);
         let tx_reader = tx.clone();
+        let backlog = Arc::new(Mutex::new(Backlog::new()));
+        let backlog_reader = backlog.clone();
         // Keep child alive by moving into the reader task context
         let reader_task = tokio::task::spawn_blocking(move || {
             let mut reader = reader;
@@ -131,7 +179,11 @@ impl Session {
                 match reader.read(&mut buf) {
                     Ok(0) => break,
                     Ok(n) => {
-                        let _ = tx_reader.send(buf[..n].to_vec());
+                        let chunk = buf[..n].to_vec();
+                        if let Ok(mut backlog) = backlog_reader.lock() {
+                            backlog.push(&chunk);
+                        }
+                        let _ = tx_reader.send(chunk);
                     }
                     Err(_) => break,
                 }
@@ -154,6 +206,7 @@ impl Session {
             kill,
             master: None,
             tx,
+            backlog,
         });
         Ok((id, session))
     }
@@ -165,12 +218,28 @@ impl Session {
 
     pub async fn attach_socket(self: Arc<Self>, socket: WebSocket) {
         let mut rx = self.tx.subscribe();
+        let backlog_chunks = {
+            match self.backlog.lock() {
+                Ok(backlog) => backlog.snapshot(),
+                Err(_) => Vec::new(),
+            }
+        };
 
         // Split socket for send/receive
         let (mut ws_tx, mut ws_rx) = socket.split();
 
         // Sender task: PTY -> WS
         let send_task = tokio::spawn(async move {
+            for chunk in backlog_chunks {
+                if ws_tx
+                    .send(Message::Text(String::from_utf8_lossy(&chunk).to_string()))
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
+            }
+
             while let Ok(data) = rx.recv().await {
                 if ws_tx
                     .send(Message::Text(String::from_utf8_lossy(&data).to_string()))

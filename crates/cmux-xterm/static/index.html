@@ -210,6 +210,8 @@
       import { SearchAddon } from "https://esm.sh/@xterm/addon-search@0.15.0";
       import { Unicode11Addon } from "https://esm.sh/@xterm/addon-unicode11@0.8.0";
 
+      const QUERY_KEY = "tabs";
+
       const grid = document.getElementById("terminal-grid");
       const newTerminalButton = document.getElementById("new-terminal");
       const sessions = new Set();
@@ -219,10 +221,77 @@
         void spawnTerminal();
       });
 
-      async function spawnTerminal() {
+      const initialIds = parseQueryIds();
+      if (initialIds.length > 0) {
+        for (const id of initialIds) {
+          void spawnTerminal(id);
+        }
+      } else {
+        void spawnTerminal();
+      }
+
+      function parseQueryIds() {
+        const params = new URLSearchParams(window.location.search);
+        const raw = params.get(QUERY_KEY);
+        if (!raw) {
+          return [];
+        }
+        const entries = raw
+          .split(",")
+          .map((value) => value.trim())
+          .filter((value) => value.length > 0);
+        return Array.from(new Set(entries));
+      }
+
+      function updateUrl() {
+        const params = new URLSearchParams(window.location.search);
+        const ids = Array.from(
+          new Set(
+            Array.from(sessions)
+              .map((session) => session.id)
+              .filter((id) => typeof id === "string" && id.length > 0)
+          )
+        );
+
+        if (ids.length === 0) {
+          params.delete(QUERY_KEY);
+        } else {
+          params.set(QUERY_KEY, ids.join(","));
+        }
+
+        const query = params.toString();
+        const next = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
+        window.history.replaceState({}, "", next);
+      }
+
+      function findSessionById(id) {
+        for (const session of sessions) {
+          if (session.id === id) {
+            return session;
+          }
+        }
+        return undefined;
+      }
+
+      async function spawnTerminal(existingId) {
+        if (existingId && findSessionById(existingId)) {
+          // Already attached in this view.
+          return;
+        }
+
         const session = createTerminalCard(++sessionCounter);
-        grid.prepend(session.card);
         sessions.add(session);
+        grid.prepend(session.card);
+
+        if (existingId) {
+          session.id = existingId;
+          session.card.dataset.sessionId = existingId;
+          updateTerminalTitle(session);
+          session.status.textContent = "Reconnecting…";
+          connectSession(session);
+          updateUrl();
+          return;
+        }
 
         try {
           session.status.textContent = "Starting…";
@@ -240,39 +309,14 @@
 
           const payload = await response.json();
           session.id = payload.id;
-
-          const wsUrl = new URL(payload.ws_url, window.location.origin);
-          wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:";
-
-          const socket = new WebSocket(wsUrl);
-          socket.binaryType = "arraybuffer";
-          session.socket = socket;
-
-          const attach = new AttachAddon(socket, { bidirectional: true });
-          session.attachAddon = attach;
-          session.term.loadAddon(attach);
-
-          socket.addEventListener("open", () => {
-            session.status.textContent = "Connected";
-            session.card.dataset.state = "connected";
-            focusTerm(session);
-            fitAndResize(session);
-          });
-
-          socket.addEventListener("close", () => {
-            session.status.textContent = "Closed";
-            session.card.dataset.state = "closed";
-            cleanup(session, { keepCard: true });
-          });
-
-          socket.addEventListener("error", () => {
-            session.status.textContent = "Connection error";
-            session.card.dataset.state = "error";
-          });
+          session.card.dataset.sessionId = session.id;
+          updateTerminalTitle(session);
+          updateUrl();
+          connectSession(session);
         } catch (error) {
           session.status.textContent = `Error: ${String(error.message ?? error)}`;
           session.card.dataset.state = "error";
-          cleanup(session, { keepCard: false });
+          teardown(session, { removeCard: true });
         }
       }
 
@@ -346,105 +390,197 @@
 
         term.open(termSurface);
 
-        let webglAddon = null;
         try {
-          webglAddon = new WebglAddon();
+          const webglAddon = new WebglAddon();
           term.loadAddon(webglAddon);
-          webglAddon?.onContextLoss(() => {
-            webglAddon?.dispose();
+          webglAddon.onContextLoss(() => {
+            webglAddon.dispose();
           });
         } catch {
-          webglAddon?.dispose();
-          webglAddon = null;
+          // Ignore WebGL failures; the terminal will fall back to canvas.
         }
-
-        const resizeObserver = new ResizeObserver(() => {
-          fitAndResize(session);
-        });
-        resizeObserver.observe(body);
 
         const session = {
           index,
           card,
+          title,
           term,
           fitAddon,
           status,
           closeButton,
           body,
           socket: null,
-          resizeObserver,
+          socketReady: false,
+          closing: false,
+          resizeObserver: undefined,
           attachAddon: null,
           id: null
         };
 
+        const resizeObserver = new ResizeObserver(() => {
+          fitAndMaybeResize(session);
+        });
+        resizeObserver.observe(body);
+        session.resizeObserver = resizeObserver;
+
         closeButton.addEventListener("click", (event) => {
           event.stopPropagation();
-          cleanup(session, { keepCard: false, sendSignal: true });
+          closeSession(session);
         });
 
         card.addEventListener("click", () => {
           focusTerm(session);
         });
 
-        fitAndResize(session);
+        fitAndMaybeResize(session);
         focusTerm(session);
 
         return session;
+      }
+
+      function updateTerminalTitle(session) {
+        if (!session.id) {
+          session.title.textContent = `Terminal ${session.index}`;
+          return;
+        }
+        const suffix = session.id.slice(0, 8);
+        session.title.textContent = `Terminal ${session.index} · ${suffix}`;
+      }
+
+      function connectSession(session) {
+        if (!session.id) {
+          return;
+        }
+
+        session.card.classList.remove("terminal-error", "terminal-closed");
+        session.status.textContent = "Connecting…";
+        session.card.dataset.state = "connecting";
+        session.socketReady = false;
+
+        if (session.socket && session.socket.readyState === WebSocket.OPEN) {
+          session.closing = true;
+          session.socket.close();
+        }
+
+        const wsUrl = new URL(`/ws/${session.id}`, window.location.origin);
+        wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:";
+
+        const socket = new WebSocket(wsUrl);
+        socket.binaryType = "arraybuffer";
+        session.socket = socket;
+
+        const attach = new AttachAddon(socket, { bidirectional: true });
+        session.attachAddon?.dispose();
+        session.attachAddon = attach;
+        session.term.loadAddon(attach);
+
+        socket.addEventListener("open", () => {
+          session.socketReady = true;
+          session.status.textContent = "Connected";
+          session.card.dataset.state = "connected";
+          session.closing = false;
+          focusTerm(session);
+          fitAndMaybeResize(session);
+          window.setTimeout(() => fitAndMaybeResize(session), 100);
+        });
+
+        socket.addEventListener("close", () => {
+          session.socketReady = false;
+          session.socket = null;
+          session.attachAddon?.dispose();
+          session.attachAddon = null;
+
+          if (session.closing) {
+            session.closing = false;
+            return;
+          }
+
+          session.status.textContent = "Disconnected";
+          session.card.dataset.state = "disconnected";
+          session.card.classList.add("terminal-closed");
+        });
+
+        socket.addEventListener("error", () => {
+          session.status.textContent = "Connection error";
+          session.card.dataset.state = "error";
+          session.card.classList.add("terminal-error");
+        });
+      }
+
+      function closeSession(session) {
+        session.closing = true;
+        if (session.id) {
+          fetch(`/api/tabs/${session.id}`, { method: "DELETE" }).catch(() => {});
+        }
+        teardown(session, { removeCard: true });
+      }
+
+      function teardown(session, options = {}) {
+        const { removeCard = false } = options;
+        if (!sessions.delete(session)) {
+          if (removeCard) {
+            session.card.remove();
+          }
+          return;
+        }
+
+        session.resizeObserver?.disconnect();
+        session.attachAddon?.dispose();
+        session.attachAddon = null;
+
+        if (session.socket && session.socket.readyState === WebSocket.OPEN) {
+          session.socket.close();
+        } else {
+          session.socket = null;
+          session.socketReady = false;
+          session.closing = false;
+        }
+
+        if (removeCard) {
+          session.card.remove();
+        } else {
+          session.card.classList.add("terminal-closed");
+        }
+
+        session.term.dispose();
+
+        updateUrl();
+      }
+
+      function normalizedDimensions(cols, rows) {
+        const safeCols = Number.isFinite(cols) && cols > 0 ? cols : 80;
+        const safeRows = Number.isFinite(rows) && rows > 0 ? rows : 24;
+        return {
+          cols: Math.max(20, Math.min(320, Math.round(safeCols))),
+          rows: Math.max(8, Math.min(120, Math.round(safeRows)))
+        };
+      }
+
+      function measure(session) {
+        const { term, fitAddon } = session;
+        fitAddon.fit();
+        return normalizedDimensions(term.cols, term.rows);
+      }
+
+      function fitAndMaybeResize(session) {
+        const { term, fitAddon } = session;
+        fitAddon.fit();
+        const dims = normalizedDimensions(term.cols, term.rows);
+        if (session.socketReady && session.socket && session.socket.readyState === WebSocket.OPEN) {
+          session.socket.send(JSON.stringify({ type: "resize", cols: dims.cols, rows: dims.rows }));
+        }
+        return dims;
       }
 
       function focusTerm(session) {
         session.term.focus();
       }
 
-      function measure(session) {
-        const { term, fitAddon } = session;
-        fitAddon.fit();
-        return {
-          cols: term.cols ?? 80,
-          rows: term.rows ?? 24
-        };
-      }
-
-      function fitAndResize(session) {
-        const { term, fitAddon, socket } = session;
-        fitAddon.fit();
-        if (socket && socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
-        }
-      }
-
-      function cleanup(session, options = {}) {
-        const { keepCard = false, sendSignal = false } = options;
-        if (!sessions.has(session)) {
-          return;
-        }
-        sessions.delete(session);
-
-        session.resizeObserver.disconnect();
-        session.attachAddon?.dispose();
-
-        if (session.socket && session.socket.readyState === WebSocket.OPEN) {
-          if (sendSignal && session.id) {
-            fetch(`/api/tabs/${session.id}`, { method: "DELETE" }).catch(() => {});
-          }
-          session.socket.close();
-        }
-
-        session.term.dispose();
-
-        if (!keepCard) {
-          session.card.remove();
-        }
-      }
-
       window.addEventListener("resize", () => {
         window.requestAnimationFrame(() => {
-          sessions.forEach((session) => fitAndResize(session));
+          sessions.forEach((session) => fitAndMaybeResize(session));
         });
       });
-
-      // Bootstrap an initial terminal for convenience.
-      void spawnTerminal();
     </script>
   </body>
 </html>

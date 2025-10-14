@@ -80,6 +80,21 @@ async fn ws_reconnect_and_reattach() {
     .expect("ws connect #2 timed out")
     .unwrap();
 
+    // Expect backlog to include earlier output
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if let Some(Ok(msg)) = ws2.next().await {
+                if let Message::Text(t) = msg {
+                    if t.contains("hello-one") {
+                        break;
+                    }
+                }
+            }
+        }
+    })
+    .await
+    .expect("did not receive backlog echo in time");
+
     // Send again and expect echo
     ws2.send(Message::Text("hello-two\n".into())).await.unwrap();
     tokio::time::timeout(Duration::from_secs(5), async {
