@@ -756,6 +756,96 @@ const convexSchema = defineSchema({
     .index("by_statusId", ["statusId"])
     .index("by_sha_context", ["sha", "context", "updatedAt"])
     .index("by_sha", ["sha", "updatedAt"]),
+
+  // Brainstorm sessions for collaborative task planning
+  brainstormSessions: defineTable({
+    title: v.string(), // Session title/goal
+    description: v.optional(v.string()), // Detailed description of the goal
+    status: v.union(
+      v.literal("planning"), // Initial brainstorming and refinement
+      v.literal("ready"), // Plan finalized, ready to execute
+      v.literal("in_progress"), // Agents working on subtasks
+      v.literal("completed"), // All subtasks completed
+      v.literal("cancelled"), // Session cancelled
+    ),
+    projectFullName: v.optional(v.string()), // Repository for this session
+    baseBranch: v.optional(v.string()), // Base branch for work
+    environmentId: v.optional(v.id("environments")), // Optional environment
+    userId: v.string(),
+    teamId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_team_user", ["teamId", "userId", "createdAt"])
+    .index("by_status", ["status", "updatedAt"])
+    .index("by_team_status", ["teamId", "status", "updatedAt"]),
+
+  // Subtasks within a brainstorm session
+  brainstormSubtasks: defineTable({
+    sessionId: v.id("brainstormSessions"),
+    title: v.string(), // Subtask title
+    description: v.optional(v.string()), // Detailed description
+    status: v.union(
+      v.literal("pending"), // Not started
+      v.literal("blocked"), // Waiting on dependencies
+      v.literal("ready"), // Dependencies met, ready to start
+      v.literal("in_progress"), // Agent working on it
+      v.literal("completed"), // Successfully completed
+      v.literal("failed"), // Failed to complete
+    ),
+    priority: v.optional(v.number()), // Priority/order (lower = higher priority)
+    estimatedMinutes: v.optional(v.number()), // Estimated time to complete
+    assignedAgents: v.optional(v.array(v.string())), // Agents assigned to this subtask
+    taskRunId: v.optional(v.id("taskRuns")), // Link to the actual task run when started
+    userId: v.string(),
+    teamId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_session", ["sessionId", "priority"])
+    .index("by_session_status", ["sessionId", "status", "createdAt"])
+    .index("by_team_user", ["teamId", "userId"])
+    .index("by_taskRun", ["taskRunId"]),
+
+  // Dependencies between subtasks
+  brainstormDependencies: defineTable({
+    sessionId: v.id("brainstormSessions"),
+    subtaskId: v.id("brainstormSubtasks"), // Subtask that depends on another
+    dependsOnSubtaskId: v.id("brainstormSubtasks"), // Subtask that must complete first
+    type: v.optional(
+      v.union(
+        v.literal("blocks"), // Strong dependency - must complete first
+        v.literal("related"), // Weak dependency - just related work
+      )
+    ),
+    userId: v.string(),
+    teamId: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_session", ["sessionId", "createdAt"])
+    .index("by_subtask", ["subtaskId"]) // Find dependencies for a subtask
+    .index("by_depends_on", ["dependsOnSubtaskId"]) // Find what depends on a subtask
+    .index("by_team_user", ["teamId", "userId"]),
+
+  // Conversation messages in a brainstorm session (user <-> agent)
+  brainstormMessages: defineTable({
+    sessionId: v.id("brainstormSessions"),
+    role: v.union(
+      v.literal("user"), // Message from user
+      v.literal("agent"), // Message from AI agent
+      v.literal("system"), // System message
+    ),
+    content: v.string(), // Message content (markdown)
+    agentName: v.optional(v.string()), // Which agent sent this (if role=agent)
+    userId: v.string(),
+    teamId: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_session", ["sessionId", "createdAt"])
+    .index("by_team_user", ["teamId", "userId"]),
 });
 
 export default convexSchema;
