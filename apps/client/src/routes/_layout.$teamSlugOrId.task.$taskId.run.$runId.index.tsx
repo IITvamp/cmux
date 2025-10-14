@@ -4,7 +4,7 @@ import { convexQuery } from "@convex-dev/react-query";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import clsx from "clsx";
-import { useCallback } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { PersistentWebView } from "@/components/persistent-webview";
 import { getTaskRunPersistKey } from "@/lib/persistent-webview-keys";
 import { toProxyWorkspaceUrl } from "@/lib/toProxyWorkspaceUrl";
@@ -12,6 +12,7 @@ import {
   TASK_RUN_IFRAME_ALLOW,
   TASK_RUN_IFRAME_SANDBOX,
   preloadTaskRunIframes,
+  preloadTaskRunPreviewIframes,
 } from "../lib/preloadTaskRunIframes";
 
 export const Route = createFileRoute(
@@ -50,12 +51,66 @@ function TaskRunComponent() {
     })
   );
 
-  const rawWorkspaceUrl = taskRun?.data?.vscode?.workspaceUrl ?? null;
+  const runData = taskRun.data;
+  const rawWorkspaceUrl = runData?.vscode?.workspaceUrl ?? null;
   const workspaceUrl = rawWorkspaceUrl
     ? toProxyWorkspaceUrl(rawWorkspaceUrl)
     : null;
   const persistKey = getTaskRunPersistKey(taskRunId);
-  const hasWorkspace = workspaceUrl !== null;
+  const vscodeStatus = runData?.vscode?.status ?? null;
+  const hasWorkspaceUrl = workspaceUrl !== null;
+  const isVSCodeRunning = hasWorkspaceUrl && vscodeStatus === "running";
+  const isVSCodeStarting = vscodeStatus === "starting";
+  const showVSCodeOverlay = !isVSCodeRunning;
+
+  const vscodeStatusMessage = useMemo(() => {
+    if (isVSCodeRunning) return null;
+    if (isVSCodeStarting) return "Starting VS Code...";
+    if (vscodeStatus === "stopped") return "VS Code workspace has stopped.";
+    if (!hasWorkspaceUrl) return "Waiting for VS Code workspace...";
+    return "Preparing VS Code...";
+  }, [hasWorkspaceUrl, isVSCodeRunning, isVSCodeStarting, vscodeStatus]);
+
+  const overlayMessage = vscodeStatusMessage ?? "Preparing VS Code...";
+
+  const preloadedPreviewKeysRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const networking = runData?.networking;
+    if (!networking) return;
+
+    const runningServices = networking.filter(
+      (service) => service.status === "running"
+    );
+    if (runningServices.length === 0) return;
+
+    const servicesToPreload = runningServices.filter((service) => {
+      const key = `${service.port}:${service.url}`;
+      if (preloadedPreviewKeysRef.current.has(key)) {
+        return false;
+      }
+      preloadedPreviewKeysRef.current.add(key);
+      return true;
+    });
+
+    if (servicesToPreload.length === 0) {
+      return;
+    }
+
+    void preloadTaskRunPreviewIframes(
+      servicesToPreload.map((service) => ({
+        taskRunId,
+        port: service.port,
+        url: service.url,
+      }))
+    ).catch((error) => {
+      servicesToPreload.forEach((service) => {
+        const key = `${service.port}:${service.url}`;
+        preloadedPreviewKeysRef.current.delete(key);
+      });
+      console.warn("Failed to preload preview iframe(s)", error);
+    });
+  }, [runData?.networking, taskRunId]);
 
   const onLoad = useCallback(() => {
     console.log(`Workspace view loaded for task run ${taskRunId}`);
@@ -84,7 +139,7 @@ function TaskRunComponent() {
               allow={TASK_RUN_IFRAME_ALLOW}
               sandbox={TASK_RUN_IFRAME_SANDBOX}
               retainOnUnmount
-              suspended={!hasWorkspace}
+              suspended={!isVSCodeRunning}
               onLoad={onLoad}
               onError={onError}
             />
@@ -95,30 +150,32 @@ function TaskRunComponent() {
             className={clsx(
               "absolute inset-0 flex items-center justify-center transition pointer-events-none",
               {
-                "opacity-100": !hasWorkspace,
-                "opacity-0": hasWorkspace,
+                "opacity-100": showVSCodeOverlay,
+                "opacity-0": !showVSCodeOverlay,
               }
             )}
           >
-            <div className="flex flex-col items-center gap-3">
-              <div className="flex gap-1">
-                <div
-                  className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
-                  style={{ animationDelay: "0ms" }}
-                />
-                <div
-                  className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
-                  style={{ animationDelay: "150ms" }}
-                />
-                <div
-                  className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
-                  style={{ animationDelay: "300ms" }}
-                />
+            {showVSCodeOverlay ? (
+              <div className="flex flex-col items-center gap-3">
+                <div className="flex gap-1">
+                  <div
+                    className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
+                    style={{ animationDelay: "0ms" }}
+                  />
+                  <div
+                    className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
+                    style={{ animationDelay: "150ms" }}
+                  />
+                  <div
+                    className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
+                    style={{ animationDelay: "300ms" }}
+                  />
+                </div>
+                <span className="text-sm text-neutral-500">
+                  {overlayMessage}
+                </span>
               </div>
-              <span className="text-sm text-neutral-500">
-                Starting VS Code...
-              </span>
-            </div>
+            ) : null}
           </div>
         </div>
       </div>

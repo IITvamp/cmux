@@ -58,3 +58,12 @@ const PERMISSIVE_IFRAME_SANDBOX_TOKENS = [
 ] as const;
 
 export const PERMISSIVE_IFRAME_SANDBOX = PERMISSIVE_IFRAME_SANDBOX_TOKENS.join(" ");
+
+export const PREVIEW_IFRAME_SANDBOX = [
+  "allow-same-origin",
+  "allow-scripts",
+  "allow-popups",
+  "allow-forms",
+  "allow-modals",
+  "allow-downloads",
+].join(" ");

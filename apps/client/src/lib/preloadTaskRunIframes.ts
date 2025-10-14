@@ -1,6 +1,13 @@
-import { PERMISSIVE_IFRAME_ALLOW, PERMISSIVE_IFRAME_SANDBOX } from "./iframePermissions";
+import {
+  PERMISSIVE_IFRAME_ALLOW,
+  PERMISSIVE_IFRAME_SANDBOX,
+  PREVIEW_IFRAME_SANDBOX,
+} from "./iframePermissions";
 import { persistentIframeManager } from "./persistentIframeManager";
-import { getTaskRunPersistKey } from "./persistent-webview-keys";
+import {
+  getTaskRunPersistKey,
+  getTaskRunPreviewPersistKey,
+} from "./persistent-webview-keys";
 
 /**
  * Preload iframes for task runs
@@ -10,6 +17,10 @@ import { getTaskRunPersistKey } from "./persistent-webview-keys";
 export const TASK_RUN_IFRAME_ALLOW = PERMISSIVE_IFRAME_ALLOW;
 
 export const TASK_RUN_IFRAME_SANDBOX = PERMISSIVE_IFRAME_SANDBOX;
+
+export const TASK_RUN_PREVIEW_IFRAME_ALLOW = PERMISSIVE_IFRAME_ALLOW;
+
+export const TASK_RUN_PREVIEW_IFRAME_SANDBOX = PREVIEW_IFRAME_SANDBOX;
 
 export async function preloadTaskRunIframes(
   data: { url: string; taskRunId: string }[]
@@ -25,6 +36,34 @@ export async function preloadTaskRunIframes(
   });
 
   await persistentIframeManager.preloadMultiple(entries);
+}
+
+export async function preloadTaskRunPreviewIframes(
+  data: { taskRunId: string; port: string | number; url: string }[]
+): Promise<void> {
+  const entries = data.map(({ taskRunId, port, url }) => ({
+    key: getTaskRunPreviewPersistKey(taskRunId, port),
+    url,
+    allow: TASK_RUN_PREVIEW_IFRAME_ALLOW,
+    sandbox: TASK_RUN_PREVIEW_IFRAME_SANDBOX,
+  }));
+
+  await persistentIframeManager.preloadMultiple(entries);
+}
+
+export async function preloadTaskRunPreviewIframe(
+  taskRunId: string,
+  port: string | number,
+  url: string
+): Promise<void> {
+  await persistentIframeManager.preloadIframe(
+    getTaskRunPreviewPersistKey(taskRunId, port),
+    url,
+    {
+      allow: TASK_RUN_PREVIEW_IFRAME_ALLOW,
+      sandbox: TASK_RUN_PREVIEW_IFRAME_SANDBOX,
+    }
+  );
 }
 
 /**

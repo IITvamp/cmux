@@ -15,6 +15,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { PREVIEW_IFRAME_SANDBOX } from "@/lib/iframePermissions";
 import { cn } from "@/lib/utils";
 import type {
   ElectronDevToolsMode,
@@ -772,7 +773,7 @@ export function ElectronPreviewBrowser({
             src={src}
             className="h-full w-full border-0"
             borderRadius={0}
-            sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-downloads"
+            sandbox={PREVIEW_IFRAME_SANDBOX}
             onElectronViewReady={handleViewReady}
             onElectronViewDestroyed={handleViewDestroyed}
             forceWebContentsViewIfElectron

@@ -1,10 +1,12 @@
 import { ElectronPreviewBrowser } from "@/components/electron-preview-browser";
 import { getTaskRunPreviewPersistKey } from "@/lib/persistent-webview-keys";
+import { preloadTaskRunPreviewIframe } from "@/lib/preloadTaskRunIframes";
+import { Loader2 } from "lucide-react";
 import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import z from "zod";
 
 const paramsSchema = z.object({
@@ -42,21 +44,51 @@ function PreviewPage() {
     return taskRuns?.find((run) => run._id === runId);
   }, [runId, taskRuns]);
 
-  // Find the service URL for the requested port
-  const previewUrl = useMemo(() => {
+  const selectedService = useMemo(() => {
     if (!selectedRun?.networking) return null;
-    const portNum = parseInt(port, 10);
-    const service = selectedRun.networking.find(
-      (s) => s.port === portNum && s.status === "running",
+    const portNum = Number.parseInt(port, 10);
+    return (
+      selectedRun.networking.find((service) => service.port === portNum) ?? null
     );
-    return service?.url;
-  }, [selectedRun, port]);
+  }, [port, selectedRun]);
+
+  const serviceStatus = selectedService?.status ?? null;
+  const isServiceRunning = serviceStatus === "running";
+  const isServiceStarting = serviceStatus === "starting";
+  const previewUrl = isServiceRunning ? selectedService?.url ?? null : null;
+
+  const hasAttemptedPreloadRef = useRef(false);
+
+  useEffect(() => {
+    if (!isServiceRunning || !previewUrl || hasAttemptedPreloadRef.current) {
+      return;
+    }
+
+    hasAttemptedPreloadRef.current = true;
+    void preloadTaskRunPreviewIframe(runId, port, previewUrl).catch((error) => {
+      console.warn("Failed to preload preview iframe", error);
+    });
+  }, [isServiceRunning, port, previewUrl, runId]);
 
   const persistKey = useMemo(() => {
     return getTaskRunPreviewPersistKey(runId, port);
   }, [runId, port]);
 
   const paneBorderRadius = 6;
+
+  const availableRunningPorts = useMemo(() => {
+    if (!selectedRun?.networking) return [] as number[];
+    return selectedRun.networking
+      .filter((service) => service.status === "running")
+      .map((service) => service.port);
+  }, [selectedRun]);
+
+  const isTaskRunsLoading = taskRuns === undefined;
+  const showLoadingState = isTaskRunsLoading || isServiceStarting;
+  const showStoppedState = Boolean(
+    selectedService && selectedService.status === "stopped",
+  );
+  const isRunMissing = Boolean(!isTaskRunsLoading && !selectedRun);
 
   return (
     <div className="flex h-full flex-col bg-white dark:bg-neutral-950">
@@ -70,27 +102,44 @@ function PreviewPage() {
         ) : (
           <div className="flex h-full items-center justify-center">
             <div className="text-center">
-              <p className="mb-2 text-sm text-neutral-500 dark:text-neutral-400">
-                {selectedRun
-                  ? `Port ${port} is not available for this run`
-                  : "Loading..."}
-              </p>
+              {showLoadingState ? (
+                <div className="flex flex-col items-center gap-3">
+                  <Loader2 className="h-5 w-5 animate-spin text-neutral-500" />
+                  <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                    {isServiceStarting
+                      ? `Waiting for dev server on port ${port}...`
+                      : "Loading run details..."}
+                  </p>
+                </div>
+              ) : (
+                <p className="mb-2 text-sm text-neutral-500 dark:text-neutral-400">
+                  {showStoppedState
+                    ? `Port ${port} preview has stopped.`
+                    : isRunMissing
+                      ? "Task run could not be found."
+                      : `Port ${port} is not available for this run.`}
+                </p>
+              )}
               {selectedRun?.networking && selectedRun.networking.length > 0 && (
                 <div className="mt-4">
                   <p className="mb-2 text-xs text-neutral-400 dark:text-neutral-500">
                     Available ports:
                   </p>
                   <div className="flex justify-center gap-2">
-                    {selectedRun.networking
-                      .filter((s) => s.status === "running")
-                      .map((service) => (
+                    {availableRunningPorts.length > 0 ? (
+                      availableRunningPorts.map((runningPort) => (
                         <span
-                          key={service.port}
+                          key={runningPort}
                           className="rounded px-2 py-1 text-xs bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-200"
                         >
-                          {service.port}
+                          {runningPort}
                         </span>
-                      ))}
+                      ))
+                    ) : (
+                      <span className="rounded px-2 py-1 text-xs bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-200">
+                        None running yet
+                      </span>
+                    )}
                   </div>
                 </div>
               )}
