@@ -6,6 +6,7 @@ import { isElectron } from "@/lib/electron";
 import { cn } from "@/lib/utils";
 import { normalizeGitRef } from "@/lib/refWithOrigin";
 import { gitDiffQueryOptions } from "@/queries/git-diff";
+import { getVncUrl } from "@/lib/getVncUrl";
 import type { Doc, Id } from "@cmux/convex/dataModel";
 import type { TaskRunWithChildren } from "@/types/task";
 import { Skeleton } from "@heroui/react";
@@ -38,6 +39,7 @@ import {
   GitBranch,
   GitMerge,
   Trash2,
+  Globe,
 } from "lucide-react";
 import {
   Suspense,
@@ -220,6 +222,11 @@ export function TaskDetailHeader({
     [selectedRun?.worktreePath, task?.worktreePath],
   );
 
+  const vncUrl = useMemo(() => {
+    const workspaceUrl = selectedRun?.vscode?.workspaceUrl;
+    return getVncUrl(workspaceUrl);
+  }, [selectedRun?.vscode?.workspaceUrl]);
+
   const normalizedBaseBranch = useMemo(() => {
     const candidate = task?.baseBranch;
     if (candidate && candidate.trim()) {
@@ -332,6 +339,17 @@ export function TaskDetailHeader({
           </Suspense>
 
           <OpenEditorSplitButton worktreePath={worktreePath} />
+
+          {vncUrl && (
+            <button
+              onClick={() => window.open(vncUrl, "_blank", "noopener,noreferrer")}
+              className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 text-white rounded hover:bg-neutral-700 border border-neutral-700 font-medium text-xs select-none whitespace-nowrap"
+              title="Open browser view (VNC)"
+            >
+              <Globe className="w-3.5 h-3.5" />
+              Browser
+            </button>
+          )}
 
           <button className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-white select-none hidden">
             <ExternalLink className="w-3.5 h-3.5" />
