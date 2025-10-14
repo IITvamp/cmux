@@ -860,6 +860,7 @@ async fn head_method_not_allowed_falls_back_to_get_with_length() {
         headers.get("content-type").and_then(|v| v.to_str().ok()),
         Some("text/plain")
     );
+    assert!(headers.get("transfer-encoding").is_none());
 
     let methods = seen_methods.lock().unwrap().clone();
     assert_eq!(methods, vec!["HEAD", "GET"]);

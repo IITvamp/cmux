@@ -484,7 +484,9 @@ fn build_head_response(
     body_len: Option<usize>,
 ) -> Response<Body> {
     let mut builder = Response::builder().status(status).version(version);
-    let mut new_headers = sanitize_headers(headers, false);
+    // We are synthesizing a new body (empty) and potentially a precise
+    // Content-Length, so strip payload-specific headers like transfer-encoding.
+    let mut new_headers = sanitize_headers(headers, true);
     strip_csp_headers(&mut new_headers);
     if behavior.strip_cors_headers {
         strip_cors_headers(&mut new_headers);
