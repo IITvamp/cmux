@@ -3,6 +3,7 @@ import * as http from "http";
 import { execFile, execSync } from "node:child_process";
 import { Server } from "socket.io";
 import { io, Socket } from "socket.io-client";
+import * as os from "os";
 import * as vscode from "vscode";
 
 // Create output channel for cmux logs
@@ -294,6 +295,32 @@ async function setupDefaultTerminal() {
   // Open git changes view
   log("Opening git changes view...");
   await openMultiDiffEditor();
+
+  // Open Browser for morph instances
+  if (os.hostname().includes('morph')) {
+    log("Opening Browser for morph instance");
+    const panel = vscode.window.createWebviewPanel(
+      'cmuxBrowser',
+      'Browser',
+      vscode.ViewColumn.Active,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+      }
+    );
+    panel.webview.html = `<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { margin: 0; padding: 0; height: 100vh; }
+    iframe { width: 100%; height: 100%; border: none; }
+  </style>
+</head>
+<body>
+  <iframe src="http://localhost:39380/vnc.html?autoconnect=1&resize=local"></iframe>
+</body>
+</html>`;
+  }
 
   // Create terminal for default tmux session
   log("Creating terminal for default tmux session");
