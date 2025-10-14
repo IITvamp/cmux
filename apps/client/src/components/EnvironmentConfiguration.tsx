@@ -21,7 +21,14 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { Id } from "@cmux/convex/dataModel";
 import clsx from "clsx";
 import { ArrowLeft, Loader2, Minus, Plus, Settings, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FocusEvent,
+} from "react";
 import TextareaAutosize from "react-textarea-autosize";
 
 export type EnvVar = { name: string; value: string; isSecret: boolean };
@@ -167,6 +174,14 @@ export function EnvironmentConfiguration({
   }, []);
 
   const showIframeOverlay = !iframeLoaded || iframeError !== null;
+
+  const handleAccordionContentFocusCapture = useCallback(
+    (event: FocusEvent<HTMLElement>) => {
+      // Prevent the accordion container from stealing focus from interactive fields.
+      event.stopPropagation();
+    },
+    []
+  );
 
   // no-op placeholder removed; using onSnapshot instead
 
@@ -464,6 +479,7 @@ export function EnvironmentConfiguration({
           >
             <div
               className="pb-2"
+              onFocusCapture={handleAccordionContentFocusCapture}
               onPasteCapture={(e) => {
                 const text = e.clipboardData?.getData("text") ?? "";
                 if (text && (/\n/.test(text) || /(=|:)\s*\S/.test(text))) {
@@ -606,7 +622,10 @@ export function EnvironmentConfiguration({
             aria-label="Install dependencies"
             title="Install dependencies"
           >
-            <div className="space-y-2 pb-4">
+            <div
+              className="space-y-2 pb-4"
+              onFocusCapture={handleAccordionContentFocusCapture}
+            >
               <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-3">
                 Use the VS Code terminal to install any dependencies your
                 codebase needs.
@@ -623,7 +642,10 @@ export function EnvironmentConfiguration({
             aria-label="Maintenance script"
             title="Maintenance script"
           >
-            <div className="pb-4">
+            <div
+              className="pb-4"
+              onFocusCapture={handleAccordionContentFocusCapture}
+            >
               <ScriptTextareaField
                 description={SCRIPT_COPY.maintenance.description}
                 subtitle={SCRIPT_COPY.maintenance.subtitle}
@@ -641,7 +663,10 @@ export function EnvironmentConfiguration({
             aria-label="Dev script"
             title="Dev script"
           >
-            <div className="space-y-4 pb-4">
+            <div
+              className="space-y-4 pb-4"
+              onFocusCapture={handleAccordionContentFocusCapture}
+            >
               <ScriptTextareaField
                 description={SCRIPT_COPY.dev.description}
                 subtitle={SCRIPT_COPY.dev.subtitle}
