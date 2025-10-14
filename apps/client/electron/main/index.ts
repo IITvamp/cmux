@@ -330,8 +330,13 @@ function markPendingUpdate(version: string | null): boolean {
 }
 
 function markUpdateDownloaded(version: string | null): void {
+  if (!version) {
+    downloadedUpdateVersion = null;
+    return;
+  }
+
   downloadedUpdateVersion = version;
-  pendingUpdateVersion = version ?? pendingUpdateVersion;
+  pendingUpdateVersion = version;
 }
 
 function isUpdateNewerThanCurrent(
@@ -556,10 +561,32 @@ function setupAutoUpdates(): void {
     )
   );
   autoUpdater.on("update-downloaded", (_event, info?: UpdateInfo) => {
-    const version = extractUpdateVersion(info) ?? pendingUpdateVersion ?? null;
-    mainLog("Update downloaded; notifying renderer", { version });
-    markUpdateDownloaded(version);
-    queueAutoUpdateToast({ version });
+    const downloadedVersion = extractUpdateVersion(info);
+    const expectedVersion = pendingUpdateVersion ?? downloadedVersion ?? null;
+
+    if (!expectedVersion) {
+      mainWarn("Update downloaded without discernible version; ignoring", {
+        downloadedVersion,
+        pendingUpdateVersion,
+      });
+      return;
+    }
+
+    if (
+      pendingUpdateVersion &&
+      downloadedVersion &&
+      !versionsMatch(pendingUpdateVersion, downloadedVersion)
+    ) {
+      mainWarn("Ignoring stale update download", {
+        pending: pendingUpdateVersion,
+        downloaded: downloadedVersion,
+      });
+      return;
+    }
+
+    mainLog("Update downloaded; notifying renderer", { version: expectedVersion });
+    markUpdateDownloaded(expectedVersion);
+    queueAutoUpdateToast({ version: expectedVersion });
   });
 
   // Initial check and periodic re-checks
