@@ -1,0 +1,22 @@
+[package]
+name = "vnc-websocket-proxy"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "macros", "fs"] }
+tokio-tungstenite = "0.21"
+tungstenite = "0.21"
+futures-util = "0.3"
+clap = { version = "4", features = ["derive"] }
+http = "1"
+httparse = "1"
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = true
+strip = true
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
