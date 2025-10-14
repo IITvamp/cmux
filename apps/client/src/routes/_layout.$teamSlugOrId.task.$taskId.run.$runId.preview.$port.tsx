@@ -1,10 +1,13 @@
 import { ElectronPreviewBrowser } from "@/components/electron-preview-browser";
+import { RestoredTerminalView } from "@/components/RestoredTerminalView";
+import { Button } from "@/components/ui/button";
 import { getTaskRunPreviewPersistKey } from "@/lib/persistent-webview-keys";
 import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { TerminalSquare, X } from "lucide-react";
 import z from "zod";
 
 const paramsSchema = z.object({
@@ -31,6 +34,7 @@ export const Route = createFileRoute(
 
 function PreviewPage() {
   const { taskId, teamSlugOrId, runId, port } = Route.useParams();
+  const [showTerminal, setShowTerminal] = useState(true);
 
   const taskRuns = useQuery(api.taskRuns.getByTask, {
     teamSlugOrId,
@@ -60,13 +64,63 @@ function PreviewPage() {
 
   return (
     <div className="flex h-full flex-col bg-white dark:bg-neutral-950">
-      <div className="flex-1 min-h-0">
+      <div className="relative flex-1 min-h-0">
         {previewUrl ? (
-          <ElectronPreviewBrowser
-            persistKey={persistKey}
-            src={previewUrl}
-            borderRadius={paneBorderRadius}
-          />
+          <>
+            <ElectronPreviewBrowser
+              persistKey={persistKey}
+              src={previewUrl}
+              borderRadius={paneBorderRadius}
+            />
+
+            <div className="pointer-events-none absolute inset-x-0 top-4 z-20 flex justify-end px-4">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setShowTerminal((prev) => !prev)}
+                className="pointer-events-auto rounded-full border border-neutral-200/80 bg-white/80 text-xs font-medium text-neutral-700 shadow-[0_8px_20px_rgba(15,23,42,0.08)] backdrop-blur-sm transition hover:bg-white dark:border-neutral-700/60 dark:bg-neutral-900/80 dark:text-neutral-100 dark:hover:bg-neutral-900"
+              >
+                <TerminalSquare className="size-3.5" />
+                {showTerminal ? "Hide terminal" : "Show terminal"}
+              </Button>
+            </div>
+
+            <div
+              className={`pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-4 pb-4 transition-transform duration-300 ease-out ${showTerminal ? "translate-y-0" : "translate-y-[calc(100%+2rem)]"}`}
+            >
+              <div className="pointer-events-auto w-full max-w-5xl overflow-hidden rounded-2xl border border-neutral-200/70 bg-neutral-950/90 shadow-[0_32px_80px_-40px_rgba(15,23,42,0.7)] backdrop-blur">
+                <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/50">
+                      Dev script terminal
+                    </p>
+                    <p className="text-sm font-medium text-white/90">
+                      Streaming tmux window
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setShowTerminal(false)}
+                    className="text-white/70 hover:text-white"
+                    aria-label="Hide terminal"
+                  >
+                    <X className="size-4" />
+                  </Button>
+                </div>
+                <div className="h-[280px] bg-black">
+                  {showTerminal && (
+                    <RestoredTerminalView
+                      runId={runId}
+                      teamSlugOrId={teamSlugOrId}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+          </>
         ) : (
           <div className="flex h-full items-center justify-center">
             <div className="text-center">
