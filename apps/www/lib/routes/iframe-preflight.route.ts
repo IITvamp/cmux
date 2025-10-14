@@ -1,5 +1,7 @@
-import { getAccessTokenFromRequest } from "@/lib/utils/auth";
+import { getConvex } from "@/lib/utils/get-convex";
+import { stackServerAppJs } from "@/lib/utils/stack";
 import { env } from "@/lib/utils/www-env";
+import { api } from "@cmux/convex/api";
 import {
   extractMorphInstanceInfo,
   type IframePreflightResult,
@@ -73,6 +75,9 @@ const wait = (ms: number) =>
     setTimeout(resolve, ms);
   });
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
 function isNotFoundError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
@@ -80,10 +85,27 @@ function isNotFoundError(error: unknown): boolean {
   return error.message.includes("HTTP 404");
 }
 
+type MorphInstance = Awaited<
+  ReturnType<MorphCloudClient["instances"]["get"]>
+>;
+
+type AuthorizationResult =
+  | { authorized: true }
+  | { authorized: false; reason: string };
+
+interface AttemptResumeOptions {
+  authorizeInstance?: (
+    instance: MorphInstance,
+  ) => Promise<AuthorizationResult>;
+}
+
 async function attemptResumeIfNeeded(
   instanceInfo: MorphInstanceInfo,
   sendPhase: SendPhaseFn,
-): Promise<"already_ready" | "resumed" | "failed" | "not_found"> {
+  options?: AttemptResumeOptions,
+): Promise<
+  "already_ready" | "resumed" | "failed" | "not_found" | "forbidden"
+> {
   const client = new MorphCloudClient({ apiKey: env.MORPH_API_KEY });
 
   let instance;
@@ -105,6 +127,26 @@ async function attemptResumeIfNeeded(
       stage: "lookup",
     });
     return "failed";
+  }
+
+  if (options?.authorizeInstance) {
+    try {
+      const authorization = await options.authorizeInstance(instance);
+      if (!authorization.authorized) {
+        await sendPhase("resume_forbidden", {
+          instanceId: instanceInfo.instanceId,
+          reason: authorization.reason,
+        });
+        return "forbidden";
+      }
+    } catch (error) {
+      await sendPhase("resume_failed", {
+        instanceId: instanceInfo.instanceId,
+        error: error instanceof Error ? error.message : "Unknown error",
+        stage: "authorize",
+      });
+      return "failed";
+    }
   }
 
   if (instance.status === "ready") {
@@ -249,7 +291,20 @@ iframePreflightRouter.openapi(
     },
   }),
   async (c) => {
-    const accessToken = await getAccessTokenFromRequest(c.req.raw);
+    const user = await stackServerAppJs.getUser({ tokenStore: c.req.raw });
+    if (!user) {
+      return c.json(
+        {
+          ok: false,
+          status: null,
+          method: null,
+          error: "Unauthorized",
+        },
+        401,
+      );
+    }
+
+    const { accessToken } = await user.getAuthJson();
     if (!accessToken) {
       return c.json(
         {
@@ -261,6 +316,9 @@ iframePreflightRouter.openapi(
         401,
       );
     }
+
+    const userId = user.id;
+    const convexClient = getConvex({ accessToken });
 
     const { url } = c.req.valid("query");
     const target = new URL(url);
@@ -323,7 +381,77 @@ iframePreflightRouter.openapi(
 
       try {
         if (morphInfo) {
-          const resumeOutcome = await attemptResumeIfNeeded(morphInfo, sendPhase);
+          const teamMembershipsPromise = convexClient
+            .query(api.teams.listTeamMemberships, {});
+
+          const resumeOutcome = await attemptResumeIfNeeded(
+            morphInfo,
+            sendPhase,
+            {
+              authorizeInstance: async (instance) => {
+                const metadata = instance.metadata;
+                if (!isRecord(metadata)) {
+                  return {
+                    authorized: false,
+                    reason: "Unable to verify workspace ownership.",
+                  };
+                }
+
+                const metadataUserId =
+                  typeof metadata.userId === "string"
+                    ? metadata.userId
+                    : null;
+                if (metadataUserId && metadataUserId !== userId) {
+                  return {
+                    authorized: false,
+                    reason:
+                      "You do not have permission to resume this workspace.",
+                  };
+                }
+
+                const metadataTeamId =
+                  typeof metadata.teamId === "string"
+                    ? metadata.teamId
+                    : null;
+
+                if (metadataTeamId) {
+                  try {
+                    const memberships = await teamMembershipsPromise;
+                    const belongsToTeam = memberships.some((membership) => {
+                      const membershipTeam =
+                        membership.team?.teamId ?? membership.teamId;
+                      return membershipTeam === metadataTeamId;
+                    });
+
+                    if (!belongsToTeam) {
+                      return {
+                        authorized: false,
+                        reason:
+                          "You are not a member of the team that owns this workspace.",
+                      };
+                    }
+                  } catch (error) {
+                    console.error(
+                      "[iframe-preflight] Failed to verify team membership",
+                      error,
+                    );
+                    return {
+                      authorized: false,
+                      reason:
+                        "We could not verify your team membership for this workspace.",
+                    };
+                  }
+                } else if (!metadataUserId) {
+                  return {
+                    authorized: false,
+                    reason: "Unable to verify workspace ownership.",
+                  };
+                }
+
+                return { authorized: true };
+              },
+            },
+          );
 
           if (resumeOutcome === "not_found") {
             await sendResult({
@@ -331,6 +459,17 @@ iframePreflightRouter.openapi(
               status: null,
               method: null,
               error: `Morph instance ${morphInfo.instanceId} was not found.`,
+            });
+            return;
+          }
+
+          if (resumeOutcome === "forbidden") {
+            await sendResult({
+              ok: false,
+              status: null,
+              method: null,
+              error:
+                "You do not have permission to resume this workspace.",
             });
             return;
           }

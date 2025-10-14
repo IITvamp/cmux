@@ -85,6 +85,8 @@ function applyPhaseMapping(
       return "ready";
     case "resume_failed":
       return "resume_failed";
+    case "resume_forbidden":
+      return "resume_failed";
     case "instance_not_found":
       return "instance_not_found";
     case "preflight_failed":
