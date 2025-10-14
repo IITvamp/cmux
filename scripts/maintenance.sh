@@ -12,6 +12,10 @@ for arg in "$@"; do
   esac
 done
 
+# Pull latest changes from main branch
+echo "Pulling latest changes from main branch..."
+git pull origin main
+
 ./scripts/clean.sh
 
 if [ "$NO_CACHE" = true ]; then

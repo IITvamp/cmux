@@ -2,6 +2,10 @@
 
 set -e
 
+# Pull latest changes from main branch
+echo "Pulling latest changes from main branch..."
+git pull origin main
+
 export CONVEX_PORT=9777
 
 if [ -f .env ]; then

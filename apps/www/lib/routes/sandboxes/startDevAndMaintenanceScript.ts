@@ -84,6 +84,9 @@ fi`;
 set -eux
 cd ${WORKSPACE_ROOT}
 
+echo "=== Pulling latest changes from main branch ==="
+git pull origin main
+
 echo "=== Maintenance Script Started at \$(date) ==="
 ${maintenanceScript}
 echo "=== Maintenance Script Completed at \$(date) ==="
@@ -155,6 +158,9 @@ exit $MAINTENANCE_EXIT_CODE
     const devScriptContent = `#!/bin/zsh
 set -ux
 cd ${WORKSPACE_ROOT}
+
+echo "=== Pulling latest changes from main branch ==="
+git pull origin main
 
 echo "=== Dev Script Started at \$(date) ==="
 ${devScript}
