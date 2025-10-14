@@ -15,31 +15,43 @@ import {
   KEY_ESCAPE_COMMAND,
   TextNode,
 } from "lexical";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { getIconForFile } from "vscode-icons-js";
 import { useSocket } from "../../contexts/socket/use-socket";
 
 const MENTION_TRIGGER = "@";
 
+interface MentionMenuPosition {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+  scrollX: number;
+  scrollY: number;
+}
+
 interface MentionMenuProps {
   files: FileInfo[];
   selectedIndex: number;
   onSelect: (file: FileInfo) => void;
-  position: { top: number; left: number } | null;
+  anchorRect: MentionMenuPosition | null;
   hasRepository: boolean;
   isLoading: boolean;
 }
+
+const MENU_OFFSET = 4;
 
 function MentionMenu({
   files,
   selectedIndex,
   onSelect,
-  position,
+  anchorRect,
   hasRepository,
   isLoading,
 }: MentionMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const [menuStyle, setMenuStyle] = useState<{ top: number; left: number } | null>(null);
 
   useEffect(() => {
     if (menuRef.current && selectedIndex >= 0) {
@@ -52,16 +64,70 @@ function MentionMenu({
     }
   }, [selectedIndex]);
 
-  if (!position) return null;
+  useEffect(() => {
+    if (!anchorRect) {
+      setMenuStyle(null);
+    }
+  }, [anchorRect]);
+
+  useLayoutEffect(() => {
+    const menuElement = menuRef.current;
+    if (!anchorRect || !menuElement) {
+      return;
+    }
+
+    const { top, bottom, left, right, scrollX, scrollY } = anchorRect;
+    const menuRect = menuElement.getBoundingClientRect();
+    const menuHeight = menuRect.height;
+    const menuWidth = menuRect.width;
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+
+    const fitsBelow = bottom + MENU_OFFSET + menuHeight <= viewportHeight;
+    const fitsAbove = top - MENU_OFFSET - menuHeight >= 0;
+    const spaceBelow = Math.max(viewportHeight - bottom - MENU_OFFSET, 0);
+    const spaceAbove = Math.max(top - MENU_OFFSET, 0);
+
+    let computedTop: number;
+    if (fitsBelow) {
+      computedTop = bottom + scrollY + MENU_OFFSET;
+    } else if (fitsAbove || spaceAbove > spaceBelow) {
+      computedTop = top + scrollY - menuHeight - MENU_OFFSET;
+    } else {
+      computedTop = bottom + scrollY + MENU_OFFSET;
+    }
+
+    const minTop = scrollY + MENU_OFFSET;
+    const maxTop = scrollY + viewportHeight - menuHeight - MENU_OFFSET;
+    const clampedMaxTop = Math.max(maxTop, minTop);
+    computedTop = Math.min(Math.max(computedTop, minTop), clampedMaxTop);
+
+    let computedLeft = left + scrollX;
+    const minLeft = scrollX + MENU_OFFSET;
+    const maxLeft = scrollX + viewportWidth - menuWidth - MENU_OFFSET;
+    const clampedMaxLeft = Math.max(maxLeft, minLeft);
+
+    if (computedLeft + menuWidth + MENU_OFFSET > scrollX + viewportWidth) {
+      computedLeft = Math.max(right + scrollX - menuWidth, minLeft);
+    }
+
+    computedLeft = Math.min(Math.max(computedLeft, minLeft), clampedMaxLeft);
+
+    setMenuStyle({ top: computedTop, left: computedLeft });
+  }, [anchorRect, files, isLoading]);
+
+  if (!anchorRect) return null;
+
+  const fallbackStyle = {
+    top: anchorRect.bottom + anchorRect.scrollY + MENU_OFFSET,
+    left: anchorRect.left + anchorRect.scrollX,
+  };
 
   return createPortal(
     <div
       ref={menuRef}
       className="absolute z-[var(--z-modal)] max-h-48 overflow-y-auto bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-md shadow-lg max-w-[580px]"
-      style={{
-        top: position.top,
-        left: position.left,
-      }}
+      style={menuStyle ?? fallbackStyle}
     >
       {isLoading ? (
         <div className="px-2.5 py-2 text-xs text-neutral-500 dark:text-neutral-400 flex items-center gap-2">
@@ -144,10 +210,7 @@ export function MentionPlugin({
 }: MentionPluginProps) {
   const [editor] = useLexicalComposerContext();
   const [isShowingMenu, setIsShowingMenu] = useState(false);
-  const [menuPosition, setMenuPosition] = useState<{
-    top: number;
-    left: number;
-  } | null>(null);
+  const [menuPosition, setMenuPosition] = useState<MentionMenuPosition | null>(null);
   const [searchText, setSearchText] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [files, setFiles] = useState<FileInfo[]>([]);
@@ -302,14 +365,18 @@ export function MentionPlugin({
         setSearchText(searchQuery);
         triggerNodeRef.current = node;
 
-        // Calculate menu position
+        // Capture anchor rectangle for positioning the menu
         const domSelection = window.getSelection();
         if (domSelection && domSelection.rangeCount > 0) {
           const range = domSelection.getRangeAt(0);
           const rect = range.getBoundingClientRect();
           setMenuPosition({
-            top: rect.bottom + window.scrollY + 4,
-            left: rect.left + window.scrollX,
+            top: rect.top,
+            bottom: rect.bottom,
+            left: rect.left,
+            right: rect.right,
+            scrollX: window.scrollX,
+            scrollY: window.scrollY,
           });
           setIsShowingMenu(true);
         }
@@ -466,7 +533,7 @@ export function MentionPlugin({
       files={filteredFiles}
       selectedIndex={selectedIndex}
       onSelect={selectFile}
-      position={menuPosition}
+      anchorRect={menuPosition}
       hasRepository={Boolean(repoUrl || environmentId)}
       isLoading={isLoading}
     />
