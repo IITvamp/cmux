@@ -543,8 +543,8 @@ function createWindow(): void {
       nodeIntegration: false,
       webviewTag: true,
       partition: PARTITION,
-      allowRunningInsecureContent: true, // TODO: remove this
-      webSecurity: false,
+      // allowRunningInsecureContent: true, // TODO: remove this
+      // webSecurity: false,
     },
   };
 
@@ -715,9 +715,10 @@ app.whenReady().then(async () => {
       }
     });
   });
-  const rendererBaseUrl = is.dev && process.env["ELECTRON_RENDERER_URL"]
-    ? process.env["ELECTRON_RENDERER_URL"]
-    : `https://${APP_HOST}`;
+  const rendererBaseUrl =
+    is.dev && process.env["ELECTRON_RENDERER_URL"]
+      ? process.env["ELECTRON_RENDERER_URL"]
+      : `https://${APP_HOST}`;
 
   registerWebContentsViewHandlers({
     logger: {
@@ -834,7 +835,9 @@ app.whenReady().then(async () => {
           click: () => {
             const dispatched = sendShortcutToFocusedWindow("preview-reload");
             if (!dispatched) {
-              mainWarn("Reload Preview shortcut triggered with no active renderer");
+              mainWarn(
+                "Reload Preview shortcut triggered with no active renderer"
+              );
             }
           },
         },

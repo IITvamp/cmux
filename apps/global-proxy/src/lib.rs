@@ -462,10 +462,18 @@ async fn transform_head_response_from_get(
     let version = response.version();
     let headers = response.headers().clone();
 
-    // Drain the body to keep the connection healthy, but we discard the bytes.
-    body::to_bytes(response.into_body()).await?;
+    // Drain the body to keep the connection healthy, and capture its length so
+    // we can surface an accurate Content-Length header in the HEAD response.
+    let body_bytes = body::to_bytes(response.into_body()).await?;
+    let body_len = body_bytes.len();
 
-    Ok(build_head_response(status, version, &headers, &behavior))
+    Ok(build_head_response(
+        status,
+        version,
+        &headers,
+        &behavior,
+        Some(body_len),
+    ))
 }
 
 fn build_head_response(
@@ -473,6 +481,7 @@ fn build_head_response(
     version: Version,
     headers: &HeaderMap,
     behavior: &ProxyBehavior,
+    body_len: Option<usize>,
 ) -> Response<Body> {
     let mut builder = Response::builder().status(status).version(version);
     let mut new_headers = sanitize_headers(headers, false);
@@ -485,6 +494,11 @@ fn build_head_response(
     if let Some(frame_ancestors) = behavior.frame_ancestors {
         if let Ok(value) = HeaderValue::from_str(frame_ancestors) {
             new_headers.insert("content-security-policy", value);
+        }
+    }
+    if let Some(len) = body_len {
+        if let Ok(value) = HeaderValue::from_str(&len.to_string()) {
+            new_headers.insert(header::CONTENT_LENGTH, value);
         }
     }
     let headers_mut = builder.headers_mut().unwrap();
