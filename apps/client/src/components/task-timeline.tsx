@@ -15,6 +15,8 @@ import {
   XCircle,
 } from "lucide-react";
 import { useMemo } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import CmuxLogoMark from "./logo/cmux-logo-mark";
 import { TaskMessage } from "./task-message";
 
@@ -277,7 +279,31 @@ export function TaskTimeline({
             {event.crownReason && (
               <div className="mt-2 text-[13px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-md p-3">
                 <Trophy className="inline size-3 mr-2" />
-                {event.crownReason}
+                <span className="prose prose-neutral dark:prose-invert prose-sm max-w-none
+                  prose-p:my-1.5 prose-p:leading-relaxed prose-p:inline
+                  prose-headings:mt-4 prose-headings:mb-3 prose-headings:font-semibold
+                  prose-h1:text-xl prose-h1:mt-5 prose-h1:mb-3
+                  prose-h2:text-lg prose-h2:mt-4 prose-h2:mb-2.5
+                  prose-h3:text-base prose-h3:mt-3.5 prose-h3:mb-2
+                  prose-ul:my-2 prose-ul:list-disc prose-ul:pl-5
+                  prose-ol:my-2 prose-ol:list-decimal prose-ol:pl-5
+                  prose-li:my-0.5
+                  prose-blockquote:border-l-4 prose-blockquote:border-amber-300 dark:prose-blockquote:border-amber-600
+                  prose-blockquote:pl-4 prose-blockquote:py-0.5 prose-blockquote:my-2
+                  prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:bg-amber-100 dark:prose-code:bg-amber-800
+                  prose-code:text-[13px] prose-code:font-mono prose-code:before:content-none prose-code:after:content-none
+                  prose-pre:bg-amber-900 dark:prose-pre:bg-amber-800 prose-pre:text-amber-100
+                  prose-pre:p-3 prose-pre:rounded-md prose-pre:my-2 prose-pre:overflow-x-auto
+                  prose-a:text-amber-800 dark:prose-a:text-amber-300 prose-a:underline prose-a:break-words
+                  prose-table:my-2 prose-table:border prose-table:border-amber-300 dark:prose-table:border-amber-600
+                  prose-th:p-2 prose-th:bg-amber-100 dark:prose-th:bg-amber-800
+                  prose-td:p-2 prose-td:border prose-td:border-amber-300 dark:prose-td:border-amber-600
+                  prose-hr:my-3 prose-hr:border-amber-300 dark:prose-hr:border-amber-600
+                  prose-strong:font-semibold prose-strong:text-amber-900 dark:prose-strong:text-amber-100">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {event.crownReason}
+                  </ReactMarkdown>
+                </span>
               </div>
             )}
           </>
@@ -380,8 +406,31 @@ export function TaskTimeline({
               </>
             )}
             {event.crownReason && (
-              <div className="mt-2 text-[13px] text-purple-700 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 rounded-md p-3">
-                {event.crownReason}
+              <div className="mt-2 text-[13px] text-purple-700 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 rounded-md p-3
+                prose prose-neutral dark:prose-invert prose-sm max-w-none
+                prose-p:my-1.5 prose-p:leading-relaxed
+                prose-headings:mt-4 prose-headings:mb-3 prose-headings:font-semibold
+                prose-h1:text-xl prose-h1:mt-5 prose-h1:mb-3
+                prose-h2:text-lg prose-h2:mt-4 prose-h2:mb-2.5
+                prose-h3:text-base prose-h3:mt-3.5 prose-h3:mb-2
+                prose-ul:my-2 prose-ul:list-disc prose-ul:pl-5
+                prose-ol:my-2 prose-ol:list-decimal prose-ol:pl-5
+                prose-li:my-0.5
+                prose-blockquote:border-l-4 prose-blockquote:border-purple-300 dark:prose-blockquote:border-purple-600
+                prose-blockquote:pl-4 prose-blockquote:py-0.5 prose-blockquote:my-2
+                prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:bg-purple-100 dark:prose-code:bg-purple-800
+                prose-code:text-[13px] prose-code:font-mono prose-code:before:content-none prose-code:after:content-none
+                prose-pre:bg-purple-900 dark:prose-pre:bg-purple-800 prose-pre:text-purple-100
+                prose-pre:p-3 prose-pre:rounded-md prose-pre:my-2 prose-pre:overflow-x-auto
+                prose-a:text-purple-800 dark:prose-a:text-purple-300 prose-a:underline prose-a:break-words
+                prose-table:my-2 prose-table:border prose-table:border-purple-300 dark:prose-table:border-purple-600
+                prose-th:p-2 prose-th:bg-purple-100 dark:prose-th:bg-purple-800
+                prose-td:p-2 prose-td:border prose-td:border-purple-300 dark:prose-td:border-purple-600
+                prose-hr:my-3 prose-hr:border-purple-300 dark:prose-hr:border-purple-600
+                prose-strong:font-semibold prose-strong:text-purple-900 dark:prose-strong:text-purple-100">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {event.crownReason}
+                </ReactMarkdown>
               </div>
             )}
           </>
