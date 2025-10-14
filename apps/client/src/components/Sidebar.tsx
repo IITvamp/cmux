@@ -5,7 +5,7 @@ import { isElectron } from "@/lib/electron";
 import { type Doc } from "@cmux/convex/dataModel";
 import type { LinkProps } from "@tanstack/react-router";
 import { Link } from "@tanstack/react-router";
-import { Home, Plus, Server, Settings } from "lucide-react";
+import { ChevronRight, Home, Plus, Server, Settings } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -63,6 +63,7 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
   const DEFAULT_WIDTH = 256;
   const MIN_WIDTH = 240;
   const MAX_WIDTH = 600;
+  const COLLAPSED_WIDTH = 4;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const containerLeftRef = useRef<number>(0);
@@ -74,12 +75,37 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
     return Math.min(Math.max(parsed, MIN_WIDTH), MAX_WIDTH);
   });
   const [isResizing, setIsResizing] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    const stored = localStorage.getItem("sidebarCollapsed");
+    return stored === "true";
+  });
+  const [isHovered, setIsHovered] = useState(false);
 
   const { expandTaskIds } = useExpandTasks();
+
+  // Show sidebar if collapsed and hovered
+  const shouldShowContent = !isCollapsed || isHovered;
 
   useEffect(() => {
     localStorage.setItem("sidebarWidth", String(width));
   }, [width]);
+
+  useEffect(() => {
+    localStorage.setItem("sidebarCollapsed", String(isCollapsed));
+  }, [isCollapsed]);
+
+  // Keyboard shortcut to toggle sidebar (Cmd/Ctrl + B)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "b") {
+        e.preventDefault();
+        setIsCollapsed((prev) => !prev);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const onMouseMove = useCallback((e: MouseEvent) => {
     // Batch width updates to once per animation frame to reduce layout thrash
@@ -163,48 +189,54 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
 
   const resetWidth = useCallback(() => setWidth(DEFAULT_WIDTH), []);
 
+  const displayWidth = isCollapsed && !isHovered ? COLLAPSED_WIDTH : width;
+
   return (
     <div
       ref={containerRef}
-      className="relative bg-neutral-50 dark:bg-black flex flex-col shrink-0 h-dvh grow"
+      className="relative bg-neutral-50 dark:bg-black flex flex-col shrink-0 h-dvh grow transition-all duration-200"
       style={{
-        width: `${width}px`,
-        minWidth: `${width}px`,
-        maxWidth: `${width}px`,
+        width: `${displayWidth}px`,
+        minWidth: `${displayWidth}px`,
+        maxWidth: `${displayWidth}px`,
         userSelect: isResizing ? ("none" as const) : undefined,
       }}
+      onMouseEnter={() => isCollapsed && setIsHovered(true)}
+      onMouseLeave={() => isCollapsed && setIsHovered(false)}
     >
-      <div
-        className={`h-[38px] flex items-center pr-1.5 shrink-0 ${isElectron ? "" : "pl-3"}`}
-        style={{ WebkitAppRegion: "drag" } as CSSProperties}
-      >
-        {isElectron && <div className="w-[80px]"></div>}
-        <Link
-          to="/$teamSlugOrId/dashboard"
-          params={{ teamSlugOrId }}
-          activeOptions={{ exact: true }}
-          className="flex items-center gap-2 select-none cursor-pointer"
-          style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
-        >
-          {/* <Terminals */}
-          <CmuxLogo height={32} />
-        </Link>
-        <div className="grow"></div>
-        <Link
-          to="/$teamSlugOrId/dashboard"
-          params={{ teamSlugOrId }}
-          activeOptions={{ exact: true }}
-          className="w-[25px] h-[25px] border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-900 rounded-lg flex items-center justify-center transition-colors cursor-default"
-          title="New task"
-          style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
-        >
-          <Plus
-            className="w-4 h-4 text-neutral-700 dark:text-neutral-300"
-            aria-hidden="true"
-          />
-        </Link>
-      </div>
-      <nav className="grow flex flex-col overflow-hidden">
+      {shouldShowContent ? (
+        <>
+          <div
+            className={`h-[38px] flex items-center pr-1.5 shrink-0 ${isElectron ? "" : "pl-3"}`}
+            style={{ WebkitAppRegion: "drag" } as CSSProperties}
+          >
+            {isElectron && <div className="w-[80px]"></div>}
+            <Link
+              to="/$teamSlugOrId/dashboard"
+              params={{ teamSlugOrId }}
+              activeOptions={{ exact: true }}
+              className="flex items-center gap-2 select-none cursor-pointer"
+              style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+            >
+              {/* <Terminals */}
+              <CmuxLogo height={32} />
+            </Link>
+            <div className="grow"></div>
+            <Link
+              to="/$teamSlugOrId/dashboard"
+              params={{ teamSlugOrId }}
+              activeOptions={{ exact: true }}
+              className="w-[25px] h-[25px] border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-900 rounded-lg flex items-center justify-center transition-colors cursor-default"
+              title="New task"
+              style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+            >
+              <Plus
+                className="w-4 h-4 text-neutral-700 dark:text-neutral-300"
+                aria-hidden="true"
+              />
+            </Link>
+          </div>
+          <nav className="grow flex flex-col overflow-hidden">
         <div className="flex-1 overflow-y-auto pb-8">
           <ul className="flex flex-col gap-px">
             {navItems.map((item) => (
@@ -266,27 +298,45 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
           </div>
         </div>
       </nav>
+        </>
+      ) : (
+        <div className="flex items-center justify-center h-full">
+          <button
+            onClick={() => setIsCollapsed(false)}
+            className="p-1 hover:bg-neutral-100 dark:hover:bg-neutral-900 rounded transition-colors"
+            title="Show sidebar (Cmd/Ctrl+B)"
+            style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+          >
+            <ChevronRight
+              className="w-3 h-3 text-neutral-500 dark:text-neutral-400"
+              aria-hidden="true"
+            />
+          </button>
+        </div>
+      )}
 
-      {/* Resize handle */}
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        title="Drag to resize"
-        onMouseDown={startResizing}
-        onDoubleClick={resetWidth}
-        className="absolute top-0 right-0 h-full cursor-col-resize"
-        style={
-          {
-            // Invisible, but with a comfortable hit area
-            width: "14px",
-            transform: "translateX(13px)",
-            // marginRight: "-5px",
-            background: "transparent",
-            // background: "red",
-            zIndex: "var(--z-sidebar-resize-handle)",
-          } as CSSProperties
-        }
-      />
+      {/* Resize handle - only show when not collapsed */}
+      {!isCollapsed && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          title="Drag to resize"
+          onMouseDown={startResizing}
+          onDoubleClick={resetWidth}
+          className="absolute top-0 right-0 h-full cursor-col-resize"
+          style={
+            {
+              // Invisible, but with a comfortable hit area
+              width: "14px",
+              transform: "translateX(13px)",
+              // marginRight: "-5px",
+              background: "transparent",
+              // background: "red",
+              zIndex: "var(--z-sidebar-resize-handle)",
+            } as CSSProperties
+          }
+        />
+      )}
     </div>
   );
 }
