@@ -445,6 +445,7 @@ export function EnvironmentConfiguration({
         <Accordion
           selectionMode="multiple"
           className="px-0"
+          disableAnimation={true}
           defaultExpandedKeys={[
             "env-vars",
             "install-dependencies",
