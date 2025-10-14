@@ -1084,6 +1084,7 @@ export const updateNetworking = authMutation({
         ),
         port: v.number(),
         url: v.string(),
+        devServerReady: v.optional(v.boolean()),
       }),
     ),
   },
@@ -1096,6 +1097,36 @@ export const updateNetworking = authMutation({
     }
     await ctx.db.patch(args.id, {
       networking: args.networking,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// Update dev server readiness for a specific port
+export const updateDevServerReady = authMutation({
+  args: {
+    teamSlugOrId: v.string(),
+    id: v.id("taskRuns"),
+    port: v.number(),
+    devServerReady: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const userId = ctx.identity.subject;
+    const run = await ctx.db.get(args.id);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+    if (!run || run.teamId !== teamId || run.userId !== userId) {
+      throw new Error("Task run not found or unauthorized");
+    }
+
+    const networking = run.networking?.map((service) => {
+      if (service.port === args.port) {
+        return { ...service, devServerReady: args.devServerReady };
+      }
+      return service;
+    });
+
+    await ctx.db.patch(args.id, {
+      networking,
       updatedAt: Date.now(),
     });
   },

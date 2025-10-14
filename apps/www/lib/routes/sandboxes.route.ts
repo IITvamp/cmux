@@ -183,8 +183,113 @@ sandboxesRouter.openapi(
             throw new Error("GitHub access token not found");
           }
           return fetchGitIdentityInputs(convex, githubAccessToken);
+  },
+);
+
+// Check dev server readiness for a specific port
+const checkDevServerReadyRoute = createRoute({
+  method: "post",
+  path: "/sandboxes/{teamSlugOrId}/task-runs/{taskRunId}/check-dev-server-ready",
+  request: {
+    params: z.object({
+      teamSlugOrId: z.string(),
+      taskRunId: typedZid("taskRuns"),
+    }),
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            port: z.number(),
+          }),
         },
-      );
+      },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      description: "Dev server readiness checked",
+      content: {
+        "application/json": {
+          schema: z.object({
+            ready: z.boolean(),
+          }),
+        },
+      },
+    },
+    404: {
+      description: "Task run or port not found",
+    },
+    500: {
+      description: "Failed to check dev server readiness",
+    },
+  },
+  tags: ["Sandboxes"],
+  summary: "Check if dev server is ready on a specific port",
+});
+
+sandboxesRouter.openapi(checkDevServerReadyRoute, async (c) => {
+  const { teamSlugOrId, taskRunId } = c.req.valid("param");
+  const { port } = c.req.valid("json");
+
+  try {
+    const _team = await verifyTeamAccess({
+      req: c.req.raw,
+      teamSlugOrId,
+    });
+
+    const accessToken = await getAccessTokenFromRequest(c.req.raw);
+    if (!accessToken) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const convex = getConvex({ accessToken });
+    const taskRun = await convex.query(api.taskRuns.get, {
+      teamSlugOrId,
+      id: taskRunId,
+    });
+
+    if (!taskRun) {
+      return c.json({ error: "Task run not found" }, 404);
+    }
+
+    const service = taskRun.networking?.find((s) => s.port === port && s.status === "running");
+    if (!service) {
+      return c.json({ error: "Port not found or not running" }, 404);
+    }
+
+    // Check if the dev server is responding
+    try {
+      const response = await fetch(service.url, {
+        method: 'HEAD',
+        signal: AbortSignal.timeout(5000), // 5 second timeout
+      });
+      const ready = response.ok;
+
+      // Update the dev server readiness status
+      await convex.mutation(api.taskRuns.updateDevServerReady, {
+        teamSlugOrId,
+        id: taskRunId,
+        port,
+        devServerReady: ready,
+      });
+
+      return c.json({ ready });
+    } catch (_error) {
+      // If fetch fails, mark as not ready
+      await convex.mutation(api.taskRuns.updateDevServerReady, {
+        teamSlugOrId,
+        id: taskRunId,
+        port,
+        devServerReady: false,
+      });
+      return c.json({ ready: false });
+    }
+  } catch (error) {
+    console.error("Failed to check dev server readiness:", error);
+    return c.json({ error: "Failed to check dev server readiness" }, 500);
+  }
+});
 
       const client = new MorphCloudClient({ apiKey: env.MORPH_API_KEY });
 
@@ -695,7 +800,7 @@ sandboxesRouter.openapi(
 
       const networking = workingInstance.networking.httpServices
         .filter((s) => allowedPorts.has(s.port))
-        .map((s) => ({ status: "running" as const, port: s.port, url: s.url }));
+        .map((s) => ({ status: "running" as const, port: s.port, url: s.url, devServerReady: false }));
 
       // Persist to Convex
       await convex.mutation(api.taskRuns.updateNetworking, {

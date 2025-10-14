@@ -240,6 +240,7 @@ const convexSchema = defineSchema({
           ),
           port: v.number(),
           url: v.string(),
+          devServerReady: v.optional(v.boolean()),
         })
       )
     ),
