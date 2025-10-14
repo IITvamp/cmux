@@ -65,6 +65,7 @@ VSCODE_HTTP_PORT = 39378
 VNC_HTTP_PORT = 39380
 CDP_HTTP_PORT = 39381
 CDP_PROXY_BINARY_NAME = "cmux-cdp-proxy"
+VNC_PROXY_BINARY_NAME = "cmux-vnc-proxy"
 
 
 @dataclass(slots=True)
@@ -910,7 +911,6 @@ async def task_install_base_packages(ctx: TaskContext) -> None:
             build-essential make pkg-config g++ libssl-dev \
             ruby-full perl software-properties-common \
             tigervnc-standalone-server tigervnc-common \
-            python3-websockify websockify \
             xvfb \
             x11-xserver-utils xterm novnc \
             x11vnc \
@@ -1479,6 +1479,29 @@ async def task_build_cdp_proxy(ctx: TaskContext) -> None:
 
 
 @registry.task(
+    name="build-vnc-proxy",
+    deps=("install-service-scripts", "install-go-toolchain"),
+    description="Build and install VNC websocket proxy binary",
+)
+async def task_build_vnc_proxy(ctx: TaskContext) -> None:
+    repo = shlex.quote(ctx.remote_repo_root)
+    cmd = textwrap.dedent(
+        f"""
+        set -euo pipefail
+        export PATH="/usr/local/go/bin:${{PATH}}"
+        install -d /usr/local/lib/cmux
+        cd {repo}/scripts/vnc-proxy
+        go build -trimpath -o /usr/local/lib/cmux/{VNC_PROXY_BINARY_NAME} .
+        if [ ! -x /usr/local/lib/cmux/{VNC_PROXY_BINARY_NAME} ]; then
+          echo "Failed to build {VNC_PROXY_BINARY_NAME}" >&2
+          exit 1
+        fi
+        """
+    )
+    await ctx.run("build-vnc-proxy", cmd)
+
+
+@registry.task(
     name="install-systemd-units",
     deps=(
         "upload-repo",
@@ -1487,6 +1510,7 @@ async def task_build_cdp_proxy(ctx: TaskContext) -> None:
         "install-service-scripts",
         "build-worker",
         "build-cdp-proxy",
+        "build-vnc-proxy",
         "configure-zsh",
     ),
     description="Install cmux systemd units and helpers",
@@ -1506,7 +1530,7 @@ async def task_install_systemd_units(ctx: TaskContext) -> None:
         install -Dm0644 {repo}/configs/systemd/cmux-devtools.service /usr/lib/systemd/system/cmux-devtools.service
         install -Dm0644 {repo}/configs/systemd/cmux-xvfb.service /usr/lib/systemd/system/cmux-xvfb.service
         install -Dm0644 {repo}/configs/systemd/cmux-x11vnc.service /usr/lib/systemd/system/cmux-x11vnc.service
-        install -Dm0644 {repo}/configs/systemd/cmux-websockify.service /usr/lib/systemd/system/cmux-websockify.service
+        install -Dm0644 {repo}/configs/systemd/cmux-vnc-proxy.service /usr/lib/systemd/system/cmux-vnc-proxy.service
         install -Dm0644 {repo}/configs/systemd/cmux-cdp-proxy.service /usr/lib/systemd/system/cmux-cdp-proxy.service
         install -Dm0755 {repo}/configs/systemd/bin/configure-openvscode /usr/local/lib/cmux/configure-openvscode
         touch /usr/local/lib/cmux/dockerd.flag
@@ -1522,7 +1546,7 @@ async def task_install_systemd_units(ctx: TaskContext) -> None:
         ln -sf /usr/lib/systemd/system/cmux-devtools.service /etc/systemd/system/cmux.target.wants/cmux-devtools.service
         ln -sf /usr/lib/systemd/system/cmux-xvfb.service /etc/systemd/system/cmux.target.wants/cmux-xvfb.service
         ln -sf /usr/lib/systemd/system/cmux-x11vnc.service /etc/systemd/system/cmux.target.wants/cmux-x11vnc.service
-        ln -sf /usr/lib/systemd/system/cmux-websockify.service /etc/systemd/system/cmux.target.wants/cmux-websockify.service
+        ln -sf /usr/lib/systemd/system/cmux-vnc-proxy.service /etc/systemd/system/cmux.target.wants/cmux-vnc-proxy.service
         ln -sf /usr/lib/systemd/system/cmux-cdp-proxy.service /etc/systemd/system/cmux.target.wants/cmux-cdp-proxy.service
         systemctl daemon-reload
         systemctl enable cmux.target
@@ -1900,12 +1924,11 @@ async def task_check_vnc(ctx: TaskContext) -> None:
         """
         # Verify VNC binaries are installed
         vncserver -version
-        if ! command -v websockify >/dev/null 2>&1; then
-          echo "websockify not installed" >&2
+        if [ ! -x /usr/local/lib/cmux/{VNC_PROXY_BINARY_NAME} ]; then
+          echo "{VNC_PROXY_BINARY_NAME} binary missing" >&2
           exit 1
         fi
-        websockify --help >/dev/null
-        
+
         # Verify VNC endpoint is accessible
         sleep 5
         for attempt in $(seq 1 15); do
@@ -1918,12 +1941,12 @@ async def task_check_vnc(ctx: TaskContext) -> None:
         echo "ERROR: VNC endpoint not reachable after 30s" >&2
         systemctl status cmux-xvfb.service --no-pager || true
         systemctl status cmux-x11vnc.service --no-pager || true
-        systemctl status cmux-websockify.service --no-pager || true
+        systemctl status cmux-vnc-proxy.service --no-pager || true
         systemctl status cmux-devtools.service --no-pager || true
         tail -n 60 /var/log/cmux/xvfb.log || true
         tail -n 40 /var/log/cmux/chrome.log || true
         tail -n 40 /var/log/cmux/x11vnc.log || true
-        tail -n 40 /var/log/cmux/websockify.log || true
+        tail -n 40 /var/log/cmux/vnc-proxy.log || true
         exit 1
         """
     )
