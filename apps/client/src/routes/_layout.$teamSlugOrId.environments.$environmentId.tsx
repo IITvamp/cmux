@@ -18,9 +18,12 @@ import type { StartSandboxResponse } from "@cmux/www-openapi-client";
 import {
   patchApiEnvironmentsByIdPortsMutation,
   patchApiEnvironmentsByIdMutation,
+  patchApiEnvironmentsByIdVarsMutation,
+  getApiEnvironmentsByIdVarsOptions,
   postApiEnvironmentsByIdSnapshotsBySnapshotVersionIdActivateMutation,
   postApiSandboxesStartMutation,
 } from "@cmux/www-openapi-client/react-query";
+import type { GetEnvironmentVarsResponse } from "@cmux/www-openapi-client";
 import { convexQuery } from "@convex-dev/react-query";
 import {
   useMutation as useRQMutation,
@@ -33,6 +36,8 @@ import {
   ArrowLeft,
   Calendar,
   Code,
+  Eye,
+  EyeOff,
   GitBranch,
   Loader2,
   Package,
@@ -66,9 +71,9 @@ export const Route = createFileRoute(
       }),
     );
     void queryClient.ensureQueryData(
-      convexQuery(api.environments.get, {
-        teamSlugOrId: params.teamSlugOrId,
-        id: params.environmentId,
+      getApiEnvironmentsByIdVarsOptions({
+        path: { id: params.environmentId },
+        query: { teamSlugOrId: params.teamSlugOrId },
       }),
     );
   },
@@ -93,6 +98,11 @@ function EnvironmentDetailsPage() {
     environmentId,
   });
   const { data: snapshotVersions } = useSuspenseQuery(snapshotsQuery);
+  const envVarsQuery = getApiEnvironmentsByIdVarsOptions({
+    path: { id: String(environmentId) },
+    query: { teamSlugOrId },
+  });
+  const { data: envVarsData } = useSuspenseQuery(envVarsQuery) as { data: GetEnvironmentVarsResponse };
   const deleteEnvironment = useMutation(api.environments.remove);
   const deleteSnapshotVersion = useMutation(api.environmentSnapshots.remove);
   const updatePortsMutation = useRQMutation(
@@ -106,6 +116,9 @@ function EnvironmentDetailsPage() {
   );
   const updateMaintenanceScriptMutation = useRQMutation(
     patchApiEnvironmentsByIdMutation(),
+  );
+  const updateEnvVarsMutation = useRQMutation(
+    patchApiEnvironmentsByIdVarsMutation(),
   );
   const activateSnapshotMutation = useRQMutation(
     postApiEnvironmentsByIdSnapshotsBySnapshotVersionIdActivateMutation(),
@@ -132,6 +145,11 @@ function EnvironmentDetailsPage() {
   const [maintenanceScriptDraft, setMaintenanceScriptDraft] = useState(
     environment.maintenanceScript ?? "",
   );
+  const [isEditingEnvVars, setIsEditingEnvVars] = useState(false);
+  const [envVarsDraft, setEnvVarsDraft] = useState(
+    envVarsData?.envVarsContent ?? "",
+  );
+  const [showEnvVarValues, setShowEnvVarValues] = useState(false);
 
   const handleRenameStart = () => {
     updateEnvironmentMutation.reset();
@@ -197,6 +215,12 @@ function EnvironmentDetailsPage() {
       setMaintenanceScriptDraft(environment.maintenanceScript ?? "");
     }
   }, [environment.maintenanceScript, isEditingMaintenanceScript]);
+
+  useEffect(() => {
+    if (!isEditingEnvVars) {
+      setEnvVarsDraft(envVarsData?.envVarsContent ?? "");
+    }
+  }, [envVarsData?.envVarsContent, isEditingEnvVars]);
 
   const handleStartEditingPorts = () => {
     setPortsDraft(environment.exposedPorts ?? []);
@@ -286,6 +310,61 @@ function EnvironmentDetailsPage() {
         error instanceof Error
           ? error.message
           : "Failed to update maintenance script";
+      toast.error(message);
+    }
+  };
+
+  const handleStartEditingEnvVars = () => {
+    setEnvVarsDraft(envVarsData?.envVarsContent ?? "");
+    setIsEditingEnvVars(true);
+    updateEnvVarsMutation.reset();
+  };
+
+  const handleCancelEnvVars = () => {
+    setEnvVarsDraft(envVarsData?.envVarsContent ?? "");
+    setIsEditingEnvVars(false);
+    updateEnvVarsMutation.reset();
+  };
+
+  const handleSaveEnvVars = async () => {
+    const normalizedEnvVars = envVarsDraft.trim();
+
+    // Basic validation: check for malformed lines
+    const lines = normalizedEnvVars.split('\n').filter(line => line.trim());
+    const invalidLines = lines.filter(line => {
+      const trimmed = line.trim();
+      if (!trimmed) return false;
+      // Allow comments starting with #
+      if (trimmed.startsWith('#')) return false;
+      // Check for KEY=VALUE format
+      return !trimmed.includes('=');
+    });
+
+    if (invalidLines.length > 0) {
+      toast.error("Environment variables must be in KEY=VALUE format. Lines without '=' are not allowed.");
+      return;
+    }
+
+    if (normalizedEnvVars === (envVarsData?.envVarsContent ?? "")) {
+      setIsEditingEnvVars(false);
+      return;
+    }
+
+    try {
+      await updateEnvVarsMutation.mutateAsync({
+        path: { id: String(environmentId) },
+        body: {
+          teamSlugOrId,
+          envVarsContent: normalizedEnvVars,
+        },
+      });
+      toast.success("Environment variables updated");
+      setIsEditingEnvVars(false);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to update environment variables";
       toast.error(message);
     }
   };
@@ -812,6 +891,104 @@ function EnvironmentDetailsPage() {
                     </p>
                   )}
                 </div>
+              </div>
+
+              {/* Environment Variables */}
+              <div>
+                <div className="mb-2 flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Code className="w-4 h-4 text-neutral-500" />
+                    <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                      Environment Variables
+                    </h3>
+                  </div>
+                  {!isEditingEnvVars && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowEnvVarValues(!showEnvVarValues)}
+                        className="inline-flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
+                      >
+                        {showEnvVarValues ? (
+                          <>
+                            <EyeOff className="w-3 h-3" />
+                            Hide Values
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="w-3 h-3" />
+                            Show Values
+                          </>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleStartEditingEnvVars}
+                        disabled={updateEnvVarsMutation.isPending}
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-300",
+                          !updateEnvVarsMutation.isPending &&
+                            "hover:bg-neutral-100 dark:hover:bg-neutral-900",
+                        )}
+                      >
+                        {envVarsData?.envVarsContent && envVarsData.envVarsContent.length > 0
+                          ? "Edit"
+                          : "Add"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {isEditingEnvVars ? (
+                  <div className="space-y-2">
+                    <textarea
+                      value={envVarsDraft}
+                      onChange={(e) => setEnvVarsDraft(e.target.value)}
+                      placeholder="KEY1=value1&#10;KEY2=value2&#10;# Add one environment variable per line"
+                      disabled={updateEnvVarsMutation.isPending}
+                      className="w-full min-h-[120px] rounded-md border border-neutral-300 px-3 py-2 text-sm font-mono text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:ring-neutral-700"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleSaveEnvVars}
+                        disabled={updateEnvVarsMutation.isPending}
+                        className="inline-flex h-8 items-center justify-center rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
+                      >
+                        {updateEnvVarsMutation.isPending ? "Saving..." : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelEnvVars}
+                        disabled={updateEnvVarsMutation.isPending}
+                        className={cn(
+                          "inline-flex h-8 items-center justify-center rounded-md border border-neutral-300 px-4 text-sm font-medium text-neutral-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-300",
+                          !updateEnvVarsMutation.isPending &&
+                            "hover:bg-neutral-100 dark:hover:bg-neutral-900",
+                        )}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : envVarsData?.envVarsContent && envVarsData.envVarsContent.length > 0 ? (
+                  <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-3 dark:bg-neutral-950">
+                    <pre className="whitespace-pre-wrap break-words font-mono text-sm text-green-400">
+                      {envVarsData.envVarsContent.split('\n').map((line: string, index: number) => {
+                        if (!line.trim()) return <div key={index}>&nbsp;</div>;
+                        const [key] = line.split('=');
+                        if (showEnvVarValues) {
+                          return <div key={index}>{line}</div>;
+                        } else {
+                          return <div key={index}>{key}=••••••••</div>;
+                        }
+                      })}
+                    </pre>
+                  </div>
+                ) : (
+                  <p className="text-sm text-neutral-500 dark:text-neutral-500">
+                    No environment variables configured.
+                  </p>
+                )}
               </div>
 
               {/* Exposed Ports */}
