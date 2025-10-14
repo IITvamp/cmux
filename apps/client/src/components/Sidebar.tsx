@@ -22,6 +22,7 @@ import { SidebarSectionLink } from "./sidebar/SidebarSectionLink";
 interface SidebarProps {
   tasks: Doc<"tasks">[] | undefined;
   teamSlugOrId: string;
+  isVisible?: boolean;
 }
 
 interface SidebarNavItem {
@@ -59,10 +60,15 @@ const navItems: SidebarNavItem[] = [
   },
 ];
 
-export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
+export function Sidebar({
+  tasks,
+  teamSlugOrId,
+  isVisible = true,
+}: SidebarProps) {
   const DEFAULT_WIDTH = 256;
   const MIN_WIDTH = 240;
   const MAX_WIDTH = 600;
+  const COLLAPSED_WIDTH = 8;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const containerLeftRef = useRef<number>(0);
@@ -74,8 +80,11 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
     return Math.min(Math.max(parsed, MIN_WIDTH), MAX_WIDTH);
   });
   const [isResizing, setIsResizing] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
 
   const { expandTaskIds } = useExpandTasks();
+
+  const effectiveWidth = isVisible || isHovered ? width : COLLAPSED_WIDTH;
 
   useEffect(() => {
     localStorage.setItem("sidebarWidth", String(width));
@@ -166,16 +175,26 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
   return (
     <div
       ref={containerRef}
-      className="relative bg-neutral-50 dark:bg-black flex flex-col shrink-0 h-dvh grow"
+      className="relative bg-neutral-50 dark:bg-black flex flex-col shrink-0 h-dvh grow transition-all duration-200"
       style={{
-        width: `${width}px`,
-        minWidth: `${width}px`,
-        maxWidth: `${width}px`,
+        width: `${effectiveWidth}px`,
+        minWidth: `${effectiveWidth}px`,
+        maxWidth: `${effectiveWidth}px`,
         userSelect: isResizing ? ("none" as const) : undefined,
+      }}
+      onMouseEnter={() => {
+        if (!isVisible) {
+          setIsHovered(true);
+        }
+      }}
+      onMouseLeave={() => {
+        if (!isVisible) {
+          setIsHovered(false);
+        }
       }}
     >
       <div
-        className={`h-[38px] flex items-center pr-1.5 shrink-0 ${isElectron ? "" : "pl-3"}`}
+        className={`h-[38px] flex items-center pr-1.5 shrink-0 ${isElectron ? "" : "pl-3"} ${isVisible || isHovered ? "opacity-100" : "opacity-0 pointer-events-none"} transition-opacity duration-200`}
         style={{ WebkitAppRegion: "drag" } as CSSProperties}
       >
         {isElectron && <div className="w-[80px]"></div>}
@@ -204,7 +223,7 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
           />
         </Link>
       </div>
-      <nav className="grow flex flex-col overflow-hidden">
+      <nav className={`grow flex flex-col overflow-hidden ${isVisible || isHovered ? "opacity-100" : "opacity-0 pointer-events-none"} transition-opacity duration-200`}>
         <div className="flex-1 overflow-y-auto pb-8">
           <ul className="flex flex-col gap-px">
             {navItems.map((item) => (
@@ -268,25 +287,27 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
       </nav>
 
       {/* Resize handle */}
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        title="Drag to resize"
-        onMouseDown={startResizing}
-        onDoubleClick={resetWidth}
-        className="absolute top-0 right-0 h-full cursor-col-resize"
-        style={
-          {
-            // Invisible, but with a comfortable hit area
-            width: "14px",
-            transform: "translateX(13px)",
-            // marginRight: "-5px",
-            background: "transparent",
-            // background: "red",
-            zIndex: "var(--z-sidebar-resize-handle)",
-          } as CSSProperties
-        }
-      />
+      {(isVisible || isHovered) && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          title="Drag to resize"
+          onMouseDown={startResizing}
+          onDoubleClick={resetWidth}
+          className="absolute top-0 right-0 h-full cursor-col-resize"
+          style={
+            {
+              // Invisible, but with a comfortable hit area
+              width: "14px",
+              transform: "translateX(13px)",
+              // marginRight: "-5px",
+              background: "transparent",
+              // background: "red",
+              zIndex: "var(--z-sidebar-resize-handle)",
+            } as CSSProperties
+          }
+        />
+      )}
     </div>
   );
 }

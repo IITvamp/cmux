@@ -11,7 +11,7 @@ import { api } from "@cmux/convex/api";
 import { convexQuery } from "@convex-dev/react-query";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { Suspense, useEffect, useMemo } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId")({
   component: LayoutComponentWrapper,
@@ -59,6 +59,11 @@ function LayoutComponent() {
   const { teamSlugOrId } = Route.useParams();
   const tasks = useQuery(api.tasks.get, { teamSlugOrId });
 
+  const [isSidebarVisible, setIsSidebarVisible] = useState(() => {
+    const stored = localStorage.getItem("sidebarVisible");
+    return stored !== null ? stored === "true" : true;
+  });
+
   // Sort tasks by creation date (newest first) and take the latest 5
   const recentTasks = useMemo(() => {
     return (
@@ -70,13 +75,34 @@ function LayoutComponent() {
 
   const displayTasks = tasks === undefined ? undefined : recentTasks;
 
+  // Keyboard shortcut to toggle sidebar (Cmd/Ctrl + B)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "b") {
+        e.preventDefault();
+        setIsSidebarVisible((prev) => {
+          const next = !prev;
+          localStorage.setItem("sidebarVisible", String(next));
+          return next;
+        });
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   return (
     <>
       <CommandBar teamSlugOrId={teamSlugOrId} />
 
       <ExpandTasksProvider>
         <div className="flex flex-row grow min-h-0 bg-white dark:bg-black">
-          <Sidebar tasks={displayTasks} teamSlugOrId={teamSlugOrId} />
+          <Sidebar
+            tasks={displayTasks}
+            teamSlugOrId={teamSlugOrId}
+            isVisible={isSidebarVisible}
+          />
 
           {/* <div className="flex flex-col grow overflow-hidden bg-white dark:bg-neutral-950"> */}
           <Suspense fallback={<div>Loading...</div>}>
