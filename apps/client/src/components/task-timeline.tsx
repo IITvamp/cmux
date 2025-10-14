@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useMemo } from "react";
 import CmuxLogoMark from "./logo/cmux-logo-mark";
+import { MarkdownProse } from "./markdown-prose";
 import { TaskMessage } from "./task-message";
 
 interface TimelineEvent {
@@ -275,9 +276,14 @@ export function TaskTimeline({
               </div>
             )}
             {event.crownReason && (
-              <div className="mt-2 text-[13px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-md p-3">
-                <Trophy className="inline size-3 mr-2" />
-                {event.crownReason}
+              <div className="mt-2 bg-amber-50 dark:bg-amber-900/20 rounded-md p-3">
+                <div className="flex items-start gap-2">
+                  <Trophy className="mt-0.5 size-3 flex-shrink-0 text-amber-700 dark:text-amber-400" />
+                  <MarkdownProse
+                    content={event.crownReason}
+                    className="text-[13px] text-amber-800 dark:text-amber-100"
+                  />
+                </div>
               </div>
             )}
           </>
@@ -380,8 +386,11 @@ export function TaskTimeline({
               </>
             )}
             {event.crownReason && (
-              <div className="mt-2 text-[13px] text-purple-700 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 rounded-md p-3">
-                {event.crownReason}
+              <div className="mt-2 bg-purple-50 dark:bg-purple-900/20 rounded-md p-3">
+                <MarkdownProse
+                  content={event.crownReason}
+                  className="text-[13px] text-purple-800 dark:text-purple-100"
+                />
               </div>
             )}
           </>

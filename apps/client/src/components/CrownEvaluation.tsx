@@ -4,6 +4,7 @@ import type { Id } from "@cmux/convex/dataModel";
 import { useQuery } from "convex/react";
 // Read team slug from path to avoid route type coupling
 import { Trophy } from "lucide-react";
+import { MarkdownProse } from "./markdown-prose";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 
 interface CrownEvaluationProps {
@@ -40,6 +41,11 @@ export function CrownEvaluation({
   const agentName =
     storedAgentName && storedAgentName.length > 0 ? storedAgentName : "unknown agent";
 
+  const evaluationReason =
+    crownedRun.crownReason && crownedRun.crownReason.trim().length > 0
+      ? crownedRun.crownReason
+      : "This implementation was selected as the best solution.";
+
   return (
     <Card className="border-yellow-200 dark:border-yellow-900 bg-yellow-50 dark:bg-yellow-950/20">
       <CardHeader>
@@ -54,10 +60,10 @@ export function CrownEvaluation({
             <h4 className="font-medium text-sm text-neutral-600 dark:text-neutral-400 mb-1">
               Evaluation Reason
             </h4>
-            <p className="text-sm text-neutral-800 dark:text-neutral-200">
-              {crownedRun.crownReason ||
-                "This implementation was selected as the best solution."}
-            </p>
+            <MarkdownProse
+              content={evaluationReason}
+              className="text-sm text-neutral-800 dark:text-neutral-100"
+            />
           </div>
 
           {crownedPullRequests.length > 0 ? (

@@ -50,6 +50,7 @@ import {
   type ReactNode,
 } from "react";
 import { VSCodeIcon } from "./icons/VSCodeIcon";
+import { MarkdownProse } from "./markdown-prose";
 import { SidebarListItem } from "./sidebar/SidebarListItem";
 import { annotateAgentOrdinals } from "./task-tree/annotateAgentOrdinals";
 
@@ -519,7 +520,10 @@ function TaskRunTreeInner({
         >
           <div className="space-y-1.5">
             <p className="font-medium text-sm text-neutral-200">Evaluation Reason</p>
-            <p className="text-xs text-neutral-400">{run.crownReason}</p>
+            <MarkdownProse
+              content={run.crownReason}
+              className="text-xs text-neutral-300 prose-headings:mt-2 prose-headings:text-sm prose-headings:text-neutral-100 prose-p:my-1 prose-ul:my-1 prose-ol:my-1"
+            />
           </div>
         </TooltipContent>
       ) : null}

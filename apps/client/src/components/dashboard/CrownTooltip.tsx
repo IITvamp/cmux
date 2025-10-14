@@ -7,6 +7,8 @@ import { useQuery } from "convex/react";
 import { AlertCircle, Crown, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { MarkdownProse } from "../markdown-prose";
+
 interface CrownStatusProps {
   taskId: Id<"tasks">;
   teamSlugOrId: string;
@@ -145,9 +147,10 @@ export function CrownStatus({ taskId, teamSlugOrId }: CrownStatusProps) {
           >
             <div className="space-y-2">
               <p className="font-medium text-sm">Evaluation Reason</p>
-              <p className="text-xs text-muted-foreground">
-                {crownedRun.crownReason}
-              </p>
+              <MarkdownProse
+                content={crownedRun.crownReason}
+                className="text-xs text-muted-foreground prose-headings:mt-2 prose-headings:text-sm prose-p:my-1 prose-ul:my-1 prose-ol:my-1"
+              />
               <p className="text-xs text-muted-foreground border-t pt-2 mt-2">
                 Evaluated against {taskRuns.length} implementations
               </p>
