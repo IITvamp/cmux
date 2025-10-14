@@ -2,6 +2,28 @@
 
 set -e
 
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+APP_DIR="$(dirname "$SCRIPT_DIR")"
+
+echo "Updating repository from main branch..."
+if ! command -v git >/dev/null 2>&1; then
+    echo "git is required to run this script" >&2
+    exit 1
+fi
+
+if ! git -C "$APP_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "scripts/dev.sh must be run within the cmux repository" >&2
+    exit 1
+fi
+
+CURRENT_BRANCH="$(git -C "$APP_DIR" rev-parse --abbrev-ref HEAD)"
+if [ "$CURRENT_BRANCH" != "main" ]; then
+    echo "scripts/dev.sh must be run from the main branch (current: $CURRENT_BRANCH)" >&2
+    exit 1
+fi
+
+git -C "$APP_DIR" pull --ff-only origin main
+
 export CONVEX_PORT=9777
 
 if [ -f .env ]; then
@@ -19,14 +41,6 @@ fi
 IS_DEVCONTAINER=false
 if [ -n "$REMOTE_CONTAINERS" ] || [ -n "$CODESPACES" ]; then
     IS_DEVCONTAINER=true
-    # Set workspace directory for devcontainer - use current working directory's parent
-    # Get the directory where this script is located
-    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-    APP_DIR="$(dirname "$SCRIPT_DIR")"
-else
-    # Get the directory where this script is located
-    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-    APP_DIR="$(dirname "$SCRIPT_DIR")"
 fi
 
 echo "IS_DEVCONTAINER: $IS_DEVCONTAINER"
@@ -135,7 +149,7 @@ else
     fi
 fi
 
-# APP_DIR is already set above based on environment"
+# APP_DIR is already set above based on environment
 
 # Colors for output - export them for subshells
 export GREEN='\033[0;32m'
