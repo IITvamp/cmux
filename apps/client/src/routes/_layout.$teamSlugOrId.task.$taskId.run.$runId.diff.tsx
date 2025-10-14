@@ -29,6 +29,7 @@ import {
   Suspense,
   memo,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -90,6 +91,73 @@ const RestartTaskForm = memo(function RestartTaskForm({
   const [followUpText, setFollowUpText] = useState("");
   const [isRestartingTask, setIsRestartingTask] = useState(false);
   const [overridePrompt, setOverridePrompt] = useState(false);
+
+  // Global keydown handler for autofocus
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Skip if already focused on an input, textarea, or contenteditable that's NOT the editor
+      const activeElement = document.activeElement;
+      const isEditor =
+        activeElement?.getAttribute("data-cmux-input") === "true";
+      if (
+        !isEditor &&
+        (activeElement?.tagName === "INPUT" ||
+          activeElement?.tagName === "TEXTAREA" ||
+          activeElement?.getAttribute("contenteditable") === "true" ||
+          activeElement?.closest('[contenteditable="true"]'))
+      ) {
+        return;
+      }
+
+      // Skip for modifier keys and special keys
+      if (
+        e.ctrlKey ||
+        e.metaKey ||
+        e.altKey ||
+        e.key === "Tab" ||
+        e.key === "Escape" ||
+        e.key === "Enter" ||
+        e.key.startsWith("F") || // Function keys
+        e.key.startsWith("Arrow") ||
+        e.key === "Home" ||
+        e.key === "End" ||
+        e.key === "PageUp" ||
+        e.key === "PageDown" ||
+        e.key === "Delete" ||
+        e.key === "Backspace" ||
+        e.key === "CapsLock" ||
+        e.key === "Control" ||
+        e.key === "Shift" ||
+        e.key === "Alt" ||
+        e.key === "Meta" ||
+        e.key === "ContextMenu"
+      ) {
+        return;
+      }
+
+      // Check if it's a printable character
+      if (e.key.length === 1) {
+        // Prevent default to avoid duplicate input
+        e.preventDefault();
+
+        // Focus the editor and insert the character
+        if (editorApiRef.current?.focus) {
+          editorApiRef.current.focus();
+
+          // Insert the typed character
+          if (editorApiRef.current.insertText) {
+            editorApiRef.current.insertText(e.key);
+          }
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleGlobalKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", handleGlobalKeyDown);
+    };
+  }, []);
 
   const handleRestartTask = useCallback(async () => {
     if (!task) {
