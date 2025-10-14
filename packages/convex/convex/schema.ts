@@ -108,6 +108,7 @@ const convexSchema = defineSchema({
     teamId: v.string(),
     environmentId: v.optional(v.id("environments")),
     crownEvaluationError: v.optional(v.string()), // Error message if crown evaluation failed
+    brainstormEnabled: v.optional(v.boolean()), // Whether brainstorm mode is enabled for this task
     mergeStatus: v.optional(
       v.union(
         v.literal("none"), // No PR activity yet
@@ -756,6 +757,45 @@ const convexSchema = defineSchema({
     .index("by_statusId", ["statusId"])
     .index("by_sha_context", ["sha", "context", "updatedAt"])
     .index("by_sha", ["sha", "updatedAt"]),
+
+  // Brainstorm sessions for collaborative task planning
+  brainstormSessions: defineTable({
+    taskId: v.id("tasks"),
+    status: v.union(
+      v.literal("planning"),
+      v.literal("executing"),
+      v.literal("completed")
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    userId: v.string(),
+    teamId: v.string(),
+  })
+    .index("by_task", ["taskId"])
+    .index("by_team_user", ["teamId", "userId"]),
+
+  // Subtasks within brainstorm sessions
+  subtasks: defineTable({
+    brainstormSessionId: v.id("brainstormSessions"),
+    title: v.string(),
+    description: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("in_progress"),
+      v.literal("completed"),
+      v.literal("blocked")
+    ),
+    assignedTo: v.optional(v.string()), // userId or "agent:<name>"
+    prerequisites: v.optional(v.array(v.id("subtasks"))),
+    estimatedHours: v.optional(v.number()),
+    actualHours: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    userId: v.string(),
+    teamId: v.string(),
+  })
+    .index("by_session", ["brainstormSessionId"])
+    .index("by_team_user", ["teamId", "userId"]),
 });
 
 export default convexSchema;

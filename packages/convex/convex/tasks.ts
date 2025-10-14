@@ -118,6 +118,7 @@ export const create = authMutation({
       ),
     ),
     environmentId: v.optional(v.id("environments")),
+    brainstormEnabled: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
@@ -142,6 +143,7 @@ export const create = authMutation({
       userId,
       teamId,
       environmentId: args.environmentId,
+      brainstormEnabled: args.brainstormEnabled,
     });
 
     return taskId;
@@ -470,6 +472,25 @@ export const updateMergeStatus = authMutation({
     }
     await ctx.db.patch(args.id, {
       mergeStatus: args.mergeStatus,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+export const toggleBrainstormMode = authMutation({
+  args: {
+    teamSlugOrId: v.string(),
+    id: v.id("tasks"),
+  },
+  handler: async (ctx, args) => {
+    const userId = ctx.identity.subject;
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+    const task = await ctx.db.get(args.id);
+    if (task === null || task.teamId !== teamId || task.userId !== userId) {
+      throw new Error("Task not found");
+    }
+    await ctx.db.patch(args.id, {
+      brainstormEnabled: !task.brainstormEnabled,
       updatedAt: Date.now(),
     });
   },
