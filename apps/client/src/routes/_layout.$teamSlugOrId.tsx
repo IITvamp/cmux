@@ -11,7 +11,7 @@ import { api } from "@cmux/convex/api";
 import { convexQuery } from "@convex-dev/react-query";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { Suspense, useEffect, useMemo } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId")({
   component: LayoutComponentWrapper,
@@ -59,6 +59,33 @@ function LayoutComponent() {
   const { teamSlugOrId } = Route.useParams();
   const tasks = useQuery(api.tasks.get, { teamSlugOrId });
 
+  const [sidebarVisible, setSidebarVisible] = useState(() => {
+    const stored = localStorage.getItem("sidebarVisible");
+    return stored !== null ? JSON.parse(stored) : true;
+  });
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarVisible((prev) => !prev);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("sidebarVisible", JSON.stringify(sidebarVisible));
+  }, [sidebarVisible]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "b") {
+        event.preventDefault();
+        toggleSidebar();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [toggleSidebar]);
+
   // Sort tasks by creation date (newest first) and take the latest 5
   const recentTasks = useMemo(() => {
     return (
@@ -76,7 +103,23 @@ function LayoutComponent() {
 
       <ExpandTasksProvider>
         <div className="flex flex-row grow min-h-0 bg-white dark:bg-black">
-          <Sidebar tasks={displayTasks} teamSlugOrId={teamSlugOrId} />
+          {sidebarVisible && (
+            <Sidebar tasks={displayTasks} teamSlugOrId={teamSlugOrId} />
+          )}
+
+          {/* Hidden sidebar hover handle */}
+          {!sidebarVisible && (
+            <div
+              className="relative bg-neutral-50 dark:bg-black flex flex-col shrink-0 h-dvh"
+              style={{ width: "4px", minWidth: "4px", maxWidth: "4px" }}
+            >
+              <div
+                className="absolute top-0 left-0 h-full w-full opacity-0 hover:opacity-100 bg-neutral-200 dark:bg-neutral-700 transition-opacity cursor-pointer"
+                onClick={toggleSidebar}
+                title="Show sidebar (Ctrl+B)"
+              />
+            </div>
+          )}
 
           {/* <div className="flex flex-col grow overflow-hidden bg-white dark:bg-neutral-950"> */}
           <Suspense fallback={<div>Loading...</div>}>

@@ -274,7 +274,7 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
         title="Drag to resize"
         onMouseDown={startResizing}
         onDoubleClick={resetWidth}
-        className="absolute top-0 right-0 h-full cursor-col-resize"
+        className="absolute top-0 right-0 h-full cursor-col-resize group"
         style={
           {
             // Invisible, but with a comfortable hit area
@@ -286,7 +286,10 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
             zIndex: "var(--z-sidebar-resize-handle)",
           } as CSSProperties
         }
-      />
+      >
+        {/* Visible hover indicator */}
+        <div className="absolute right-0 top-0 h-full w-0.5 bg-neutral-300 dark:bg-neutral-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+      </div>
     </div>
   );
 }
