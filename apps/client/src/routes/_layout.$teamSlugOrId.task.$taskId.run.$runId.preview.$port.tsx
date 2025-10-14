@@ -1,10 +1,12 @@
 import { ElectronPreviewBrowser } from "@/components/electron-preview-browser";
+import { RestoredTerminalView } from "@/components/RestoredTerminalView";
 import { getTaskRunPreviewPersistKey } from "@/lib/persistent-webview-keys";
 import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { useMemo } from "react";
+import { Terminal, X } from "lucide-react";
+import { useMemo, useState } from "react";
 import z from "zod";
 
 const paramsSchema = z.object({
@@ -31,6 +33,7 @@ export const Route = createFileRoute(
 
 function PreviewPage() {
   const { taskId, teamSlugOrId, runId, port } = Route.useParams();
+  const [showTerminal, setShowTerminal] = useState(false);
 
   const taskRuns = useQuery(api.taskRuns.getByTask, {
     teamSlugOrId,
@@ -60,13 +63,49 @@ function PreviewPage() {
 
   return (
     <div className="flex h-full flex-col bg-white dark:bg-neutral-950">
-      <div className="flex-1 min-h-0">
+      {/* Header with toggle button */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-neutral-200 dark:border-neutral-800">
+        <h2 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+          Preview - Port {port}
+        </h2>
+        <button
+          onClick={() => setShowTerminal(!showTerminal)}
+          className="flex items-center gap-2 px-3 py-1.5 text-xs bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 rounded-md transition-colors"
+        >
+          {showTerminal ? (
+            <>
+              <X className="w-3 h-3" />
+              Hide Terminal
+            </>
+          ) : (
+            <>
+              <Terminal className="w-3 h-3" />
+              Show Terminal
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* Content area */}
+      <div className={`flex-1 min-h-0 ${showTerminal ? 'flex' : ''}`}>
         {previewUrl ? (
-          <ElectronPreviewBrowser
-            persistKey={persistKey}
-            src={previewUrl}
-            borderRadius={paneBorderRadius}
-          />
+          <>
+            <div className={`${showTerminal ? 'flex-1' : 'h-full'}`}>
+              <ElectronPreviewBrowser
+                persistKey={persistKey}
+                src={previewUrl}
+                borderRadius={paneBorderRadius}
+              />
+            </div>
+            {showTerminal && (
+              <div className="w-96 border-l border-neutral-200 dark:border-neutral-800">
+                <RestoredTerminalView
+                  runId={runId}
+                  teamSlugOrId={teamSlugOrId}
+                />
+              </div>
+            )}
+          </>
         ) : (
           <div className="flex h-full items-center justify-center">
             <div className="text-center">
