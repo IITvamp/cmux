@@ -828,6 +828,16 @@ function TaskRunDetails({
         indentLevel={indentLevel}
       />
 
+      {run.vscode?.provider === "morph" && (
+        <TaskRunDetailLink
+          to="/$teamSlugOrId/task/$taskId/run/$runId/browser"
+          params={{ teamSlugOrId, taskId, runId: run._id }}
+          icon={<Globe className="w-3 h-3 mr-2 text-neutral-400" />}
+          label="Browser"
+          indentLevel={indentLevel}
+        />
+      )}
+
       {shouldRenderPullRequestLink ? (
         <TaskRunDetailLink
           to="/$teamSlugOrId/task/$taskId/run/$runId/pr"
