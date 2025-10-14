@@ -293,6 +293,13 @@ export function initCmdK(opts: {
             .executeJavaScript(
               `(() => { try {
                 const el = document.activeElement;
+                // Skip capturing if element is marked as cmux-input (like LexicalEditor)
+                // to prevent interfering with its own focus management
+                if (el?.getAttribute && el.getAttribute('data-cmux-input') === 'true') {
+                  window.__cmuxLastFocused = null;
+                  window.__cmuxLastFocusedTag = null;
+                  return 'skipped-cmux-input';
+                }
                 // Store for restore + debugging
                 window.__cmuxLastFocused = el;
                 // @ts-ignore
@@ -482,16 +489,19 @@ export function initCmdK(opts: {
             `(() => {
               try {
                 const el = window.__cmuxLastFocused;
+                // Skip restoration if element was a cmux-input (was intentionally not captured)
                 if (el && typeof el.focus === 'function') {
+                  // Double-check it's not a cmux-input before restoring
+                  if (el.getAttribute && el.getAttribute('data-cmux-input') === 'true') {
+                    return false;
+                  }
                   el.focus();
                   if (el.tagName === 'IFRAME') {
                     try { el.contentWindow && el.contentWindow.focus && el.contentWindow.focus(); } catch {}
                   }
                   return true;
                 }
-                const a = document.activeElement;
-                if (a && typeof a.focus === 'function') { a.focus(); return true; }
-                if (document.body && typeof document.body.focus === 'function') { document.body.focus(); return true; }
+                // If no captured element, don't force focus anywhere
                 return false;
               } catch { return false; }
             })()`,
@@ -534,16 +544,19 @@ export function initCmdK(opts: {
           `(() => {
             try {
               const el = window.__cmuxLastFocused;
+              // Skip restoration if element was a cmux-input (was intentionally not captured)
               if (el && typeof el.focus === 'function') {
+                // Double-check it's not a cmux-input before restoring
+                if (el.getAttribute && el.getAttribute('data-cmux-input') === 'true') {
+                  return false;
+                }
                 el.focus();
                 if (el.tagName === 'IFRAME') {
                   try { el.contentWindow && el.contentWindow.focus && el.contentWindow.focus(); } catch {}
                 }
                 return true;
               }
-              const a = document.activeElement;
-              if (a && typeof a.focus === 'function') { a.focus(); return true; }
-              if (document.body && typeof document.body.focus === 'function') { document.body.focus(); return true; }
+              // If no captured element, don't force focus anywhere
             return false;
           } catch { return false; }
         })()`,
@@ -628,10 +641,16 @@ export function initCmdK(opts: {
             `(() => {
               try {
                 const el = window.__cmuxLastFocused;
-                if (el && typeof el.focus === 'function') { el.focus(); return true; }
-                const a = document.activeElement;
-                if (a && typeof a.focus === 'function') { a.focus(); return true; }
-                if (document.body && typeof document.body.focus === 'function') { document.body.focus(); return true; }
+                // Skip restoration if element was a cmux-input (was intentionally not captured)
+                if (el && typeof el.focus === 'function') {
+                  // Double-check it's not a cmux-input before restoring
+                  if (el.getAttribute && el.getAttribute('data-cmux-input') === 'true') {
+                    return false;
+                  }
+                  el.focus();
+                  return true;
+                }
+                // If no captured element, don't force focus anywhere
                 return false;
               } catch { return false; }
             })()`,
@@ -674,10 +693,16 @@ export function initCmdK(opts: {
           `(() => {
             try {
               const el = window.__cmuxLastFocused;
-              if (el && typeof el.focus === 'function') { el.focus(); return true; }
-              const a = document.activeElement;
-              if (a && typeof a.focus === 'function') { a.focus(); return true; }
-              if (document.body && typeof document.body.focus === 'function') { document.body.focus(); return true; }
+              // Skip restoration if element was a cmux-input (was intentionally not captured)
+              if (el && typeof el.focus === 'function') {
+                // Double-check it's not a cmux-input before restoring
+                if (el.getAttribute && el.getAttribute('data-cmux-input') === 'true') {
+                  return false;
+                }
+                el.focus();
+                return true;
+              }
+              // If no captured element, don't force focus anywhere
             return false;
           } catch { return false; }
         })()`,
@@ -776,10 +801,16 @@ export function initCmdK(opts: {
           `(() => {
             try {
               const el = window.__cmuxLastFocused;
-              if (el && typeof el.focus === 'function') { el.focus(); return true; }
-              const a = document.activeElement;
-              if (a && typeof a.focus === 'function') { a.focus(); return true; }
-              if (document.body && typeof document.body.focus === 'function') { document.body.focus(); return true; }
+              // Skip restoration if element was a cmux-input (was intentionally not captured)
+              if (el && typeof el.focus === 'function') {
+                // Double-check it's not a cmux-input before restoring
+                if (el.getAttribute && el.getAttribute('data-cmux-input') === 'true') {
+                  return false;
+                }
+                el.focus();
+                return true;
+              }
+              // If no captured element, don't force focus anywhere
               return false;
             } catch { return false; }
           })()`,
@@ -825,10 +856,16 @@ export function initCmdK(opts: {
         `(() => {
           try {
             const el = window.__cmuxLastFocused;
-            if (el && typeof el.focus === 'function') { el.focus(); return true; }
-            const a = document.activeElement;
-            if (a && typeof a.focus === 'function') { a.focus(); return true; }
-            if (document.body && typeof document.body.focus === 'function') { document.body.focus(); return true; }
+            // Skip restoration if element was a cmux-input (was intentionally not captured)
+            if (el && typeof el.focus === 'function') {
+              // Double-check it's not a cmux-input before restoring
+              if (el.getAttribute && el.getAttribute('data-cmux-input') === 'true') {
+                return false;
+              }
+              el.focus();
+              return true;
+            }
+            // If no captured element, don't force focus anywhere
             return false;
           } catch { return false; }
         })()`,
