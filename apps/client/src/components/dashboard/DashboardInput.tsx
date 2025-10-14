@@ -138,6 +138,15 @@ export const DashboardInput = memo(
           return false;
         }
 
+        // Don't restore focus if the new active element is another cmux input
+        if (
+          candidateActiveElement &&
+          (candidateActiveElement.getAttribute("data-cmux-input") === "true" ||
+            candidateActiveElement.closest('[data-cmux-input="true"]'))
+        ) {
+          return false;
+        }
+
         const now = Date.now();
         const recentPointer = lastPointerEventRef.current;
         if (
