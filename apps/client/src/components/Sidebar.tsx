@@ -83,8 +83,9 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
 
   const { expandTaskIds } = useExpandTasks();
 
-  // Show sidebar if collapsed and hovered
+  // Keep sidebar content mounted and hide it visually when collapsed
   const shouldShowContent = !isCollapsed || isHovered;
+  const shouldShowCollapsedToggle = isCollapsed && !isHovered;
 
   useEffect(() => {
     localStorage.setItem("sidebarWidth", String(width));
@@ -94,10 +95,10 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
     localStorage.setItem("sidebarCollapsed", String(isCollapsed));
   }, [isCollapsed]);
 
-  // Keyboard shortcut to toggle sidebar (Cmd/Ctrl + B)
+  // Keyboard shortcut to toggle sidebar (Control + Shift + S)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "b") {
+      if (e.ctrlKey && e.shiftKey && e.code === "KeyS") {
         e.preventDefault();
         setIsCollapsed((prev) => !prev);
       }
@@ -194,117 +195,120 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
   return (
     <div
       ref={containerRef}
-      className="relative bg-neutral-50 dark:bg-black flex flex-col shrink-0 h-dvh grow transition-all duration-200"
+      className="relative bg-neutral-50 dark:bg-black flex flex-col shrink-0 h-dvh grow"
       style={{
         width: `${displayWidth}px`,
         minWidth: `${displayWidth}px`,
         maxWidth: `${displayWidth}px`,
         userSelect: isResizing ? ("none" as const) : undefined,
+        transition: "none",
       }}
       onMouseEnter={() => isCollapsed && setIsHovered(true)}
       onMouseLeave={() => isCollapsed && setIsHovered(false)}
     >
-      {shouldShowContent ? (
-        <>
-          <div
-            className={`h-[38px] flex items-center pr-1.5 shrink-0 ${isElectron ? "" : "pl-3"}`}
-            style={{ WebkitAppRegion: "drag" } as CSSProperties}
+      <div
+        className={`flex flex-col h-full ${shouldShowContent ? "" : "hidden"}`}
+      >
+        <div
+          className={`h-[38px] flex items-center pr-1.5 shrink-0 ${isElectron ? "" : "pl-3"}`}
+          style={{ WebkitAppRegion: "drag" } as CSSProperties}
+        >
+          {isElectron && <div className="w-[80px]"></div>}
+          <Link
+            to="/$teamSlugOrId/dashboard"
+            params={{ teamSlugOrId }}
+            activeOptions={{ exact: true }}
+            className="flex items-center gap-2 select-none cursor-pointer"
+            style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
           >
-            {isElectron && <div className="w-[80px]"></div>}
-            <Link
-              to="/$teamSlugOrId/dashboard"
-              params={{ teamSlugOrId }}
-              activeOptions={{ exact: true }}
-              className="flex items-center gap-2 select-none cursor-pointer"
-              style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
-            >
-              {/* <Terminals */}
-              <CmuxLogo height={32} />
-            </Link>
-            <div className="grow"></div>
-            <Link
-              to="/$teamSlugOrId/dashboard"
-              params={{ teamSlugOrId }}
-              activeOptions={{ exact: true }}
-              className="w-[25px] h-[25px] border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-900 rounded-lg flex items-center justify-center transition-colors cursor-default"
-              title="New task"
-              style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
-            >
-              <Plus
-                className="w-4 h-4 text-neutral-700 dark:text-neutral-300"
-                aria-hidden="true"
-              />
-            </Link>
-          </div>
-          <nav className="grow flex flex-col overflow-hidden">
-        <div className="flex-1 overflow-y-auto pb-8">
-          <ul className="flex flex-col gap-px">
-            {navItems.map((item) => (
-              <li key={item.label}>
-                <SidebarNavLink
-                  to={item.to}
-                  params={{ teamSlugOrId }}
-                  search={item.search}
-                  icon={item.icon}
-                  exact={item.exact}
-                  label={item.label}
-                />
-              </li>
-            ))}
-          </ul>
-
-          <div className="mt-4 flex flex-col">
-            <SidebarSectionLink
-              to="/$teamSlugOrId/prs"
-              params={{ teamSlugOrId }}
-              exact
-            >
-              Pull requests
-            </SidebarSectionLink>
-            <div className="ml-2 pt-px">
-              <SidebarPullRequestList teamSlugOrId={teamSlugOrId} />
-            </div>
-          </div>
-
-          <div className="mt-2 flex flex-col gap-0.5">
-            <SidebarSectionLink
-              to="/$teamSlugOrId/workspaces"
-              params={{ teamSlugOrId }}
-              exact
-            >
-              Workspaces
-            </SidebarSectionLink>
-          </div>
-
-          <div className="ml-2 pt-px">
-            <div className="space-y-px">
-              {tasks === undefined ? (
-                <TaskTreeSkeleton count={5} />
-              ) : tasks && tasks.length > 0 ? (
-                tasks.map((task) => (
-                  <TaskTree
-                    key={task._id}
-                    task={task}
-                    defaultExpanded={expandTaskIds?.includes(task._id) ?? false}
-                    teamSlugOrId={teamSlugOrId}
-                  />
-                ))
-              ) : (
-                <p className="pl-2 pr-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 select-none">
-                  No recent tasks
-                </p>
-              )}
-            </div>
-          </div>
+            {/* <Terminals */}
+            <CmuxLogo height={32} />
+          </Link>
+          <div className="grow"></div>
+          <Link
+            to="/$teamSlugOrId/dashboard"
+            params={{ teamSlugOrId }}
+            activeOptions={{ exact: true }}
+            className="w-[25px] h-[25px] border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-900 rounded-lg flex items-center justify-center transition-colors cursor-default"
+            title="New task"
+            style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+          >
+            <Plus
+              className="w-4 h-4 text-neutral-700 dark:text-neutral-300"
+              aria-hidden="true"
+            />
+          </Link>
         </div>
-      </nav>
-        </>
-      ) : (
+        <nav className="grow flex flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto pb-8">
+            <ul className="flex flex-col gap-px">
+              {navItems.map((item) => (
+                <li key={item.label}>
+                  <SidebarNavLink
+                    to={item.to}
+                    params={{ teamSlugOrId }}
+                    search={item.search}
+                    icon={item.icon}
+                    exact={item.exact}
+                    label={item.label}
+                  />
+                </li>
+              ))}
+            </ul>
+
+            <div className="mt-4 flex flex-col">
+              <SidebarSectionLink
+                to="/$teamSlugOrId/prs"
+                params={{ teamSlugOrId }}
+                exact
+              >
+                Pull requests
+              </SidebarSectionLink>
+              <div className="ml-2 pt-px">
+                <SidebarPullRequestList teamSlugOrId={teamSlugOrId} />
+              </div>
+            </div>
+
+            <div className="mt-2 flex flex-col gap-0.5">
+              <SidebarSectionLink
+                to="/$teamSlugOrId/workspaces"
+                params={{ teamSlugOrId }}
+                exact
+              >
+                Workspaces
+              </SidebarSectionLink>
+            </div>
+
+            <div className="ml-2 pt-px">
+              <div className="space-y-px">
+                {tasks === undefined ? (
+                  <TaskTreeSkeleton count={5} />
+                ) : tasks && tasks.length > 0 ? (
+                  tasks.map((task) => (
+                    <TaskTree
+                      key={task._id}
+                      task={task}
+                      defaultExpanded={expandTaskIds?.includes(task._id) ?? false}
+                      teamSlugOrId={teamSlugOrId}
+                    />
+                  ))
+                ) : (
+                  <p className="pl-2 pr-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 select-none">
+                    No recent tasks
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </nav>
+      </div>
+
+      {shouldShowCollapsedToggle && (
         <div className="flex items-center justify-center h-full">
           <button
             onClick={() => setIsCollapsed(false)}
             className="p-1 hover:bg-neutral-100 dark:hover:bg-neutral-900 rounded transition-colors"
-            title="Show sidebar (Cmd/Ctrl+B)"
+            title="Show sidebar (Ctrl+Shift+S)"
             style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
           >
             <ChevronRight
