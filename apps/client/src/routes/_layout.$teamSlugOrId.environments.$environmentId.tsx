@@ -9,6 +9,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { parseEnvBlock } from "@/lib/parseEnvBlock";
 import { cn } from "@/lib/utils";
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
@@ -18,12 +19,15 @@ import type { StartSandboxResponse } from "@cmux/www-openapi-client";
 import {
   patchApiEnvironmentsByIdPortsMutation,
   patchApiEnvironmentsByIdMutation,
+  patchApiEnvironmentsByIdVarsMutation,
   postApiEnvironmentsByIdSnapshotsBySnapshotVersionIdActivateMutation,
   postApiSandboxesStartMutation,
+  getApiEnvironmentsByIdVarsOptions,
 } from "@cmux/www-openapi-client/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import {
   useMutation as useRQMutation,
+  useQuery,
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
@@ -33,7 +37,10 @@ import {
   ArrowLeft,
   Calendar,
   Code,
+  Eye,
+  EyeOff,
   GitBranch,
+  Key,
   Loader2,
   Package,
   Plus,
@@ -42,7 +49,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute(
@@ -107,6 +114,9 @@ function EnvironmentDetailsPage() {
   const updateMaintenanceScriptMutation = useRQMutation(
     patchApiEnvironmentsByIdMutation(),
   );
+  const updateEnvVarsMutation = useRQMutation(
+    patchApiEnvironmentsByIdVarsMutation(),
+  );
   const activateSnapshotMutation = useRQMutation(
     postApiEnvironmentsByIdSnapshotsBySnapshotVersionIdActivateMutation(),
   );
@@ -132,6 +142,21 @@ function EnvironmentDetailsPage() {
   const [maintenanceScriptDraft, setMaintenanceScriptDraft] = useState(
     environment.maintenanceScript ?? "",
   );
+  const environmentVarsQueryOptions = getApiEnvironmentsByIdVarsOptions({
+    path: { id: String(environmentId) },
+    query: { teamSlugOrId },
+  });
+  const environmentVarsQuery = useQuery(environmentVarsQueryOptions);
+  const envVarsContent = environmentVarsQuery.data?.envVarsContent ?? "";
+  const parsedEnvVars = useMemo(() => {
+    if (!envVarsContent) {
+      return [] as Array<{ name: string; value: string }>;
+    }
+    return parseEnvBlock(envVarsContent);
+  }, [envVarsContent]);
+  const [isEditingEnvVars, setIsEditingEnvVars] = useState(false);
+  const [envVarsDraft, setEnvVarsDraft] = useState(envVarsContent);
+  const [showEnvVarValues, setShowEnvVarValues] = useState(false);
 
   const handleRenameStart = () => {
     updateEnvironmentMutation.reset();
@@ -197,6 +222,12 @@ function EnvironmentDetailsPage() {
       setMaintenanceScriptDraft(environment.maintenanceScript ?? "");
     }
   }, [environment.maintenanceScript, isEditingMaintenanceScript]);
+
+  useEffect(() => {
+    if (!isEditingEnvVars) {
+      setEnvVarsDraft(envVarsContent);
+    }
+  }, [envVarsContent, isEditingEnvVars]);
 
   const handleStartEditingPorts = () => {
     setPortsDraft(environment.exposedPorts ?? []);
@@ -286,6 +317,47 @@ function EnvironmentDetailsPage() {
         error instanceof Error
           ? error.message
           : "Failed to update maintenance script";
+      toast.error(message);
+    }
+  };
+
+  const handleStartEditingEnvVars = () => {
+    setIsEditingEnvVars(true);
+    updateEnvVarsMutation.reset();
+  };
+
+  const handleCancelEnvVars = () => {
+    setEnvVarsDraft(envVarsContent);
+    setIsEditingEnvVars(false);
+    updateEnvVarsMutation.reset();
+  };
+
+  const handleSaveEnvVars = async () => {
+    if (envVarsDraft === envVarsContent) {
+      setIsEditingEnvVars(false);
+      setShowEnvVarValues(false);
+      return;
+    }
+
+    try {
+      await updateEnvVarsMutation.mutateAsync({
+        path: { id: String(environmentId) },
+        body: {
+          teamSlugOrId,
+          envVarsContent: envVarsDraft,
+        },
+      });
+      queryClient.setQueryData(environmentVarsQueryOptions.queryKey, {
+        envVarsContent: envVarsDraft,
+      });
+      setIsEditingEnvVars(false);
+      setShowEnvVarValues(false);
+      toast.success("Environment variables updated");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to update environment variables";
       toast.error(message);
     }
   };
@@ -661,6 +733,139 @@ function EnvironmentDetailsPage() {
                     </div>
                   </div>
                 )}
+
+              {/* Environment Variables */}
+              <div>
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Key className="w-4 h-4 text-neutral-500" />
+                    <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                      Environment Variables
+                    </h3>
+                    {!environmentVarsQuery.isPending && parsedEnvVars.length > 0 && (
+                      <span className="text-xs text-neutral-500 dark:text-neutral-500">
+                        {parsedEnvVars.length} configured
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {!isEditingEnvVars && (
+                      <button
+                        type="button"
+                        onClick={() => setShowEnvVarValues((prev) => !prev)}
+                        disabled={environmentVarsQuery.isPending}
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 dark:border-neutral-700 dark:text-neutral-300",
+                          !environmentVarsQuery.isPending &&
+                            "hover:bg-neutral-100 dark:hover:bg-neutral-900",
+                          environmentVarsQuery.isPending &&
+                            "disabled:cursor-not-allowed disabled:opacity-60",
+                        )}
+                      >
+                        {showEnvVarValues ? (
+                          <>
+                            <EyeOff className="w-3 h-3" />
+                            Hide values
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="w-3 h-3" />
+                            Reveal values
+                          </>
+                        )}
+                      </button>
+                    )}
+                    {!isEditingEnvVars && (
+                      <button
+                        type="button"
+                        onClick={handleStartEditingEnvVars}
+                        disabled={environmentVarsQuery.isPending}
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 dark:border-neutral-700 dark:text-neutral-300",
+                          !environmentVarsQuery.isPending &&
+                            "hover:bg-neutral-100 dark:hover:bg-neutral-900",
+                          environmentVarsQuery.isPending &&
+                            "disabled:cursor-not-allowed disabled:opacity-60",
+                        )}
+                      >
+                        {parsedEnvVars.length > 0 ? "Edit" : "Add"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {environmentVarsQuery.isPending ? (
+                  <div className="flex items-center gap-2 text-sm text-neutral-500 dark:text-neutral-500">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading environment variables…
+                  </div>
+                ) : environmentVarsQuery.error ? (
+                  <div className="rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 px-3 py-2 text-sm text-red-600 dark:text-red-400">
+                    Failed to load environment variables.
+                  </div>
+                ) : isEditingEnvVars ? (
+                  <div className="space-y-2">
+                    <textarea
+                      value={envVarsDraft}
+                      onChange={(event) => setEnvVarsDraft(event.target.value)}
+                      placeholder="KEY=value"
+                      className="w-full min-h-[160px] rounded-lg border border-neutral-300 bg-white p-3 font-mono text-sm text-neutral-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:ring-neutral-700"
+                    />
+                    {updateEnvVarsMutation.error && (
+                      <p className="text-xs text-red-500">
+                        {updateEnvVarsMutation.error instanceof Error
+                          ? updateEnvVarsMutation.error.message
+                          : "Failed to update environment variables"}
+                      </p>
+                    )}
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleSaveEnvVars}
+                        disabled={updateEnvVarsMutation.isPending}
+                        className="inline-flex h-8 items-center justify-center rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
+                      >
+                        {updateEnvVarsMutation.isPending ? "Saving..." : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelEnvVars}
+                        disabled={updateEnvVarsMutation.isPending}
+                        className={cn(
+                          "inline-flex h-8 items-center justify-center rounded-md border border-neutral-300 px-4 text-sm font-medium text-neutral-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-300",
+                          !updateEnvVarsMutation.isPending &&
+                            "hover:bg-neutral-100 dark:hover:bg-neutral-900",
+                        )}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : parsedEnvVars.length > 0 ? (
+                  <div className="space-y-2">
+                    {parsedEnvVars.map(({ name, value }, index) => (
+                      <div
+                        key={`${name}-${index}`}
+                        className="flex items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-neutral-800 dark:bg-neutral-950"
+                      >
+                        <span className="font-mono text-neutral-700 dark:text-neutral-300">
+                          {name}
+                        </span>
+                        <span className="max-w-[60%] truncate font-mono text-neutral-500 dark:text-neutral-400">
+                          {showEnvVarValues
+                            ? value || ""
+                            : value.length === 0
+                              ? "—"
+                              : "\u2022".repeat(8)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-neutral-500 dark:text-neutral-500">
+                    No environment variables configured.
+                  </p>
+                )}
+              </div>
 
               {/* Scripts */}
               <div className="space-y-4">
