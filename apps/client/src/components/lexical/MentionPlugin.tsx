@@ -302,15 +302,28 @@ export function MentionPlugin({
         setSearchText(searchQuery);
         triggerNodeRef.current = node;
 
-        // Calculate menu position
+        // Calculate menu position with edge collision detection
         const domSelection = window.getSelection();
         if (domSelection && domSelection.rangeCount > 0) {
           const range = domSelection.getRangeAt(0);
           const rect = range.getBoundingClientRect();
-          setMenuPosition({
-            top: rect.bottom + window.scrollY + 4,
-            left: rect.left + window.scrollX,
-          });
+          const viewportHeight = window.innerHeight;
+          const menuHeight = 192; // max-h-48 = 192px
+          const padding = 8;
+
+          let top: number;
+          const left = rect.left + window.scrollX;
+
+          // Check if there's enough space below
+          if (rect.bottom + menuHeight + padding > viewportHeight) {
+            // Position above the cursor
+            top = rect.top + window.scrollY - menuHeight - padding;
+          } else {
+            // Position below the cursor
+            top = rect.bottom + window.scrollY + 4;
+          }
+
+          setMenuPosition({ top, left });
           setIsShowingMenu(true);
         }
       } else {
