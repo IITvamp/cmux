@@ -442,26 +442,27 @@ export function EnvironmentConfiguration({
           </div>
         ) : null}
 
-        <Accordion
-          selectionMode="multiple"
-          className="px-0"
-          defaultExpandedKeys={[
-            "env-vars",
-            "install-dependencies",
-            "maintenance-script",
-            "dev-script",
-          ]}
-          itemClasses={{
-            trigger: "text-sm cursor-pointer py-3",
-            content: "pt-0",
-            title: "text-sm font-medium",
-          }}
-        >
-          <AccordionItem
-            key="env-vars"
-            aria-label="Environment variables"
-            title="Environment variables"
-          >
+         <Accordion
+           selectionMode="multiple"
+           className="px-0"
+           defaultExpandedKeys={[
+             "env-vars",
+             "install-dependencies",
+             "maintenance-script",
+             "dev-script",
+           ]}
+           itemClasses={{
+             trigger: "text-sm cursor-pointer py-3",
+             content: "pt-0",
+             title: "text-sm font-medium",
+           }}
+         >
+           <AccordionItem
+             key="env-vars"
+             aria-label="Environment variables"
+             title="Environment variables"
+             keepContentMounted={true}
+           >
             <div
               className="pb-2"
               onPasteCapture={(e) => {
@@ -601,11 +602,12 @@ export function EnvironmentConfiguration({
             </div>
           </AccordionItem>
 
-          <AccordionItem
-            key="install-dependencies"
-            aria-label="Install dependencies"
-            title="Install dependencies"
-          >
+           <AccordionItem
+             key="install-dependencies"
+             aria-label="Install dependencies"
+             title="Install dependencies"
+             keepContentMounted={true}
+           >
             <div className="space-y-2 pb-4">
               <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-3">
                 Use the VS Code terminal to install any dependencies your
@@ -618,11 +620,12 @@ export function EnvironmentConfiguration({
             </div>
           </AccordionItem>
 
-          <AccordionItem
-            key="maintenance-script"
-            aria-label="Maintenance script"
-            title="Maintenance script"
-          >
+           <AccordionItem
+             key="maintenance-script"
+             aria-label="Maintenance script"
+             title="Maintenance script"
+             keepContentMounted={true}
+           >
             <div className="pb-4">
               <ScriptTextareaField
                 description={SCRIPT_COPY.maintenance.description}
@@ -636,11 +639,12 @@ export function EnvironmentConfiguration({
             </div>
           </AccordionItem>
 
-          <AccordionItem
-            key="dev-script"
-            aria-label="Dev script"
-            title="Dev script"
-          >
+           <AccordionItem
+             key="dev-script"
+             aria-label="Dev script"
+             title="Dev script"
+             keepContentMounted={true}
+           >
             <div className="space-y-4 pb-4">
               <ScriptTextareaField
                 description={SCRIPT_COPY.dev.description}
