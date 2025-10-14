@@ -177,7 +177,14 @@ morphRouter.openapi(
       }
       await configureGithubAccess(instance, githubAccessToken);
 
-      const url = `${vscodeUrl}/?folder=/root/workspace`;
+      const workspaceRoot = "/root/workspace";
+      const singleRepoWorkspacePath = "/root/workspaces";
+      const selectedRepoCount = selectedRepos?.length ?? 0;
+      const isSingleRepoSelection = selectedRepoCount === 1;
+      const targetWorkspaceFolder = isSingleRepoSelection
+        ? singleRepoWorkspacePath
+        : workspaceRoot;
+      const url = `${vscodeUrl}/?folder=${targetWorkspaceFolder}`;
 
       // Handle repository management if repos are specified
       const removedRepos: string[] = [];
@@ -186,6 +193,17 @@ morphRouter.openapi(
         [];
 
       if (selectedRepos && selectedRepos.length > 0) {
+        const extractRepoFullName = (remoteUrl: string): string | null => {
+          const trimmed = remoteUrl.trim();
+          if (!trimmed) {
+            return null;
+          }
+          const match = trimmed.match(/github\.com[:/](.+?)(?:\.git)?$/i);
+          if (!match) {
+            return null;
+          }
+          return match[1].replace(/\.git$/, "");
+        };
         // Validate repo format and check for duplicates
         const repoNames = new Map<string, string>(); // Map of repo name to full path
         const reposByOwner = new Map<string, string[]>(); // Map of owner -> list of full repo names
@@ -222,7 +240,7 @@ morphRouter.openapi(
 
         // First, get list of existing repos with their remote URLs
         const listReposCmd = await instance.exec(
-          "for dir in /root/workspace/*/; do " +
+          `for dir in ${workspaceRoot}/*/; do ` +
             'if [ -d "$dir/.git" ]; then ' +
             'basename "$dir"; ' +
             "cd \"$dir\" && git remote get-url origin 2>/dev/null || echo 'no-remote'; " +
@@ -242,113 +260,241 @@ morphRouter.openapi(
           }
         }
 
-        // Determine which repos to remove
-        for (const [existingName, existingUrl] of existingRepos) {
-          const selectedRepo = repoNames.get(existingName);
+        if (isSingleRepoSelection) {
+          const targetRepo = selectedRepos[0]!;
+          const targetRepoName = targetRepo.split("/").pop()!;
 
-          if (!selectedRepo) {
-            // Repo not in selected list, remove it
-            console.log(`Removing repository: ${existingName}`);
-            await instance.exec(`rm -rf /root/workspace/${existingName}`);
-            removedRepos.push(existingName);
-          } else if (existingUrl && !existingUrl.includes(selectedRepo)) {
-            // Repo exists but points to different remote, remove and re-clone
+          for (const [existingName] of existingRepos) {
             console.log(
-              `Repository ${existingName} points to different remote, removing for re-clone`
+              `Removing repository ${existingName} before configuring single-repo workspace`
             );
-            await instance.exec(`rm -rf /root/workspace/${existingName}`);
+            await instance.exec(`rm -rf ${workspaceRoot}/${existingName}`);
             removedRepos.push(existingName);
-            existingRepos.delete(existingName); // Mark for re-cloning
           }
-        }
 
-        // For each owner group, mint a token and clone that owner's repos
-        for (const [, repos] of reposByOwner) {
-          // Clone new repos for this owner in parallel with retries
-          const clonePromises = repos.map(async (repo) => {
-            const repoName = repo.split("/").pop()!;
-            if (!existingRepos.has(repoName)) {
-              console.log(`Cloning repository: ${repo}`);
+          const singleRepoStateCmd = await instance.exec(
+            `if [ -d ${singleRepoWorkspacePath}/.git ]; then git -C ${singleRepoWorkspacePath} remote get-url origin 2>/dev/null; elif [ -d ${singleRepoWorkspacePath} ]; then echo '__dir_exists__'; else echo ''; fi`
+          );
+          const singleRepoState = singleRepoStateCmd.stdout.trim();
+          let shouldClone = true;
 
-              const maxRetries = 3;
-              let lastError: string | undefined;
-              let isAuthError = false;
+          if (singleRepoState === "__dir_exists__") {
+            console.log(
+              "Removing stale directory at /root/workspaces before cloning single repository"
+            );
+            await instance.exec(`rm -rf ${singleRepoWorkspacePath}`);
+          } else if (singleRepoState.length > 0) {
+            if (singleRepoState.includes(targetRepo)) {
+              console.log(
+                `Single-repo workspace already set up for ${targetRepo}, skipping clone`
+              );
+              shouldClone = false;
+            } else {
+              const existingFullName = extractRepoFullName(singleRepoState);
+              const existingName =
+                existingFullName?.split("/").pop() ?? targetRepoName;
+              console.log(
+                `Existing single-repo workspace remote (${singleRepoState}) does not match ${targetRepo}, removing`
+              );
+              await instance.exec(`rm -rf ${singleRepoWorkspacePath}`);
+              removedRepos.push(existingName);
+            }
+          }
 
-              for (let attempt = 1; attempt <= maxRetries; attempt++) {
-                const cloneCmd = await instance.exec(
-                  `mkdir -p /root/workspace && cd /root/workspace && git clone https://github.com/${repo}.git ${repoName} 2>&1`
-                );
+          if (shouldClone) {
+            console.log(
+              `Cloning repository: ${targetRepo} into single-repo workspace`
+            );
+            await instance.exec(`rm -rf ${singleRepoWorkspacePath}`);
 
-                if (cloneCmd.exit_code === 0) {
-                  return { success: true as const, repo };
-                } else {
-                  lastError = cloneCmd.stderr || cloneCmd.stdout;
+            const maxRetries = 3;
+            let lastError: string | undefined;
+            let isAuthError = false;
+            let cloneSucceeded = false;
 
-                  // Check for authentication errors
-                  isAuthError =
-                    lastError.includes("Authentication failed") ||
-                    lastError.includes("could not read Username") ||
-                    lastError.includes("could not read Password") ||
-                    lastError.includes("Invalid username or password") ||
-                    lastError.includes("Permission denied") ||
-                    lastError.includes("Repository not found") ||
-                    lastError.includes("403");
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+              const cloneCmd = await instance.exec(
+                `git clone https://github.com/${targetRepo}.git ${singleRepoWorkspacePath} 2>&1`
+              );
 
-                  // Don't retry authentication errors
-                  if (isAuthError) {
-                    console.error(
-                      `Authentication failed for ${repo}: ${lastError}`
-                    );
-                    break;
-                  }
-
-                  if (attempt < maxRetries) {
-                    console.log(
-                      `Clone attempt ${attempt} failed for ${repo}, retrying...`
-                    );
-                    // Clean up partial clone if it exists
-                    await instance.exec(`rm -rf /root/workspace/${repoName}`);
-                    // Wait before retry with exponential backoff
-                    await new Promise((resolve) =>
-                      setTimeout(resolve, attempt * 1000)
-                    );
-                  }
-                }
+              if (cloneCmd.exit_code === 0) {
+                cloneSucceeded = true;
+                break;
               }
 
+              lastError = cloneCmd.stderr || cloneCmd.stdout;
+              isAuthError =
+                lastError.includes("Authentication failed") ||
+                lastError.includes("could not read Username") ||
+                lastError.includes("could not read Password") ||
+                lastError.includes("Invalid username or password") ||
+                lastError.includes("Permission denied") ||
+                lastError.includes("Repository not found") ||
+                lastError.includes("403");
+
+              if (isAuthError) {
+                console.error(
+                  `Authentication failed for ${targetRepo}: ${lastError}`
+                );
+                break;
+              }
+
+              if (attempt < maxRetries) {
+                console.log(
+                  `Clone attempt ${attempt} failed for ${targetRepo}, retrying...`
+                );
+                await instance.exec(`rm -rf ${singleRepoWorkspacePath}`);
+                await new Promise((resolve) =>
+                  setTimeout(resolve, attempt * 1000)
+                );
+              }
+            }
+
+            if (cloneSucceeded) {
+              clonedRepos.push(targetRepo);
+            } else {
               const errorMsg = isAuthError
-                ? `Authentication failed - check repository access permissions`
+                ? "Authentication failed - check repository access permissions"
                 : `Failed after ${maxRetries} attempts`;
 
               console.error(
-                `Failed to clone ${repo}: ${errorMsg}\nDetails: ${lastError}`
+                `Failed to clone ${targetRepo}: ${errorMsg}\nDetails: ${lastError}`
               );
-              return {
-                success: false as const,
-                repo,
+              failedClones.push({
+                repo: targetRepo,
                 error: lastError || "Unknown error",
                 isAuth: isAuthError,
-              };
-            } else {
-              console.log(
-                `Repository ${repo} already exists with correct remote, skipping clone`
-              );
-              return null;
+              });
             }
-          });
+          }
+        } else {
+          const singleRepoCleanupCmd = await instance.exec(
+            `if [ -d ${singleRepoWorkspacePath}/.git ]; then git -C ${singleRepoWorkspacePath} remote get-url origin 2>/dev/null; elif [ -d ${singleRepoWorkspacePath} ]; then echo '__dir_exists__'; else echo ''; fi`
+          );
+          const singleRepoCleanup = singleRepoCleanupCmd.stdout.trim();
+          if (singleRepoCleanup.length > 0) {
+            const existingFullName =
+              singleRepoCleanup === "__dir_exists__"
+                ? null
+                : extractRepoFullName(singleRepoCleanup);
+            const existingName = existingFullName?.split("/").pop();
+            console.log(
+              "Removing single-repo workspace before configuring multiple repositories"
+            );
+            await instance.exec(`rm -rf ${singleRepoWorkspacePath}`);
+            if (existingName) {
+              removedRepos.push(existingName);
+            }
+          }
 
-          const results = await Promise.all(clonePromises);
+          // Determine which repos to remove
+          for (const [existingName, existingUrl] of existingRepos) {
+            const selectedRepo = repoNames.get(existingName);
 
-          for (const result of results) {
-            if (result && "success" in result) {
-              if (result.success) {
-                clonedRepos.push(result.repo);
+            if (!selectedRepo) {
+              // Repo not in selected list, remove it
+              console.log(`Removing repository: ${existingName}`);
+              await instance.exec(`rm -rf ${workspaceRoot}/${existingName}`);
+              removedRepos.push(existingName);
+            } else if (existingUrl && !existingUrl.includes(selectedRepo)) {
+              // Repo exists but points to different remote, remove and re-clone
+              console.log(
+                `Repository ${existingName} points to different remote, removing for re-clone`
+              );
+              await instance.exec(`rm -rf ${workspaceRoot}/${existingName}`);
+              removedRepos.push(existingName);
+              existingRepos.delete(existingName); // Mark for re-cloning
+            }
+          }
+
+          // For each owner group, mint a token and clone that owner's repos
+          for (const [, repos] of reposByOwner) {
+            // Clone new repos for this owner in parallel with retries
+            const clonePromises = repos.map(async (repo) => {
+              const repoName = repo.split("/").pop()!;
+              if (!existingRepos.has(repoName)) {
+                console.log(`Cloning repository: ${repo}`);
+
+                const maxRetries = 3;
+                let lastError: string | undefined;
+                let isAuthError = false;
+
+                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                  const cloneCmd = await instance.exec(
+                    `mkdir -p ${workspaceRoot} && cd ${workspaceRoot} && git clone https://github.com/${repo}.git ${repoName} 2>&1`
+                  );
+
+                  if (cloneCmd.exit_code === 0) {
+                    return { success: true as const, repo };
+                  } else {
+                    lastError = cloneCmd.stderr || cloneCmd.stdout;
+
+                    // Check for authentication errors
+                    isAuthError =
+                      lastError.includes("Authentication failed") ||
+                      lastError.includes("could not read Username") ||
+                      lastError.includes("could not read Password") ||
+                      lastError.includes("Invalid username or password") ||
+                      lastError.includes("Permission denied") ||
+                      lastError.includes("Repository not found") ||
+                      lastError.includes("403");
+
+                    // Don't retry authentication errors
+                    if (isAuthError) {
+                      console.error(
+                        `Authentication failed for ${repo}: ${lastError}`
+                      );
+                      break;
+                    }
+
+                    if (attempt < maxRetries) {
+                      console.log(
+                        `Clone attempt ${attempt} failed for ${repo}, retrying...`
+                      );
+                      // Clean up partial clone if it exists
+                      await instance.exec(`rm -rf ${workspaceRoot}/${repoName}`);
+                      // Wait before retry with exponential backoff
+                      await new Promise((resolve) =>
+                        setTimeout(resolve, attempt * 1000)
+                      );
+                    }
+                  }
+                }
+
+                const errorMsg = isAuthError
+                  ? "Authentication failed - check repository access permissions"
+                  : `Failed after ${maxRetries} attempts`;
+
+                console.error(
+                  `Failed to clone ${repo}: ${errorMsg}\nDetails: ${lastError}`
+                );
+                return {
+                  success: false as const,
+                  repo,
+                  error: lastError || "Unknown error",
+                  isAuth: isAuthError,
+                };
               } else {
-                failedClones.push({
-                  repo: result.repo,
-                  error: result.error,
-                  isAuth: result.isAuth,
-                });
+                console.log(
+                  `Repository ${repo} already exists with correct remote, skipping clone`
+                );
+                return null;
+              }
+            });
+
+            const results = await Promise.all(clonePromises);
+
+            for (const result of results) {
+              if (result && "success" in result) {
+                if (result.success) {
+                  clonedRepos.push(result.repo);
+                } else {
+                  failedClones.push({
+                    repo: result.repo,
+                    error: result.error,
+                    isAuth: result.isAuth,
+                  });
+                }
               }
             }
           }

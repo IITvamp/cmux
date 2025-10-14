@@ -125,25 +125,41 @@ describe("morphRouter - live", () => {
     const N2 = "manaflow-ai-cmux-testing-repo-2";
     const N3 = "manaflow-ai-cmux-testing-repo-3";
 
-    // Ensure an instance exists for this sequence
-    if (!createdInstanceId) {
-      const first = await postApiMorphSetupInstance({
-        client: testApiClient,
-        headers: { "x-stack-auth": JSON.stringify(tokens) },
-        body: { teamSlugOrId: "manaflow", ttlSeconds: 900 },
-      });
-      // Accept 200 (OK) or 500 (server error due to team/auth issues)
-      expect([200, 500]).toContain(first.response.status);
-      if (first.response.status !== 200) {
-        throw new Error("Failed to create instance", { cause: first.error });
-      }
-      if (!first.data) {
-        throw new Error("Failed to create instance", { cause: first.error });
-      }
-      createdInstanceId = first.data.instanceId;
+    // Step S1: single repo selection clones into /root/workspaces
+    const single = await postApiMorphSetupInstance({
+      client: testApiClient,
+      headers: { "x-stack-auth": JSON.stringify(tokens) },
+      body: {
+        teamSlugOrId: "manaflow",
+        instanceId: createdInstanceId ?? undefined,
+        selectedRepos: [R1],
+        ttlSeconds: 900,
+      },
+    });
+    expect(single.response.status).toBe(200);
+    const singleBody = single.data;
+    if (!singleBody) {
+      throw new Error("Failed to create instance", { cause: single.error });
     }
+    createdInstanceId = singleBody.instanceId;
+    expect(singleBody.vscodeUrl).toContain("/?folder=/root/workspaces");
+    expect(singleBody.clonedRepos).toEqual(expect.arrayContaining([R1]));
 
-    // Step A: clone R1 + R2
+    const instSingle =
+      await __TEST_INTERNAL_ONLY_MORPH_CLIENT.instances.get({
+        instanceId: createdInstanceId,
+      });
+    const singleRepoCheck = await instSingle.exec(
+      `bash -lc "test -d /root/workspaces/.git && git -C /root/workspaces remote get-url origin"`
+    );
+    expect(singleRepoCheck.exit_code).toBe(0);
+    expect(singleRepoCheck.stdout).toContain(R1);
+    const multiLayoutEmpty = await instSingle.exec(
+      `bash -lc "test ! -d /root/workspace/${N1}"`
+    );
+    expect(multiLayoutEmpty.exit_code).toBe(0);
+
+    // Step A: expand to multiple repos (R1 + R2)
     const a = await postApiMorphSetupInstance({
       client: testApiClient,
       headers: { "x-stack-auth": JSON.stringify(tokens) },
@@ -159,6 +175,7 @@ describe("morphRouter - live", () => {
     if (!aBody) {
       throw new Error("Failed to create instance", { cause: a.error });
     }
+    expect(aBody.vscodeUrl).toContain("/?folder=/root/workspace");
     // Should have at least cloned these repos; removedRepos may contain pre-existing folders
     expect(aBody.clonedRepos).toEqual(expect.arrayContaining([R1, R2]));
 
@@ -166,6 +183,10 @@ describe("morphRouter - live", () => {
     const instA = await __TEST_INTERNAL_ONLY_MORPH_CLIENT.instances.get({
       instanceId: createdInstanceId,
     });
+    const singleDirRemoved = await instA.exec(
+      `bash -lc "test ! -d /root/workspaces"`
+    );
+    expect(singleDirRemoved.exit_code).toBe(0);
     const r1Check = await instA.exec(
       `bash -lc "test -d /root/workspace/${N1}/.git && git -C /root/workspace/${N1} remote get-url origin"`
     );
@@ -253,5 +274,41 @@ describe("morphRouter - live", () => {
     }
     expect(dBody.clonedRepos).toEqual(expect.arrayContaining([R2]));
     expect(dBody.removedRepos).not.toEqual(expect.arrayContaining([N1, N3]));
+
+    // Step E: collapse back to single repo (R3) and ensure cleanup
+    const e = await postApiMorphSetupInstance({
+      client: testApiClient,
+      headers: { "x-stack-auth": JSON.stringify(tokens) },
+      body: {
+        teamSlugOrId: "manaflow",
+        instanceId: createdInstanceId,
+        selectedRepos: [R3],
+        ttlSeconds: 900,
+      },
+    });
+    expect(e.response.status).toBe(200);
+    const eBody = e.data;
+    if (!eBody) {
+      throw new Error("Failed to create instance", { cause: e.error });
+    }
+    expect(eBody.vscodeUrl).toContain("/?folder=/root/workspaces");
+    expect(eBody.clonedRepos).toEqual(expect.arrayContaining([R3]));
+
+    const instE = await __TEST_INTERNAL_ONLY_MORPH_CLIENT.instances.get({
+      instanceId: createdInstanceId,
+    });
+    const r1Cleared = await instE.exec(
+      `bash -lc "test ! -d /root/workspace/${N1}"`
+    );
+    const r2Cleared = await instE.exec(
+      `bash -lc "test ! -d /root/workspace/${N2}"`
+    );
+    const singleRepoFinal = await instE.exec(
+      `bash -lc "test -d /root/workspaces/.git && git -C /root/workspaces remote get-url origin"`
+    );
+    expect(r1Cleared.exit_code).toBe(0);
+    expect(r2Cleared.exit_code).toBe(0);
+    expect(singleRepoFinal.exit_code).toBe(0);
+    expect(singleRepoFinal.stdout).toContain(R3);
   }, 300_000);
 });
