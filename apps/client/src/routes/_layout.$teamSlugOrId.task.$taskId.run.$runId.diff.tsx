@@ -39,6 +39,7 @@ import { attachTaskLifecycleListeners } from "@/lib/socket/taskLifecycleListener
 import z from "zod";
 import type { EditorApi } from "@/components/dashboard/DashboardInput";
 import LexicalEditor from "@/components/lexical/LexicalEditor";
+import { usePersistentEditorFocus } from "@/components/lexical/usePersistentEditorFocus";
 
 const paramsSchema = z.object({
   taskId: typedZid("tasks"),
@@ -87,6 +88,10 @@ const RestartTaskForm = memo(function RestartTaskForm({
   const { addTaskToExpand } = useExpandTasks();
   const createTask = useMutation(api.tasks.create);
   const editorApiRef = useRef<EditorApi | null>(null);
+  usePersistentEditorFocus({
+    editorApiRef,
+    rootSelector: ".restart-task-editor",
+  });
   const [followUpText, setFollowUpText] = useState("");
   const [isRestartingTask, setIsRestartingTask] = useState(false);
   const [overridePrompt, setOverridePrompt] = useState(false);
@@ -296,7 +301,10 @@ const RestartTaskForm = memo(function RestartTaskForm({
             onEditorReady={(api) => {
               editorApiRef.current = api;
             }}
-            contentEditableClassName="text-[15px] text-neutral-900 dark:text-neutral-100 focus:outline-none"
+            contentEditableClassName={cn(
+              "restart-task-editor",
+              "text-[15px] text-neutral-900 dark:text-neutral-100 focus:outline-none",
+            )}
             padding={{
               paddingLeft: "0px",
               paddingRight: "0px",
