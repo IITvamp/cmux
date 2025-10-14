@@ -291,7 +291,28 @@ function isUpdateNewerThanCurrent(
     return info.version !== app.getVersion();
   }
 
-  return semver.gt(updateVersion, currentVersion);
+  const updateParsed = semver.parse(updateVersion);
+  const currentParsed = semver.parse(currentVersion);
+
+  if (!updateParsed || !currentParsed) {
+    return semver.gt(updateVersion, currentVersion);
+  }
+
+  const isNewer = semver.gt(updateParsed, currentParsed);
+  if (!isNewer) return false;
+
+  const currentHasPrerelease = currentParsed.prerelease.length > 0;
+  const updateHasPrerelease = updateParsed.prerelease.length > 0;
+  const sameCoreVersion =
+    updateParsed.major === currentParsed.major &&
+    updateParsed.minor === currentParsed.minor &&
+    updateParsed.patch === currentParsed.patch;
+
+  if (currentHasPrerelease && !updateHasPrerelease && sameCoreVersion) {
+    return false;
+  }
+
+  return true;
 }
 
 function logUpdateCheckResult(
