@@ -168,6 +168,19 @@ const ActivateSnapshotVersionResponse = z
   })
   .openapi("ActivateSnapshotVersionResponse");
 
+const UpdateEnvironmentVarsBody = z
+  .object({
+    teamSlugOrId: z.string(),
+    envVarsContent: z.string(),
+  })
+  .openapi("UpdateEnvironmentVarsBody");
+
+const UpdateEnvironmentVarsResponse = z
+  .object({
+    success: z.boolean(),
+  })
+  .openapi("UpdateEnvironmentVarsResponse");
+
 // Create a new environment
 environmentsRouter.openapi(
   createRoute({
@@ -983,6 +996,82 @@ environmentsRouter.openapi(
       }
       console.error("Failed to activate snapshot version:", error);
       return c.text("Failed to activate snapshot version", 500);
+    }
+  }
+);
+
+// Update environment variables for a specific environment
+environmentsRouter.openapi(
+  createRoute({
+    method: "patch" as const,
+    path: "/environments/{id}/vars",
+    tags: ["Environments"],
+    summary: "Update environment variables for a specific environment",
+    request: {
+      params: z.object({
+        id: z.string(),
+      }),
+      body: {
+        content: {
+          "application/json": {
+            schema: UpdateEnvironmentVarsBody,
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        content: {
+          "application/json": {
+            schema: UpdateEnvironmentVarsResponse,
+          },
+        },
+        description: "Environment variables updated successfully",
+      },
+      401: { description: "Unauthorized" },
+      404: { description: "Environment not found" },
+      500: { description: "Failed to update environment variables" },
+    },
+  }),
+  async (c) => {
+    // Require authentication
+    const accessToken = await getAccessTokenFromRequest(c.req.raw);
+    if (!accessToken) return c.text("Unauthorized", 401);
+
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+
+    try {
+      // Verify team access
+      await verifyTeamAccess({
+        req: c.req.raw,
+        teamSlugOrId: body.teamSlugOrId,
+      });
+
+      // Get the environment to retrieve the dataVaultKey
+      const convexClient = getConvex({ accessToken });
+      const environmentId = typedZid("environments").parse(id);
+      const environment = await convexClient.query(api.environments.get, {
+        teamSlugOrId: body.teamSlugOrId,
+        id: environmentId,
+      });
+
+      if (!environment) {
+        return c.text("Environment not found", 404);
+      }
+
+      // Update environment variables in StackAuth DataBook
+      const store =
+        await stackServerAppJs.getDataVaultStore("cmux-snapshot-envs");
+      await store.setValue(environment.dataVaultKey, body.envVarsContent, {
+        secret: env.STACK_DATA_VAULT_SECRET,
+      });
+
+      return c.json({ success: true });
+    } catch (error) {
+      console.error("Failed to update environment variables:", error);
+      return c.text("Failed to update environment variables", 500);
     }
   }
 );

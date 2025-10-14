@@ -18,6 +18,7 @@ import type { StartSandboxResponse } from "@cmux/www-openapi-client";
 import {
   patchApiEnvironmentsByIdPortsMutation,
   patchApiEnvironmentsByIdMutation,
+  patchApiEnvironmentsByIdVarsMutation,
   postApiEnvironmentsByIdSnapshotsBySnapshotVersionIdActivateMutation,
   postApiSandboxesStartMutation,
 } from "@cmux/www-openapi-client/react-query";
@@ -33,7 +34,10 @@ import {
   ArrowLeft,
   Calendar,
   Code,
+  Eye,
+  EyeOff,
   GitBranch,
+  Key,
   Loader2,
   Package,
   Plus,
@@ -131,6 +135,12 @@ function EnvironmentDetailsPage() {
     useState(false);
   const [maintenanceScriptDraft, setMaintenanceScriptDraft] = useState(
     environment.maintenanceScript ?? "",
+  );
+  const [isEditingEnvVars, setIsEditingEnvVars] = useState(false);
+  const [envVarsDraft, setEnvVarsDraft] = useState("");
+  const [showEnvVarValues, setShowEnvVarValues] = useState(false);
+  const updateEnvVarsMutation = useRQMutation(
+    patchApiEnvironmentsByIdVarsMutation(),
   );
 
   const handleRenameStart = () => {
@@ -286,6 +296,56 @@ function EnvironmentDetailsPage() {
         error instanceof Error
           ? error.message
           : "Failed to update maintenance script";
+      toast.error(message);
+    }
+  };
+
+  const handleStartEditingEnvVars = async () => {
+    try {
+      const response = await fetch(
+        `/api/environments/${environmentId}/vars?teamSlugOrId=${encodeURIComponent(teamSlugOrId)}`,
+      );
+      if (!response.ok) {
+        throw new Error("Failed to fetch environment variables");
+      }
+      const data = await response.json() as { envVarsContent: string };
+      setEnvVarsDraft(data.envVarsContent);
+      setIsEditingEnvVars(true);
+      setShowEnvVarValues(false);
+      updateEnvVarsMutation.reset();
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to fetch environment variables",
+      );
+    }
+  };
+
+  const handleCancelEnvVars = () => {
+    setIsEditingEnvVars(false);
+    setEnvVarsDraft("");
+    setShowEnvVarValues(false);
+    updateEnvVarsMutation.reset();
+  };
+
+  const handleSaveEnvVars = async () => {
+    try {
+      await updateEnvVarsMutation.mutateAsync({
+        path: { id: String(environmentId) },
+        body: {
+          teamSlugOrId,
+          envVarsContent: envVarsDraft,
+        },
+      });
+      toast.success("Environment variables updated");
+      setIsEditingEnvVars(false);
+      setShowEnvVarValues(false);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to update environment variables";
       toast.error(message);
     }
   };
@@ -812,6 +872,92 @@ function EnvironmentDetailsPage() {
                     </p>
                   )}
                 </div>
+              </div>
+
+              {/* Environment Variables */}
+              <div>
+                <div className="mb-2 flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Key className="w-4 h-4 text-neutral-500" />
+                    <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                      Environment Variables
+                    </h3>
+                  </div>
+                  {!isEditingEnvVars && (
+                    <button
+                      type="button"
+                      onClick={handleStartEditingEnvVars}
+                      disabled={updateEnvVarsMutation.isPending}
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-300",
+                        !updateEnvVarsMutation.isPending &&
+                          "hover:bg-neutral-100 dark:hover:bg-neutral-900",
+                      )}
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
+                {isEditingEnvVars ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 mb-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowEnvVarValues(!showEnvVarValues)}
+                        className="inline-flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
+                        aria-label={showEnvVarValues ? "Hide values" : "Show values"}
+                      >
+                        {showEnvVarValues ? (
+                          <>
+                            <EyeOff className="w-3 h-3" />
+                            Hide values
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="w-3 h-3" />
+                            Show values
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <textarea
+                      value={envVarsDraft}
+                      onChange={(event) => setEnvVarsDraft(event.target.value)}
+                      placeholder="KEY=value&#10;ANOTHER_KEY=another_value"
+                      disabled={updateEnvVarsMutation.isPending}
+                      className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 font-mono text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:ring-neutral-700 min-h-[200px]"
+                      style={{
+                        WebkitTextSecurity: showEnvVarValues ? "none" : "disc",
+                      }}
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleSaveEnvVars}
+                        disabled={updateEnvVarsMutation.isPending}
+                        className="inline-flex h-8 items-center justify-center rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
+                      >
+                        {updateEnvVarsMutation.isPending ? "Saving..." : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelEnvVars}
+                        disabled={updateEnvVarsMutation.isPending}
+                        className={cn(
+                          "inline-flex h-8 items-center justify-center rounded-md border border-neutral-300 px-4 text-sm font-medium text-neutral-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-300",
+                          !updateEnvVarsMutation.isPending &&
+                            "hover:bg-neutral-100 dark:hover:bg-neutral-900",
+                        )}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-neutral-500 dark:text-neutral-500">
+                    Click "Edit" to view and modify environment variables.
+                  </p>
+                )}
               </div>
 
               {/* Exposed Ports */}
