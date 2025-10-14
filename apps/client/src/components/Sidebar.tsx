@@ -74,12 +74,49 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
     return Math.min(Math.max(parsed, MIN_WIDTH), MAX_WIDTH);
   });
   const [isResizing, setIsResizing] = useState(false);
+  const [isHidden, setIsHidden] = useState(() => {
+    const stored = localStorage.getItem("sidebarHidden");
+    return stored === "true";
+  });
 
   const { expandTaskIds } = useExpandTasks();
 
   useEffect(() => {
     localStorage.setItem("sidebarWidth", String(width));
   }, [width]);
+
+  useEffect(() => {
+    localStorage.setItem("sidebarHidden", String(isHidden));
+  }, [isHidden]);
+
+  // Keyboard shortcut to toggle sidebar (Ctrl+Shift+S)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.ctrlKey &&
+        e.shiftKey &&
+        (e.code === "KeyS" || e.key.toLowerCase() === "s")
+      ) {
+        e.preventDefault();
+        setIsHidden((prev) => !prev);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // Listen for storage events from command bar
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === "sidebarHidden" && e.newValue !== null) {
+        setIsHidden(e.newValue === "true");
+      }
+    };
+
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
 
   const onMouseMove = useCallback((e: MouseEvent) => {
     // Batch width updates to once per animation frame to reduce layout thrash
@@ -168,6 +205,7 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
       ref={containerRef}
       className="relative bg-neutral-50 dark:bg-black flex flex-col shrink-0 h-dvh grow"
       style={{
+        display: isHidden ? "none" : "flex",
         width: `${width}px`,
         minWidth: `${width}px`,
         maxWidth: `${width}px`,
