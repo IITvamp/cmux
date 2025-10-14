@@ -464,6 +464,17 @@ export function EnvironmentConfiguration({
           >
             <div
               className="pb-2"
+              onPointerDown={(e) => {
+                // Prevent accordion from intercepting clicks on inputs
+                const target = e.target as HTMLElement;
+                if (
+                  target.tagName === "INPUT" ||
+                  target.tagName === "TEXTAREA" ||
+                  target.tagName === "BUTTON"
+                ) {
+                  e.stopPropagation();
+                }
+              }}
               onPasteCapture={(e) => {
                 const text = e.clipboardData?.getData("text") ?? "";
                 if (text && (/\n/.test(text) || /(=|:)\s*\S/.test(text))) {
@@ -623,7 +634,20 @@ export function EnvironmentConfiguration({
             aria-label="Maintenance script"
             title="Maintenance script"
           >
-            <div className="pb-4">
+            <div
+              className="pb-4"
+              onPointerDown={(e) => {
+                // Prevent accordion from intercepting clicks on inputs
+                const target = e.target as HTMLElement;
+                if (
+                  target.tagName === "INPUT" ||
+                  target.tagName === "TEXTAREA" ||
+                  target.tagName === "BUTTON"
+                ) {
+                  e.stopPropagation();
+                }
+              }}
+            >
               <ScriptTextareaField
                 description={SCRIPT_COPY.maintenance.description}
                 subtitle={SCRIPT_COPY.maintenance.subtitle}
@@ -641,7 +665,20 @@ export function EnvironmentConfiguration({
             aria-label="Dev script"
             title="Dev script"
           >
-            <div className="space-y-4 pb-4">
+            <div
+              className="space-y-4 pb-4"
+              onPointerDown={(e) => {
+                // Prevent accordion from intercepting clicks on inputs
+                const target = e.target as HTMLElement;
+                if (
+                  target.tagName === "INPUT" ||
+                  target.tagName === "TEXTAREA" ||
+                  target.tagName === "BUTTON"
+                ) {
+                  e.stopPropagation();
+                }
+              }}
+            >
               <ScriptTextareaField
                 description={SCRIPT_COPY.dev.description}
                 subtitle={SCRIPT_COPY.dev.subtitle}
