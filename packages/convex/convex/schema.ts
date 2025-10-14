@@ -363,6 +363,79 @@ const convexSchema = defineSchema({
     teamId: v.string(),
   }).index("by_team_user", ["teamId", "userId"]),
 
+  taskBrainstorms: defineTable({
+    taskId: v.id("tasks"),
+    teamId: v.string(),
+    userId: v.string(),
+    title: v.optional(v.string()),
+    objective: v.optional(v.string()),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("active"),
+      v.literal("complete"),
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_task", ["taskId"])
+    .index("by_team", ["teamId", "createdAt"])
+    .index("by_team_user", ["teamId", "userId", "createdAt"]),
+
+  taskBrainstormMessages: defineTable({
+    brainstormId: v.id("taskBrainstorms"),
+    teamId: v.string(),
+    taskId: v.id("tasks"),
+    authorType: v.union(
+      v.literal("user"),
+      v.literal("agent"),
+      v.literal("system"),
+    ),
+    authorUserId: v.optional(v.string()),
+    agentName: v.optional(v.string()),
+    content: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_brainstorm", ["brainstormId", "createdAt"])
+    .index("by_team_brainstorm", ["teamId", "brainstormId", "createdAt"]),
+
+  taskBrainstormSubtasks: defineTable({
+    brainstormId: v.id("taskBrainstorms"),
+    taskId: v.id("tasks"),
+    teamId: v.string(),
+    title: v.string(),
+    description: v.optional(v.string()),
+    status: v.union(
+      v.literal("planned"),
+      v.literal("assigned"),
+      v.literal("in_progress"),
+      v.literal("blocked"),
+      v.literal("done"),
+    ),
+    sequence: v.number(),
+    assignedAgentNames: v.optional(v.array(v.string())),
+    linkedTaskId: v.optional(v.id("tasks")),
+    estimatedMinutes: v.optional(v.number()),
+    dueAt: v.optional(v.number()),
+    sprintLabel: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_brainstorm", ["brainstormId", "sequence"])
+    .index("by_team_brainstorm", ["teamId", "brainstormId", "sequence"])
+    .index("by_linked_task", ["linkedTaskId"]),
+
+  taskBrainstormDependencies: defineTable({
+    brainstormId: v.id("taskBrainstorms"),
+    teamId: v.string(),
+    subtaskId: v.id("taskBrainstormSubtasks"),
+    dependsOnSubtaskId: v.id("taskBrainstormSubtasks"),
+    createdAt: v.number(),
+  })
+    .index("by_brainstorm", ["brainstormId", "subtaskId", "dependsOnSubtaskId"])
+    .index("by_subtask", ["subtaskId", "dependsOnSubtaskId"])
+    .index("by_dependency", ["dependsOnSubtaskId"]),
+
   // System and user comments attached to a task
   taskComments: defineTable({
     taskId: v.id("tasks"),

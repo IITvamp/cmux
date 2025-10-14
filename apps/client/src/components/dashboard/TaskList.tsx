@@ -1,6 +1,7 @@
 import { api } from "@cmux/convex/api";
+import type { Doc } from "@cmux/convex/dataModel";
 import { useQuery } from "convex/react";
-import { memo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { TaskItem } from "./TaskItem";
 
 export const TaskList = memo(function TaskList({
@@ -13,8 +14,21 @@ export const TaskList = memo(function TaskList({
     teamSlugOrId,
     archived: true,
   });
+  const brainstormSummaries = useQuery(api.taskBrainstorms.listSummaries, {
+    teamSlugOrId,
+  });
   const [tab, setTab] = useState<"all" | "archived">("all");
   const tasks = tab === "archived" ? archivedTasks : allTasks;
+
+  const brainstormByTaskId = useMemo(() => {
+    if (!brainstormSummaries) {
+      return new Map<string, Doc<"taskBrainstorms">["status"]>();
+    }
+    return brainstormSummaries.reduce((map, summary) => {
+      map.set(summary.taskId, summary.status);
+      return map;
+    }, new Map<string, Doc<"taskBrainstorms">["status"]>());
+  }, [brainstormSummaries]);
 
   return (
     <div className="mt-6">
@@ -57,7 +71,12 @@ export const TaskList = memo(function TaskList({
           </div>
         ) : (
           tasks.map((task) => (
-            <TaskItem key={task._id} task={task} teamSlugOrId={teamSlugOrId} />
+            <TaskItem
+              key={task._id}
+              task={task}
+              teamSlugOrId={teamSlugOrId}
+              brainstormStatus={brainstormByTaskId.get(task._id) ?? null}
+            />
           ))
         )}
       </div>

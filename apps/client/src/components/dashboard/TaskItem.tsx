@@ -11,17 +11,19 @@ import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useQuery as useConvexQuery, useMutation } from "convex/react";
 // Read team slug from path to avoid route type coupling
-import { Archive, ArchiveRestore, Check, Copy, Pin } from "lucide-react";
+import { Archive, ArchiveRestore, Check, Copy, Pin, Sparkles } from "lucide-react";
 import { memo, useCallback, useMemo } from "react";
 
 interface TaskItemProps {
   task: Doc<"tasks">;
   teamSlugOrId: string;
+  brainstormStatus?: Doc<"taskBrainstorms">["status"] | null;
 }
 
 export const TaskItem = memo(function TaskItem({
   task,
   teamSlugOrId,
+  brainstormStatus,
 }: TaskItemProps) {
   const navigate = useNavigate();
   const clipboard = useClipboard({ timeout: 2000 });
@@ -144,6 +146,35 @@ export const TaskItem = memo(function TaskItem({
 
   const isOptimisticUpdate = task._id.includes("-") && task._id.length === 36;
 
+  const brainstormBadge = useMemo(() => {
+    if (!brainstormStatus) {
+      return null;
+    }
+    const tone =
+      brainstormStatus === "complete"
+        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200"
+        : brainstormStatus === "active"
+          ? "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-200"
+          : "bg-neutral-200 text-neutral-600 dark:bg-neutral-700/40 dark:text-neutral-200";
+    const label =
+      brainstormStatus === "complete"
+        ? "Plan complete"
+        : brainstormStatus === "active"
+          ? "Plan running"
+          : "Plan draft";
+    return (
+      <span
+        className={clsx(
+          "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+          tone,
+        )}
+      >
+        <Sparkles className="h-3 w-3" />
+        {label}
+      </span>
+    );
+  }, [brainstormStatus]);
+
   return (
     <div className="relative group">
       <ContextMenu.Root>
@@ -169,21 +200,24 @@ export const TaskItem = memo(function TaskItem({
             />
             <div className="flex-1 min-w-0 flex items-center gap-2">
               <span className="text-[14px] truncate min-w-0">{task.text}</span>
-              {(task.projectFullName ||
-                (task.baseBranch && task.baseBranch !== "main")) && (
-                <span className="text-[11px] text-neutral-400 dark:text-neutral-500 flex-shrink-0 ml-auto mr-0">
-                  {task.projectFullName && (
-                    <span>{task.projectFullName.split("/")[1]}</span>
-                  )}
-                  {task.projectFullName &&
-                    task.baseBranch &&
-                    task.baseBranch !== "main" &&
-                    "/"}
-                  {task.baseBranch && task.baseBranch !== "main" && (
-                    <span>{task.baseBranch}</span>
-                  )}
-                </span>
-              )}
+              <div className="ml-auto flex items-center gap-2">
+                {brainstormBadge}
+                {(task.projectFullName ||
+                  (task.baseBranch && task.baseBranch !== "main")) && (
+                  <span className="text-[11px] text-neutral-400 dark:text-neutral-500 flex-shrink-0">
+                    {task.projectFullName && (
+                      <span>{task.projectFullName.split("/")[1]}</span>
+                    )}
+                    {task.projectFullName &&
+                      task.baseBranch &&
+                      task.baseBranch !== "main" &&
+                      "/"}
+                    {task.baseBranch && task.baseBranch !== "main" && (
+                      <span>{task.baseBranch}</span>
+                    )}
+                  </span>
+                )}
+              </div>
             </div>
             {task.updatedAt && (
               <span className="text-[11px] text-neutral-400 dark:text-neutral-500 flex-shrink-0 ml-auto mr-0 tabular-nums">

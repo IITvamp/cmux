@@ -1,3 +1,4 @@
+import { BrainstormPanel } from "@/components/brainstorm/BrainstormPanel";
 import { FloatingPane } from "@/components/floating-pane";
 import { TaskTimeline } from "@/components/task-timeline";
 import { api } from "@cmux/convex/api";
@@ -5,46 +6,44 @@ import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import z from "zod";
-
-const paramsSchema = z.object({
-  taskId: typedZid("tasks"),
-});
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId/task/$taskId/")({
   component: TaskDetailPage,
-  params: {
-    parse: paramsSchema.parse,
-    stringify: (params) => {
-      return {
-        taskId: params.taskId,
-      };
-    },
-  },
   validateSearch: (search: Record<string, unknown>) => {
     const runId = typedZid("taskRuns").optional().parse(search.runId);
     return {
-      runId: runId,
+      runId,
     };
   },
   loader: async (opts) => {
+    const { taskId: rawTaskId, teamSlugOrId } = opts.params as {
+      taskId: string;
+      teamSlugOrId: string;
+    };
+    const taskId = typedZid("tasks").parse(rawTaskId);
     await Promise.all([
       opts.context.queryClient.ensureQueryData(
         convexQuery(api.taskRuns.getByTask, {
-          teamSlugOrId: opts.params.teamSlugOrId,
-          taskId: opts.params.taskId,
+          teamSlugOrId,
+          taskId,
         })
       ),
       opts.context.queryClient.ensureQueryData(
         convexQuery(api.tasks.getById, {
-          teamSlugOrId: opts.params.teamSlugOrId,
-          id: opts.params.taskId,
+          teamSlugOrId,
+          id: taskId,
+        })
+      ),
+      opts.context.queryClient.ensureQueryData(
+        convexQuery(api.taskBrainstorms.getByTask, {
+          teamSlugOrId,
+          taskId,
         })
       ),
       opts.context.queryClient.ensureQueryData(
         convexQuery(api.crown.getCrownEvaluation, {
-          teamSlugOrId: opts.params.teamSlugOrId,
-          taskId: opts.params.taskId,
+          teamSlugOrId,
+          taskId,
         })
       ),
     ]);
@@ -52,7 +51,11 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId/task/$taskId/")({
 });
 
 function TaskDetailPage() {
-  const { taskId, teamSlugOrId } = Route.useParams();
+  const { taskId: rawTaskId, teamSlugOrId } = Route.useParams() as {
+    taskId: string;
+    teamSlugOrId: string;
+  };
+  const taskId = typedZid("tasks").parse(rawTaskId);
 
   const task = useSuspenseQuery(
     convexQuery(api.tasks.getById, {
@@ -77,8 +80,9 @@ function TaskDetailPage() {
     <FloatingPane>
       <div className="flex h-full min-h-0 flex-col">
         <div className="flex-1 overflow-y-auto">
-          <div className="max-w-3xl mx-auto px-6 py-8">
-            <div>
+          <div className="mx-auto w-full max-w-5xl px-6 py-8">
+            <div className="space-y-8">
+              <BrainstormPanel teamSlugOrId={teamSlugOrId} taskId={taskId} />
               <TaskTimeline
                 task={task.data}
                 taskRuns={taskRuns.data}

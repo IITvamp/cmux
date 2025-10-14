@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { resolveTeamIdLoose } from "../_shared/team";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { internalQuery } from "./_generated/server";
+import { internalQuery, type MutationCtx } from "./_generated/server";
 import { authMutation, authQuery, taskIdWithFake } from "./users/utils";
 
 export const get = authQuery({
@@ -157,6 +157,17 @@ export const remove = authMutation({
     if (!doc || doc.teamId !== teamId || doc.userId !== userId) {
       throw new Error("Task not found or unauthorized");
     }
+
+    const brainstorms = await ctx.db
+      .query("taskBrainstorms")
+      .withIndex("by_task", (q) => q.eq("taskId", args.id))
+      .filter((q) => q.eq(q.field("teamId"), teamId))
+      .collect();
+
+    for (const brainstorm of brainstorms) {
+      await cascadeDeleteBrainstorm(ctx, brainstorm._id);
+    }
+
     await ctx.db.delete(args.id);
   },
 });
@@ -621,3 +632,36 @@ export const getByIdInternal = internalQuery({
     return await ctx.db.get(args.id);
   },
 });
+
+type DbWriter = Pick<MutationCtx, "db">;
+
+async function cascadeDeleteBrainstorm(
+  ctx: DbWriter,
+  brainstormId: Id<"taskBrainstorms">,
+): Promise<void> {
+  const dependencies = await ctx.db
+    .query("taskBrainstormDependencies")
+    .withIndex("by_brainstorm", (q) => q.eq("brainstormId", brainstormId))
+    .collect();
+  for (const dependency of dependencies) {
+    await ctx.db.delete(dependency._id);
+  }
+
+  const subtasks = await ctx.db
+    .query("taskBrainstormSubtasks")
+    .withIndex("by_brainstorm", (q) => q.eq("brainstormId", brainstormId))
+    .collect();
+  for (const subtask of subtasks) {
+    await ctx.db.delete(subtask._id);
+  }
+
+  const messages = await ctx.db
+    .query("taskBrainstormMessages")
+    .withIndex("by_brainstorm", (q) => q.eq("brainstormId", brainstormId))
+    .collect();
+  for (const message of messages) {
+    await ctx.db.delete(message._id);
+  }
+
+  await ctx.db.delete(brainstormId);
+}
