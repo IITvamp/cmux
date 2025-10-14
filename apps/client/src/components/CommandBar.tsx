@@ -427,7 +427,13 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
             if (!cmux?.autoUpdate?.check) {
               toast.error("Update checks are currently unavailable.");
             } else {
+              // Show loading toast while checking
+              const checkingToastId = toast.loading("Checking for updates...");
+
               const result = await cmux.autoUpdate.check();
+
+              // Dismiss the loading toast
+              toast.dismiss(checkingToastId);
 
               if (!result?.ok) {
                 if (result?.reason === "not-packaged") {
@@ -439,9 +445,18 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
                 const versionLabel = result.version
                   ? ` (${result.version})`
                   : "";
-                toast.success(
-                  `Update available${versionLabel}. Downloading in the background.`,
-                );
+
+                if (result.alreadyDownloaded) {
+                  // Update is already downloaded and ready to install
+                  toast.success(
+                    `Update ready to install${versionLabel}. Restart to apply.`,
+                  );
+                } else {
+                  // Update is available but needs to download
+                  toast.success(
+                    `Update available${versionLabel}. Downloading in the background.`,
+                  );
+                }
               } else {
                 toast.info("You're up to date.");
               }
