@@ -57,10 +57,18 @@ async fn ws_reconnect_and_reattach() {
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             if let Some(Ok(msg)) = ws1.next().await {
-                if let Message::Text(t) = msg {
-                    if t.contains("hello-one") {
-                        break;
+                match msg {
+                    Message::Text(t) => {
+                        if t.contains("hello-one") {
+                            break;
+                        }
                     }
+                    Message::Binary(data) => {
+                        if String::from_utf8_lossy(&data).contains("hello-one") {
+                            break;
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
@@ -84,10 +92,18 @@ async fn ws_reconnect_and_reattach() {
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             if let Some(Ok(msg)) = ws2.next().await {
-                if let Message::Text(t) = msg {
-                    if t.contains("hello-one") {
-                        break;
+                match msg {
+                    Message::Text(t) => {
+                        if t.contains("hello-one") {
+                            break;
+                        }
                     }
+                    Message::Binary(data) => {
+                        if String::from_utf8_lossy(&data).contains("hello-one") {
+                            break;
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
@@ -100,10 +116,18 @@ async fn ws_reconnect_and_reattach() {
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             if let Some(Ok(msg)) = ws2.next().await {
-                if let Message::Text(t) = msg {
-                    if t.contains("hello-two") {
-                        break;
+                match msg {
+                    Message::Text(t) => {
+                        if t.contains("hello-two") {
+                            break;
+                        }
                     }
+                    Message::Binary(data) => {
+                        if String::from_utf8_lossy(&data).contains("hello-two") {
+                            break;
+                        }
+                    }
+                    _ => {}
                 }
             }
         }

@@ -231,21 +231,13 @@ impl Session {
         // Sender task: PTY -> WS
         let send_task = tokio::spawn(async move {
             for chunk in backlog_chunks {
-                if ws_tx
-                    .send(Message::Text(String::from_utf8_lossy(&chunk).to_string()))
-                    .await
-                    .is_err()
-                {
+                if ws_tx.send(Message::Binary(chunk)).await.is_err() {
                     return;
                 }
             }
 
             while let Ok(data) = rx.recv().await {
-                if ws_tx
-                    .send(Message::Text(String::from_utf8_lossy(&data).to_string()))
-                    .await
-                    .is_err()
-                {
+                if ws_tx.send(Message::Binary(data)).await.is_err() {
                     break;
                 }
             }

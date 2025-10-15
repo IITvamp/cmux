@@ -59,10 +59,18 @@ async fn ws_echo_cat() {
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             if let Some(Ok(msg)) = ws.next().await {
-                if let Message::Text(t) = msg {
-                    if t.contains("hello world") {
-                        break;
+                match msg {
+                    Message::Text(t) => {
+                        if t.contains("hello world") {
+                            break;
+                        }
                     }
+                    Message::Binary(data) => {
+                        if String::from_utf8_lossy(&data).contains("hello world") {
+                            break;
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
