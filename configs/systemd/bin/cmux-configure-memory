@@ -63,6 +63,25 @@ add_unique() {
   arr_ref+=("$value")
 }
 
+container_type=""
+if command -v systemd-detect-virt >/dev/null 2>&1; then
+  container_type="$(systemd-detect-virt --container 2>/dev/null || true)"
+  if [ "$container_type" = "none" ]; then
+    container_type=""
+  fi
+fi
+if [ -z "$container_type" ]; then
+  if [ -f /run/.containerenv ]; then
+    container_type="podman"
+  elif [ -f /.dockerenv ]; then
+    container_type="docker"
+  fi
+fi
+in_container=0
+if [ -n "$container_type" ]; then
+  in_container=1
+fi
+
 before_free="$(capture_output free -h || true)"
 before_swapon="$(capture_output swapon --show=NAME,TYPE,SIZE,USED,PRIO || true)"
 before_zram="$(capture_output zramctl || true)"
@@ -122,59 +141,64 @@ elif [ "${distro_id,,}" = "debian" ] || [ "${distro_id,,}" = "ubuntu" ] || [[ "$
 fi
 
 zram_changed=0
-if [ "$use_zram_tools" -eq 1 ]; then
-  config_path="${zram_config_path:-/etc/default/zramswap}"
-  case "$(basename "$config_path")" in
-    zram-config)
-      config_content=$'# Managed by cmux-configure-memory\nZRAM_NUM_DEVICES=1\nALGO=zstd\nPERCENT=50\nPRIORITY=120\n'
-      ;;
-    *)
-      config_content=$'# Managed by cmux-configure-memory\nALGO=zstd\nPERCENT=50\nPRIORITY=120\n'
-      ;;
-  esac
-  if write_file_if_changed "$config_path" "0644" "$config_content"; then
-    zram_changed=1
-    log "Updated ${config_path}"
-  else
-    log "zram-tools config already up to date"
-  fi
-  if systemctl list-unit-files "${zram_unit}" >/dev/null 2>&1; then
-    systemctl enable "${zram_unit}" >/dev/null 2>&1 || true
-    if [ "$zram_changed" -eq 1 ]; then
-      systemctl restart "${zram_unit}" || true
-    else
-      systemctl try-restart "${zram_unit}" || true
-    fi
-  else
-    log "${zram_unit:-zram-tools service} missing; skipping enable/restart"
-  fi
-  summary+=("Configured zram-tools (${zram_unit:-unknown}) to allocate 50% RAM with zstd (priority ${zram_priority}).")
+if [ "$in_container" -eq 1 ]; then
+  log "Container environment (${container_type:-unknown}) detected; skipping zram configuration."
+  summary+=("Skipped zram configuration inside container environment.")
 else
-  config_content=$'# Managed by cmux-configure-memory\n[zram0]\ncompression-algorithm = zstd\nzram-size = ram / 2\nswap-priority = 120\n'
-  if write_file_if_changed "/etc/systemd/zram-generator.conf" "0644" "$config_content"; then
-    zram_changed=1
-    log "Updated /etc/systemd/zram-generator.conf"
-  else
-    log "zram-generator config already up to date"
-  fi
-  if [ "$zram_changed" -eq 1 ]; then
-    systemctl daemon-reload || true
-  fi
-  if systemctl list-unit-files systemd-zram-setup@zram0.service >/dev/null 2>&1; then
-    systemctl enable systemd-zram-setup@zram0.service >/dev/null 2>&1 || true
-    if [ "$zram_changed" -eq 1 ]; then
-      systemctl restart systemd-zram-setup@zram0.service || true
+  if [ "$use_zram_tools" -eq 1 ]; then
+    config_path="${zram_config_path:-/etc/default/zramswap}"
+    case "$(basename "$config_path")" in
+      zram-config)
+        config_content=$'# Managed by cmux-configure-memory\nZRAM_NUM_DEVICES=1\nALGO=zstd\nPERCENT=50\nPRIORITY=120\n'
+        ;;
+      *)
+        config_content=$'# Managed by cmux-configure-memory\nALGO=zstd\nPERCENT=50\nPRIORITY=120\n'
+        ;;
+    esac
+    if write_file_if_changed "$config_path" "0644" "$config_content"; then
+      zram_changed=1
+      log "Updated ${config_path}"
     else
-      systemctl try-restart systemd-zram-setup@zram0.service || true
+      log "zram-tools config already up to date"
     fi
+    if systemctl list-unit-files "${zram_unit}" >/dev/null 2>&1; then
+      systemctl enable "${zram_unit}" >/dev/null 2>&1 || true
+      if [ "$zram_changed" -eq 1 ]; then
+        systemctl restart "${zram_unit}" || true
+      else
+        systemctl try-restart "${zram_unit}" || true
+      fi
+    else
+      log "${zram_unit:-zram-tools service} missing; skipping enable/restart"
+    fi
+    summary+=("Configured zram-tools (${zram_unit:-unknown}) to allocate 50% RAM with zstd (priority ${zram_priority}).")
   else
-    log "systemd-zram-setup@zram0.service missing; skipping enable/restart"
+    config_content=$'# Managed by cmux-configure-memory\n[zram0]\ncompression-algorithm = zstd\nzram-size = ram / 2\nswap-priority = 120\n'
+    if write_file_if_changed "/etc/systemd/zram-generator.conf" "0644" "$config_content"; then
+      zram_changed=1
+      log "Updated /etc/systemd/zram-generator.conf"
+    else
+      log "zram-generator config already up to date"
+    fi
+    if [ "$zram_changed" -eq 1 ]; then
+      systemctl daemon-reload || true
+    fi
+    if systemctl list-unit-files systemd-zram-setup@zram0.service >/dev/null 2>&1; then
+      systemctl enable systemd-zram-setup@zram0.service >/dev/null 2>&1 || true
+      if [ "$zram_changed" -eq 1 ]; then
+        systemctl restart systemd-zram-setup@zram0.service || true
+      else
+        systemctl try-restart systemd-zram-setup@zram0.service || true
+      fi
+    else
+      log "systemd-zram-setup@zram0.service missing; skipping enable/restart"
+    fi
+    summary+=("Configured zram-generator to allocate 50% RAM with zstd (priority ${zram_priority}).")
   fi
-  summary+=("Configured zram-generator to allocate 50% RAM with zstd (priority ${zram_priority}).")
 fi
 
 # Ensure zram device is using the requested compression algorithm; restart once if needed.
-if command -v zramctl >/dev/null 2>&1; then
+if [ "$in_container" -eq 0 ] && command -v zramctl >/dev/null 2>&1; then
   current_algo="$(zramctl | awk 'NR==2 {print tolower($2)}')"
   target_algo="zstd"
   available_algos=""
@@ -204,108 +228,113 @@ swapfile_bytes=$((swapfile_size_gib * 1024 * 1024 * 1024))
 swapfile_dir="$(dirname "$swapfile_path")"
 mkdir -p "$swapfile_dir"
 
-swap_active_before=0
-if grep -q "^${swapfile_path}[[:space:]]" /proc/swaps 2>/dev/null; then
-  swap_active_before=1
-fi
-
-ensure_swapfile=1
-if [ -f "$swapfile_path" ]; then
-  current_size="$(stat -c '%s' "$swapfile_path" 2>/dev/null || echo 0)"
-  if [ "$current_size" -ne "$swapfile_bytes" ]; then
-    if [ "$swap_active_before" -eq 1 ]; then
-      swapoff "$swapfile_path" || true
-    fi
-    log "Recreating swapfile due to size mismatch (current $(numfmt_bytes "$current_size"), expected $(numfmt_bytes "$swapfile_bytes"))."
-  else
-    ensure_swapfile=0
+if [ "$in_container" -eq 1 ]; then
+  log "Container environment (${container_type:-unknown}) detected; skipping swapfile provisioning."
+  summary+=("Skipped swapfile provisioning inside container environment.")
+else
+  swap_active_before=0
+  if grep -q "^${swapfile_path}[[:space:]]" /proc/swaps 2>/dev/null; then
+    swap_active_before=1
   fi
-fi
 
-swap_created=0
-swap_reinitialized=0
-if [ "$ensure_swapfile" -eq 1 ]; then
-  avail_blocks="$(stat -f --format='%a' "$swapfile_dir" 2>/dev/null || echo 0)"
-  block_size="$(stat -f --format='%S' "$swapfile_dir" 2>/dev/null || echo 1)"
-  avail_bytes=$((avail_blocks * block_size))
-  required_bytes=$((swapfile_bytes + 512 * 1024 * 1024)) # include 512MiB safety margin
-  if [ "$avail_bytes" -lt "$required_bytes" ]; then
-    log "Insufficient disk space for ${swapfile_size_gib}GiB swapfile at ${swapfile_path} (available $(numfmt_bytes "$avail_bytes")). Skipping creation."
-    ensure_swapfile=0
-    summary+=("Skipped ${swapfile_size_gib}GiB swapfile creation due to insufficient free space.")
-  else
-    if ! fallocate -l "${swapfile_size_gib}G" "$swapfile_path" 2>/dev/null; then
-      dd if=/dev/zero of="$swapfile_path" bs=1M count=$((swapfile_size_gib * 1024)) status=none
-    fi
-    swap_created=1
-    swap_reinitialized=1
-  fi
-fi
-
-swap_activation_error=""
-swap_active_after=0
-if [ -f "$swapfile_path" ]; then
-  chmod 600 "$swapfile_path"
-  if [ "$swap_reinitialized" -eq 1 ] || [ "$swap_active_before" -eq 0 ]; then
-    if ! mkswap -f "$swapfile_path" >/dev/null 2>&1; then
-      log "mkswap failed for ${swapfile_path}; removing incomplete file."
-      rm -f "$swapfile_path"
-    fi
-  fi
+  ensure_swapfile=1
   if [ -f "$swapfile_path" ]; then
-    if ! grep -q "^${swapfile_path}[[:space:]]" /etc/fstab 2>/dev/null; then
-      printf '%s\n' "${swapfile_path} none swap defaults,nofail,pri=10 0 0" >> /etc/fstab
-      log "Added ${swapfile_path} to /etc/fstab with priority 10."
+    current_size="$(stat -c '%s' "$swapfile_path" 2>/dev/null || echo 0)"
+    if [ "$current_size" -ne "$swapfile_bytes" ]; then
+      if [ "$swap_active_before" -eq 1 ]; then
+        swapoff "$swapfile_path" || true
+      fi
+      log "Recreating swapfile due to size mismatch (current $(numfmt_bytes "$current_size"), expected $(numfmt_bytes "$swapfile_bytes"))."
+    else
+      ensure_swapfile=0
     fi
-    tmp_err="$(mktemp)"
-    if grep -q "^${swapfile_path}[[:space:]]" /proc/swaps 2>/dev/null; then
-      current_prio="$(awk -v path="${swapfile_path}" '$1 == path {print $5}' /proc/swaps 2>/dev/null | head -n1)"
-      if [ "${current_prio:-10}" -ne 10 ]; then
-        log "Resetting priority for ${swapfile_path} from ${current_prio:-unknown} to 10."
-        if ! swapoff "$swapfile_path" 2>"$tmp_err"; then
-          swap_activation_error="$(normalize_whitespace "$(cat "$tmp_err")")"
-        elif ! swapon -p 10 "$swapfile_path" 2>"$tmp_err"; then
-          swap_activation_error="$(normalize_whitespace "$(cat "$tmp_err")")"
+  fi
+
+  swap_created=0
+  swap_reinitialized=0
+  if [ "$ensure_swapfile" -eq 1 ]; then
+    avail_blocks="$(stat -f --format='%a' "$swapfile_dir" 2>/dev/null || echo 0)"
+    block_size="$(stat -f --format='%S' "$swapfile_dir" 2>/dev/null || echo 1)"
+    avail_bytes=$((avail_blocks * block_size))
+    required_bytes=$((swapfile_bytes + 512 * 1024 * 1024)) # include 512MiB safety margin
+    if [ "$avail_bytes" -lt "$required_bytes" ]; then
+      log "Insufficient disk space for ${swapfile_size_gib}GiB swapfile at ${swapfile_path} (available $(numfmt_bytes "$avail_bytes")). Skipping creation."
+      ensure_swapfile=0
+      summary+=("Skipped ${swapfile_size_gib}GiB swapfile creation due to insufficient free space.")
+    else
+      if ! fallocate -l "${swapfile_size_gib}G" "$swapfile_path" 2>/dev/null; then
+        dd if=/dev/zero of="$swapfile_path" bs=1M count=$((swapfile_size_gib * 1024)) status=none
+      fi
+      swap_created=1
+      swap_reinitialized=1
+    fi
+  fi
+
+  swap_activation_error=""
+  swap_active_after=0
+  if [ -f "$swapfile_path" ]; then
+    chmod 600 "$swapfile_path"
+    if [ "$swap_reinitialized" -eq 1 ] || [ "$swap_active_before" -eq 0 ]; then
+      if ! mkswap -f "$swapfile_path" >/dev/null 2>&1; then
+        log "mkswap failed for ${swapfile_path}; removing incomplete file."
+        rm -f "$swapfile_path"
+      fi
+    fi
+    if [ -f "$swapfile_path" ]; then
+      if ! grep -q "^${swapfile_path}[[:space:]]" /etc/fstab 2>/dev/null; then
+        printf '%s\n' "${swapfile_path} none swap defaults,nofail,pri=10 0 0" >> /etc/fstab
+        log "Added ${swapfile_path} to /etc/fstab with priority 10."
+      fi
+      tmp_err="$(mktemp)"
+      if grep -q "^${swapfile_path}[[:space:]]" /proc/swaps 2>/dev/null; then
+        current_prio="$(awk -v path="${swapfile_path}" '$1 == path {print $5}' /proc/swaps 2>/dev/null | head -n1)"
+        if [ "${current_prio:-10}" -ne 10 ]; then
+          log "Resetting priority for ${swapfile_path} from ${current_prio:-unknown} to 10."
+          if ! swapoff "$swapfile_path" 2>"$tmp_err"; then
+            swap_activation_error="$(normalize_whitespace "$(cat "$tmp_err")")"
+          elif ! swapon -p 10 "$swapfile_path" 2>"$tmp_err"; then
+            swap_activation_error="$(normalize_whitespace "$(cat "$tmp_err")")"
+          fi
+        else
+          swap_active_after=1
         fi
       else
-        swap_active_after=1
+        if ! swapon -p 10 "$swapfile_path" 2>"$tmp_err"; then
+          swap_activation_error="$(normalize_whitespace "$(cat "$tmp_err")")"
+        fi
       fi
-    else
-      if ! swapon -p 10 "$swapfile_path" 2>"$tmp_err"; then
-        swap_activation_error="$(normalize_whitespace "$(cat "$tmp_err")")"
-      fi
-    fi
-    rm -f "$tmp_err"
-    if grep -q "^${swapfile_path}[[:space:]]" /proc/swaps 2>/dev/null; then
-      current_prio="$(awk -v path="${swapfile_path}" '$1 == path {print $5}' /proc/swaps 2>/dev/null | head -n1)"
-      if [ "${current_prio:-10}" -eq 10 ]; then
-        swap_active_after=1
-      else
-        swap_activation_error="swap priority ${current_prio:-unknown} (expected 10)"
+      rm -f "$tmp_err"
+      if grep -q "^${swapfile_path}[[:space:]]" /proc/swaps 2>/dev/null; then
+        current_prio="$(awk -v path="${swapfile_path}" '$1 == path {print $5}' /proc/swaps 2>/dev/null | head -n1)"
+        if [ "${current_prio:-10}" -eq 10 ]; then
+          swap_active_after=1
+        else
+          swap_activation_error="swap priority ${current_prio:-unknown} (expected 10)"
+        fi
       fi
     fi
+  elif [ "$ensure_swapfile" -eq 1 ] && [ "$swap_reinitialized" -eq 0 ]; then
+    log "Swapfile creation skipped; no file at ${swapfile_path}."
   fi
-elif [ "$ensure_swapfile" -eq 1 ] && [ "$swap_reinitialized" -eq 0 ]; then
-  log "Swapfile creation skipped; no file at ${swapfile_path}."
-fi
 
-if [ ! -f "$swapfile_path" ] && [ "$ensure_swapfile" -eq 0 ] && [ "$swap_active_before" -eq 0 ]; then
-  log "Swapfile not present and not created."
-fi
+  if [ ! -f "$swapfile_path" ] && [ "$ensure_swapfile" -eq 0 ] && [ "$swap_active_before" -eq 0 ]; then
+    log "Swapfile not present and not created."
+  fi
 
-if [ ! -f "$swapfile_path" ] && [ "$swap_active_before" -eq 1 ]; then
-  log "Swapfile previously active but now missing; attempting cleanup."
-  swapoff "$swapfile_path" || true
-fi
+  if [ ! -f "$swapfile_path" ] && [ "$swap_active_before" -eq 1 ]; then
+    log "Swapfile previously active but now missing; attempting cleanup."
+    swapoff "$swapfile_path" || true
+  fi
 
-if [ -f "$swapfile_path" ]; then
-  if [ "$swap_active_after" -eq 1 ]; then
-    summary+=("Ensured ${swapfile_size_gib}GiB swapfile at ${swapfile_path} with priority 10.")
-  else
-    if [ -n "$swap_activation_error" ]; then
-      summary+=("Prepared ${swapfile_size_gib}GiB swapfile at ${swapfile_path}; activation pending (${swap_activation_error}).")
+  if [ -f "$swapfile_path" ]; then
+    if [ "$swap_active_after" -eq 1 ]; then
+      summary+=("Ensured ${swapfile_size_gib}GiB swapfile at ${swapfile_path} with priority 10.")
     else
-      summary+=("Prepared ${swapfile_size_gib}GiB swapfile at ${swapfile_path}; activation pending.")
+      if [ -n "$swap_activation_error" ]; then
+        summary+=("Prepared ${swapfile_size_gib}GiB swapfile at ${swapfile_path}; activation pending (${swap_activation_error}).")
+      else
+        summary+=("Prepared ${swapfile_size_gib}GiB swapfile at ${swapfile_path}; activation pending.")
+      fi
     fi
   fi
 fi
