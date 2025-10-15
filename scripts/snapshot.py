@@ -205,7 +205,11 @@ class TaskContext:
             """
             export RUSTUP_HOME=/usr/local/rustup
             export CARGO_HOME=/usr/local/cargo
-            export PATH="/root/.local/bin:/usr/local/cargo/bin:/usr/local/go/bin:/usr/local/bin:$PATH"
+            export NVM_DIR=/root/.nvm
+            export GOPATH=/usr/local/go-workspace
+            export GOMODCACHE="${GOPATH}/pkg/mod"
+            export GOCACHE=/usr/local/go-cache
+            export PATH="/root/.local/bin:/usr/local/cargo/bin:/usr/local/go/bin:${GOPATH}/bin:/usr/local/bin:$PATH"
             """
         ).strip()
         self.environment_prelude = exports
@@ -1102,6 +1106,10 @@ async def task_install_go_toolchain(ctx: TaskContext) -> None:
         rm -rf /usr/local/go
         tar -C /usr/local -xzf go.tar.gz
         install -d /usr/local/bin
+        install -d -m 0755 /usr/local/go-workspace/bin
+        install -d -m 0755 /usr/local/go-workspace/pkg/mod
+        install -d -m 0755 /usr/local/go-workspace/pkg/sumdb
+        install -d -m 0755 /usr/local/go-cache
         ln -sf /usr/local/go/bin/go /usr/local/bin/go
         ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
         /usr/local/go/bin/go version
@@ -1362,6 +1370,10 @@ async def task_configure_zsh(ctx: TaskContext) -> None:
 export SHELL="${zsh_path}"
 export PATH="/usr/local/bin:/usr/local/cargo/bin:\$HOME/.local/bin:\$PATH"
 export XDG_RUNTIME_DIR="/run/user/0"
+export NVM_DIR="\$HOME/.nvm"
+if [ -s /etc/profile.d/nvm.sh ]; then
+  . /etc/profile.d/nvm.sh
+fi
 
 alias code='/app/openvscode-server/bin/openvscode-server'
 alias c='code'
@@ -1774,12 +1786,30 @@ PROFILE
         if ! grep -q 'cmux-paths.sh' /root/.bashrc 2>/dev/null; then
           echo '[ -f /etc/profile.d/cmux-paths.sh ] && . /etc/profile.d/cmux-paths.sh' >> /root/.bashrc
         fi
+        if ! grep -q 'nvm.sh' /root/.bashrc 2>/dev/null; then
+          echo '[ -f /etc/profile.d/nvm.sh ] && . /etc/profile.d/nvm.sh' >> /root/.bashrc
+        fi
         if ! grep -q 'XDG_RUNTIME_DIR=/run/user/0' /root/.zshrc 2>/dev/null; then
           echo 'export XDG_RUNTIME_DIR=/run/user/0' >> /root/.zshrc
         fi
         """
     )
     await ctx.run("configure-envctl", cmd)
+
+
+@registry.task(
+    name="cleanup-build-artifacts",
+    deps=(
+        "configure-memory-protection",
+        "configure-envctl",
+        "install-prompt-wrapper",
+        "install-tmux-conf",
+        "install-collect-scripts",
+    ),
+    description="Remove repository upload and toolchain caches prior to final validation",
+)
+async def task_cleanup_build_artifacts(ctx: TaskContext) -> None:
+    await cleanup_instance_disk(ctx)
 
 
 async def run_task_graph(registry: TaskRegistry, ctx: TaskContext) -> None:
@@ -1822,7 +1852,7 @@ async def _run_task_with_timing(ctx: TaskContext, task: TaskDefinition) -> None:
 
 @registry.task(
     name="check-cargo",
-    deps=("install-rust-toolchain",),
+    deps=("install-rust-toolchain", "cleanup-build-artifacts"),
     description="Verify cargo is installed and working",
 )
 async def task_check_cargo(ctx: TaskContext) -> None:
@@ -1831,7 +1861,7 @@ async def task_check_cargo(ctx: TaskContext) -> None:
 
 @registry.task(
     name="check-node",
-    deps=("install-node-runtime",),
+    deps=("install-node-runtime", "cleanup-build-artifacts"),
     description="Verify node is installed and working",
 )
 async def task_check_node(ctx: TaskContext) -> None:
@@ -1840,7 +1870,7 @@ async def task_check_node(ctx: TaskContext) -> None:
 
 @registry.task(
     name="check-bun",
-    deps=("install-bun",),
+    deps=("install-bun", "cleanup-build-artifacts"),
     description="Verify bun is installed and working",
 )
 async def task_check_bun(ctx: TaskContext) -> None:
@@ -1849,7 +1879,7 @@ async def task_check_bun(ctx: TaskContext) -> None:
 
 @registry.task(
     name="check-uv",
-    deps=("install-uv-python",),
+    deps=("install-uv-python", "cleanup-build-artifacts"),
     description="Verify uv is installed and working",
 )
 async def task_check_uv(ctx: TaskContext) -> None:
@@ -1858,7 +1888,7 @@ async def task_check_uv(ctx: TaskContext) -> None:
 
 @registry.task(
     name="check-gh",
-    deps=("install-base-packages",),
+    deps=("install-base-packages", "cleanup-build-artifacts"),
     description="Verify GitHub CLI is installed and working",
 )
 async def task_check_gh(ctx: TaskContext) -> None:
@@ -1867,7 +1897,7 @@ async def task_check_gh(ctx: TaskContext) -> None:
 
 @registry.task(
     name="check-envctl",
-    deps=("configure-envctl",),
+    deps=("configure-envctl", "cleanup-build-artifacts"),
     description="Verify envctl is installed and working",
 )
 async def task_check_envctl(ctx: TaskContext) -> None:
@@ -1876,7 +1906,7 @@ async def task_check_envctl(ctx: TaskContext) -> None:
 
 @registry.task(
     name="check-ssh-service",
-    deps=("configure-memory-protection",),
+    deps=("configure-memory-protection", "cleanup-build-artifacts"),
     description="Verify SSH service is active",
 )
 async def task_check_ssh_service(ctx: TaskContext) -> None:
@@ -1896,7 +1926,7 @@ async def task_check_ssh_service(ctx: TaskContext) -> None:
 
 @registry.task(
     name="check-vscode",
-    deps=("configure-memory-protection",),
+    deps=("configure-memory-protection", "cleanup-build-artifacts"),
     description="Verify VS Code endpoint is accessible",
 )
 async def task_check_vscode(ctx: TaskContext) -> None:
@@ -1919,7 +1949,7 @@ async def task_check_vscode(ctx: TaskContext) -> None:
 
 @registry.task(
     name="check-vscode-via-proxy",
-    deps=("configure-memory-protection",),
+    deps=("configure-memory-protection", "cleanup-build-artifacts"),
     description="Verify VS Code endpoint is accessible through cmux-proxy",
 )
 async def task_check_vscode_via_proxy(ctx: TaskContext) -> None:
@@ -1945,7 +1975,7 @@ async def task_check_vscode_via_proxy(ctx: TaskContext) -> None:
 
 @registry.task(
     name="check-xterm",
-    deps=("install-systemd-units",),
+    deps=("install-systemd-units", "cleanup-build-artifacts"),
     description="Verify cmux-xterm service is accessible",
 )
 async def task_check_xterm(ctx: TaskContext) -> None:
@@ -1969,7 +1999,7 @@ async def task_check_xterm(ctx: TaskContext) -> None:
 
 @registry.task(
     name="check-vnc",
-    deps=("configure-memory-protection",),
+    deps=("configure-memory-protection", "cleanup-build-artifacts"),
     description="Verify VNC packages and endpoint are accessible",
 )
 async def task_check_vnc(ctx: TaskContext) -> None:
@@ -2009,7 +2039,7 @@ async def task_check_vnc(ctx: TaskContext) -> None:
 
 @registry.task(
     name="check-devtools",
-    deps=("configure-memory-protection",),
+    deps=("configure-memory-protection", "cleanup-build-artifacts"),
     description="Verify Chrome browser and DevTools endpoint are accessible",
 )
 async def task_check_devtools(ctx: TaskContext) -> None:
@@ -2041,7 +2071,7 @@ async def task_check_devtools(ctx: TaskContext) -> None:
 
 @registry.task(
     name="check-worker",
-    deps=("configure-memory-protection",),
+    deps=("configure-memory-protection", "cleanup-build-artifacts"),
     description="Verify worker service is running",
 )
 async def task_check_worker(ctx: TaskContext) -> None:
@@ -2118,6 +2148,68 @@ async def snapshot_instance(
     snapshot = await instance.asnapshot()
     console.info(f"Created snapshot {snapshot.id}")
     return snapshot
+
+
+async def cleanup_instance_disk(ctx: TaskContext) -> None:
+    ctx.console.info("Cleaning up build artifacts before snapshot...")
+    repo = shlex.quote(ctx.remote_repo_root)
+    tar_path = shlex.quote(ctx.remote_repo_tar)
+    cleanup_script = textwrap.dedent(
+        f"""
+        set -euo pipefail
+        rm -rf {repo}
+        rm -f {tar_path}
+        if [ -d /usr/local/cargo ]; then
+            rm -rf /usr/local/cargo/registry
+            rm -rf /usr/local/cargo/git
+            install -d -m 0755 /usr/local/cargo/registry
+            install -d -m 0755 /usr/local/cargo/git
+        fi
+        if [ -d /usr/local/rustup ]; then
+            rm -rf /usr/local/rustup/tmp
+            rm -rf /usr/local/rustup/downloads
+            install -d -m 0755 /usr/local/rustup/tmp
+            install -d -m 0755 /usr/local/rustup/downloads
+        fi
+        if [ -d /root/.cache ]; then
+            rm -rf /root/.cache/go-build
+            rm -rf /root/.cache/pip
+            rm -rf /root/.cache/uv
+            rm -rf /root/.cache/bun
+        fi
+        if [ -d /root/.bun ]; then
+            rm -rf /root/.bun/install/cache
+        fi
+        rm -rf /root/.npm
+        rm -rf /root/.pnpm-store
+        rm -rf /root/go
+        rm -rf /usr/local/go-workspace/bin
+        rm -rf /usr/local/go-workspace/pkg/mod
+        rm -rf /usr/local/go-workspace/pkg/sumdb
+        rm -rf /usr/local/go-cache
+        install -d -m 0755 /root/.cache
+        install -d -m 0755 /root/.cache/go-build
+        install -d -m 0755 /root/.cache/pip
+        install -d -m 0755 /root/.cache/uv
+        install -d -m 0755 /root/.cache/bun
+        install -d -m 0755 /usr/local/go-workspace
+        install -d -m 0755 /usr/local/go-workspace/bin
+        install -d -m 0755 /usr/local/go-workspace/pkg/mod
+        install -d -m 0755 /usr/local/go-workspace/pkg/sumdb
+        install -d -m 0755 /usr/local/go-cache
+        if [ -d /var/cache/apt ]; then
+            rm -rf /var/cache/apt/archives/*.deb
+            rm -rf /var/cache/apt/archives/partial
+            install -d -m 0755 /var/cache/apt/archives/partial
+        fi
+        if [ -d /var/lib/apt/lists ]; then
+            find /var/lib/apt/lists -mindepth 1 -maxdepth 1 -type f -delete
+            rm -rf /var/lib/apt/lists/partial
+            install -d -m 0755 /var/lib/apt/lists/partial
+        fi
+        """
+    ).strip()
+    await ctx.run("cleanup-disk-artifacts", cleanup_script)
 
 
 async def provision_and_snapshot(args: argparse.Namespace) -> None:
@@ -2205,6 +2297,8 @@ async def provision_and_snapshot(args: argparse.Namespace) -> None:
         "Review the workspace URLs above, then press Enter to create the snapshot."
     )
     await asyncio.to_thread(input, "")
+
+    await cleanup_instance_disk(ctx)
 
     snapshot = await snapshot_instance(instance, console=console)
 
@@ -2297,7 +2391,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--disk-size",
         type=int,
-        default=32_768,
+        # 48gb
+        default=49_152,
         help="Disk size (MiB) for instance",
     )
     parser.add_argument(
