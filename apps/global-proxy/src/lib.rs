@@ -498,7 +498,7 @@ fn build_head_response(
     } else if behavior.add_cors {
         add_cors_headers(&mut new_headers);
     }
-    if force_cors_headers {
+    if force_cors_headers && !behavior.strip_cors_headers {
         add_cors_headers(&mut new_headers);
     }
     if let Some(frame_ancestors) = behavior.frame_ancestors {
