@@ -513,11 +513,13 @@ function setupAutoUpdates(): void {
         : null;
 
     if (!isUpdateNewerThanCurrent(info)) {
-      updateDownloadedAndReady = false;
-      mainLog("Ignoring downloaded update that is not newer than current build", {
-        version,
-        currentVersion: app.getVersion(),
-      });
+      mainLog(
+        "Ignoring downloaded update that is not newer than current build",
+        {
+          version,
+          currentVersion: app.getVersion(),
+        }
+      );
       return;
     }
 
