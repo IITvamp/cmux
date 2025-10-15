@@ -12,7 +12,7 @@ use tokio::{sync::broadcast, task::JoinHandle};
 use uuid::Uuid;
 
 use crate::pty::{Pty, PtyReader, PtyWriter};
-use portable_pty::MasterPty;
+use portable_pty::{Child, MasterPty};
 
 const BACKLOG_LIMIT: usize = 200_000;
 
@@ -105,7 +105,11 @@ impl Session {
     ) -> anyhow::Result<(Uuid, Arc<Self>)> {
         let id = Uuid::new_v4();
         let mut pty = Pty::open(cols, rows)?;
-        let _child = pty.spawn_shell(cmd, args)?; // child dropped; dropping pty pair should close session
+        // Keep a handle to the PTY child so we can terminate it explicitly.
+        let child = pty.spawn_shell(cmd, args)?;
+        let child_handle: Arc<Mutex<Option<Box<dyn Child + Send>>>> =
+            Arc::new(Mutex::new(Some(child)));
+        let kill_child = Arc::clone(&child_handle);
 
         // Extract master for IO and resizing
         let master = pty.pair.master;
@@ -134,7 +138,14 @@ impl Session {
         });
 
         let writer = Arc::new(Mutex::new(writer));
-        let kill: Arc<dyn Fn() + Send + Sync> = Arc::new(|| {});
+        let kill: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+            if let Ok(mut guard) = kill_child.lock() {
+                if let Some(mut child) = guard.take() {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            }
+        });
         let master = Arc::new(Mutex::new(master));
         let session = Arc::new(Session {
             id,
@@ -191,10 +202,13 @@ impl Session {
         });
 
         let child_arc = Arc::new(Mutex::new(Some(child)));
-        let kill_child = child_arc.clone();
+        let kill_child = Arc::clone(&child_arc);
         let kill: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
-            if let Some(mut c) = kill_child.lock().unwrap().take() {
-                let _ = c.kill();
+            if let Ok(mut guard) = kill_child.lock() {
+                if let Some(mut child) = guard.take() {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
             }
         });
 
@@ -212,7 +226,8 @@ impl Session {
     }
 
     pub async fn terminate(&self) {
-        (self.kill)();
+        let kill = Arc::clone(&self.kill);
+        let _ = tokio::task::spawn_blocking(move || (kill.as_ref())()).await;
         self.reader_task.abort();
     }
 
