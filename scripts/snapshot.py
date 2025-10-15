@@ -909,7 +909,6 @@ async def task_install_base_packages(ctx: TaskContext) -> None:
         DEBIAN_FRONTEND=noninteractive apt-get install -y \
             build-essential make pkg-config g++ libssl-dev \
             ruby-full perl software-properties-common \
-            kmod \
             tigervnc-standalone-server tigervnc-common \
             python3-websockify websockify \
             xvfb \
@@ -920,6 +919,7 @@ async def task_install_base_packages(ctx: TaskContext) -> None:
             zsh \
             zsh-autosuggestions \
             ripgrep
+
         
         # Download and install Chrome
         arch="$(dpkg --print-architecture)"
@@ -1580,7 +1580,7 @@ async def task_install_tmux_conf(ctx: TaskContext) -> None:
 @registry.task(
     name="configure-memory-protection",
     deps=("install-systemd-units",),
-    description="Configure zram, swapfile, and systemd resource protections",
+    description="Configure swapfile and systemd resource protections",
 )
 async def task_configure_memory_protection(ctx: TaskContext) -> None:
     cmd = textwrap.dedent(
