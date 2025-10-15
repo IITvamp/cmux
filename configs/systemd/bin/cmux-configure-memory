@@ -226,12 +226,13 @@ swapfile_path="/var/swap/cmux-swapfile"
 swapfile_size_gib=10
 swapfile_bytes=$((swapfile_size_gib * 1024 * 1024 * 1024))
 swapfile_dir="$(dirname "$swapfile_path")"
-mkdir -p "$swapfile_dir"
 
 if [ "$in_container" -eq 1 ]; then
   log "Container environment (${container_type:-unknown}) detected; skipping swapfile provisioning."
   summary+=("Skipped swapfile provisioning inside container environment.")
 else
+  mkdir -p "$swapfile_dir"
+
   swap_active_before=0
   if grep -q "^${swapfile_path}[[:space:]]" /proc/swaps 2>/dev/null; then
     swap_active_before=1
