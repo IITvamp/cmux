@@ -83,6 +83,29 @@ struct ControlMsg {
 }
 
 impl Session {
+    fn spawn_pipe_reader(
+        mut reader: Box<dyn Read + Send>,
+        tx: broadcast::Sender<Vec<u8>>,
+        backlog: Arc<Mutex<Backlog>>,
+    ) -> JoinHandle<()> {
+        tokio::task::spawn_blocking(move || {
+            let mut buf = [0u8; 4096];
+            loop {
+                match reader.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        let chunk = buf[..n].to_vec();
+                        if let Ok(mut backlog) = backlog.lock() {
+                            backlog.push(&chunk);
+                        }
+                        let _ = tx.send(chunk);
+                    }
+                    Err(_) => break,
+                }
+            }
+        })
+    }
+
     pub fn spawn(
         cmd: Option<&str>,
         args: Vec<String>,
@@ -172,33 +195,21 @@ impl Session {
             .spawn()?;
 
         let stdout = child.stdout.take().expect("stdout pipe");
+        let stderr = child.stderr.take().expect("stderr pipe");
         let stdin = child.stdin.take().expect("stdin pipe");
 
         // Convert to blocking std::io handles (already are std::process pipes)
-        let reader: Box<dyn Read + Send> = Box::new(stdout);
+        let stdout_reader: Box<dyn Read + Send> = Box::new(stdout);
+        let stderr_reader: Box<dyn Read + Send> = Box::new(stderr);
         let writer: Box<dyn Write + Send> = Box::new(stdin);
 
         let (tx, _rx) = broadcast::channel::<Vec<u8>>(256);
-        let tx_reader = tx.clone();
         let backlog = Arc::new(Mutex::new(Backlog::new()));
-        let backlog_reader = backlog.clone();
-        // Keep child alive by moving into the reader task context
-        let reader_task = tokio::task::spawn_blocking(move || {
-            let mut reader = reader;
-            let mut buf = [0u8; 4096];
-            loop {
-                match reader.read(&mut buf) {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        let chunk = buf[..n].to_vec();
-                        if let Ok(mut backlog) = backlog_reader.lock() {
-                            backlog.push(&chunk);
-                        }
-                        let _ = tx_reader.send(chunk);
-                    }
-                    Err(_) => break,
-                }
-            }
+        let stdout_task = Self::spawn_pipe_reader(stdout_reader, tx.clone(), backlog.clone());
+        let stderr_task = Self::spawn_pipe_reader(stderr_reader, tx.clone(), backlog.clone());
+        let reader_task = tokio::spawn(async move {
+            let _ = stdout_task.await;
+            let _ = stderr_task.await;
         });
 
         let child_arc = Arc::new(Mutex::new(Some(child)));
