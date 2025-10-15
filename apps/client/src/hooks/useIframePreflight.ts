@@ -3,11 +3,14 @@ import {
   extractMorphInstanceInfo,
   isIframePreflightPhasePayload,
   isIframePreflightResult,
+  isLoopbackHostname,
   type IframePreflightPhasePayload,
   type IframePreflightResult,
   type IframePreflightServerPhase,
 } from "@cmux/shared";
 import { WWW_ORIGIN } from "@/lib/wwwOrigin";
+import { useSocket } from "@/contexts/socket/use-socket";
+import { useUser } from "@stackframe/react";
 
 export type IframePreflightPhase =
   | "idle"
@@ -38,6 +41,35 @@ type ParsedEvent = {
   event: string;
   data: string;
 };
+
+export function shouldUseIframePreflightProxy(
+  target: string | URL | null | undefined
+): boolean {
+  if (!target) {
+    return false;
+  }
+
+  try {
+    return extractMorphInstanceInfo(target) !== null;
+  } catch {
+    return false;
+  }
+}
+
+export function shouldUseServerIframePreflight(
+  target: string | URL | null | undefined
+): boolean {
+  if (!target) {
+    return false;
+  }
+
+  try {
+    const url = typeof target === "string" ? new URL(target) : target;
+    return isLoopbackHostname(url.hostname);
+  } catch {
+    return false;
+  }
+}
 
 const EVENT_SEPARATOR = "\n\n";
 
@@ -73,7 +105,7 @@ function parseEventBlock(block: string): ParsedEvent | null {
 }
 
 function applyPhaseMapping(
-  phase: IframePreflightServerPhase,
+  phase: IframePreflightServerPhase
 ): IframePreflightPhase | null {
   switch (phase) {
     case "resuming":
@@ -102,6 +134,7 @@ export function useIframePreflight({
   url,
   enabled = true,
 }: UseIframePreflightOptions): UseIframePreflightState {
+  const user = useUser({ or: "redirect" });
   const [phase, setPhase] = useState<IframePreflightPhase>("idle");
   const [phasePayload, setPhasePayload] =
     useState<IframePreflightPhasePayload | null>(null);
@@ -109,17 +142,24 @@ export function useIframePreflight({
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const phaseRef = useRef<IframePreflightPhase>("idle");
+  const { socket } = useSocket();
 
-  const isMorphTarget = useMemo(() => {
+  type PreflightMode = "morph" | "server";
+
+  const preflightMode = useMemo<PreflightMode | null>(() => {
     if (!url) {
-      return false;
+      return null;
     }
-    try {
-      return extractMorphInstanceInfo(url) !== null;
-    } catch {
-      return false;
+    if (shouldUseIframePreflightProxy(url)) {
+      return "morph";
     }
+    if (shouldUseServerIframePreflight(url)) {
+      return "server";
+    }
+    return null;
   }, [url]);
+
+  const isMorphTarget = preflightMode === "morph";
 
   const updatePhase = (next: IframePreflightPhase) => {
     if (phaseRef.current === next) {
@@ -130,7 +170,12 @@ export function useIframePreflight({
   };
 
   useEffect(() => {
-    if (!enabled || !url) {
+    if (
+      !enabled ||
+      !url ||
+      !preflightMode ||
+      (preflightMode === "server" && !socket)
+    ) {
       abortRef.current?.abort();
       abortRef.current = null;
       phaseRef.current = "idle";
@@ -189,10 +234,11 @@ export function useIframePreflight({
       }
     };
 
-    const run = async () => {
+    const runMorphPreflight = async () => {
       try {
         const requestUrl = new URL("/api/iframe/preflight", WWW_ORIGIN);
         requestUrl.search = new URLSearchParams({ url }).toString();
+        const stackHeaders = await user.getAuthHeaders();
 
         const response = await fetch(requestUrl, {
           method: "GET",
@@ -201,6 +247,7 @@ export function useIframePreflight({
           signal: controller.signal,
           headers: {
             Accept: "text/event-stream",
+            ...stackHeaders,
           },
         });
 
@@ -305,7 +352,9 @@ export function useIframePreflight({
             break;
           }
 
-          const chunk = decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+          const chunk = decoder
+            .decode(value, { stream: true })
+            .replace(/\r\n/g, "\n");
           buffer += chunk;
 
           while (true) {
@@ -341,14 +390,62 @@ export function useIframePreflight({
       }
     };
 
-    void run();
+    const runServerPreflight = async () => {
+      try {
+        const payload = await new Promise<IframePreflightResult>(
+          (resolve, reject) => {
+            if (!socket) {
+              reject(new Error("Socket is not connected."));
+              return;
+            }
+            socket.emit("iframe-preflight", { url }, (response) => {
+              if (cancelled || controller.signal.aborted) {
+                return;
+              }
+              if (isIframePreflightResult(response)) {
+                resolve(response);
+                return;
+              }
+              reject(new Error("Preflight response was malformed."));
+            });
+          }
+        );
+
+        if (cancelled || controller.signal.aborted) {
+          return;
+        }
+
+        handleResultEvent(payload);
+      } catch (err) {
+        if (cancelled || controller.signal.aborted) {
+          return;
+        }
+
+        const message =
+          err instanceof Error ? err.message : "Preflight request failed.";
+        setError(message);
+        setResult({
+          ok: false,
+          status: null,
+          method: null,
+          error: message,
+        });
+        updatePhase("error");
+      }
+    };
+
+    if (preflightMode === "morph") {
+      void runMorphPreflight();
+    } else {
+      void runServerPreflight();
+    }
 
     return () => {
       cancelled = true;
       controller.abort();
       abortRef.current = null;
     };
-  }, [enabled, url]);
+  }, [enabled, preflightMode, socket, url, user]);
 
   return {
     phase,
