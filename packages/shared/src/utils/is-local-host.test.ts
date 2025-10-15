@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isLocalHostname } from "./is-local-host";
+import { isLocalHostname, isLoopbackHostname } from "./is-local-host";
 
 describe("isLocalHostname", () => {
   it("returns true for loopback hostnames", () => {
@@ -59,6 +59,36 @@ describe("isLocalHostname", () => {
 
     for (const host of hosts) {
       expect(isLocalHostname(host)).toBe(false);
+    }
+  });
+});
+
+describe("isLoopbackHostname", () => {
+  it("returns true only for loopback hostnames", () => {
+    const positiveHosts = [
+      "localhost",
+      "subdomain.localhost",
+      "127.0.0.1",
+      "127.4.5.6",
+      "0.0.0.0",
+      "::1",
+      "[::1]",
+      "::ffff:127.0.0.1",
+      "[::ffff:127.0.0.1]",
+    ];
+    for (const host of positiveHosts) {
+      expect(isLoopbackHostname(host)).toBe(true);
+    }
+
+    const negativeHosts = [
+      "example.local",
+      "10.0.0.1",
+      "192.168.1.1",
+      "::ffff:10.0.0.1",
+      "[::ffff:192.168.0.2]",
+    ];
+    for (const host of negativeHosts) {
+      expect(isLoopbackHostname(host)).toBe(false);
     }
   });
 });

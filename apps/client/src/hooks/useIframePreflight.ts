@@ -3,7 +3,7 @@ import {
   extractMorphInstanceInfo,
   isIframePreflightPhasePayload,
   isIframePreflightResult,
-  isLocalHostname,
+  isLoopbackHostname,
   type IframePreflightPhasePayload,
   type IframePreflightResult,
   type IframePreflightServerPhase,
@@ -65,7 +65,7 @@ export function shouldUseServerIframePreflight(
 
   try {
     const url = typeof target === "string" ? new URL(target) : target;
-    return isLocalHostname(url.hostname);
+    return isLoopbackHostname(url.hostname);
   } catch {
     return false;
   }

@@ -13,7 +13,7 @@ import {
   StartTaskSchema,
   type AvailableEditors,
   type FileInfo,
-  isLocalHostname,
+  isLoopbackHostname,
   type IframePreflightResult,
 } from "@cmux/shared";
 import {
@@ -146,7 +146,7 @@ export function setupSocketHandlers(
             return;
           }
 
-          if (!isLocalHostname(target.hostname)) {
+          if (!isLoopbackHostname(target.hostname)) {
             respond({
               ok: false,
               status: null,

@@ -1,4 +1,4 @@
-const LOCAL_HOSTS = new Set([
+const LOOPBACK_HOSTS = new Set([
   "localhost",
   "127.0.0.1",
   "0.0.0.0",
@@ -81,6 +81,45 @@ function isPrivateLanIpv4(hostname: string): boolean {
   return false;
 }
 
+export function isLoopbackHostname(
+  hostname: string | null | undefined,
+): boolean {
+  if (!hostname) {
+    return false;
+  }
+
+  const lower = hostname.toLowerCase();
+
+  if (LOOPBACK_HOSTS.has(lower)) {
+    return true;
+  }
+
+  if (lower.endsWith(".localhost")) {
+    return true;
+  }
+
+  if (isLoopbackIpv4(lower)) {
+    return true;
+  }
+
+  if (
+    lower.startsWith("::ffff:") &&
+    isLoopbackIpv4(lower.slice(7))
+  ) {
+    return true;
+  }
+
+  if (
+    lower.startsWith("[::ffff:") &&
+    lower.endsWith("]") &&
+    isLoopbackIpv4(lower.slice(8, -1))
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 export function isLocalHostname(hostname: string | null | undefined): boolean {
   if (!hostname) {
     return false;
@@ -88,11 +127,11 @@ export function isLocalHostname(hostname: string | null | undefined): boolean {
 
   const lower = hostname.toLowerCase();
 
-  if (LOCAL_HOSTS.has(lower)) {
+  if (isLoopbackHostname(lower)) {
     return true;
   }
 
-  if (lower.endsWith(".localhost") || lower.endsWith(".local")) {
+  if (lower.endsWith(".local")) {
     return true;
   }
 
