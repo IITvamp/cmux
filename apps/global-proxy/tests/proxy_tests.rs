@@ -699,17 +699,24 @@ async fn html_responses_skip_service_worker_for_cmux_route() {
 
 #[tokio::test]
 async fn port_39378_strips_cors_and_applies_csp() {
-    let handler = Arc::new(|_req| {
-        Response::builder()
-            .status(StatusCode::OK)
-            .header("content-type", "text/html")
-            .header("content-security-policy", "frame-ancestors 'none';")
-            .header("access-control-allow-origin", "https://upstream.example")
-            .header("access-control-allow-methods", "GET, OPTIONS")
-            .header("access-control-allow-headers", "X-Test")
-            .header("access-control-allow-credentials", "true")
-            .body(Body::from("<html><head></head><body>ok</body></html>"))
-            .unwrap()
+    let handler = Arc::new(|req: Request<Body>| {
+        if req.method() == HyperMethod::HEAD {
+            Response::builder()
+                .status(StatusCode::METHOD_NOT_ALLOWED)
+                .body(Body::empty())
+                .unwrap()
+        } else {
+            Response::builder()
+                .status(StatusCode::OK)
+                .header("content-type", "text/html")
+                .header("content-security-policy", "frame-ancestors 'none';")
+                .header("access-control-allow-origin", "https://upstream.example")
+                .header("access-control-allow-methods", "GET, OPTIONS")
+                .header("access-control-allow-headers", "X-Test")
+                .header("access-control-allow-credentials", "true")
+                .body(Body::from("<html><head></head><body>ok</body></html>"))
+                .unwrap()
+        }
     });
 
     let backend = TestHttpBackend::serve_on_port(39_378, handler).await;
@@ -814,6 +821,69 @@ async fn port_39378_strips_cors_and_applies_csp() {
             name
         );
     }
+
+    let head_response = proxy
+        .request(
+            Method::HEAD,
+            "port-39378-test.cmux.localhost",
+            "/",
+            &[("Origin", "https://cmux.dev")],
+        )
+        .await;
+    assert_eq!(head_response.status(), StatusCode::OK);
+    for name in [
+        "access-control-allow-origin",
+        "access-control-allow-methods",
+        "access-control-allow-headers",
+        "access-control-allow-credentials",
+        "access-control-expose-headers",
+        "access-control-max-age",
+    ] {
+        assert!(
+            head_response.headers().get(name).is_none(),
+            "expected header {} to be stripped",
+            name
+        );
+    }
+    assert_eq!(
+        head_response
+            .headers()
+            .get("content-security-policy")
+            .and_then(|v| v.to_str().ok()),
+        Some(
+            "frame-ancestors 'self' https://cmux.local http://cmux.local https://www.cmux.sh https://cmux.sh https://www.cmux.dev https://cmux.dev http://localhost:5173;"
+        )
+    );
+
+    let head_cmux_response = proxy
+        .request(
+            Method::HEAD,
+            "cmux-test-base-39378.cmux.sh",
+            "/",
+            &[("Origin", "https://cmux.dev")],
+        )
+        .await;
+    assert_eq!(head_cmux_response.status(), StatusCode::OK);
+    for name in [
+        "access-control-allow-origin",
+        "access-control-allow-methods",
+        "access-control-allow-headers",
+        "access-control-allow-credentials",
+        "access-control-expose-headers",
+        "access-control-max-age",
+    ] {
+        assert!(
+            head_cmux_response.headers().get(name).is_none(),
+            "expected header {} to be stripped",
+            name
+        );
+    }
+    assert!(
+        head_cmux_response
+            .headers()
+            .get("content-security-policy")
+            .is_none()
+    );
 
     proxy.shutdown().await;
     backend.shutdown().await;
