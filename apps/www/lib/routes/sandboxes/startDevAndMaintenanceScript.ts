@@ -160,6 +160,15 @@ echo "=== Dev Script Started at \$(date) ==="
 ${devScript}
 `;
 
+    const devWindowCommand = `zsh "${ids.dev.scriptPath}"
+EXIT_CODE=$?
+if [ "$EXIT_CODE" -ne 0 ]; then
+  echo "[DEV] Script exited with code $EXIT_CODE" >&2
+else
+  echo "[DEV] Script completed with code $EXIT_CODE"
+fi
+exec zsh`;
+
     const devCommand = `set -eu
 mkdir -p ${CMUX_RUNTIME_DIR}
 cat > ${ids.dev.scriptPath} <<'SCRIPT_EOF'
@@ -167,10 +176,12 @@ ${devScriptContent}
 SCRIPT_EOF
 chmod +x ${ids.dev.scriptPath}
 ${waitForTmuxSession}
-tmux new-window -t cmux: -n ${ids.dev.windowName} -d
-tmux send-keys -t cmux:${ids.dev.windowName} "zsh ${ids.dev.scriptPath}" C-m
+if tmux list-windows -F '#{window_name}' -t cmux 2>/dev/null | grep -Fx -- "${ids.dev.windowName}" >/dev/null; then
+  tmux kill-window -t cmux:${ids.dev.windowName}
+fi
+tmux new-window -t cmux: -n ${ids.dev.windowName} -d ${singleQuote(devWindowCommand)}
 sleep 2
-if tmux list-windows -t cmux | grep -q "${ids.dev.windowName}"; then
+if tmux list-windows -F '#{window_name}' -t cmux | grep -Fx -- "${ids.dev.windowName}" >/dev/null; then
   echo "[DEV] Window is running"
 else
   echo "[DEV] ERROR: Window not found" >&2
