@@ -697,11 +697,32 @@ function RepositoryConnectionsSection({
                     ) : null}
                   </>
                 ) : (
-                  <CommandEmpty>
-                    <div className="px-3 py-2 text-sm text-neutral-500">
-                      No connections yet
-                    </div>
-                  </CommandEmpty>
+                  <>
+                    <CommandEmpty>
+                      <div className="px-3 py-2 text-sm text-neutral-500">
+                        No connections yet
+                      </div>
+                    </CommandEmpty>
+                    {installNewUrl ? (
+                      <>
+                        <div className="h-px bg-neutral-200 dark:bg-neutral-800" />
+                        <CommandGroup forceMount>
+                          <CommandItem
+                            value="add-github-account"
+                            forceMount
+                            onSelect={() => {
+                              void handleInstallApp();
+                              setConnectionDropdownOpen(false);
+                            }}
+                            className="flex items-center gap-2"
+                          >
+                            <GitHubIcon className="h-4 w-4 text-neutral-700 dark:text-neutral-200" />
+                            <span>Install GitHub App</span>
+                          </CommandItem>
+                        </CommandGroup>
+                      </>
+                    ) : null}
+                  </>
                 )}
               </CommandList>
             </Command>
