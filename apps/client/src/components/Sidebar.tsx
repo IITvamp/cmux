@@ -91,6 +91,15 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
 
   // Keyboard shortcut to toggle sidebar (Ctrl+Shift+S)
   useEffect(() => {
+    if (isElectron && window.cmux?.on) {
+      const off = window.cmux.on("shortcut:sidebar-toggle", () => {
+        setIsHidden((prev) => !prev);
+      });
+      return () => {
+        if (typeof off === "function") off();
+      };
+    }
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
         e.ctrlKey &&
