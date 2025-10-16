@@ -6,6 +6,7 @@
   --z-sticky: 50;
   --z-modal: var(--z-sticky);
 
+  --z-iframe: 9998;
   --z-overlay-behind: 9998;
   --z-overlay: 9999;
   --z-context-menu: 10000;
