@@ -2212,6 +2212,26 @@ async def cleanup_instance_disk(ctx: TaskContext) -> None:
     await ctx.run("cleanup-disk-artifacts", cleanup_script)
 
 
+async def report_disk_usage(ctx: TaskContext) -> None:
+    ctx.console.info("Collecting disk usage statistics...")
+    disk_script = textwrap.dedent(
+        """
+        set -euo pipefail
+        echo "==== Disk usage (df -h /) ===="
+        df -h /
+        echo
+        echo "==== Key directories ===="
+        for path in /var/swap /cmux /usr/local /usr/local/go-workspace /usr/local/cargo /root; do
+            if [ -e "$path" ]; then
+                du -sh "$path" 2>/dev/null || true
+            fi
+        done
+        echo
+        """
+    ).strip()
+    await ctx.run("disk-usage-summary", disk_script)
+
+
 async def provision_and_snapshot(args: argparse.Namespace) -> None:
     console = Console()
     timings = TimingsCollector()
@@ -2275,6 +2295,8 @@ async def provision_and_snapshot(args: argparse.Namespace) -> None:
         console.always("\nTiming Summary")
         for line in summary:
             console.always(line)
+
+    await report_disk_usage(ctx)
 
     vscode_url = port_map.get(VSCODE_HTTP_PORT)
     if vscode_url is None:
