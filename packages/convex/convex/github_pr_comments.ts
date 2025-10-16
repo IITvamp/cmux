@@ -3,10 +3,6 @@ import { v } from "convex/values";
 import { fetchInstallationAccessToken } from "../_shared/githubApp";
 import { internalAction } from "./_generated/server";
 
-/**
- * Adds an emoji reaction to a GitHub PR using the installation access token.
- * This is a Node.js action because it needs to make external API calls.
- */
 export const addPrReaction = internalAction({
   args: {
     installationId: v.number(),
@@ -25,7 +21,7 @@ export const addPrReaction = internalAction({
           "[github_pr_comments] Failed to get access token for installation",
           { installationId },
         );
-        return { ok: false as const, error: "Failed to get access token" };
+        return { ok: false, error: "Failed to get access token" };
       }
 
       const response = await fetch(
@@ -55,12 +51,12 @@ export const addPrReaction = internalAction({
           },
         );
         return {
-          ok: false as const,
+          ok: false,
           error: `GitHub API error: ${response.status}`,
         };
       }
 
-      const data = (await response.json()) as { id?: number };
+      const data = await response.json();
       console.log("[github_pr_comments] Successfully added reaction", {
         installationId,
         repoFullName,
@@ -68,7 +64,7 @@ export const addPrReaction = internalAction({
         reactionId: data.id,
       });
 
-      return { ok: true as const, reactionId: data.id };
+      return { ok: true, reactionId: data.id };
     } catch (error) {
       console.error(
         "[github_pr_comments] Unexpected error adding reaction",
@@ -80,7 +76,7 @@ export const addPrReaction = internalAction({
         },
       );
       return {
-        ok: false as const,
+        ok: false,
         error: error instanceof Error ? error.message : String(error),
       };
     }
