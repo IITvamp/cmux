@@ -48,7 +48,6 @@ from morphcloud.api import (
     Snapshot,
 )
 
-from morph_common import ensure_docker_cli_plugins
 
 Command = t.Union[str, t.Sequence[str]]
 TaskFunc = t.Callable[["TaskContext"], t.Awaitable[None]]
@@ -971,32 +970,65 @@ async def task_ensure_docker(ctx: TaskContext) -> None:
     install_cmd = textwrap.dedent(
         """
         set -euo pipefail
-        if command -v docker >/dev/null 2>&1; then
-          docker --version
-        else
-          DEBIAN_FRONTEND=noninteractive apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            ca-certificates curl gnupg lsb-release \
-            docker.io python3-docker git
-          systemctl enable docker >/dev/null 2>&1 || true
-          systemctl restart docker || true
+
+        echo "[docker] ensuring Docker APT repository"
+        DEBIAN_FRONTEND=noninteractive apt-get update
+        DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl
+        os_release="/etc/os-release"
+        if [ ! -f "$os_release" ]; then
+          echo "Missing /etc/os-release; unable to determine distribution" >&2
+          exit 1
         fi
+        . "$os_release"
+        distro_codename="${UBUNTU_CODENAME:-${VERSION_CODENAME:-stable}}"
+        distro_id="${ID:-debian}"
+        case "$distro_id" in
+          ubuntu|Ubuntu|UBUNTU)
+            repo_id="ubuntu"
+            ;;
+          debian|Debian|DEBIAN)
+            repo_id="debian"
+            ;;
+          *)
+            echo "Unrecognized distro id '$distro_id'; defaulting to debian" >&2
+            repo_id="debian"
+            ;;
+        esac
+        install -m 0755 -d /etc/apt/keyrings
+        curl -fsSL "https://download.docker.com/linux/${repo_id}/gpg" -o /etc/apt/keyrings/docker.asc
+        chmod a+r /etc/apt/keyrings/docker.asc
+        printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/%s %s stable\\n' \
+          "$(dpkg --print-architecture)" "$repo_id" "$distro_codename" \
+          > /etc/apt/sources.list.d/docker.list
+
+        echo "[docker] installing engine and CLI plugins"
+        DEBIAN_FRONTEND=noninteractive apt-get update
+        DEBIAN_FRONTEND=noninteractive apt-get install -y \
+          docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+        systemctl enable docker.service
+        systemctl enable docker.socket || true
+        systemctl start docker.service
+
         for attempt in $(seq 1 30); do
           if docker info >/dev/null 2>&1; then
-            echo "Docker ready"
+            echo "[docker] daemon is ready"
             break
           fi
           if [ "$attempt" -eq 30 ]; then
-            echo "Docker failed to start after 30 attempts" >&2
+            echo "[docker] daemon failed to start within expected window" >&2
             exit 1
           fi
           sleep 2
         done
+
         docker --version
+        docker compose version
+        docker buildx version
+        docker run --rm hello-world
         """
     )
-    await ctx.run("ensure-docker-basic", install_cmd)
-    await ctx.run("ensure-docker-plugins", ensure_docker_cli_plugins())
+    await ctx.run("ensure-docker-install", install_cmd)
 
 
 @registry.task(
@@ -1473,6 +1505,8 @@ async def task_install_service_scripts(ctx: TaskContext) -> None:
         f"""
         install -d /usr/local/lib/cmux
         install -m 0755 {repo}/configs/systemd/bin/cmux-start-chrome /usr/local/lib/cmux/cmux-start-chrome
+        install -m 0755 {repo}/configs/systemd/bin/cmux-manage-dockerd /usr/local/lib/cmux/cmux-manage-dockerd
+        install -m 0755 {repo}/configs/systemd/bin/cmux-stop-dockerd /usr/local/lib/cmux/cmux-stop-dockerd
         install -m 0755 {repo}/configs/systemd/bin/cmux-configure-memory /usr/local/sbin/cmux-configure-memory
         """
     )
