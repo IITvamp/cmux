@@ -54,7 +54,7 @@ export async function performCrownEvaluation(
   prompt: string,
   candidates: CrownEvaluationCandidate[],
 ): Promise<CrownEvaluationResponse> {
-  const { model } = resolveCrownModel();
+  const { model, provider } = resolveCrownModel();
 
   const normalizedCandidates = candidates.map((candidate, idx) => {
     const resolvedIndex = candidate.index ?? idx;
@@ -106,7 +106,7 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
       system:
         "You select the best implementation from structured diff inputs and explain briefly why.",
       prompt: evaluationPrompt,
-      temperature: 0,
+      ...(provider === "openai" ? {} : { temperature: 0 }),
       maxRetries: 2,
     });
 
@@ -121,7 +121,7 @@ export async function performCrownSummarization(
   prompt: string,
   gitDiff: string,
 ): Promise<CrownSummarizationResponse> {
-  const { model } = resolveCrownModel();
+  const { model, provider } = resolveCrownModel();
 
   const summarizationPrompt = `You are an expert reviewer summarizing a pull request.
 
@@ -157,7 +157,7 @@ OUTPUT FORMAT (Markdown)
       system:
         "You are an expert reviewer summarizing pull requests. Provide a clear, concise summary following the requested format.",
       prompt: summarizationPrompt,
-      temperature: 0,
+      ...(provider === "openai" ? {} : { temperature: 0 }),
       maxRetries: 2,
     });
 
