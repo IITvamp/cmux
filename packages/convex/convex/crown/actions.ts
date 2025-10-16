@@ -14,7 +14,7 @@ import {
 import { env } from "../../_shared/convex-env";
 import { action } from "../_generated/server";
 
-const OPENAI_CROWN_MODEL = "gpt-5-low";
+const OPENAI_CROWN_MODEL = "gpt-5-mini";
 const ANTHROPIC_CROWN_MODEL = "claude-3-5-sonnet-20241022";
 
 const CrownEvaluationCandidateValidator = v.object({
