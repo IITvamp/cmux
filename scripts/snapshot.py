@@ -1645,7 +1645,31 @@ async def task_configure_memory_protection(ctx: TaskContext) -> None:
     cmd = textwrap.dedent(
         """
         set -euo pipefail
-        /usr/local/sbin/cmux-configure-memory
+        CMUX_FORCE_SWAP=1 CMUX_SWAPFILE_SIZE_GIB=6 /usr/local/sbin/cmux-configure-memory
+        expected_kib=$((6 * 1024 * 1024))
+        tolerance_kib=8
+        min_expected_kib=$((expected_kib - tolerance_kib))
+        actual_kib="$(awk '$1 == "/var/swap/cmux-swapfile" {print $3}' /proc/swaps 2>/dev/null || true)"
+        if [ -z "${actual_kib}" ]; then
+            echo "Swapfile /var/swap/cmux-swapfile missing from /proc/swaps after configuration." >&2
+            swapon --show=NAME,TYPE,SIZE,USED,PRIO || true
+            exit 1
+        fi
+        case "${actual_kib}" in
+            *[!0-9]*)
+                echo "Swapfile size reported as '${actual_kib}' KiB; expected numeric value." >&2
+                swapon --show=NAME,TYPE,SIZE,USED,PRIO || true
+                exit 1
+                ;;
+        esac
+        if [ "${actual_kib}" -lt "${min_expected_kib}" ]; then
+            echo "Swapfile size ${actual_kib} KiB is below required ${min_expected_kib} KiB minimum (6 GiB minus tolerance)." >&2
+            swapon --show=NAME,TYPE,SIZE,USED,PRIO || true
+            exit 1
+        fi
+        if [ "${actual_kib}" -lt "${expected_kib}" ]; then
+            echo "Swapfile size ${actual_kib} KiB slightly below nominal ${expected_kib} KiB target; continuing (within tolerance ${tolerance_kib} KiB)." >&2
+        fi
         """
     )
     await ctx.run("configure-memory-protection", cmd)
