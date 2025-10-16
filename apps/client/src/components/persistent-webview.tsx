@@ -2,8 +2,12 @@ import type { CSSProperties, ReactNode } from "react";
 
 import { ElectronWebContentsView } from "@/components/electron-web-contents-view";
 import { isElectron } from "@/lib/electron";
+import { PERMISSIVE_IFRAME_ALLOW } from "@/lib/iframePermissions";
 
-import { PersistentIframe } from "./persistent-iframe";
+import {
+  PersistentIframe,
+  type PersistentIframeStatus,
+} from "./persistent-iframe";
 
 interface PersistentWebViewProps {
   persistKey: string;
@@ -20,9 +24,16 @@ interface PersistentWebViewProps {
   backgroundColor?: string;
   borderRadius?: number;
   fallback?: ReactNode;
+  fallbackClassName?: string;
+  errorFallback?: ReactNode;
+  errorFallbackClassName?: string;
   forceWebContentsViewIfElectron?: boolean;
   onLoad?: () => void;
   onError?: (error: Error) => void;
+  onStatusChange?: (status: PersistentIframeStatus) => void;
+  forcedStatus?: PersistentIframeStatus | null;
+  loadTimeoutMs?: number;
+  preflight?: boolean;
   onElectronViewReady?: (info: {
     id: number;
     webContentsId: number;
@@ -39,7 +50,7 @@ export function PersistentWebView({
   className,
   style,
   preload,
-  allow,
+  allow = PERMISSIVE_IFRAME_ALLOW,
   sandbox,
   iframeClassName,
   iframeStyle,
@@ -48,9 +59,16 @@ export function PersistentWebView({
   backgroundColor,
   borderRadius,
   fallback,
+  fallbackClassName,
+  errorFallback,
+  errorFallbackClassName,
   forceWebContentsViewIfElectron,
   onLoad,
   onError,
+  onStatusChange,
+  forcedStatus,
+  loadTimeoutMs,
+  preflight,
   onElectronViewReady,
   onElectronViewDestroyed,
 }: PersistentWebViewProps) {
@@ -90,6 +108,14 @@ export function PersistentWebView({
       iframeStyle={iframeStyle}
       onLoad={onLoad}
       onError={onError}
+      loadingFallback={fallback}
+      loadingClassName={fallbackClassName}
+      errorFallback={errorFallback}
+      errorClassName={errorFallbackClassName}
+      onStatusChange={onStatusChange}
+      forcedStatus={forcedStatus}
+      loadTimeoutMs={loadTimeoutMs}
+      preflight={preflight}
     />
   );
 }

@@ -290,7 +290,28 @@ function isUpdateNewerThanCurrent(
     return info.version !== app.getVersion();
   }
 
-  return semver.gt(updateVersion, currentVersion);
+  const updateParsed = semver.parse(updateVersion);
+  const currentParsed = semver.parse(currentVersion);
+
+  if (!updateParsed || !currentParsed) {
+    return semver.gt(updateVersion, currentVersion);
+  }
+
+  const isNewer = semver.gt(updateParsed, currentParsed);
+  if (!isNewer) return false;
+
+  const currentHasPrerelease = currentParsed.prerelease.length > 0;
+  const updateHasPrerelease = updateParsed.prerelease.length > 0;
+  const sameCoreVersion =
+    updateParsed.major === currentParsed.major &&
+    updateParsed.minor === currentParsed.minor &&
+    updateParsed.patch === currentParsed.patch;
+
+  if (currentHasPrerelease && !updateHasPrerelease && sameCoreVersion) {
+    return false;
+  }
+
+  return true;
 }
 
 function logUpdateCheckResult(
@@ -491,6 +512,17 @@ function setupAutoUpdates(): void {
         ? info.version
         : null;
 
+    if (!isUpdateNewerThanCurrent(info)) {
+      mainLog(
+        "Ignoring downloaded update that is not newer than current build",
+        {
+          version,
+          currentVersion: app.getVersion(),
+        }
+      );
+      return;
+    }
+
     mainLog("Update downloaded; notifying renderer", { version });
     queueAutoUpdateToast({ version });
   });
@@ -540,8 +572,6 @@ function createWindow(): void {
       nodeIntegration: false,
       webviewTag: true,
       partition: PARTITION,
-      allowRunningInsecureContent: true, // TODO: remove this
-      webSecurity: false,
     },
   };
 
@@ -712,9 +742,10 @@ app.whenReady().then(async () => {
       }
     });
   });
-  const rendererBaseUrl = is.dev && process.env["ELECTRON_RENDERER_URL"]
-    ? process.env["ELECTRON_RENDERER_URL"]
-    : `https://${APP_HOST}`;
+  const rendererBaseUrl =
+    is.dev && process.env["ELECTRON_RENDERER_URL"]
+      ? process.env["ELECTRON_RENDERER_URL"]
+      : `https://${APP_HOST}`;
 
   registerWebContentsViewHandlers({
     logger: {
@@ -831,7 +862,9 @@ app.whenReady().then(async () => {
           click: () => {
             const dispatched = sendShortcutToFocusedWindow("preview-reload");
             if (!dispatched) {
-              mainWarn("Reload Preview shortcut triggered with no active renderer");
+              mainWarn(
+                "Reload Preview shortcut triggered with no active renderer"
+              );
             }
           },
         },
