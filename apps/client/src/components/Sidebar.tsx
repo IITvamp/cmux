@@ -212,7 +212,7 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
   return (
     <div
       ref={containerRef}
-      className="relative bg-neutral-50 dark:bg-black flex flex-col shrink-0 h-dvh grow"
+      className="relative bg-neutral-50 dark:bg-black flex flex-col shrink-0 h-dvh grow pr-1"
       style={{
         display: isHidden ? "none" : "flex",
         width: `${width}px`,
@@ -326,7 +326,7 @@ export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
           {
             // Invisible, but with a comfortable hit area
             width: "14px",
-            transform: "translateX(13px)",
+            transform: "translateX(7px)",
             // marginRight: "-5px",
             background: "transparent",
             // background: "red",
