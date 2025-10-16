@@ -2,6 +2,7 @@ import { EnvironmentConfiguration } from "@/components/EnvironmentConfiguration"
 import { FloatingPane } from "@/components/floating-pane";
 import { TitleBar } from "@/components/TitleBar";
 import { parseEnvBlock } from "@/lib/parseEnvBlock";
+import { toMorphVncUrl } from "@/lib/toProxyWorkspaceUrl";
 import type { Id } from "@cmux/convex/dataModel";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import {
@@ -47,6 +48,21 @@ function NewSnapshotVersionPage() {
     const hostId = urlInstanceId.replace(/_/g, "-");
     return `https://port-39378-${hostId}.http.cloud.morph.so/?folder=/root/workspace`;
   }, [urlInstanceId]);
+
+  const derivedBrowserUrl = useMemo(() => {
+    if (urlInstanceId) {
+      const hostId = urlInstanceId.replace(/_/g, "-");
+      const workspaceUrl = `https://port-39378-${hostId}.http.cloud.morph.so/?folder=/root/workspace`;
+      return toMorphVncUrl(workspaceUrl) ?? undefined;
+    }
+    if (urlVscodeUrl) {
+      return toMorphVncUrl(urlVscodeUrl) ?? undefined;
+    }
+    if (derivedVscodeUrl) {
+      return toMorphVncUrl(derivedVscodeUrl) ?? undefined;
+    }
+    return undefined;
+  }, [urlInstanceId, urlVscodeUrl, derivedVscodeUrl]);
 
   const environmentQuery = useQuery({
     ...getApiEnvironmentsByIdOptions({
@@ -138,6 +154,7 @@ function NewSnapshotVersionPage() {
             teamSlugOrId={teamSlugOrId}
             instanceId={urlInstanceId}
             vscodeUrl={effectiveVscodeUrl}
+            browserUrl={derivedBrowserUrl}
             isProvisioning={false}
             mode="snapshot"
             sourceEnvironmentId={sourceEnvironmentId}
