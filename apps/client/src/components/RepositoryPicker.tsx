@@ -17,11 +17,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { api } from "@cmux/convex/api";
-import {
-  DEFAULT_MORPH_SNAPSHOT_ID,
-  MORPH_SNAPSHOT_PRESETS,
-  type MorphSnapshotId,
-} from "@cmux/shared";
+import { DEFAULT_MORPH_SNAPSHOT_ID, type MorphSnapshotId } from "@cmux/shared";
 import { isElectron } from "@/lib/electron";
 import {
   getApiIntegrationsGithubReposOptions,
@@ -34,13 +30,7 @@ import {
 } from "@tanstack/react-query";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import {
-  Check,
-  ChevronDown,
-  Loader2,
-  Settings,
-  X,
-} from "lucide-react";
+import { Check, ChevronDown, Loader2, Settings, X } from "lucide-react";
 import {
   useCallback,
   useDeferredValue,
@@ -48,14 +38,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import {
-  Button as AriaButton,
-  Disclosure,
-  DisclosurePanel,
-  Label,
-  Radio,
-  RadioGroup,
-} from "react-aria-components";
+import { RepositoryAdvancedOptions } from "./RepositoryAdvancedOptions";
 
 function ConnectionIcon({ type }: { type?: string }) {
   if (type && type.includes("gitlab")) {
@@ -107,11 +90,6 @@ interface RepositoryListSectionProps {
   selectedRepos: readonly string[];
   onToggleRepo: (repo: string) => void;
   hasConnections: boolean;
-}
-
-interface AdvancedOptionsSectionProps {
-  selectedSnapshotId: MorphSnapshotId;
-  onSnapshotChange: (snapshotId: MorphSnapshotId) => void;
 }
 
 export interface RepositoryPickerProps {
@@ -369,7 +347,7 @@ export function RepositoryPicker({
           </div>
         ) : null}
 
-        <AdvancedOptionsSection
+        <RepositoryAdvancedOptions
           selectedSnapshotId={selectedSnapshotId}
           onSnapshotChange={updateSnapshotSelection}
         />
@@ -469,24 +447,14 @@ function RepositoryConnectionsSection({
     const match = activeConnections.find(
       (c) => c.accountLogin === currentLogin
     );
-    return match?.installationId ?? activeConnections[0]?.installationId ?? null;
+    return (
+      match?.installationId ?? activeConnections[0]?.installationId ?? null
+    );
   }, [activeConnections, currentLogin]);
 
   const installNewUrl = env.NEXT_PUBLIC_GITHUB_APP_SLUG
     ? `https://github.com/apps/${env.NEXT_PUBLIC_GITHUB_APP_SLUG}/installations/new`
     : null;
-
-  const configureUrl = useMemo(() => {
-    if (!connections || !currentLogin) return null;
-    const match = connections.find(
-      (c) => c.accountLogin === currentLogin && c.isActive
-    );
-    if (!match) return null;
-    if (match.accountType === "Organization") {
-      return `https://github.com/organizations/${match.accountLogin}/settings/installations/${match.installationId}`;
-    }
-    return `https://github.com/settings/installations/${match.installationId}`;
-  }, [connections, currentLogin]);
 
   useEffect(() => {
     onContextChange({
@@ -501,19 +469,22 @@ function RepositoryConnectionsSection({
     selectedInstallationId,
   ]);
 
-  const watchPopupClosed = useCallback((win: Window | null, onClose: () => void) => {
-    if (!win) return;
-    const timer = window.setInterval(() => {
-      try {
-        if (win.closed) {
-          window.clearInterval(timer);
-          onClose();
+  const watchPopupClosed = useCallback(
+    (win: Window | null, onClose: () => void) => {
+      if (!win) return;
+      const timer = window.setInterval(() => {
+        try {
+          if (win.closed) {
+            window.clearInterval(timer);
+            onClose();
+          }
+        } catch (_error) {
+          void 0;
         }
-      } catch (_error) {
-        void 0;
-      }
-    }, 600);
-  }, []);
+      }, 600);
+    },
+    []
+  );
 
   const openCenteredPopup = useCallback(
     (
@@ -738,44 +709,6 @@ function RepositoryConnectionsSection({
         </Popover.Portal>
       </Popover.Root>
 
-      <div className="flex items-center gap-3 text-xs text-neutral-500 dark:text-neutral-400">
-        {configureUrl ? (
-          <button
-            type="button"
-            onClick={() =>
-              openCenteredPopup(
-                configureUrl,
-                { name: "github-config" },
-                handlePopupClosedRefetch
-              )
-            }
-            className="inline-flex items-center gap-1 text-neutral-800 dark:text-neutral-200 hover:underline"
-          >
-            <Settings className="h-3 w-3" />
-            Manage access
-          </button>
-        ) : null}
-        {installNewUrl ? (
-          <button
-            type="button"
-            onClick={() => {
-              void handleInstallApp();
-            }}
-            className="inline-flex items-center gap-1 text-neutral-800 dark:text-neutral-200 hover:underline"
-          >
-            <GitHubIcon className="h-3 w-3" />
-            Install GitHub App
-          </button>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => setConnectionDropdownOpen(true)}
-          className="inline-flex items-center gap-1 text-neutral-800 dark:text-neutral-200 hover:underline"
-        >
-          <ChevronDown className="h-3 w-3" />
-          Switch organization
-        </button>
-      </div>
     </div>
   );
 }
@@ -846,7 +779,10 @@ function RepositoryListSection({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2 mt-4">
+      <label className="block text-sm font-medium text-neutral-800 dark:text-neutral-200">
+        Repositories
+      </label>
       <div className="relative">
         <input
           type="text"
@@ -886,13 +822,19 @@ function RepositoryListSection({
               const last = repo.pushed_at ?? repo.updated_at ?? null;
               const when = last ? formatTimeAgo(last) : "";
               return (
-                <button
+                <div
                   key={repo.full_name}
-                  type="button"
                   role="option"
                   aria-selected={isSelected}
                   onClick={() => onToggleRepo(repo.full_name)}
-                  className="w-full px-3 h-9 flex items-center justify-between bg-white dark:bg-neutral-950 cursor-pointer select-none text-left"
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onToggleRepo(repo.full_name);
+                    }
+                  }}
+                  tabIndex={0}
+                  className="px-3 h-9 flex items-center justify-between bg-white dark:bg-neutral-950 cursor-default select-none outline-none"
                 >
                   <div className="text-sm flex items-center gap-2 min-w-0 flex-1">
                     <div
@@ -916,7 +858,7 @@ function RepositoryListSection({
                       {when}
                     </span>
                   ) : null}
-                </button>
+                </div>
               );
             })}
           </div>
@@ -932,103 +874,5 @@ function RepositoryListSection({
         )}
       </div>
     </div>
-  );
-}
-
-function AdvancedOptionsSection({
-  selectedSnapshotId,
-  onSnapshotChange,
-}: AdvancedOptionsSectionProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
-
-  return (
-    <Disclosure
-      isExpanded={isExpanded}
-      onExpandedChange={setIsExpanded}
-      className="space-y-3"
-    >
-      {({ isExpanded: expanded }) => (
-        <>
-          <AriaButton
-            slot="trigger"
-            className="flex w-full items-center justify-between gap-3 rounded-md border border-neutral-200 bg-white px-3 py-2 text-left text-sm font-medium text-neutral-800 transition-colors hover:bg-neutral-50 focus:outline-none data-[focus-visible]:outline data-[focus-visible]:outline-2 data-[focus-visible]:outline-offset-2 data-[focus-visible]:outline-neutral-500 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-200 dark:hover:bg-neutral-900"
-          >
-            <span>Advanced options</span>
-            <ChevronDown
-              className={`h-4 w-4 text-neutral-500 transition-transform ${
-                expanded ? "rotate-180" : ""
-              }`}
-              aria-hidden="true"
-            />
-          </AriaButton>
-          <DisclosurePanel className="mt-3 space-y-3">
-            <RadioGroup
-              value={selectedSnapshotId}
-              onChange={(value) => onSnapshotChange(value as MorphSnapshotId)}
-              className="space-y-3"
-            >
-              <Label className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
-                Machine size
-              </Label>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {MORPH_SNAPSHOT_PRESETS.map((preset) => (
-                  <Radio
-                    key={preset.id}
-                    value={preset.id}
-                    className={({ isSelected, isFocusVisible, isDisabled }) => {
-                      const baseClasses =
-                        "relative flex h-full cursor-pointer flex-col justify-between rounded-lg border px-4 py-3 text-left transition-colors focus:outline-none";
-                      const stateClasses = [
-                        isSelected
-                          ? "border-neutral-900 dark:border-neutral-100 bg-neutral-50 dark:bg-neutral-900"
-                          : "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 hover:border-neutral-300 dark:hover:border-neutral-700",
-                        isFocusVisible
-                          ? "outline outline-2 outline-offset-2 outline-neutral-500"
-                          : "",
-                        isDisabled ? "cursor-not-allowed opacity-60" : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" ");
-                      return `${baseClasses} ${stateClasses}`.trim();
-                    }}
-                  >
-                    {({ isSelected }) => (
-                      <div className="flex h-full flex-col gap-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                              {preset.label}
-                            </p>
-                            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500 dark:text-neutral-400">
-                              <span>{preset.cpu}</span>
-                              <span>{preset.memory}</span>
-                              <span>{preset.disk}</span>
-                            </div>
-                          </div>
-                          <span
-                            className={`mt-1 inline-flex h-5 w-5 items-center justify-center rounded-full border ${
-                              isSelected
-                                ? "border-neutral-900 dark:border-neutral-100 bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
-                                : "border-neutral-300 dark:border-neutral-700 bg-white text-transparent dark:bg-neutral-950"
-                            }`}
-                          >
-                            <Check className="h-3 w-3" aria-hidden="true" />
-                          </span>
-                        </div>
-                        {preset.description ? (
-                          <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                            {preset.description}
-                          </p>
-                        ) : null}
-                      </div>
-                    )}
-                  </Radio>
-                ))}
-              </div>
-            </RadioGroup>
-          </DisclosurePanel>
-        </>
-      )}
-    </Disclosure>
   );
 }
