@@ -495,15 +495,15 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             payload: prPayload,
           });
 
-          // Post eyes emoji comment when a new PR is opened
+          // Add eyes emoji reaction when a new PR is opened
           if (prPayload.action === "opened") {
             const prNumber = Number(prPayload.pull_request?.number ?? 0);
             if (prNumber) {
-              await _ctx.runAction(internal.github_pr_comments.postPrComment, {
+              await _ctx.runAction(internal.github_pr_comments.addPrReaction, {
                 installationId: installation,
                 repoFullName,
                 prNumber,
-                body: "👀",
+                content: "eyes",
               });
             }
           }
