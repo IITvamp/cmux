@@ -5,7 +5,7 @@ import { TitleBar } from "@/components/TitleBar";
 import { toMorphVncUrl } from "@/lib/toProxyWorkspaceUrl";
 import { DEFAULT_MORPH_SNAPSHOT_ID, MORPH_SNAPSHOT_PRESETS, type MorphSnapshotId } from "@cmux/shared";
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { z } from "zod";
 
 const morphSnapshotIds = MORPH_SNAPSHOT_PRESETS.map(
@@ -35,6 +35,7 @@ function EnvironmentsPage() {
   const urlInstanceId = searchParams.instanceId;
   const selectedSnapshotId = searchParams.snapshotId ?? DEFAULT_MORPH_SNAPSHOT_ID;
   const { teamSlugOrId } = Route.useParams();
+  const [headerActions, setHeaderActions] = useState<ReactNode | null>(null);
   const derivedVscodeUrl = useMemo(() => {
     if (!urlInstanceId) return undefined;
     const hostId = urlInstanceId.replace(/_/g, "-");
@@ -48,8 +49,14 @@ function EnvironmentsPage() {
     return toMorphVncUrl(workspaceUrl) ?? undefined;
   }, [urlInstanceId]);
 
+  useEffect(() => {
+    if (step !== "configure") {
+      setHeaderActions(null);
+    }
+  }, [step]);
+
   return (
-    <FloatingPane header={<TitleBar title="Environments" />}>
+    <FloatingPane header={<TitleBar title="Environments" actions={headerActions} />}>
       <div className="flex flex-col grow select-none relative h-full overflow-hidden">
         {step === "select" ? (
           <div className="p-6 max-w-3xl w-full mx-auto overflow-auto">
@@ -71,6 +78,7 @@ function EnvironmentsPage() {
             vscodeUrl={derivedVscodeUrl}
             browserUrl={derivedBrowserUrl}
             isProvisioning={false}
+            onHeaderControlsChange={setHeaderActions}
           />
         )}
       </div>

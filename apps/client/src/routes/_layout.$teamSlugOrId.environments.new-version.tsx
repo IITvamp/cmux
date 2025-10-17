@@ -13,7 +13,7 @@ import {
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { z } from "zod";
 
 const searchSchema = z.object({
@@ -42,6 +42,7 @@ function NewSnapshotVersionPage() {
   const urlSelectedRepos = searchParams.selectedRepos ?? [];
   const urlInstanceId = searchParams.instanceId;
   const urlVscodeUrl = searchParams.vscodeUrl;
+  const [headerActions, setHeaderActions] = useState<ReactNode | null>(null);
 
   const derivedVscodeUrl = useMemo(() => {
     if (!urlInstanceId) return undefined;
@@ -104,6 +105,12 @@ function NewSnapshotVersionPage() {
     snapshotVersionsQuery.isPending;
   const environment = environmentQuery.data;
 
+  useEffect(() => {
+    if (isLoading || !environment) {
+      setHeaderActions(null);
+    }
+  }, [environment, isLoading]);
+
   if (!environment && !isLoading) {
     throw new Error("Environment not found");
   }
@@ -138,7 +145,9 @@ function NewSnapshotVersionPage() {
   const effectiveVscodeUrl = urlVscodeUrl ?? derivedVscodeUrl;
 
   return (
-    <FloatingPane header={<TitleBar title="New Snapshot Version" />}>
+    <FloatingPane
+      header={<TitleBar title="New Snapshot Version" actions={headerActions} />}
+    >
       <div className="flex flex-col grow select-none relative h-full overflow-hidden">
         {isLoading || !environment ? (
           <div className="flex h-full items-center justify-center">
@@ -167,6 +176,7 @@ function NewSnapshotVersionPage() {
                 : ""
             }
             initialEnvVars={initialEnvVars}
+            onHeaderControlsChange={setHeaderActions}
           />
         )}
       </div>

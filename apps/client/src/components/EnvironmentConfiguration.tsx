@@ -24,7 +24,14 @@ import type { Id } from "@cmux/convex/dataModel";
 import clsx from "clsx";
 import type { PersistentIframeStatus } from "@/components/persistent-iframe";
 import { ArrowLeft, Code2, Loader2, Minus, Monitor, Plus, Settings, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import TextareaAutosize from "react-textarea-autosize";
 
 export type EnvVar = { name: string; value: string; isSecret: boolean };
@@ -59,6 +66,7 @@ export function EnvironmentConfiguration({
   initialDevScript = "",
   initialExposedPorts = "",
   initialEnvVars,
+  onHeaderControlsChange,
 }: {
   selectedRepos: string[];
   teamSlugOrId: string;
@@ -73,6 +81,7 @@ export function EnvironmentConfiguration({
   initialDevScript?: string;
   initialExposedPorts?: string;
   initialEnvVars?: EnvVar[];
+  onHeaderControlsChange?: (controls: ReactNode | null) => void;
 }) {
   const navigate = useNavigate();
   const searchRoute:
@@ -527,17 +536,68 @@ export function EnvironmentConfiguration({
     );
   };
 
-  const previewButtonClass = (
-    view: "vscode" | "browser",
-    disabled: boolean
-  ) =>
-    clsx(
-      "inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 dark:focus-visible:ring-neutral-700",
-      view === activePreview
-        ? "border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900"
-        : "border-transparent text-neutral-600 hover:border-neutral-200 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:border-neutral-700 dark:hover:bg-neutral-900/60",
-      disabled && "opacity-50 cursor-not-allowed"
+  const previewButtonClass = useCallback(
+    (view: "vscode" | "browser", disabled: boolean) =>
+      clsx(
+        "inline-flex h-7 w-7 items-center justify-center rounded-md border transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 dark:focus-visible:ring-neutral-700",
+        view === activePreview
+          ? "border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900"
+          : "border-transparent text-neutral-600 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-900/60",
+        disabled && "opacity-40 cursor-not-allowed"
+      ),
+    [activePreview]
+  );
+
+  const headerControls = useMemo(() => {
+    if (isProvisioning) {
+      return null;
+    }
+
+    return (
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => handlePreviewSelect("vscode")}
+          className={previewButtonClass("vscode", false)}
+          aria-pressed={activePreview === "vscode"}
+          aria-label="Show VS Code workspace"
+          title="Show VS Code workspace"
+        >
+          <Code2 className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => handlePreviewSelect("browser")}
+          className={previewButtonClass("browser", !isBrowserAvailable)}
+          aria-pressed={activePreview === "browser"}
+          aria-label="Show browser preview"
+          title="Show browser preview"
+          disabled={!isBrowserAvailable}
+        >
+          <Monitor className="h-3.5 w-3.5" />
+        </button>
+      </div>
     );
+  }, [
+    activePreview,
+    handlePreviewSelect,
+    isBrowserAvailable,
+    isProvisioning,
+    previewButtonClass,
+  ]);
+
+  useEffect(() => {
+    if (!onHeaderControlsChange) {
+      return;
+    }
+    onHeaderControlsChange(headerControls ?? null);
+  }, [headerControls, onHeaderControlsChange]);
+
+  useEffect(() => {
+    return () => {
+      onHeaderControlsChange?.(null);
+    };
+  }, [onHeaderControlsChange]);
 
   const leftPane = (
     <div className="h-full p-6 overflow-y-auto">
@@ -929,32 +989,6 @@ export function EnvironmentConfiguration({
         </div>
       ) : (
         <div className="flex h-full flex-col">
-          <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 px-4 py-3">
-            <h2 className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
-              Workspace preview
-            </h2>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => handlePreviewSelect("vscode")}
-                className={previewButtonClass("vscode", false)}
-                aria-pressed={activePreview === "vscode"}
-              >
-                <Code2 className="h-4 w-4" />
-                VS Code
-              </button>
-              <button
-                type="button"
-                onClick={() => handlePreviewSelect("browser")}
-                className={previewButtonClass("browser", !isBrowserAvailable)}
-                aria-pressed={activePreview === "browser"}
-                disabled={!isBrowserAvailable}
-              >
-                <Monitor className="h-4 w-4" />
-                Browser
-              </button>
-            </div>
-          </div>
           <div className="flex-1 min-h-0">
             {activePreview === "browser"
               ? renderBrowserPreview()
