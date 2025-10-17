@@ -18,18 +18,19 @@ export function TitleBar({
         style={{ WebkitAppRegion: "drag" } as CSSProperties}
       />
 
-      {/* Title and actions */}
-      <div className="flex items-center gap-2 text-xs font-medium text-neutral-900 dark:text-neutral-100 transform -translate-y-px">
+      {/* Title */}
+      <div className="flex items-center text-xs font-medium text-neutral-900 dark:text-neutral-100">
         <span>{title}</span>
-        {actions ? (
-          <div
-            className="flex items-center gap-1.5 text-neutral-600 dark:text-neutral-300"
-            style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
-          >
-            {actions}
-          </div>
-        ) : null}
       </div>
+
+      {actions ? (
+        <div
+          className="absolute inset-y-0 right-3 flex items-center gap-1.5 text-neutral-600 dark:text-neutral-300"
+          style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+        >
+          {actions}
+        </div>
+      ) : null}
     </div>
   );
 }

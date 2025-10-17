@@ -539,11 +539,13 @@ export function EnvironmentConfiguration({
   const previewButtonClass = useCallback(
     (view: "vscode" | "browser", disabled: boolean) =>
       clsx(
-        "inline-flex h-7 w-7 items-center justify-center rounded-md border transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 dark:focus-visible:ring-neutral-700",
-        view === activePreview
-          ? "border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900"
-          : "border-transparent text-neutral-600 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-900/60",
-        disabled && "opacity-40 cursor-not-allowed"
+        "inline-flex h-7 w-7 items-center justify-center focus:outline-none text-neutral-600 dark:text-neutral-300",
+        disabled
+          ? "opacity-50 cursor-not-allowed"
+          : "cursor-pointer hover:text-neutral-900 dark:hover:text-neutral-100",
+        view === activePreview && !disabled
+          ? "text-neutral-900 dark:text-neutral-100"
+          : undefined
       ),
     [activePreview]
   );
