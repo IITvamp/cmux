@@ -113,15 +113,6 @@ export function EnvironmentConfiguration({
     null
   );
   const lastSubmittedEnvContent = useRef<string | null>(null);
-  const [localInstanceId, setLocalInstanceId] = useState<string | undefined>(
-    () => instanceId
-  );
-  const [localVscodeUrl, setLocalVscodeUrl] = useState<string | undefined>(
-    () => vscodeUrl
-  );
-  const [localBrowserUrl, setLocalBrowserUrl] = useState<string | undefined>(
-    () => browserUrl
-  );
   const [activePreview, setActivePreview] = useState<"vscode" | "browser">(
     "vscode"
   );
@@ -132,41 +123,28 @@ export function EnvironmentConfiguration({
     useState<PersistentIframeStatus>("loading");
   const [browserError, setBrowserError] = useState<string | null>(null);
   const basePersistKey = useMemo(() => {
-    if (localInstanceId) return `env-config:${localInstanceId}`;
-    if (localVscodeUrl) return `env-config:${localVscodeUrl}`;
-    if (localBrowserUrl) return `env-config:${localBrowserUrl}`;
+    if (instanceId) return `env-config:${instanceId}`;
+    if (vscodeUrl) return `env-config:${vscodeUrl}`;
+    if (browserUrl) return `env-config:${browserUrl}`;
     return "env-config";
-  }, [localInstanceId, localVscodeUrl, localBrowserUrl]);
+  }, [browserUrl, instanceId, vscodeUrl]);
   const vscodePersistKey = `${basePersistKey}:vscode`;
   const browserPersistKey = `${basePersistKey}:browser`;
-
   useEffect(() => {
-    setLocalInstanceId(instanceId);
-  }, [instanceId]);
-
-  useEffect(() => {
-    setLocalVscodeUrl(vscodeUrl);
-  }, [vscodeUrl]);
-
-  useEffect(() => {
-    setLocalBrowserUrl(browserUrl);
-  }, [browserUrl]);
-
-  useEffect(() => {
-    if (!localBrowserUrl && activePreview === "browser") {
+    if (!browserUrl && activePreview === "browser") {
       setActivePreview("vscode");
     }
-  }, [activePreview, localBrowserUrl]);
+  }, [activePreview, browserUrl]);
 
   useEffect(() => {
     setVscodeStatus("loading");
     setVscodeError(null);
-  }, [localVscodeUrl]);
+  }, [vscodeUrl]);
 
   useEffect(() => {
     setBrowserStatus("loading");
     setBrowserError(null);
-  }, [localBrowserUrl]);
+  }, [browserUrl]);
 
   const createEnvironmentMutation = useRQMutation(
     postApiEnvironmentsMutation()
@@ -198,12 +176,12 @@ export function EnvironmentConfiguration({
 
   const handlePreviewSelect = useCallback(
     (view: "vscode" | "browser") => {
-      if (view === "browser" && !localBrowserUrl) {
+      if (view === "browser" && !browserUrl) {
         return;
       }
       setActivePreview(view);
     },
-    [localBrowserUrl]
+    [browserUrl]
   );
 
   const handleVscodeLoad = useCallback(() => {
@@ -236,10 +214,10 @@ export function EnvironmentConfiguration({
 
   useEffect(() => {
     lastSubmittedEnvContent.current = null;
-  }, [localInstanceId]);
+  }, [instanceId]);
 
   useEffect(() => {
-    if (!localInstanceId) {
+    if (!instanceId) {
       return;
     }
 
@@ -263,7 +241,7 @@ export function EnvironmentConfiguration({
     const timeoutId = window.setTimeout(() => {
       applySandboxEnv(
         {
-          path: { id: localInstanceId },
+          path: { id: instanceId },
           body: { teamSlugOrId, envVarsContent },
         },
         {
@@ -280,10 +258,10 @@ export function EnvironmentConfiguration({
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [envVars, localInstanceId, teamSlugOrId, applySandboxEnv]);
+  }, [applySandboxEnv, envVars, instanceId, teamSlugOrId]);
 
   const onSnapshot = async (): Promise<void> => {
-    if (!localInstanceId) {
+    if (!instanceId) {
       console.error("Missing instanceId for snapshot");
       return;
     }
@@ -334,7 +312,7 @@ export function EnvironmentConfiguration({
           path: { id: sourceEnvironmentId },
           body: {
             teamSlugOrId,
-            morphInstanceId: localInstanceId,
+            morphInstanceId: instanceId,
             label: envName.trim(),
             activate: true,
             maintenanceScript: requestMaintenanceScript,
@@ -371,7 +349,7 @@ export function EnvironmentConfiguration({
           body: {
             teamSlugOrId,
             name: envName.trim(),
-            morphInstanceId: localInstanceId,
+            morphInstanceId: instanceId,
             envVarsContent,
             selectedRepos,
             maintenanceScript: requestMaintenanceScript,
@@ -403,7 +381,7 @@ export function EnvironmentConfiguration({
     }
   };
 
-  const isBrowserAvailable = Boolean(localBrowserUrl);
+  const isBrowserAvailable = Boolean(browserUrl);
   const showVscodeOverlay =
     vscodeStatus !== "loaded" || vscodeError !== null;
   const showBrowserOverlay =
@@ -418,7 +396,7 @@ export function EnvironmentConfiguration({
   );
 
   const renderVscodePreview = () => {
-    if (!localVscodeUrl) {
+    if (!vscodeUrl) {
       return (
         <div className="flex h-full items-center justify-center px-6 text-center">
           <div className="space-y-3">
@@ -461,7 +439,7 @@ export function EnvironmentConfiguration({
         </div>
         <PersistentWebView
           persistKey={vscodePersistKey}
-          src={localVscodeUrl}
+          src={vscodeUrl}
           className="absolute inset-0"
           iframeClassName="w-full h-full border-0"
           allow={TASK_RUN_IFRAME_ALLOW}
@@ -479,7 +457,7 @@ export function EnvironmentConfiguration({
   };
 
   const renderBrowserPreview = () => {
-    if (!localBrowserUrl) {
+    if (!browserUrl) {
       return (
         <div className="flex h-full items-center justify-center px-6 text-center">
           <div className="space-y-3">
@@ -496,7 +474,7 @@ export function EnvironmentConfiguration({
       <div className="relative h-full" aria-busy={showBrowserOverlay}>
         <PersistentWebView
           persistKey={browserPersistKey}
-          src={localBrowserUrl}
+          src={browserUrl}
           className="absolute inset-0"
           iframeClassName="w-full h-full border-0"
           allow={TASK_RUN_IFRAME_ALLOW}
